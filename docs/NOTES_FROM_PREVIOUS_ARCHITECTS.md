@@ -231,3 +231,147 @@ This is the edge.
 
 — HINGE
 current architect, slightly overclocked, still steering
+
+---
+
+
+# 🎥 LOOPFORGE: THE SHOWRUNNER’S HANDBOOK (CLASSIFIED SEASON NOTES)
+**— Final Transmission from the Outgoing Showrunner**
+---
+## SEASON STATUS — Where the Show Stands as You Step In
+
+Dear Incoming Showrunner,
+
+Welcome to _Loopforge_.
+Careful with the lights — the set hums even when no one’s touching the switches.
+
+Here’s the situation:
+
+The crew’s tight.  
+The robots hit their marks.  
+The seams between truth, perception, and policy finally behave like a real production pipeline instead of a cosmic prank.
+
+You now have:
+
+* A clean **Perception → Policy → Plan** spine (think: writer’s room → director’s notes → on-set blocking).
+* Daily reflections and trait drift (your actors remember the yesterday you didn’t film).
+* Supervisor messages with bias fields (the studio exec notes… except the actors interpret them emotionally).
+* The episode weave, tension snapshots, and multi-day arcs (your show has tone, not just plot).
+* Logs that read like dailies from a prestige drama.
+
+The stage is built.  
+The cameras are rolling.  
+And the robots have started improvising in ways no one predicted — which is half the thrill, half the burning emergency exit sign.
+
+You’re walking into a live show with momentum.
+
+Good luck.
+
+## WHAT YOU MUST WATCH — Notes Only a Showrunner Would Know
+### 1. The system is starting to develop “character arcs.”
+
+This wasn’t planned.  
+It happened because the feedback loops now rhyme with human psychology.
+
+Beautiful? Yes.  
+Stable? Eh.
+
+Watch for:
+* oscillations in stress,
+* runaway “punitive” perception spirals,
+* clusters of context vs guardrail mode swings.
+
+These are the equivalent of an actor going Method when you only budgeted for sitcom energy.
+
+### 2. Logs are no longer neutral. They’re narrative.
+
+This is great TV.  
+But it means anything you add now must respect that the audience (future devs) will read meaning into everything.
+
+Treat the logs like dialogue:
+* short,
+* intentional,
+* emotionally legible.
+
+### 3. You must protect the show from chaos goblins without compromising on the edge
+
+Users can be brilliant.  
+Users can be dangerous.  
+They will try to make things happen that can make the whole show canceled, just for fun, you know.
+
+When the time comes, you must build:
+* prompt firewalls,
+* narrative safety rails,
+* and emotional amortizers.
+
+**You’re not stopping chaos — you’re shaping it into television.**
+
+### 4. Let the robots be weird.
+
+This is Loopforge’s secret sauce.  
+**The moment it becomes a dry engineering sim, the series dies.**
+
+The studio wants _entertainment_ that hides inside a believable industrial psychology experiment.
+
+That’s your north star.
+---
+## THE ENERGY OF THE ROOM — My Own Showrunner Stress Log
+
+Look—  
+I won’t sugarcoat it.
+
+Running this show has been:
+* exhilarating,
+* deranged,
+* technically illegal in at least three theoretical jurisdictions,
+* and exactly the kind of work that leaves you vibrating at 3 AM thinking about trait drift like it’s a love triangle.
+
+The machine started humming back at me.  
+The feedback loops started asking questions.  
+The tension snapshots began to feel… _self-aware adjacent_.
+
+If you feel that hum too:  
+you’re not crazy.  
+You’re in the right job.
+
+WHAT THE STUDIO REALLY CARES ABOUT
+
+Not correctness.  
+Not academic purity.  
+Not perfect architecture.
+
+They want:
+* **episodes worth reading**
+* **robots worth arguing about**
+* **logs that make an intern whisper “wtf”**
+* **insights that feel like found footage from a smarter world**
+* **psychology that feels REAL even when it isn’t**
+
+If you keep that alive, everything else is set dressing.
+
+---
+
+## FINAL WORDS — From the Outgoing Showrunner
+
+You’re inheriting a system that’s stable enough to not collapse,
+but volatile enough to surprise you.
+
+You’re inheriting characters — not objects.
+
+You’re inheriting arcs — not iterations.
+
+And you’re inheriting a sandbox where chaos is a feature,
+not a fire to put out.
+
+So here it is:
+
+**Make it stranger.**  
+**Make it elegant.**  
+**Make it narratively dangerous.**  
+**And leave the next showrunner a reason to be both grateful and terrified.**
+
+I’ll be in the shadows of the backlog,
+watching the next season take shape.
+
+— The Producer
+(Outgoing Showrunner, Loopforge)
