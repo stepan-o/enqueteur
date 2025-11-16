@@ -18,6 +18,7 @@ from loopforge.day_runner import run_one_day_with_supervisor, compute_day_summar
 from loopforge.reporting import summarize_episode, EpisodeSummary, AgentEpisodeStats, DaySummary
 from loopforge.reporting import AgentDayStats
 from loopforge.types import ActionLogEntry
+from loopforge.supervisor_activity import compute_supervisor_activity
 from pathlib import Path
 from collections import Counter, defaultdict
 from typing import Optional, Dict
@@ -146,7 +147,7 @@ def view_day(
 @app.command()
 def view_episode(
     action_log_path: Path = typer.Option(Path("logs/loopforge_actions.jsonl"), help="Path to JSONL action log"),
-    supervisor_log_path: Path | None = typer.Option(None, help="Path to supervisor JSONL (optional, unused for now)"),
+    supervisor_log_path: Path | None = typer.Option(None, help="Path to supervisor JSONL (optional)"),
     steps_per_day: int = typer.Option(50, help="Number of steps per simulated day"),
     days: int = typer.Option(3, help="Number of days to include in the episode"),
     narrative: bool = typer.Option(
@@ -166,15 +167,46 @@ def view_episode(
     ),
 ) -> None:
     """Summarize a multi-day Loopforge episode from JSONL logs."""
+    # Preload supervisor entries (fail-soft) and group by day
+    supervisor_entries_by_day: Dict[int, list[dict]] = {}
+    try:
+        if supervisor_log_path is not None:
+            import json as _json
+            p = Path(supervisor_log_path)
+            if p.exists():
+                with p.open("r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            obj = _json.loads(line)
+                        except Exception:
+                            continue
+                        # SupervisorMessage JSON has day_index; fall back to step//steps_per_day if present
+                        day_idx = obj.get("day_index")
+                        if not isinstance(day_idx, int):
+                            step_val = obj.get("step")
+                            try:
+                                day_idx = int(step_val) // int(steps_per_day) if step_val is not None else 0
+                            except Exception:
+                                day_idx = 0
+                        supervisor_entries_by_day.setdefault(int(day_idx), []).append(obj)
+    except Exception:
+        supervisor_entries_by_day = {}
+
     # Compute day summaries using the shared compute path
     day_summaries: list[DaySummary] = []
     prev_stats: Optional[Dict[str, AgentDayStats]] = None
     for day_index in range(days):
+        sup_entries_for_day = supervisor_entries_by_day.get(day_index, [])
+        sup_activity = compute_supervisor_activity(sup_entries_for_day, steps_per_day=steps_per_day)
         ds = compute_day_summary(
             day_index=day_index,
             action_log_path=action_log_path,
             steps_per_day=steps_per_day,
             previous_day_stats=prev_stats,
+            supervisor_activity=sup_activity,
         )
         day_summaries.append(ds)
         prev_stats = ds.agent_stats

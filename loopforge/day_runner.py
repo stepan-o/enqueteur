@@ -33,6 +33,7 @@ def compute_day_summary(
     steps_per_day: int = 50,
     *,
     previous_day_stats: Optional[Dict[str, AgentDayStats]] = None,
+    supervisor_activity: float = 0.0,
 ) -> DaySummary:
     """Read logs, slice the selected day, run reflections, and summarize.
 
@@ -74,6 +75,7 @@ def compute_day_summary(
         entries=day_entries,
         reflections_by_agent=reflections_by_agent,
         previous_day_stats=previous_day_stats,
+        supervisor_activity=supervisor_activity,
     )
 
 

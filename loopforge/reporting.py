@@ -214,6 +214,19 @@ def summarize_day(
             # Fail-soft: do not block summary
             pass
 
+    # If no entries produced agent stats this day but we have previous_day_stats,
+    # still expose reflection state so supervisor_presence can surface in views/tests.
+    if not agent_stats and isinstance(prev_map, dict) and prev_map:
+        for pname, pstats in prev_map.items():
+            try:
+                reflection_states[pname] = derive_reflection_state(
+                    pstats,  # use previous as current snapshot for narrative-only state
+                    pstats,
+                    float(supervisor_activity or 0.0),
+                )
+            except Exception:
+                pass
+
     return DaySummary(
         day_index=day_index,
         perception_mode=perception_mode,
