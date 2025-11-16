@@ -223,6 +223,22 @@ def build_daily_log(
         cur = day_summary.agent_stats[name]
         prev = prev_map.get(name) if isinstance(prev_map, dict) else None
         lines = _agent_beats_for(cur, prev)
+        # Optional: replace leaning line using reflection state rulebook_reliance bands
+        try:
+            rs_map = getattr(day_summary, "reflection_states", {}) or {}
+            rs = rs_map.get(name)
+        except Exception:
+            rs = None
+        if rs is not None and len(lines) >= 2:
+            rel = float(getattr(rs, "rulebook_reliance", 0.0) or 0.0)
+            if rel >= 0.8:
+                lines[1] = "Leans heavily on protocol."
+            elif rel >= 0.6:
+                lines[1] = "Leans on protocol."
+            elif rel >= 0.4:
+                lines[1] = "Splits decisions between protocol and context."
+            else:
+                lines[1] = "Acts on local judgment."
         # Optional belief snapshot line (Phase 1–2): read-only
         try:
             belief = (day_summary.beliefs or {}).get(name)  # type: ignore[attr-defined]

@@ -61,6 +61,12 @@ def build_day_narrative(
     for name, stats in sorted(day_summary.agent_stats.items()):
         role = stats.role
         closing = _describe_agent_closing(stats)
+        # Optional: reflection state to steer leaning/closing (deterministic, fallback-safe)
+        try:
+            rs_map = getattr(day_summary, "reflection_states", {}) or {}
+            rs = rs_map.get(name)
+        except Exception:
+            rs = None
         # Optional: append belief tagline if present in summary
         try:
             belief = (day_summary.beliefs or {}).get(name)  # type: ignore[attr-defined]
@@ -70,6 +76,14 @@ def build_day_narrative(
             tagline = _belief_tagline(belief)
             if tagline:
                 closing = f"{closing} {name} ends the day showing signs of {tagline}."
+        # Stress trend can influence closing (use existing phrases only)
+        if rs is not None:
+            trend = getattr(rs, "stress_trend", "unknown")
+            if trend == "rising":
+                closing = "Ends the day carrying some weight."
+            elif trend == "falling":
+                closing = "Ends the day calm, nothing sticking."
+            # flat/unknown → keep existing closing
         # Optional: append attribution sentence if available (additive, deterministic)
         try:
             attr_map = getattr(day_summary, "belief_attributions", {}) or {}
@@ -87,13 +101,46 @@ def build_day_narrative(
                 closing = f"{closing} {name} seems to attribute today’s outcome to {phrase}."
         except Exception:
             pass
+        # Build intro/perception/actions lines and adjust with reflection state if available
+        intro = _describe_agent_intro(name, role, stats)
+        perception = _describe_agent_perception(stats)
+        actions = _describe_agent_actions(role, stats)
+        if rs is not None:
+            # Choose leaning phrasing by rulebook_reliance bands; reuse existing wording
+            rel = float(getattr(rs, "rulebook_reliance", 0.0) or 0.0)
+            if rel >= 0.8:
+                leaning = "leans heavily on the rulebook"
+                rules = "by the manual"
+            elif rel >= 0.6:
+                leaning = "leans on protocol"
+                rules = "by the manual"
+            elif rel >= 0.4:
+                leaning = "balances procedure and judgment"
+                rules = "mixing policy with on-the-spot calls"
+            else:
+                leaning = "relies on local judgment"
+                rules = "on situational judgment"
+            # Rebuild perception line with same tone but new leaning
+            try:
+                s = float(getattr(stats, "avg_stress", 0.0) or 0.0)
+                tone = "feels strained" if s >= 0.6 else ("feels a mild pull" if s >= 0.3 else "seems unbothered")
+                perception = f"{stats.name} {tone} and {leaning}."
+            except Exception:
+                pass
+            # Rebuild actions line keeping base role phrase
+            try:
+                # Extract base prefix before comma from existing actions
+                base_prefix = actions.split(",", 1)[0]
+                actions = f"{base_prefix}, {rules}."
+            except Exception:
+                pass
         beats.append(
             AgentDayBeat(
                 name=name,
                 role=role,
-                intro=_describe_agent_intro(name, role, stats),
-                perception_line=_describe_agent_perception(stats),
-                actions_line=_describe_agent_actions(role, stats),
+                intro=intro,
+                perception_line=perception,
+                actions_line=actions,
                 closing_line=closing,
             )
         )

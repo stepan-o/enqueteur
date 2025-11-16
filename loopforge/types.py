@@ -72,6 +72,45 @@ class BeliefAttribution:
         )
 
 
+# --- AgentReflectionState (Sprint 3: Narrative Consistency Layer) -------------
+
+
+@dataclass
+class AgentReflectionState:
+    """Deterministic, read-only per-agent reflection state for narrative consistency.
+
+    - stress_trend: classified using EPS=0.01 thresholds (must mirror attribution logic)
+    - rulebook_reliance: guardrail ratio heuristic in [0,1]
+    - supervisor_presence: passthrough [0,1] used by narrative only
+    """
+
+    stress_trend: Literal["rising", "falling", "flat", "unknown"]
+    rulebook_reliance: float
+    supervisor_presence: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "stress_trend": str(self.stress_trend),
+            "rulebook_reliance": float(self.rulebook_reliance),
+            "supervisor_presence": float(self.supervisor_presence),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AgentReflectionState":
+        def _clamp01(x: float) -> float:
+            if x < 0.0:
+                return 0.0
+            if x > 1.0:
+                return 1.0
+            return x
+
+        return cls(
+            stress_trend=str(data.get("stress_trend", "unknown")),
+            rulebook_reliance=_clamp01(float(data.get("rulebook_reliance", 0.0))),
+            supervisor_presence=_clamp01(float(data.get("supervisor_presence", 0.0))),
+        )
+
+
 # --- SupervisorIntentSnapshot (Phase 9: Supervisor Bias Field) -------------
 
 
