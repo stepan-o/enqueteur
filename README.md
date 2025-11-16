@@ -592,6 +592,26 @@ If the model response is invalid or the API is unavailable, the code automatical
 
 ---
 
+## Belief Layer v0.1 (read-only, deterministic)
+
+A new, deterministic Belief Layer is computed at summary time from telemetry and attached to each `DaySummary` as `beliefs: Dict[str, BeliefState]` (keyed by agent name). It is strictly read-only and does not affect simulation behavior.
+
+- What it is: a per-agent `BeliefState` snapshot derived from day metrics (no randomness, no LLM). Fields:
+  - `supervisor_trust` (0..1)
+  - `guardrail_faith` (0..1)
+  - `self_efficacy` (0..1)
+  - `world_predictability` (0..1)
+  - `incident_attribution` in {`self`, `world`, `supervisor`, `random`}
+- Where it appears:
+  - Day Narrative: appends a one-line belief tagline per agent (e.g., “slipping confidence”, “renewed reliance on the manual”).
+  - Daily Log: adds a compact “Belief:” line (e.g., “leaning on guardrails; confidence stable.”).
+  - Episode Recap: adds “Belief drift: supervisor trust {start} → {end}.” per agent.
+- How it’s computed: `loopforge/beliefs.py::derive_belief_state(...)` applies ±0.05 step rules (clamped 0..1) using guardrail/context counts, incidents, stress deltas, supervisor activity, and day tension. Integrated in `loopforge/reporting.py::summarize_day(...)`.
+- Tests: see `tests/test_beliefs.py` for deterministic, synthetic cases.
+- Further reading: `docs/DIAGNOSTIC_PHILOSOPHY.md` and `docs/COGNITIVE_ARCHITECTURE_SPEC.md`.
+
+This layer is additive and telemetry-only; it does not change actions, policies, or logs schemas.
+
 ## Cinematic Debugger — Watch Days and Episodes (read-only over logs)
 
 This repository now includes a developer-facing “cinematic debugger” that turns telemetry into readable story-like summaries. It is pure, deterministic, and does not change simulation behavior. Detailed docs live in `docs/CINEMATIC_DEBUGGER.md`.
