@@ -247,7 +247,7 @@ but when they believe.**
 
 Welcome to the cognitive era of Loopforge.
 
-**— PARALLAX**
-Psycho-Architect
-Factory Therapist for Machines
+**— PARALLAX**  
+Psycho-Architect  
+Factory Therapist for Machines  
 Worried, excited, and exactly where I should be
