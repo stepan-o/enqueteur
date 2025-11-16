@@ -70,6 +70,23 @@ def build_day_narrative(
             tagline = _belief_tagline(belief)
             if tagline:
                 closing = f"{closing} {name} ends the day showing signs of {tagline}."
+        # Optional: append attribution sentence if available (additive, deterministic)
+        try:
+            attr_map = getattr(day_summary, "belief_attributions", {}) or {}
+            attr = attr_map.get(name)
+            cause = getattr(attr, "cause", None) if attr is not None else None
+            if isinstance(cause, str) and cause:
+                # Map internal cause keywords to natural phrasing (no awkward "the random")
+                mapping = {
+                    "random": "random chance",
+                    "system": "the system",
+                    "self": "their own actions",
+                    "supervisor": "the supervisor",
+                }
+                phrase = mapping.get(cause, cause)
+                closing = f"{closing} {name} seems to attribute today’s outcome to {phrase}."
+        except Exception:
+            pass
         beats.append(
             AgentDayBeat(
                 name=name,

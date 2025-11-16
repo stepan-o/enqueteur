@@ -232,6 +232,18 @@ def build_daily_log(
             summary = _belief_shortline(belief)
             if summary:
                 lines.append(f"Belief: {summary}")
+        # Attribution bullet (additive, deterministic formatting)
+        try:
+            attr_map = getattr(day_summary, "belief_attributions", {}) or {}
+            attr = attr_map.get(name)
+            if attr is not None:
+                cause = getattr(attr, "cause", None)
+                conf = getattr(attr, "confidence", None)
+                if isinstance(cause, str) and cause and isinstance(conf, (int, float)):
+                    # Do not prefix with an extra dash here; renderer may add bullets.
+                    lines.append(f"Attribution: {cause}-driven (conf={float(conf):.2f}).")
+        except Exception:
+            pass
         beats[name] = lines
 
     general = _general_beats(day_summary, previous_day_summary)

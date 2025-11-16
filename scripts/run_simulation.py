@@ -15,10 +15,12 @@ from loopforge.simulation import run_simulation
 from loopforge.config import get_settings
 from loopforge.logging_utils import read_action_log_entries
 from loopforge.day_runner import run_one_day_with_supervisor, compute_day_summary
-from loopforge.reporting import summarize_episode, EpisodeSummary, AgentEpisodeStats
+from loopforge.reporting import summarize_episode, EpisodeSummary, AgentEpisodeStats, DaySummary
+from loopforge.reporting import AgentDayStats
 from loopforge.types import ActionLogEntry
 from pathlib import Path
 from collections import Counter, defaultdict
+from typing import Optional, Dict
 
 app = typer.Typer(add_completion=False, help="Run the Loopforge City simulation loop")
 
@@ -165,14 +167,17 @@ def view_episode(
 ) -> None:
     """Summarize a multi-day Loopforge episode from JSONL logs."""
     # Compute day summaries using the shared compute path
-    day_summaries = []
+    day_summaries: list[DaySummary] = []
+    prev_stats: Optional[Dict[str, AgentDayStats]] = None
     for day_index in range(days):
         ds = compute_day_summary(
             day_index=day_index,
             action_log_path=action_log_path,
             steps_per_day=steps_per_day,
+            previous_day_stats=prev_stats,
         )
         day_summaries.append(ds)
+        prev_stats = ds.agent_stats
 
     episode = summarize_episode(day_summaries)
     _print_episode_summary(episode)

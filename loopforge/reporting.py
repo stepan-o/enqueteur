@@ -5,8 +5,9 @@ from typing import Dict, List, Optional, Iterable
 
 from .types import ActionLogEntry, AgentReflection
 from .characters import CHARACTERS
-from .types import BeliefState
+from .types import BeliefState, BeliefAttribution
 from .beliefs import derive_belief_state
+from .attribution import derive_belief_attribution
 
 
 @dataclass
@@ -29,6 +30,8 @@ class DaySummary:
     total_incidents: int = 0
     # Phase 1–2: read-only belief layer per agent (keyed by agent name)
     beliefs: Dict[str, "BeliefState"] = field(default_factory=dict)
+    # Sprint 2: Attribution engine outputs per agent (keyed by agent name)
+    belief_attributions: Dict[str, "BeliefAttribution"] = field(default_factory=dict)
 
 
 @dataclass
@@ -171,6 +174,7 @@ def summarize_day(
 
     # Phase 1–2: Derive read-only beliefs per agent (no side effects)
     beliefs: Dict[str, BeliefState] = {}
+    belief_attributions: Dict[str, BeliefAttribution] = {}
     prev_map = previous_day_stats or {}
     for name, stats in agent_stats.items():
         prev_stats = prev_map.get(name) if isinstance(prev_map, dict) else None
@@ -184,6 +188,17 @@ def summarize_day(
         except Exception:
             # Fail-soft: if derivation fails, skip beliefs for that agent
             pass
+        # Attribution derivation (Sprint 2): compute alongside beliefs so CLI path always has data
+        try:
+            belief_attributions[name] = derive_belief_attribution(
+                agent_day_stats=stats,
+                previous_stats=prev_stats,
+                supervisor_activity=float(supervisor_activity or 0.0),
+                tension=float(tension or 0.0),
+            )
+        except Exception:
+            # Fail-soft: keep other outputs intact
+            pass
 
     return DaySummary(
         day_index=day_index,
@@ -192,6 +207,7 @@ def summarize_day(
         agent_stats=agent_stats,
         total_incidents=total_incidents,
         beliefs=beliefs,
+        belief_attributions=belief_attributions,
     )
 
 

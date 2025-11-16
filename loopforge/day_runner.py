@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Dict
 
 from loopforge.logging_utils import JsonlReflectionLogger, JsonlSupervisorLogger, read_action_log_entries
 from loopforge.reflection import (
@@ -12,7 +12,7 @@ from loopforge.reflection import (
 )
 from loopforge.supervisor import build_supervisor_messages_for_day, set_supervisor_messages_on_env
 from loopforge.types import ActionLogEntry, AgentReflection, SupervisorMessage
-from loopforge.reporting import DaySummary, summarize_day
+from loopforge.reporting import DaySummary, summarize_day, AgentDayStats
 
 
 def _read_action_log(path: Path) -> List[ActionLogEntry]:
@@ -31,6 +31,8 @@ def compute_day_summary(
     day_index: int,
     action_log_path: Path = Path("logs/loopforge_actions.jsonl"),
     steps_per_day: int = 50,
+    *,
+    previous_day_stats: Optional[Dict[str, AgentDayStats]] = None,
 ) -> DaySummary:
     """Read logs, slice the selected day, run reflections, and summarize.
 
@@ -67,7 +69,12 @@ def compute_day_summary(
         reflections_by_agent[getattr(agent_obj, "name", "")] = refl
 
     # Build the day summary
-    return summarize_day(day_index=day_index, entries=day_entries, reflections_by_agent=reflections_by_agent)
+    return summarize_day(
+        day_index=day_index,
+        entries=day_entries,
+        reflections_by_agent=reflections_by_agent,
+        previous_day_stats=previous_day_stats,
+    )
 
 
 def run_one_day(

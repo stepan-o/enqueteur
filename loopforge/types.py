@@ -41,6 +41,37 @@ class BeliefState:
         )
 
 
+# --- BeliefAttribution (Sprint 2: Cognitive Faultlines & Attribution) ---------
+
+
+@dataclass
+class BeliefAttribution:
+    """Deterministic causal attribution for a day's outcome.
+
+    Read-only, telemetry-derived; pure data with JSON helpers.
+    cause ∈ {"self", "supervisor", "system", "random"}; confidence clamped 0..1.
+    """
+
+    cause: Literal["self", "supervisor", "system", "random"]
+    confidence: float
+    rationale: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "cause": str(self.cause),
+            "confidence": float(self.confidence),
+            "rationale": str(self.rationale),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "BeliefAttribution":
+        return cls(
+            cause=str(data.get("cause", "random")),
+            confidence=float(data.get("confidence", 0.2)),
+            rationale=str(data.get("rationale", "")),
+        )
+
+
 # --- SupervisorIntentSnapshot (Phase 9: Supervisor Bias Field) -------------
 
 

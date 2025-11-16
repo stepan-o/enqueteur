@@ -157,11 +157,26 @@ def build_episode_recap(
         except Exception:
             belief_line = None
 
+        # Optional sentence 4: Attribution arc (first and last day causes)
+        attr_line = None
+        try:
+            if day_summaries:
+                a0 = getattr(day_summaries[0], "belief_attributions", {}) or {}
+                a1 = getattr(day_summaries[-1], "belief_attributions", {}) or {}
+                c0 = getattr(a0.get(name), "cause", None) if a0 else None
+                c1 = getattr(a1.get(name), "cause", None) if a1 else None
+                if isinstance(c0, str) and c0 and isinstance(c1, str) and c1:
+                    attr_line = f"Attribution pattern: mostly {c0} → {c1}."
+        except Exception:
+            attr_line = None
+
         pieces = [first]
         if second:
             pieces.append(second)
         if belief_line:
             pieces.append(belief_line)
+        if attr_line:
+            pieces.append(attr_line)
         per_agent[name] = " ".join(pieces)
 
     # Closing based on final tension
