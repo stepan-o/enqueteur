@@ -4,6 +4,43 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Literal, Union
 
 
+# --- BeliefState (Phase 1–2: Read-only belief layer) ------------------------
+
+
+@dataclass
+class BeliefState:
+    """Derived, read-only belief snapshot for an agent at end of day.
+
+    Values are computed deterministically from telemetry (no randomness), live
+    above the seam, and are NOT used to drive behavior. JSON-safe by design.
+    """
+
+    supervisor_trust: float       # 0..1
+    guardrail_faith: float        # 0..1
+    self_efficacy: float          # 0..1
+    world_predictability: float   # 0..1
+    incident_attribution: str     # 'self' | 'world' | 'supervisor' | 'random'
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "supervisor_trust": float(self.supervisor_trust),
+            "guardrail_faith": float(self.guardrail_faith),
+            "self_efficacy": float(self.self_efficacy),
+            "world_predictability": float(self.world_predictability),
+            "incident_attribution": str(self.incident_attribution),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "BeliefState":
+        return cls(
+            supervisor_trust=float(data.get("supervisor_trust", 0.5)),
+            guardrail_faith=float(data.get("guardrail_faith", 0.5)),
+            self_efficacy=float(data.get("self_efficacy", 0.5)),
+            world_predictability=float(data.get("world_predictability", 0.5)),
+            incident_attribution=str(data.get("incident_attribution", "world")),
+        )
+
+
 # --- SupervisorIntentSnapshot (Phase 9: Supervisor Bias Field) -------------
 
 

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Optional
 
 from .reporting import DaySummary, AgentDayStats
+from .types import BeliefState
 
 
 @dataclass
@@ -59,6 +60,16 @@ def build_day_narrative(
     beats: List[AgentDayBeat] = []
     for name, stats in sorted(day_summary.agent_stats.items()):
         role = stats.role
+        closing = _describe_agent_closing(stats)
+        # Optional: append belief tagline if present in summary
+        try:
+            belief = (day_summary.beliefs or {}).get(name)  # type: ignore[attr-defined]
+        except Exception:
+            belief = None
+        if belief is not None:
+            tagline = _belief_tagline(belief)
+            if tagline:
+                closing = f"{closing} {name} ends the day showing signs of {tagline}."
         beats.append(
             AgentDayBeat(
                 name=name,
@@ -66,7 +77,7 @@ def build_day_narrative(
                 intro=_describe_agent_intro(name, role, stats),
                 perception_line=_describe_agent_perception(stats),
                 actions_line=_describe_agent_actions(role, stats),
-                closing_line=_describe_agent_closing(stats),
+                closing_line=closing,
             )
         )
 
@@ -182,6 +193,37 @@ def _describe_supervisor(day_summary: DaySummary) -> str:
     if t < 0.6:
         return "Supervisor checks in periodically—gentle reminders over the intercom."
     return "Supervisor’s presence is felt in frequent reminders and broadcasts."
+
+
+def _belief_tagline(b: BeliefState) -> Optional[str]:
+    """Return a short belief tagline based on the strongest deviation from 0.5.
+    Mapping per brief:
+    - low supervisor_trust → “distrust toward oversight”
+    - high guardrail_faith → “renewed reliance on the manual”
+    - low self_efficacy → “slipping confidence”
+    - low world_predictability → “uncertainty about the floor”
+    """
+    try:
+        deviations = {
+            "supervisor_trust_low": abs(float(b.supervisor_trust) - 0.5) if b.supervisor_trust < 0.5 else 0.0,
+            "guardrail_faith_high": abs(float(b.guardrail_faith) - 0.5) if b.guardrail_faith > 0.5 else 0.0,
+            "self_efficacy_low": abs(float(b.self_efficacy) - 0.5) if b.self_efficacy < 0.5 else 0.0,
+            "world_predictability_low": abs(float(b.world_predictability) - 0.5) if b.world_predictability < 0.5 else 0.0,
+        }
+        key = max(deviations, key=deviations.get)
+        if deviations[key] <= 0.0:
+            return None
+        if key == "supervisor_trust_low":
+            return "distrust toward oversight"
+        if key == "guardrail_faith_high":
+            return "renewed reliance on the manual"
+        if key == "self_efficacy_low":
+            return "slipping confidence"
+        if key == "world_predictability_low":
+            return "uncertainty about the floor"
+        return None
+    except Exception:
+        return None
 
 
 def _describe_day_outro(tension_today: float, tension_prev: Optional[float]) -> str:

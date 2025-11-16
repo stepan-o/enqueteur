@@ -144,7 +144,25 @@ def build_episode_recap(
             # Join with "; " for compactness, end with period.
             second = "; ".join(second_parts) + "."
 
-        per_agent[name] = first if not second else f"{first} {second}"
+        # Optional sentence 3: Belief drift (supervisor_trust start → end)
+        belief_line = None
+        try:
+            if day_summaries:
+                first_day = day_summaries[0]
+                last_day = day_summaries[-1]
+                b0 = (getattr(first_day, "beliefs", {}) or {}).get(name)
+                b1 = (getattr(last_day, "beliefs", {}) or {}).get(name)
+                if b0 is not None and b1 is not None:
+                    belief_line = f"Belief drift: supervisor trust {round(float(b0.supervisor_trust), 2)} → {round(float(b1.supervisor_trust), 2)}."
+        except Exception:
+            belief_line = None
+
+        pieces = [first]
+        if second:
+            pieces.append(second)
+        if belief_line:
+            pieces.append(belief_line)
+        per_agent[name] = " ".join(pieces)
 
     # Closing based on final tension
     final_tension = episode_summary.tension_trend[-1] if episode_summary.tension_trend else 0.0

@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Mapping, Any
 
 from .reporting import DaySummary, AgentDayStats
+from .types import BeliefState
 
 
 # ----------------------- Public types -----------------------
@@ -165,6 +166,37 @@ def _closing_by_tension(t: float) -> str:
     return "The day closes with a lingering edge."
 
 
+# ----------------------- Belief snapshot (optional) ---------------------
+
+def _belief_shortline(b: BeliefState) -> str | None:
+    """Compact, deterministic belief summary for Daily Logs.
+
+    Format example: "leaning on guardrails; confidence stable."
+    """
+    try:
+        parts: list[str] = []
+        # Guardrail faith headline
+        if b.guardrail_faith > 0.55:
+            parts.append("leaning on guardrails")
+        elif b.guardrail_faith < 0.45:
+            parts.append("questioning guardrails")
+        # Confidence from self-efficacy
+        if b.self_efficacy > 0.55:
+            conf = "confidence rising"
+        elif b.self_efficacy < 0.45:
+            conf = "slipping confidence"
+        else:
+            conf = "confidence stable"
+        # If no guardrail part, still provide confidence-only summary
+        if parts:
+            parts.append(conf)
+            return "; ".join(parts) + "."
+        else:
+            return conf + "."
+    except Exception:
+        return None
+
+
 # ----------------------- Public builder ---------------------
 
 def build_daily_log(
@@ -190,7 +222,17 @@ def build_daily_log(
     for name in sorted(day_summary.agent_stats.keys()):
         cur = day_summary.agent_stats[name]
         prev = prev_map.get(name) if isinstance(prev_map, dict) else None
-        beats[name] = _agent_beats_for(cur, prev)
+        lines = _agent_beats_for(cur, prev)
+        # Optional belief snapshot line (Phase 1–2): read-only
+        try:
+            belief = (day_summary.beliefs or {}).get(name)  # type: ignore[attr-defined]
+        except Exception:
+            belief = None
+        if belief is not None:
+            summary = _belief_shortline(belief)
+            if summary:
+                lines.append(f"Belief: {summary}")
+        beats[name] = lines
 
     general = _general_beats(day_summary, previous_day_summary)
     closing = _closing_by_tension(t_today)
