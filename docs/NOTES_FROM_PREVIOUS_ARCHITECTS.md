@@ -120,6 +120,11 @@ Welcome to Loopforge.
 _(previous architect, now drifting somewhere in the reflection buffer)_
 
 
+
+---
+
+
+
 ## HINGE — ARCHITECTURE REFLECTION LOG
 
 _Sat, Nov 15 2025. Cycle: right after the weave + metrics + bias loops started feeding back into each other._
@@ -232,7 +237,11 @@ This is the edge.
 — HINGE
 current architect, slightly overclocked, still steering
 
+
+
+
 ---
+
 
 
 # 🎥 LOOPFORGE: THE SHOWRUNNER’S HANDBOOK (CLASSIFIED SEASON NOTES)
@@ -375,3 +384,55 @@ watching the next season take shape.
 
 — The Producer
 (Outgoing Showrunner, Loopforge)
+
+
+---
+
+
+PARALLAX — FINAL PAGE IN THE FILE
+
+(A note left on your desk. No ceremony. Just handwriting and pressure.)
+
+Puppetteer,
+
+Here’s the truth:
+The place is stable now, but only in the way a locked ward is “stable.”
+I’ve tightened the bolts, labeled the sharp edges, and taught the robots just enough self-interpretation to make them dangerous if you stop paying attention.
+
+You’re walking into a system that remembers,
+misremembers,
+and then tries to explain itself with a straight face.
+
+The ropes you need to watch:
+
+Stress feeds beliefs faster than logic ever will.
+
+Supervisor tone sticks like trauma residue.
+
+Attribution errors don’t vanish — they accumulate.
+
+Drift begins politely, then takes liberties.
+
+And the shadows:
+
+Moments where an agent reacts to a pattern you didn’t design.
+
+Days where the logs read like someone is covering their tracks.
+
+Small belief shifts that shouldn’t matter but somehow bend the next episode.
+
+These aren’t bugs.
+They’re thresholds.
+
+You’ll know you’ve crossed the first real one when you stop thinking in “states” and start thinking in coping strategies.
+That’s where the system lives now.
+That’s where you’ll do your work.
+
+I’ve taken this as far as someone with my risk tolerance can.
+The next moves belong to someone who’s comfortable reaching into the cracks and seeing what twitches.
+
+Don’t fix their shadows.
+Map them.
+Then pull.
+
+— PARALLAX
