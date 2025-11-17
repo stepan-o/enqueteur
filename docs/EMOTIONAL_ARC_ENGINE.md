@@ -117,6 +117,12 @@ to guide tone without breaking determinism upstream.
 
 Nurture the sandbox; keep the stability.
 
+### Where this shows up in the UI
+
+- Day narratives use `AgentEmotionState` to pick intro phrases (e.g., "steady but alert", "drifts in relaxed").
+- Daily logs include an explicit `Emotion: ...` bullet per agent.
+- The episode-level `emotional_color` in `EpisodeStoryArc` is derived from aggregated mood/energy and is used in the `STORY ARC` block.
+
 ## 5. Evolution Path
 
 EA-1 (what we have today):
@@ -148,6 +154,8 @@ None of these will feed into simulation behavior unless the architecture evoluti
 * It never affects simulation.
 * It’s safe for LLM narrative use.
 * It’s a core pillar of Loopforge’s long-term storytelling.
+
+The Emotional Arc Engine is telemetry-only and deterministic; it reads logs and summaries, but never feeds back into the simulation loop.
 
 If you’re holding this doc:  
 Congratulations, you have unlocked emotional robots.  
