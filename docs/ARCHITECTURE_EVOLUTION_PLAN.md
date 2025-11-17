@@ -111,6 +111,32 @@ Episode tension weave (`loopforge/weave.py`):
   * short human notes.
 * `compute_episode_tension_snapshot(...)` & `compute_all_episode_snapshots(...)`.
 * `JsonlWeaveLogger` writes `EpisodeTensionSnapshot` JSONL.
+
+### Episode-Level Psychological Layers (Deterministic, Read-Only)
+
+Recent additions extend the episode analysis stack without touching simulation logic.
+
+**Story Arc Engine (`EpisodeStoryArc`)**
+- Maps tension trend + supervisor activity + emotional arcs into:
+  - `arc_type`, `tension_pattern`, `supervisor_pattern`, `emotional_color`
+  - 3–6 summary lines for CLI recaps
+- Lives in: `loopforge/story_arc.py`
+
+**Trait Drift (`trait_snapshot`)**
+- Derives tiny (~0.02–0.05) clamped changes for:
+  - resilience, caution, agency, trust_supervisor, variance
+- Inputs: stress start→end, guardrail/context mix, attribution, story arc
+- Appears in: `summary.agents[name].trait_snapshot`
+
+**Long Memory (`AgentLongMemory`)**
+- Aggregates identity-like metrics across episodes:
+  - cumulative stress/incidents,
+  - trust_supervisor, self_trust, stability, reactivity, agency
+- Only appears in `EpisodeSummary.long_memory`
+- No sim-loop side-effects.
+
+These all live above the seam and are analysis-only.
+
 Episodes:
 * `ActionLogEntry`, `ReflectionLogEntry`, `SupervisorMessage` now include `episode_index` and `day_index` (optional).
 * `run_episode(...)` tags days and loops without changing world truth semantics by default.
@@ -130,6 +156,11 @@ Episode recaps (`loopforge/episode_recaps.py`):
   * per-agent blurbs (stress arc, guardrail reliance, vibes),
   * closing line based on final tension.
 
+Recaps now integrate:
+- Story Arc summary block (if present)
+- Trait Drift snapshots
+- MEMORY DRIFT block (when long-memory crosses thresholds)
+
 Explainer (`loopforge/explainer_context.py`, `loopforge/explainer.py`):
 * Builds structured contexts from telemetry.
 * Generates **developer-facing explainers** per agent:
@@ -144,6 +175,14 @@ Daily logs (`loopforge/daily_logs.py`):
   * per-agent beats (role flavor, stress band, guardrail/context skew, deltas vs previous day),
   * general beats (supervisor presence, protocol vs context skew, stress drift),
   * closing line based on end-of-day tension.
+
+Emotional Arc Engine (EA-1)
+- Each agent receives a derived `AgentEmotionState { mood, certainty, energy }`
+- Used by day narratives for intros/outros and closing tones.
+
+Memory Drift (Episode Recap)
+- When Long Memory is available, `view-episode --recap` appends a short
+  **MEMORY DRIFT** block summarizing long-term identity shifts.
 
 All of the above are **pure, deterministic, telemetry-only** layers wired into CLI via flags:
 * `--narrative`
@@ -174,6 +213,8 @@ This layer defines the contract an actual LLM would later implement:
 * Outputs: emotional read, risk assessment, suggested focus, supervisor prompt.
 
 No real LLM is wired yet; this is intentional.
+
+Lens inputs now include emotion state, story arc hints, and attribution summaries so future policies can align emotional and narrative arcs.
 
 ## 3. Near-Term Evolution (What’s Allowed to Change Next)
 To avoid a 13-phase forever-roadmap, evolution is scoped to a few **Producer-aligned bets.**
@@ -221,11 +262,24 @@ This is **explicitly lower priority** than:
 
 Do not build this first unless story needs it.
 
+### 3.4 Episode Psychology Stabilization (Optional, Safe)
+
+Goal: ensure narrative consistency across multiple episodes.
+
+Scoped improvements:
+- formalizing thresholds for emotion → story arc labels,
+- defining drift caps per-season (to avoid runaway traits),
+- optional viewer tools for long-memory timelines,
+- richer attribution categories (no sim behavior changes).
+
+All remain above the seam and purely presentational.
+
 ## 4. Working Rules for Future Architects
 * Do not break the **Perception → Policy → Plan** seam.
 * Do not mix world truth with agent belief.
 * Do not add black-box behavior that can’t be explained via logs.
 * Do not ship a change that makes the output less interpretable or less entertaining.
+* All episode-level psychology (story arcs, traits, long memory, attribution) must remain deterministic, pure, and log-derived. Nothing in these layers can ever alter simulation behavior.
 
 If in doubt, re-read:
 * `docs/PRODUCER_VISION.md`
