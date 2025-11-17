@@ -238,6 +238,12 @@ def view_episode(
                 typer.echo("-" * 30)
                 for line in recap_obj.story_arc_lines:  # type: ignore[union-attr]
                     typer.echo(line)
+            # Sprint 10: optional MEMORY DRIFT block
+            if getattr(recap_obj, "memory_lines", None):
+                typer.echo("\nMEMORY DRIFT")
+                typer.echo("-" * 30)
+                for line in recap_obj.memory_lines:  # type: ignore[union-attr]
+                    typer.echo(line)
 
     if narrative:
         from loopforge.narrative_viewer import build_day_narrative

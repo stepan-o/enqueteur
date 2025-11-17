@@ -76,7 +76,6 @@ CONF_AMBIG = 0.20
 ### Rule 1 — Incidents > 0
 
 If something went wrong nearby, attribution is incident-centric.
-
 If context > guardrail → self
 
 Else if guardrail > 0 and supervisor ≥ 0.6 → supervisor

@@ -22,6 +22,8 @@ class EpisodeRecap:
     closing: str
     # Sprint 8: Optional story arc lines to render as a block in recap output
     story_arc_lines: List[str] | None = None
+    # Sprint 10: Optional memory drift lines block
+    memory_lines: List[str] | None = None
 
 
 # ----------------------------- Helpers ---------------------------------
@@ -199,4 +201,37 @@ def build_episode_recap(
     except Exception:
         story_arc_lines = None
 
-    return EpisodeRecap(intro=intro, per_agent_blurbs=per_agent, closing=closing, story_arc_lines=story_arc_lines)
+    # Sprint 10: Optional memory drift block from EpisodeSummary.long_memory
+    memory_lines: List[str] | None = None
+    try:
+        lm = getattr(episode_summary, "long_memory", None)
+        if isinstance(lm, dict) and lm:
+            lines: List[str] = []
+            # Deterministic order: alphabetical by agent name, max 4 lines
+            for name in sorted(lm.keys()):
+                try:
+                    mem = lm[name]
+                    agency = float(getattr(mem, "agency", 0.5) or 0.5)
+                    stability = float(getattr(mem, "stability", 0.5) or 0.5)
+                    trust_sup = float(getattr(mem, "trust_supervisor", 0.5) or 0.5)
+                    self_tr = float(getattr(mem, "self_trust", 0.5) or 0.5)
+                    reactivity = float(getattr(mem, "reactivity", 0.5) or 0.5)
+                    line = None
+                    if agency > 0.6 and stability > 0.5:
+                        line = f"{name}: growing more sure-footed with each shift."
+                    elif trust_sup < 0.4 and self_tr < 0.4:
+                        line = f"{name}: trust in both self and Supervisor is eroding."
+                    elif stability < 0.4 and reactivity > 0.6:
+                        line = f"{name}: simmering, more reactive and less stable over time."
+                    if line:
+                        lines.append(line)
+                except Exception:
+                    continue
+                if len(lines) >= 4:
+                    break
+            if lines:
+                memory_lines = lines
+    except Exception:
+        memory_lines = None
+
+    return EpisodeRecap(intro=intro, per_agent_blurbs=per_agent, closing=closing, story_arc_lines=story_arc_lines, memory_lines=memory_lines)

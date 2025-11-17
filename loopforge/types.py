@@ -220,6 +220,62 @@ class EpisodeStoryArc:
         )
 
 
+# --- AgentLongMemory (Sprint 10: Episode Long Memory & Drift, EA-IV) ----------
+
+
+@dataclass
+class AgentLongMemory:
+    name: str
+    episodes: int
+    cumulative_stress: float
+    cumulative_incidents: int
+    trust_supervisor: float
+    self_trust: float
+    stability: float
+    reactivity: float
+    agency: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": str(self.name),
+            "episodes": int(max(0, int(self.episodes))),
+            "cumulative_stress": float(self.cumulative_stress),
+            "cumulative_incidents": int(max(0, int(self.cumulative_incidents))),
+            "trust_supervisor": float(self.trust_supervisor),
+            "self_trust": float(self.self_trust),
+            "stability": float(self.stability),
+            "reactivity": float(self.reactivity),
+            "agency": float(self.agency),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AgentLongMemory":
+        def _clamp01(x: float) -> float:
+            return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
+
+        raw = data or {}
+        name = str(raw.get("name", ""))
+        episodes = max(0, int(raw.get("episodes", 0) or 0))
+        cumulative_stress = float(raw.get("cumulative_stress", 0.0) or 0.0)
+        cumulative_incidents = max(0, int(raw.get("cumulative_incidents", 0) or 0))
+        trust_supervisor = _clamp01(float(raw.get("trust_supervisor", 0.5) or 0.5))
+        self_trust = _clamp01(float(raw.get("self_trust", 0.5) or 0.5))
+        stability = _clamp01(float(raw.get("stability", 0.5) or 0.5))
+        reactivity = _clamp01(float(raw.get("reactivity", 0.5) or 0.5))
+        agency = _clamp01(float(raw.get("agency", 0.5) or 0.5))
+        return cls(
+            name=name,
+            episodes=episodes,
+            cumulative_stress=cumulative_stress,
+            cumulative_incidents=cumulative_incidents,
+            trust_supervisor=trust_supervisor,
+            self_trust=self_trust,
+            stability=stability,
+            reactivity=reactivity,
+            agency=agency,
+        )
+
+
 # --- SupervisorIntentSnapshot (Phase 9: Supervisor Bias Field) -------------
 
 

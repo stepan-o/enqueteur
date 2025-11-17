@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Iterable
+from collections import Counter
 
 from .types import ActionLogEntry, AgentReflection
 from .characters import CHARACTERS
@@ -65,6 +66,8 @@ class EpisodeSummary:
     tension_trend: List[float]
     # Sprint 8: Optional episode-level story arc (deterministic, additive)
     story_arc: Optional["EpisodeStoryArc"] = None
+    # Sprint 10: Optional per-agent long memory map (deterministic, additive)
+    long_memory: Optional[Dict[str, "AgentLongMemory"]] = None
 
 
 # ------------------------- Helpers -------------------------------------------
@@ -262,7 +265,7 @@ def summarize_day(
     )
 
 
-def summarize_episode(day_summaries: List[DaySummary]) -> EpisodeSummary:
+def summarize_episode(day_summaries: List[DaySummary], *, previous_long_memory: Optional[Dict[str, "AgentLongMemory"]] = None) -> EpisodeSummary:
     """Aggregate day summaries into an episode-level view per agent and overall.
 
     - Totals guardrail/context per agent across days.
@@ -345,6 +348,54 @@ def summarize_episode(day_summaries: List[DaySummary]) -> EpisodeSummary:
                 continue
     except Exception:
         # If module import fails, leave snapshots unset
+        pass
+
+    # Sprint 10: derive and attach long-memory per agent (fail-soft, additive)
+    try:
+        from .long_memory import update_long_memory_for_agent
+        from .types import AgentLongMemory as _AgentLongMemory
+        incidents_in_episode = sum(int(getattr(d, "total_incidents", 0) or 0) for d in day_summaries)
+        long_mem: Dict[str, _AgentLongMemory] = {}
+        prev_map = previous_long_memory or {}
+        CANON = {"supervisor", "self", "system", "random"}
+        # Precompute blame timeline per agent from day_summaries
+        agent_names = set(summary.agents.keys())
+        for d in day_summaries:
+            agent_names.update((d.agent_stats or {}).keys())
+        for name in sorted(agent_names):
+            try:
+                # Build blame timeline from days (canonical causes only; unknowns excluded from diversity)
+                timeline: List[str] = []
+                for d in day_summaries:
+                    amap = getattr(d, "belief_attributions", {}) or {}
+                    cause = getattr(amap.get(name), "cause", None) if amap else None
+                    timeline.append(str(cause) if isinstance(cause, str) else "unknown")
+                # Canonical blame_counts
+                counts = Counter(c for c in timeline if c in CANON)
+                blame_counts = {k: int(counts.get(k, 0)) for k in CANON}
+                a = summary.agents.get(name)
+                if a is None:
+                    # If agent not in aggregates (no stats), skip
+                    continue
+                prev_mem = prev_map.get(name) if isinstance(prev_map, dict) else None
+                lm = update_long_memory_for_agent(
+                    prev_mem,
+                    name=name,
+                    stress_start=float(a.stress_start or 0.0) if a.stress_start is not None else 0.0,
+                    stress_end=float(a.stress_end or 0.0) if a.stress_end is not None else 0.0,
+                    guardrail_total=int(a.guardrail_total or 0),
+                    context_total=int(a.context_total or 0),
+                    blame_counts=blame_counts,
+                    blame_timeline=timeline,
+                    incidents_in_episode=int(incidents_in_episode),
+                    story_arc=getattr(summary, "story_arc", None),
+                )
+                long_mem[name] = lm
+            except Exception:
+                continue
+        summary.long_memory = long_mem or None
+    except Exception:
+        # Leave long_memory unset on any failure
         pass
 
     return summary

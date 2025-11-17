@@ -187,4 +187,16 @@ def episode_summary_to_dict(summary: EpisodeSummary) -> dict:
     except Exception:
         out["story_arc"] = None
 
+    # Sprint 10: Optional long memory block (additive)
+    try:
+        lm = getattr(summary, "long_memory", None)
+        if isinstance(lm, dict):
+            out["long_memory"] = {name: mem.to_dict() for name, mem in lm.items()} if lm else {}
+            if not lm:
+                out["long_memory"] = None
+        else:
+            out["long_memory"] = None
+    except Exception:
+        out["long_memory"] = None
+
     return out
