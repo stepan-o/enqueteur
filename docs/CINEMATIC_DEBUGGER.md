@@ -164,6 +164,14 @@ Day 1 — The factory feels focused but calm.
 → guardrail-only behavior (all steps in guardrail mode).
 Later, when context usage appears, we’ll get lines about “acting on instinct / improvising”.
 
+- Day intros and agent intros now incorporate emotional state via AgentEmotionState (mood, certainty, energy).
+- Examples:
+  - “wound a little tight” (high stress + low energy)
+  - “steady but alert” (mid stress + mid energy)
+  - “drifts in relaxed” (low stress)
+- Closing lines also incorporate emotional trend (e.g., “carrying some weight”, “calm by shutdown”).
+- Note: This layer is purely presentational and built in emotion_model.py.
+
 Use this view for: **Quick story of each day** for humans.
 
 ### 3.2 Episode Recap (`episode_recaps.py` → `--recap`)
@@ -194,6 +202,46 @@ The shift winds down quietly, nothing pressing.
   * **“moved from high stress to low”** → `stress_start` → `stress_end`
   * **“gradually unwound”** vs “held steady” vs “tightened” → shape of stress arc
   * Guardrail sentence mirrors `total_guardrail` vs `total_context`.
+
+🔹 STORY ARC block
+After the recap intro, the CLI now prints a STORY ARC block if EpisodeSummary.story_arc exists.
+
+Fields displayed:
+- arc_type
+- tension_pattern
+- supervisor_pattern
+- emotional_color
+- 3–6 short narrative lines
+
+Computed deterministically via derive_episode_story_arc(...).
+
+Example:
+```
+STORY ARC
+---------
+The episode opens tight and slowly unwinds.
+Tension steps down each day.
+The Supervisor stays mostly hands-off.
+By the end, most of the floor feels drained rather than panicked.
+```
+
+🔹 MEMORY DRIFT block
+A MEMORY DRIFT block may appear after STORY ARC.
+
+It prints 0–3 short lines (at most one per agent).
+
+Only prints when long-memory traits cross thresholds (agency ↑, trust ↓, reactivity ↑, stability ↓).
+
+Driven by the additive AgentLongMemory computed in long_memory.py.
+
+Example:
+```
+MEMORY DRIFT
+------------
+• Delta shows rising agency with steady footing.
+• Sprocket’s trust in supervisor slips a little.
+```
+
 Use this view for: **High-level “previously on…”** episode summaries (good for dashboards, logs, UI top-level).
 
 ### 3.3 Daily Logs (`daily_logs.py` → `--daily-log`)
@@ -235,6 +283,11 @@ This is basically a **shift report:**
   * **Supervisor** line is a proxy for how often the supervisor acted vs broadcast.
   * **Work skewed toward protocol / context** → city-wide mode distribution.
   * **Overall stress drift** → aggregated stress change.
+* Each agent now includes a single **Emotion** bullet derived from EA‑I:
+  * Examples:
+    * `Emotion: uneasy and unsure.`
+    * `Emotion: calm but spent.`
+  * Source: `_emotion_bullet(...)` based on mood/certainty/energy.
 
 Use this view for:
 **Ops-style analysis** – “what did the day look like from a shift lead’s POV?”
@@ -361,6 +414,11 @@ uv run loopforge-sim lens-agent \
 
 ```
 
+Flag map:
+- `--narrative` → day intros + emotional overlay
+- `--daily-log` → ops log + per-agent emotion bullets
+- `--recap` → recap + STORY ARC + MEMORY DRIFT
+
 Recommended workflow:
 1. **First pass** – `view-episode` with no flags → sanity check stats.
 2. **Second pass** – add `--recap` and `--narrative` → watch the episode like a story.
@@ -435,11 +493,62 @@ If you’re the next architect on this project:
   * Explainer = “focus pane”
   * Lens = “LLM suggestion pane”
 
+## 9. JSON Export (export-episode) — What You Get Now
+
+What the export includes today:
+- `days` (unchanged): per-day basics (tension, incidents, per-agent guardrails/context/stress).
+- `agents` block now includes per-agent:
+  - `trait_snapshot` (EA-III) — `{resilience, caution, agency, trust_supervisor, variance}`
+  - `blame_timeline`
+  - `blame_counts`
+- New top-level fields:
+  - `story_arc` (EA-II)
+  - `long_memory` (EA-IV)
+
+Short example shape (not a full dump):
+```
+{
+  "days": [...],
+  "agents": {
+    "Delta": {
+      "stress_start": 0.28,
+      "stress_end": 0.09,
+      "trait_snapshot": { "resilience": 0.49, "agency": 0.52, ... },
+      "blame_timeline": ["random","system","system"],
+      "blame_counts": { "random":1, "system":2, ... }
+    }
+  },
+  "tension_trend": [...],
+  "story_arc": { "arc_type": "decompression", ... },
+  "long_memory": {
+    "Delta": {
+      "episodes": 1,
+      "trust_supervisor": 0.52,
+      "stability": 0.53,
+      "agency": 0.48
+    }
+  }
+}
+```
+
+Built via `analysis_api.analyze_episode(...)`.
+Deterministic and read-only.
+
+CLI example:
+```
+uv run loopforge-sim export-episode \
+  --steps-per-day 20 --days 3 \
+  --output logs/episode_export.json
+```
+
 ## 8. TL;DR for Future You
 * The cinematic debugger is an **observation rig**, not a control system (yet).
 * Everything is built on **ActionLogEntry → DaySummary → EpisodeSummary.**
 * Narratives, recaps, logs, explainers, and lenses are all **pure, deterministic, read-only layers.**
 * We already have LLM-ready contracts; you just need to swap out the fake functions when you’re ready for real model calls.
+
+Final consistency note:
+All cinematic layers (narratives, logs, recaps, story-arc, trait snapshots, long-memory) are deterministic, telemetry-only, and never change simulation behavior. They interpret logs; they never alter actions.
 * If you’re about to push a change that makes the output less interesting to read, stop and ask:
 > “Would The Producer yell at me for making this more boring?”
 
