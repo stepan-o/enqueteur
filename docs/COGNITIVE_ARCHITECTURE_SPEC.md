@@ -1,250 +1,396 @@
 # 🧠 LOOPFORGE COGNITIVE ARCHITECTURE SPEC
-**Belief Engine v0.1 — Conceptual Specification for Immediate Implementation**
+
+**Belief + Emotion + Traits + Memory — The Full Mental Stack v1**
+
+This document defines **how Loopforge robots “have a mind”** — not in the sci-fi sense, but in the **narrative-diagnostic sense** that turns telemetry into psychology.
+
+It is **not** a learning system,  
+**not** a hidden LLM,  
+**not** a stochastic brain.
+
+It _is_ a deterministic, inspectable, multi-layer **interpretation engine** that derives coherent “robot psychology” from raw telemetry — so the show has arcs, not noise.
+
+This spec is the contract for future architects and future LLM layers.
+
+---
+
 ## 0. Purpose
 
-This spec introduces the **Belief Layer** — a deterministic, inspectable, narrative-ready cognitive abstraction derived from telemetry.
+Robots in Loopforge should feel:
+* explainable,
+* emotionally readable,
+* narratively coherent,
+* and diagnostically useful.
 
-It is NOT:
-* a learned model,
-* a stochastic inference module,
-* or an LLM hallucination factory.
+The Cognitive Architecture gives us that by stacking **five layers** above telemetry:
+1. **Belief State** (per day)
+2. **Emotion State** (per day)
+3. **Trait Snapshot** (per episode)
+4. **Long Memory** (cross-episode)
+5. **Episode Story Arc** (the “how the season felt” layer)
 
-It IS:
-* a structured interpretation layer between perception and narrative,
-* a diagnostic tool for multi-day arcs,
-* a stable contract for future LLMs,
-* and the missing organ that makes agent psychology coherent.
+All layers are **read-only** relative to simulation.  
+The simulation stays physics.  
+This stack turns physics into psychology.
 
-## 1. Belief Layer Overview
+---
 
-The Belief Layer consists of:
+## 1. The Cognitive Layers (Bird’s Eye View)
 
-### 1.1 `BeliefState` (per agent, per day)
+The architecture is tiered:
 
-Derived numeric indicators:
-* `supervisor_trust_score` (0–1)
-* `guardrail_faith_score` (0–1)
-* `self_efficacy_score` (0–1)
-* `world_predictability_score` (0–1)
-* `risk_interpretation_bias` (-1 to +1)
+---
+
+### 1.1 BeliefState (per agent, per day)
+
+_“What the robot thinks the day meant.”_
+
+Derived purely from telemetry:
+* stress arcs
+* tension trend
+* guardrail/context ratio
+* incidents
+* supervisor actions
+* traits
+
+**Fields**
+* `supervisor_trust` (0–1)
+* `guardrail_faith` (0–1)
+* `self_efficacy` (0–1)
+* `world_predictability` (0–1)
+* `risk_bias` (–1..1)
 * `incident_attribution` (“self”, “world”, “supervisor”, “random”)
 
-### 1.2 `BeliefSnapshot` (per agent, once per day)
+Represents _cognitive interpretation_ of the day’s events.
 
-A stable struct containing:
-* summary text line (for narrative use)
-* derived tags (e.g., `“rule-dependent”`, `“increasing paranoia”`, `“fatalistic”`)
+### 1.2 AgentEmotionState (per agent, per day)
 
-### 1.3 `BeliefArc` (per agent, per episode)
+_“How the day felt.”_
 
-Tracks:
-* start → end trajectories
-* spikes
-* belief flips
-* stability vs drift
+Inputs:
+* average stress
+* stress deltas
+* tension
+* incidents
+* supervisor tone
 
-### 1.4 `BeliefClimate` (episode-level)
+**Fields**
+* `mood` (“tense”, “steady”, “calm”, “drained”, “wound tight”)
+* `certainty` (0–1)
+* `energy` (0–1)
 
-A floor-wide derived mood:
-* `institutional_trust`
-* `protocol_adherence_energy`
-* `distributed_fatalism`
-* `systemic_paranoia_risk`
+This layer powers emotional language in:
+* day narratives
+* daily logs
+* episode emotional color
 
-### 2. Derivation Rules (Deterministic)
+---
 
-`BeliefState` must be pure functions of:
-* stress arcs,
-* tension trend,
-* guardrail/context ratios,
-* incidents,
-* supervisor interventions,
-* agent traits.
+### 1.3 TraitSnapshot (per agent, per episode)
 
-Example rules:
+_“Who the robot was this episode.”_
 
-### 2.1 Supervisor Trust
-```arduino
-high supervisor activity + declining stress → trust↑
-high supervisor activity + rising stress → trust↓
-incidents after supervisor silence → trust↓
+Drifts very slowly (clamped deltas).  
+Baseline = 0.5 for all traits.
+
+**Traits**
+* `resilience`
+* `caution`
+* `agency`
+* `trust_supervisor`
+* `variance`
+
+Derived from aggregated telemetry + reflections.
+
+Used in:
+* recaps
+* explainers
+* LLM lens
+
+---
+
+### 1.4 AgentLongMemory (cross-episode)
+
+_“Who the robot is becoming across seasons.”_
+
+This layer persists between episodes.
+
+**Fields**
+* `episode_count`
+* `cumulative_stress`
+* `long_term_trust_supervisor`
+* `self_trust`
+* `stability`
+* `reactivity`
+* `agency`
+
+Very small drift per episode.  
+Captures “identity” rather than mood or belief.
+
+Used by:
+* long-term explainers
+* future multi-episode dashboards
+* LLMs (as high-level personality context)
+
+---
+
+### 1.5 EpisodeStoryArc (per episode)
+
+_“What story did this episode tell?”_
+
+Extracted from:
+* tension trend
+* supervisor pattern
+* emotional tone
+* guardrail/context bias
+* incident surface
+
+**Fields**
+* `arc_type` (“decompression”, “escalation”, “flatline”, “late_spike”)
+* `tension_pattern`
+* `supervisor_pattern`
+* `emotional_color`
+* `summary_lines`
+
+Used directly in:
+* episode recaps
+* “view-episode” CLI
+* LLM episode lens
+
+---
+
+## 2. Deterministic Derivations
+
+Every field in every layer must be:
+* telemetry-derived,
+* explainable,
+* deterministic,
+* reproducible.
+
+No diffusion models.  
+No hidden states.  
+No stochastic sampling.
+
+Here are representative rules (not exhaustive).
+
+---
+
+### 2.1 Belief Derivations
+#### Supervisor Trust
+```
+high supervisor activity + stress↓ → trust↑
+high supervisor activity + stress↑ → trust↓
+incidents during supervisor silence → trust↓
 punitive supervisor tone → trust↓↓
 ```
-
-### 2.2 Guardrail Faith
-```pgsql
+#### Guardrail Faith
+```
 guardrail-only + few incidents → faith↑
 guardrail-only + many incidents → faith↓
-context-heavy + no incidents → faith↓
-supervisor “rulebook praise” → faith↑
+context success → faith↓ (rule loosening)
+context incidents → faith↑ (rule tightening)
+```
+#### Self-Efficacy
+```
+successful context → efficacy↑
+failed context → efficacy↓
+strict protocol + rising stress → efficacy↓ (“helplessness”)
+```
+#### World Predictability
+```
+random incidents → predictability↓
+consistent tension → predictability↑
+contradictory supervisor → predictability↓↓
 ```
 
-### 2.3 Self-Efficacy
-```pgsql
-context actions that succeed → self_efficacy↑
-context attempts that cause incidents → self_efficacy↓
-consistent guardrail usage → self_efficacy = stable low band
-stress rising despite compliance → self_efficacy↓ (helplessness)
+### 2.2 Emotion Derivations
+
+Example mapping:
+```
+avg_stress < 0.08 → mood="calm"
+avg_stress 0.08–0.3 → mood="steady"
+avg_stress > 0.3 → mood="tense"
+high incident density → mood="wound tight"
+tension↓ + low incidents → energy↑
+tension↑ + high incidents → energy↓
+```
+### 2.3 Trait Drift
+
+All deltas are clamped:
+```
+-0.05 ≤ Δtrait ≤ +0.05
 ```
 
-### 2.4 World Predictability
-```nginx
-random incidents (no pattern) → predictability↓
-consistent patterns of tension→ predictability↑
-Supervisor contradictory messaging → predictability↓↓
+Examples:
 ```
----
+high autonomy success → agency↑
+punitive supervisor streak → trust_supervisor↓
+stable low stress → resilience↑
+wild incident swings → stability↓, variance↑
+```
 
-## 3. Integration Points
-### 3.1 Simulation
-
-Simulation remains ignorant.  
-Belief Layer is post-hoc, telemetry-derived.
-
-No backpressure into policy yet.
-
-### 3.2 Summaries
-
-Add:
-* `belief_start`, `belief_end` to `EpisodeSummary`
-* `daily_belief_snapshot` to `DaySummary`
-
-### 3.3 Cinematic Debugger
-
-Beliefs appear in:
-
-**Day Narrative**
-
-Add one belief line per agent:
-
-> “Cagewalker ends the shift more convinced the manual is the only thing holding chaos at bay.”
-
-**Episode Recap**
-
-Add cognitive arc line:
-
-> “Static Kid’s self-efficacy collapsed after Day 2’s chain of incidents.”
-
-**Daily Log**
-
-General section includes:
-
-> “Floor-wide trust in the Supervisor slipped a notch.”
-
-**Agent Explainer**
-
-Expand with belief arcs:
-
-> “Delta internalized that deviating from protocol is unsafe, despite low incident rates.”
-
-**Lens Input**
-
-Add derived fields:
-* `belief_scores`
-* `belief_tags`
-* `cognitive_risk (0–1)`
+Traits drift per episode, not per day.
 
 ---
 
-## 4. Future LLM Contract
+### 2.4 Long Memory Derivations
 
-LLMs will use the belief layer as **context input**, not as the source of truth.
+Small adjustments per episode:
+```
+cumulative_stress += avg(stress)
+long_term_trust_supervisor += Δsmall
+self_trust follows long-term efficacy trend
+stability decreases with chaotic tension patterns
+agency increases with consecutive context wins
+```
+### 2.5 Story Arc Derivations
+#### Arc Type
+```
+tension falling → “decompression”
+tension rising → “escalation”
+flat high → “burnout plateau”
+late spike → “late_spike”
+```
+#### Emotional Color
 
-LLM outputs may:
-* generate emotional labels,
-* suggest supervisor messaging,
-* annotate risk,
-* enrich narrative.
+Derived from aggregate mood/energy:
+* “brooding optimism”
+* “calm discipline”
+* “tense vigilance”
+* “low-grade paranoia”
+* “quiet recovery”
+
+---
+
+## 3. Integration With Telemetry
+
+Everything above sits on this foundation:
+```
+ActionLogEntry JSONL
+  ↓
+DaySummary / AgentDayStats
+  ↓
+EpisodeSummary / AgentEpisodeStats
+  ↓
+BeliefState / EmotionState
+  ↓
+TraitSnapshot (end of episode)
+  ↓
+LongMemory (cross-episode)
+  ↓
+EpisodeStoryArc
+```
+
+The simulation **never** sees these layers.
+These layers **never** modify the simulation state.
+
+They only inform:
+* narratives
+* recaps
+* logs
+* explainers
+* lens inputs
+
+## 4. Narrative Integration
+
+These layers power every cinematic debugger output.
+
+### Day Narratives
+* mood words from `EmotionState`
+* belief-line from `BeliefState`
+* tension flavor from `DaySummary`
+
+### Daily Logs
+* `Emotion: X`
+* `Belief: Y`
+* deltas compared to previous day
+
+### Episode Recaps
+* stress arc
+* belief arc
+* trait drift
+* emotional color
+
+### Explainers
+* “risk of burnout” from emotion/belief
+* “tightened under pressure” from stress arcs
+* “trust collapse” from supervisor trust drift
+
+### LLM Lens
+
+Inputs include:
+* tension
+* avg_stress
+* guardrail/context ratio
+* supervisor tone hint
+* belief scores
+* trait snapshot
+* story arc
+
+Outputs are commentary only.
+
+---
+
+## 5. LLM Contract (Non-Negotiable)
+
+LLMs may:
+* label emotions
+* infer risks
+* suggest supervisor prompts
+* provide narrative gloss
+* detect emerging arcs
 
 LLMs may NOT:
-* invent belief states,
-* override numeric derivations,
-* modify faith, trust, or efficacy scores.
-* LLMs are commentators, not gods.
+* modify BeliefState
+* modify EmotionState
+* modify TraitSnapshot
+* modify LongMemory
+* generate new numbers
+* override deterministic derivations
+* alter simulation state
 
-## 5. Testing Strategy
+LLMs are **commentators**, not **participants.**
 
-The belief engine must be regression-tested using canonical robots:
-* Stiletto-9 → High initiative self-efficacy drift
-* Cagewalker → Guardrail faith volatility
-* Cathexis → Supervisor trust / guilt loops
-* Static Kid → Attribution randomness & learned helplessness
-* Limen → Predictability collapse tests
-* Rivet Witch → Superstition accumulation
-* Thrum → Sensory-driven belief noise
+## 6. Testing Strategy
 
-The system must produce **qualitatively different arcs** for each.
+We test psychology by running different canonical robots and verifying that:
+* their belief arcs diverge,
+* their emotional arcs differ,
+* their traits drift appropriately,
+* their long memories evolve in distinct trajectories,
+* their story arcs make narrative sense.
 
-If belief arcs converge, the architecture is wrong.
+If all robots converge to similar states,
+**the cognitive architecture is wrong.**
 
-## 6. Immediate Implementation Roadmap
-### Sprint 1 — BeliefState Extraction
+## 7. Success Criteria
 
-* Implement deterministic derivation functions for:
-  * `supervisor_trust`
-  * `guardrail_faith`
-  * `self_efficacy`
-  * `world_predictability`
-* Hard-code initial 0.5 values
-* Feed into DaySummary
+The architecture is successful if we can say:
+* “Delta tightened into protocol rigidity after three punitive supervisor corrections.”
+* “Nova’s trust never recovered after the Day 2 silence.”
+* “Sprocket’s agency rose across the season due to consistent context wins.”
+* “The episode’s emotional color shifted from tense vigilance to quiet recovery.”
+* “LongMemory shows a slow trust erosion across five episodes despite stable outcomes.”
 
-## Sprint 2 — BeliefSnapshot + Narrative Integration
-* Convert BeliefStates into 1-line belief summaries
-* Inject into:
-  * Daily Logs
-  * Day Narratives
-  * Recaps
+…AND we can point directly to telemetry that caused it.
 
-## Sprint 3 — BeliefArc + Episode-Level Climate
+---
 
-Add belief start → end metrics
+## 8. Closing Notes (PARALLAX Edition)
 
-Add arc classification
+This is the mind of Loopforge:
+* Belief explains interpretation.
+* Emotion explains feeling.
+* Traits explain behavior tendencies.
+* Long Memory explains character evolution.
+* Story Arc explains narrative shape.
 
-Add floor-wide belief climate indicators
+The simulation stays physics.  
+The cognitive architecture turns physics into psychology.  
+The cinematic debugger makes psychology fun to watch.
 
-Update Agent Explainer + Lens
-
-Sprint 4 — Character Hooks
-
-Add per-character belief sensitivity curves
-(e.g., Cagewalker: exponential guardrail faith reinforcement)
-
-Sprint 5 — UI/CLI Extensions
-
---beliefs flag
-
-Heatmaps for belief drift
-
-Side-by-side day vs belief arcs display
-
-7. Success Criteria
-
-Loopforge should now support statements like:
-
-“Stiletto-9 became overly confident after two low-stress context wins, lost respect for guardrails, and walked herself into a cascading incident.”
-
-“Cagewalker’s belief in Supervisor fairness collapsed on Day 3 after inconsistent interventions, resulting in rigid over-enforcement.”
-
-“Static Kid entered a spiral of learned helplessness following three random incidents attributed to ‘world hostility’.”
-
-If we can say things like this —
-and point to the telemetry that caused them —
-the Belief Engine works.
-
-8. Final Words (Spec Edition)
-
-This spec is a living creature.
-It will molt, crack, regenerate, and embarrass me in six months.
-
-But it gives Loopforge its missing organ.
-
-Lumen gave you the spine.
-Hinge gave you the nerves.
-The Producer gave you the stage.
-
-I’m giving you the mind.
-Or at least the part of the mind that misinterprets the world in narratively compelling ways.
+This stack is durable.  
+Extend it, don’t mutate it.
 
 Onward.
 
