@@ -9,6 +9,7 @@ Or via installed script:
 from __future__ import annotations
 
 import sys
+import json
 import typer
 
 from loopforge.simulation import run_simulation
@@ -19,6 +20,7 @@ from loopforge.reporting import summarize_episode, EpisodeSummary, AgentEpisodeS
 from loopforge.reporting import AgentDayStats
 from loopforge.types import ActionLogEntry
 from loopforge.supervisor_activity import compute_supervisor_activity
+from loopforge.analysis_api import analyze_episode, episode_summary_to_dict
 from pathlib import Path
 from collections import Counter, defaultdict
 from typing import Optional, Dict
@@ -386,6 +388,36 @@ def explain_episode(
     typer.echo(f"Agent: {agent}")
     typer.echo("")
     typer.echo(text)
+
+
+@app.command()
+def export_episode(
+    action_log_path: Path = typer.Option(Path("logs/loopforge_actions.jsonl"), help="Path to JSONL action log"),
+    supervisor_log_path: Path | None = typer.Option(None, help="Path to supervisor JSONL (optional)"),
+    steps_per_day: int = typer.Option(50, help="Number of steps per simulated day"),
+    days: int = typer.Option(3, help="Number of days to include in the episode"),
+    output: Path = typer.Option(Path("logs/episode_export.json"), help="Where to write JSON export"),
+) -> None:
+    """Export a JSON summary of an episode (read-only analysis path).
+
+    Uses the same computation as view-episode but writes a JSON file instead of
+    printing, including derived blame timelines/counts per agent.
+    """
+    try:
+        episode = analyze_episode(
+            action_log_path=action_log_path,
+            supervisor_log_path=supervisor_log_path,
+            steps_per_day=steps_per_day,
+            days=days,
+        )
+        data = episode_summary_to_dict(episode)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        typer.echo(f"Wrote episode export to {output}")
+    except Exception as e:
+        typer.echo(f"Failed to export episode: {e}")
+        raise typer.Exit(code=1)
 
 
 @app.command("lens-agent")
