@@ -9,6 +9,7 @@ from .types import BeliefState, BeliefAttribution
 from .beliefs import derive_belief_state
 from .attribution import derive_belief_attribution
 from .narrative_reflection import derive_reflection_state
+from .emotion_model import derive_emotion_state
 
 
 @dataclass
@@ -35,6 +36,8 @@ class DaySummary:
     belief_attributions: Dict[str, "BeliefAttribution"] = field(default_factory=dict)
     # Sprint 3: Reflection state per agent for narrative consistency (keyed by agent name)
     reflection_states: Dict[str, "AgentReflectionState"] = field(default_factory=dict)
+    # Sprint 6: Emotional arc engine per agent (keyed by agent name)
+    emotion_states: Dict[str, "AgentEmotionState"] = field(default_factory=dict)
 
 
 @dataclass
@@ -212,6 +215,21 @@ def summarize_day(
             )
         except Exception:
             # Fail-soft: do not block summary
+            pass
+
+    # Sprint 6: Emotional arc engine per agent — derive after we have reflection & attribution
+    emotion_states: Dict[str, "AgentEmotionState"] = {}
+    for name, stats in agent_stats.items():
+        rs = (reflection_states or {}).get(name)
+        ba = (belief_attributions or {}).get(name)
+        try:
+            emotion_states[name] = derive_emotion_state(
+                agent_day_stats=stats,
+                reflection_state=rs,
+                attribution=ba,
+            )
+        except Exception:
+            # Fail-soft: keep other outputs intact
             pass
 
     # If no entries produced agent stats this day but we have previous_day_stats,

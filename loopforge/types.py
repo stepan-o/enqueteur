@@ -111,6 +111,36 @@ class AgentReflectionState:
         )
 
 
+# --- AgentEmotionState (Sprint 6: Emotional Arc Engine EA-1) ------------------
+
+
+@dataclass
+class AgentEmotionState:
+    """Deterministic, low-dimensional emotional snapshot of an agent for a day.
+
+    Derived from stats, reflection, and attribution – read-only, JSON-safe.
+    """
+
+    mood: Literal["calm", "uneasy", "tense", "brittle"]
+    certainty: Literal["confident", "uncertain", "doubtful"]
+    energy: Literal["drained", "steady", "wired"]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "mood": str(self.mood),
+            "certainty": str(self.certainty),
+            "energy": str(self.energy),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AgentEmotionState":
+        return cls(
+            mood=str(data.get("mood", "calm")),
+            certainty=str(data.get("certainty", "uncertain")),
+            energy=str(data.get("energy", "steady")),
+        )
+
+
 # --- SupervisorIntentSnapshot (Phase 9: Supervisor Bias Field) -------------
 
 
