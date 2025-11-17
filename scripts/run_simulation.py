@@ -266,6 +266,12 @@ def view_episode(
                 typer.echo("-" * 30)
                 for line in recap_obj.memory_lines:  # type: ignore[union-attr]
                     typer.echo(line)
+            # Sprint 11: optional PRESSURE NOTES block
+            if getattr(recap_obj, "pressure_lines", None):
+                typer.echo("\nPRESSURE NOTES")
+                typer.echo("-" * 30)
+                for line in recap_obj.pressure_lines:  # type: ignore[union-attr]
+                    typer.echo(line)
 
     if narrative:
         from loopforge.narrative_viewer import build_day_narrative

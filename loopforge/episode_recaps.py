@@ -24,6 +24,8 @@ class EpisodeRecap:
     story_arc_lines: List[str] | None = None
     # Sprint 10: Optional memory drift lines block
     memory_lines: List[str] | None = None
+    # Sprint 11: Optional pressure notes lines block (additive, deterministic)
+    pressure_lines: List[str] | None = None
 
 
 # ----------------------------- Helpers ---------------------------------
@@ -234,4 +236,21 @@ def build_episode_recap(
     except Exception:
         memory_lines = None
 
-    return EpisodeRecap(intro=intro, per_agent_blurbs=per_agent, closing=closing, story_arc_lines=story_arc_lines, memory_lines=memory_lines)
+    # Sprint 11: Optional pressure notes block
+    pressure_lines: List[str] | None = None
+    try:
+        from .pressure_notes import build_pressure_lines
+        pl = build_pressure_lines(episode_summary, day_summaries)
+        if pl:
+            pressure_lines = pl
+    except Exception:
+        pressure_lines = None
+
+    return EpisodeRecap(
+        intro=intro,
+        per_agent_blurbs=per_agent,
+        closing=closing,
+        story_arc_lines=story_arc_lines,
+        memory_lines=memory_lines,
+        pressure_lines=pressure_lines,
+    )

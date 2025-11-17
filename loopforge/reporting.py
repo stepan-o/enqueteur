@@ -31,6 +31,8 @@ class DaySummary:
     tension_score: float
     agent_stats: Dict[str, AgentDayStats] = field(default_factory=dict)
     total_incidents: int = 0
+    # Sprint 7: Supervisor presence signal (normalized 0..1) — additive, used by views only
+    supervisor_activity: float = 0.0
     # Phase 1–2: read-only belief layer per agent (keyed by agent name)
     beliefs: Dict[str, "BeliefState"] = field(default_factory=dict)
     # Sprint 2: Attribution engine outputs per agent (keyed by agent name)
@@ -258,6 +260,7 @@ def summarize_day(
         tension_score=tension,
         agent_stats=agent_stats,
         total_incidents=total_incidents,
+        supervisor_activity=float(supervisor_activity or 0.0),
         beliefs=beliefs,
         belief_attributions=belief_attributions,
         reflection_states=reflection_states,
