@@ -11,87 +11,69 @@ Loopforge is a simulation with characters whose “internal states” form part 
 Belief Attribution is the mechanism that gives agents a deterministic opinion about why their day turned out the way it did, without using randomness or LLM inference.
 
 It is:
-
-Read-only (does not affect the simulation’s behavior)
-
-Deterministic (given the same telemetry, will always give the same result)
-
-Telemetry-driven (only uses what the simulation already produces)
-
-Narrative-facing (used by the narrative viewer, daily log, and recap)
+* Read-only (does not affect the simulation’s behavior)
+* Deterministic (given the same telemetry, will always give the same result)
+* Telemetry-driven (only uses what the simulation already produces)
+* Narrative-facing (used by the narrative viewer, daily log, and recap)
 
 This subsystem exists so Loopforge’s characters can appear psychologically coherent over multi-day episodes, while keeping the core simulation pure.
 
-1. What Belief Attribution Is (and Isn’t)
+## 1. What Belief Attribution Is (and Isn’t)
 
 Belief Attribution is not:
-
-A causal reasoning model
-
-A learning system
-
-A model-of-mind influencing agent behavior
-
-A probabilistic inference engine
-
-A reinforcement mechanism
+* A causal reasoning model
+* A learning system
+* A model-of-mind influencing agent behavior
+* A probabilistic inference engine
+* A reinforcement mechanism
 
 Belief Attribution is:
+* A deterministic mapping from simple scalar signals → a storytelling-friendly cause label, e.g.:
 
-A deterministic mapping from simple scalar signals → a storytelling-friendly cause label, e.g.:
-
+```
 "self"        (their own choices)
 "system"      (protocols + factory environment)
 "supervisor"  (external authority)
 "random"      (chance / shrug)
+```
 
+This is purely for the **reader-facing narrative layer.**
 
-This is purely for the reader-facing narrative layer.
+Agents do **not** read this attribution and do **not** change policy because of it.
 
-Agents do not read this attribution and do not change policy because of it.
+## 2. Inputs to the Attribution Engine
 
-2. Inputs to the Attribution Engine
+The attribution engine (`loopforge/attribution.py`) reads only these fields:
+### Per-day per-agent telemetry
+* `guardrail_count`
+* `context_count`
+* `avg_stress`
+* `incidents_nearby` (currently stub; filled only through log inspection)
+* `previous_day_stats.avg_stress`
 
-The attribution engine (loopforge/attribution.py) reads only these fields:
-
-Per-day per-agent telemetry
-
-guardrail_count
-
-context_count
-
-avg_stress
-
-incidents_nearby (currently stub; filled only through log inspection)
-
-previous_day_stats.avg_stress
-
-Episode-level context
-
-supervisor_activity — currently always 0 in CLI path
-
-tension — accepted for future rules, not used today
+### Episode-level context
+* supervisor_activity — currently always 0 in CLI path
+* tension — accepted for future rules, not used today
 
 Everything is based on:
+* Stress trend Δ (today vs yesterday)
+* Mode breakdown (guardrail vs context)
+* Incidents
 
-Stress trend Δ (today vs yesterday)
+## 3. Rule System (Sprint 2C — Current Canon)
 
-Mode breakdown (guardrail vs context)
-
-Incidents
-
-3. Rule System (Sprint 2C — Current Canon)
-
-The rule order is strict. The first matching block wins.
+The rule order is **strict.** The first matching block wins.
 
 Thresholds:
 
+```
 EPS = 0.01     # flat band for stress deltas
 CONF_STRONG = 0.70
 CONF_MEDIUM = 0.40
 CONF_AMBIG = 0.20
+```
 
-Rule 1 — Incidents > 0
+### Rule 1 — Incidents > 0
 
 If something went wrong nearby, attribution is incident-centric.
 
