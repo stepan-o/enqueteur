@@ -33,15 +33,15 @@ def compute_reflection_tone(episode: EpisodeSummary) -> str:
       * stress_end < 0.10  -> label "calming"
       * stress_end > 0.30  -> label "tense"
       * otherwise          -> label "neutral"
-    - Majority vote over labels: if most are "calming" -> "calming";
-      if most are "tense" -> "tense"; otherwise -> "mixed".
+    - Unique majority vote over labels: if a single label dominates and is
+      "calming" or "tense", return it; ties or neutral dominance -> "mixed".
     - If there are no agents or stress_end is missing everywhere -> "mixed".
     """
     try:
         agents = getattr(episode, "agents", {}) or {}
     except Exception:
         agents = {}
-    labels: List[str] = []
+    counts = {"calming": 0, "tense": 0, "neutral": 0}
     for a in agents.values():
         try:
             end = getattr(a, "stress_end", None)
@@ -51,17 +51,20 @@ def compute_reflection_tone(episode: EpisodeSummary) -> str:
         except Exception:
             continue
         if v < 0.10:
-            labels.append("calming")
+            counts["calming"] += 1
         elif v > 0.30:
-            labels.append("tense")
+            counts["tense"] += 1
         else:
-            labels.append("neutral")
-    if not labels:
+            counts["neutral"] += 1
+    total = sum(counts.values())
+    if total == 0:
         return "mixed"
-    maj = _majority_label(labels)
-    if maj in {"calming", "tense"}:
-        return maj
-    return "mixed"
+    top = max(counts.values())
+    winners = [k for k, c in counts.items() if c == top]
+    if len(winners) != 1:
+        return "mixed"
+    winner = winners[0]
+    return winner if winner in {"calming", "tense"} else "mixed"
 
 
 def compute_arc_cohesion(story_arc_type: str, reflection_tone: str) -> str:
