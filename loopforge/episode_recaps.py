@@ -24,6 +24,8 @@ class EpisodeRecap:
     story_arc_lines: List[str] | None = None
     # Sprint 12: Optional Arc Cohesion one-liner (deterministic)
     arc_cohesion: str | None = None
+    # Sprint 13: Optional Memory Line one-liner (deterministic)
+    memory_line: str | None = None
     # Sprint 10: Optional memory drift lines block
     memory_lines: List[str] | None = None
     # Sprint 11: Optional pressure notes lines block (additive, deterministic)
@@ -241,12 +243,25 @@ def build_episode_recap(
     # Sprint 12: Optional ARC COHESION one-liner based on story arc + reflections
     arc_cohesion: str | None = None
     try:
-        from .arc_cohesion import build_arc_cohesion_line
+        from .arc_cohesion import build_arc_cohesion_line, compute_reflection_tone
         arc_line = build_arc_cohesion_line(episode_summary, getattr(episode_summary, "story_arc", None))
         if isinstance(arc_line, str) and arc_line:
             arc_cohesion = arc_line
+        # Derive reflection tone once for Memory Line builder
+        reflection_tone = compute_reflection_tone(episode_summary)
     except Exception:
         arc_cohesion = None
+        reflection_tone = "mixed"
+
+    # Sprint 13: Optional MEMORY LINE one-liner — after ARC COHESION
+    memory_line: str | None = None
+    try:
+        from .memory_line import build_memory_line
+        ml = build_memory_line(episode_summary, day_summaries, reflection_tone)
+        if isinstance(ml, str) and ml:
+            memory_line = ml
+    except Exception:
+        memory_line = None
 
     # Sprint 11: Optional pressure notes block
     pressure_lines: List[str] | None = None
@@ -264,6 +279,7 @@ def build_episode_recap(
         closing=closing,
         story_arc_lines=story_arc_lines,
         arc_cohesion=arc_cohesion,
+        memory_line=memory_line,
         memory_lines=memory_lines,
         pressure_lines=pressure_lines,
     )

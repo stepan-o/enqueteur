@@ -265,6 +265,11 @@ def view_episode(
                 typer.echo("\nARC COHESION")
                 typer.echo("-" * 30)
                 typer.echo(str(recap_obj.arc_cohesion))
+            # Sprint 13: MEMORY LINE — must appear after ARC COHESION and before PRESSURE NOTES
+            if getattr(recap_obj, "memory_line", None):
+                typer.echo("\nMEMORY LINE")
+                typer.echo("-" * 30)
+                typer.echo(str(recap_obj.memory_line))
             # Sprint 10: optional MEMORY DRIFT block
             if getattr(recap_obj, "memory_lines", None):
                 typer.echo("\nMEMORY DRIFT")
