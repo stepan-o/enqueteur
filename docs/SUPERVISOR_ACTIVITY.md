@@ -1,46 +1,224 @@
-# Supervisor Activity — Deterministic Daily Scalar (Sprint 4)
+# 🛰️ Supervisor Activity — Deterministic Daily Scalar
 
-Status: Implemented (read-only, deterministic)
+**(Stable Cognitive Input, Read-Only, Telemetry-Driven)**
 
-What it is
-- A pure, telemetry-derived scalar per day in [0,1] representing how often the Supervisor acted that day.
-- Used only in the reporting/analysis path (DaySummary → Attribution/Reflection). It does not affect simulation behavior.
+**Status:** Implemented, validated, integrated into narratives, arcs, and cognition layers.  
+**Owner:** PARALLAX (but this one is boring, so mostly Junie)
 
-Definition
-- supervisor_activity = (number of supervisor entries for the day) / steps_per_day, clamped to [0,1].
-- If steps_per_day <= 0 → 0.0.
+## 0. What Supervisor Activity Is
 
-Where it is computed
-- `loopforge/supervisor_activity.py`:
-  ```python
-  def compute_supervisor_activity(supervisor_entries_for_day: List[ActionLogEntry], steps_per_day: int) -> float:
-      ...  # returns a clamped fraction in [0,1]
-  ```
+**A pure telemetry scalar** in **[0,1]** representing how frequently the Supervisor acted _that day._
+It is:
+* **Deterministic**
+* **Read-only**
+* **Derived from logs only**
+* **Never influences simulation mechanics**
 
-Wiring (read-only)
-- CLI: `scripts/run_simulation.py:view_episode(...)`
-  - If `supervisor_log_path` is provided and readable, supervisor JSONL lines are loaded and grouped by `day_index` (fallback: `step // steps_per_day` if needed).
-  - For each `day_index`, `compute_supervisor_activity(...)` is called to get a scalar.
-  - That scalar is passed to `compute_day_summary(..., supervisor_activity=val)`.
-- Day runner: `loopforge/day_runner.py:compute_day_summary(...)`
-  - Signature extended with kw-only `supervisor_activity: float = 0.0` (backward-compatible default).
-  - The value is forwarded to `reporting.summarize_day(..., supervisor_activity=...)`.
-- Reporting: `loopforge/reporting.py:summarize_day(...)`
-  - Already accepts `supervisor_activity`; feeds it into belief attribution and reflection derivations.
+It feeds cognition + narrative layers above the seam.
 
-Where it is used
-- Attribution: `loopforge/attribution.py::derive_belief_attribution(...)` uses supervisor_activity (>= 0.6 considered "active") in rule selection.
-- Reflection: `loopforge/narrative_reflection.py::derive_reflection_state(...)` stores it as `AgentReflectionState.supervisor_presence` (clamped) for narrative consistency.
+It is not:
+* A behavior modifier
+* A trust system
+* A bias injector
+* A stochastic value
 
-Determinism & constraints
-- No randomness. No LLM calls.
-- No changes to the simulation loop or JSONL write schemas. Only reads logs.
-- Additive-only API updates with safe defaults.
+It is simply “how present the Supervisor felt today.”
 
-Tests
-- `tests/test_supervisor_activity.py` — unit tests for helper (empty day, half steps, clamp >1, zero steps).
-- `tests/test_supervisor_activity_wiring.py` — verifies the threaded scalar appears in `reflection_states[name].supervisor_presence` when passed via `compute_day_summary`.
+---
 
-Notes
-- CLI grouping expects supervisor JSON lines to carry `day_index`; if absent, it falls back to `step // steps_per_day` when available.
-- If no supervisor log path is provided, activity remains 0.0 (current default behavior), keeping earlier outputs intact.
+## 1. Formal Definition
+```
+supervisor_activity = (# of supervisor JSONL entries for the day) / steps_per_day
+```
+
+Clamped to `[0.0, 1.0].`
+
+Edge case:
+
+```
+steps_per_day <= 0 → supervisor_activity = 0.0
+```
+
+This makes Supervisor Activity a **normalized presence signal.**
+
+## 2. Where It Lives in the Pipeline
+
+Scroll with me:
+
+### 2.1 JSONL Loading (CLI Layer)
+
+`scripts/run_simulation.py:`
+
+* If a supervisor log exists, it:
+  * Loads lines
+  * Groups them by day_index
+  * Computes supervisor_activity for each day
+  (fallback: step // steps_per_day grouping)
+  * Passes the scalar into compute_day_summary(...)
+
+If no supervisor log:
+* Activity defaults to `0.0`.
+* This preserves old runs exactly.
+
+### 2.2 Day Summary Construction
+
+`loopforge/day_runner.py:compute_day_summary(...)`
+
+Signature includes:
+```
+def compute_day_summary(..., *, supervisor_activity: float = 0.0)
+```
+
+* Value is inserted directly into the DaySummary dataclass.
+* No inference. No rescaling. No embellishment.
+
+### 2.3 Reporting Layer
+
+`loopforge/reporting.py:summarize_day(...)`
+
+* Simply forwards the scalar into the higher layers:
+  * Emotion overlays
+  * Story Arc heuristics
+  * Episode-level trend builders
+
+The reporting layer **does not reinterpret** the number.  
+It just carries it upward.
+
+## 3. Where It Is Used Today
+
+Supervisor Activity is consumed in a **light-touch, deterministic** way by:
+
+### 3.1 Story Arc Engine
+
+(`loopforge/story_arc.py`)
+
+* Helps classify supervisor pattern:
+  * `hands_off`
+  * `inconsistent`
+  * `active_supportive`
+  * `active_punitive`
+
+It does not determine emotional color or arc type on its own — it is just one of several signals.
+
+### 3.2 Emotion & Narrative Overlays
+
+(`loopforge/narrative_viewer.py`, `daily_logs.py`)
+
+* Day narratives mention supervisor tone only if activity crosses simple thresholds:
+  * “stayed mostly quiet” → activity < 0.2
+  * “kept a steady watch” → 0.2–0.6
+  * “intervened often” → > 0.6
+
+### 3.3 Episode Recap
+
+(`episode_recaps.py`)
+
+* Recap may include a supervisor-pattern line based on episode-level activity distribution.
+
+### 3.4 Long Memory (Episode-Level Identity)
+
+(`loopforge/long_memory.py`)
+
+* Supervisor activity influences:
+* trust_supervisor
+* stability vs reactivity
+* agency drift (slight, clamped)
+
+It remains **one small contributor**, never the sole driver.
+
+### 3.5 Trait Drift (Within-Episode Identity)
+
+(`loopforge/trait_drift.py`)
+
+* Used as a directional nudge:
+  * Consistently high supervisor presence → slight increase in trust_supervisor trait
+  * Consistently low presence → slight decrease
+
+Effects are:
+* deterministic
+* clamped
+* extremely small (≤ 0.02 per episode)
+
+### 3.6 Lens Inputs (LLM Contracts)
+
+(`loopforge/llm_lens.py`)
+
+Included in both perception-lens & episode-lens inputs as a raw number:
+
+```
+supervisor_tone_hint
+```
+
+Fake LLM outputs reflect this but never modify values.
+
+---
+
+## 4. What It Does Not Do
+
+To prevent future confusion:
+
+Supervisor Activity **does not:**
+* Modify stress
+* Change tension
+* Bias the simulation
+* Rewrite perceptions
+* Influence action mode
+* Change incidents
+* Create randomness
+* Affect world truth
+
+It is strictly **analysis-side metadata,** like humidity in a weather report.
+
+---
+
+## 5. Determinism & Safety Constraints
+
+* No randomness
+* No LLM calls
+* No side effects
+* No schema-breaking changes
+* Telemetry-only input
+* Pure function from logs
+
+This scalar is safe, predictable, stable, and regression-tested.
+
+## 6. Tests
+### Unit
+
+`tests/test_supervisor_activity.py`
+
+Covers:
+* 0 entries
+* half entries
+* overflows (clamp)
+* zero steps (safe default)
+
+### Integration
+
+`tests/test_supervisor_activity_wiring.py`
+
+Validates:
+* correct per-day grouping
+* scalar flows into DaySummary
+* scalar appears in recap / narrative context where applicable
+* EmotionState and StoryArc remain deterministic with this input
+
+## 7. Design Philosophy Summary
+
+Supervisor Activity is the **heartbeat monitor** for the supervisory layer:
+* Low → “hands off”
+* Mid → “present but light”
+* High → “intervening consistently”
+
+It is not a personality.
+It is not a mood.
+It is not a decision.
+
+It is a **daily presence signal,** meant to feed:
+* story arcs,
+* emotion overlays,
+* long-term identity drift,
+* narrative consistency,
+* future LLM interpretation tasks.
+
+Readable. Deterministic. Psychological scaffolding.
