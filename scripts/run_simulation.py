@@ -260,6 +260,12 @@ def view_episode(
                 typer.echo("-" * 30)
                 for line in recap_obj.story_arc_lines:  # type: ignore[union-attr]
                     typer.echo(line)
+            # WORLD PULSE block — after STORY ARC and before ARC COHESION
+            if getattr(recap_obj, "world_pulse_lines", None):
+                typer.echo("\nWORLD PULSE")
+                typer.echo("-" * 30)
+                for line in recap_obj.world_pulse_lines:  # type: ignore[union-attr]
+                    typer.echo(line)
             # Sprint 12: ARC COHESION note — after STORY ARC, before PRESSURE NOTES
             if getattr(recap_obj, "arc_cohesion", None):
                 typer.echo("\nARC COHESION")

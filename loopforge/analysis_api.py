@@ -199,4 +199,14 @@ def episode_summary_to_dict(summary: EpisodeSummary) -> dict:
     except Exception:
         out["long_memory"] = None
 
+    # Sprint A0: Optional world pulse history (additive)
+    try:
+        wph = getattr(summary, "world_pulse_history", None)
+        if isinstance(wph, list) and wph:
+            out["world_pulse_history"] = list(wph)
+        else:
+            out["world_pulse_history"] = None
+    except Exception:
+        out["world_pulse_history"] = None
+
     return out

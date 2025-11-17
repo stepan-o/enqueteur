@@ -22,6 +22,8 @@ class EpisodeRecap:
     closing: str
     # Sprint 8: Optional story arc lines to render as a block in recap output
     story_arc_lines: List[str] | None = None
+    # Sprint A0: Optional world pulse lines block (deterministic)
+    world_pulse_lines: List[str] | None = None
     # Sprint 12: Optional Arc Cohesion one-liner (deterministic)
     arc_cohesion: str | None = None
     # Sprint 13: Optional Memory Line one-liner (deterministic)
@@ -207,6 +209,26 @@ def build_episode_recap(
     except Exception:
         story_arc_lines = None
 
+    # Sprint A0: Optional WORLD PULSE lines from EpisodeSummary.world_pulse_history
+    world_pulse_lines: List[str] | None = None
+    try:
+        wph = getattr(episode_summary, "world_pulse_history", None)
+        if isinstance(wph, list) and wph:
+            lines: List[str] = []
+            for idx, pulse in enumerate(wph):
+                try:
+                    tone = pulse.get("supervisor_tone", "neutral")
+                    anomaly = pulse.get("environmental_anomaly", "silence_drop")
+                    sysfail = pulse.get("system_failure", "none")
+                    micro = pulse.get("micro_incident", "none")
+                    lines.append(f"Day {idx}: {tone}, {anomaly}, {sysfail}, {micro}")
+                except Exception:
+                    continue
+            if lines:
+                world_pulse_lines = lines
+    except Exception:
+        world_pulse_lines = None
+
     # Sprint 10: Optional memory drift block from EpisodeSummary.long_memory
     memory_lines: List[str] | None = None
     try:
@@ -278,6 +300,7 @@ def build_episode_recap(
         per_agent_blurbs=per_agent,
         closing=closing,
         story_arc_lines=story_arc_lines,
+        world_pulse_lines=world_pulse_lines,
         arc_cohesion=arc_cohesion,
         memory_line=memory_line,
         memory_lines=memory_lines,

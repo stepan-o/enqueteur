@@ -70,6 +70,8 @@ class EpisodeSummary:
     story_arc: Optional["EpisodeStoryArc"] = None
     # Sprint 10: Optional per-agent long memory map (deterministic, additive)
     long_memory: Optional[Dict[str, "AgentLongMemory"]] = None
+    # Sprint A0: Optional per-day World Pulse history (deterministic, additive)
+    world_pulse_history: Optional[List[Dict[str, float | str]]] = None
 
 
 # ------------------------- Helpers -------------------------------------------
@@ -326,6 +328,17 @@ def summarize_episode(day_summaries: List[DaySummary], *, previous_long_memory: 
 
     tension_trend = [d.tension_score for d in day_summaries]
     summary = EpisodeSummary(days=day_summaries, agents=agents, tension_trend=tension_trend)
+
+    # Sprint A0: derive per-day World Pulse (fail-soft, additive)
+    try:
+        if getattr(summary, "world_pulse_history", None) is None:
+            from .world_pulse import compute_world_pulse as _compute_world_pulse
+            summary.world_pulse_history = [
+                _compute_world_pulse(idx) for idx in range(len(day_summaries))
+            ]
+    except Exception:
+        # Leave unset on any failure; views must be resilient to None
+        pass
 
     # Sprint 8: derive optional episode-level story arc (fail-soft)
     try:
