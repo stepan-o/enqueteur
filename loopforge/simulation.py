@@ -27,6 +27,7 @@ from .narrative import build_agent_perception
 from .llm_stub import decide_robot_action_plan, decide_robot_action_plan_and_dict
 from pathlib import Path
 from .logging_utils import JsonlActionLogger, log_action_step
+from .ids import generate_run_id, generate_episode_id
 from . import llm_stub
 
 
@@ -124,6 +125,20 @@ def run_simulation(
             effective_path = Path("logs/loopforge_actions.jsonl")
         action_logger = JsonlActionLogger(effective_path)
 
+    # Generate run/episode identity for this run (additive; logging only)
+    try:
+        _run_id = generate_run_id()
+        _episode_index = 0
+        _episode_id = generate_episode_id(_run_id, _episode_index)
+    except Exception:
+        _run_id = "run-unknown"
+        _episode_index = 0
+        try:
+            import time as _time
+            _episode_id = f"ep-{int(_time.time())}"
+        except Exception:
+            _episode_id = "ep-unknown"
+
     if not persist_to_db:
         # Pure in-memory run: initialize agents from INITIAL_ROBOTS
         robots_agents: List[RobotAgent] = []
@@ -155,6 +170,9 @@ def run_simulation(
                         plan=plan,
                         action=decision,
                         outcome=None,
+                        run_id=_run_id,
+                        episode_id=_episode_id,
+                        episode_index=_episode_index,
                     )
                 except Exception:
                     pass
@@ -223,6 +241,9 @@ def run_simulation(
                         plan=plan,
                         action=decision,
                         outcome=None,
+                        run_id=_run_id,
+                        episode_id=_episode_id,
+                        episode_index=_episode_index,
                     )
                 except Exception:
                     pass

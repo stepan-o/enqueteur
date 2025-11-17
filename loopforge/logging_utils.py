@@ -13,6 +13,7 @@ from loopforge.types import (
     SupervisorMessage,
     EpisodeTensionSnapshot,
 )
+from loopforge.ids import identity_dict
 
 
 class JsonlActionLogger:
@@ -33,6 +34,16 @@ class JsonlActionLogger:
             f.write(line)
             f.write("\n")
 
+    def write_dict(self, data: Dict[str, Any]) -> None:
+        """Write a pre-built dict as one JSON line.
+        Additive convenience so callers can merge extra fields without
+        modifying ActionLogEntry schemas.
+        """
+        line = json.dumps(data, separators=(",", ":"))
+        with self._path.open("a", encoding="utf-8") as f:
+            f.write(line)
+            f.write("\n")
+
 
 def log_action_step(
     logger: JsonlActionLogger,
@@ -43,6 +54,8 @@ def log_action_step(
     *,
     episode_index: Optional[int] = None,
     day_index: Optional[int] = None,
+    run_id: Optional[str] = None,
+    episode_id: Optional[str] = None,
 ) -> None:
     entry = ActionLogEntry(
         step=perception.step,
@@ -60,9 +73,29 @@ def log_action_step(
         episode_index=episode_index,
         day_index=day_index,
     )
+    # Build base dict and add identity fields additively (no schema changes)
+    data = entry.to_dict()
+    try:
+        # Prefer explicitly provided episode_index; otherwise use entry's value
+        idx = entry.episode_index if episode_index is None else episode_index
+        if run_id is not None or episode_id is not None:
+            # Merge only provided pieces; ensure episode_index included from idx
+            if run_id is not None and episode_id is not None and idx is not None:
+                data.update(identity_dict(str(run_id), str(episode_id), int(idx)))
+            else:
+                if run_id is not None:
+                    data["run_id"] = str(run_id)
+                if episode_id is not None:
+                    data["episode_id"] = str(episode_id)
+                if idx is not None:
+                    data["episode_index"] = int(idx)
+    except Exception:
+        # identity merge must not break logging
+        pass
     # Logging must not crash the sim; swallow exceptions.
     try:
-        logger.write_entry(entry)
+        # Use write_dict to preserve any additive fields
+        logger.write_dict(data)
     except Exception:
         # Optional debug hook; for now, fail-soft.
         pass
