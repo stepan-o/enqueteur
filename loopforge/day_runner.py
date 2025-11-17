@@ -34,16 +34,36 @@ def compute_day_summary(
     *,
     previous_day_stats: Optional[Dict[str, AgentDayStats]] = None,
     supervisor_activity: float = 0.0,
+    entries: Optional[List[dict]] = None,
 ) -> DaySummary:
     """Read logs, slice the selected day, run reflections, and summarize.
 
     This remains read-only over JSONL logs. Reflections are computed using
     the existing day runner helper over the sliced entries using lightweight
     agent stubs inferred from the entries (name/role only).
+
+    If `entries` is provided, it must be a list of raw dicts for a single
+    episode (already filtered by run/episode). In that case we avoid re-reading
+    from disk and use only the provided rows.
     """
-    # Read all entries and slice the window
-    all_entries = _read_action_log(action_log_path)
-    day_entries = filter_entries_for_day(all_entries, day_index, steps_per_day)
+    # Source entries
+    if entries is None:
+        all_entries = _read_action_log(action_log_path)
+        source_entries: List[ActionLogEntry] = all_entries
+    else:
+        # Convert raw dicts to ActionLogEntry objects (fail-soft)
+        source_entries = []
+        for d in entries:
+            try:
+                if isinstance(d, ActionLogEntry):
+                    source_entries.append(d)
+                elif isinstance(d, dict):
+                    source_entries.append(ActionLogEntry.from_dict(d))
+            except Exception:
+                continue
+
+    # Slice the window for this day by step range (half-open)
+    day_entries = filter_entries_for_day(source_entries, day_index, steps_per_day)
 
     # Build agent stubs for reflections based on entries
     agent_roles: dict[str, str] = {}

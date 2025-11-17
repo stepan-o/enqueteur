@@ -9,7 +9,7 @@ from collections import defaultdict, Counter
 from .day_runner import compute_day_summary
 from .reporting import summarize_episode, EpisodeSummary, DaySummary, AgentEpisodeStats, AgentDayStats
 from .supervisor_activity import compute_supervisor_activity
-from .logging_utils import read_action_log_entries
+from .logging_utils import read_action_log_entries, read_action_log_entries_for_episode
 
 
 def _read_supervisor_jsonl(path: Path) -> List[dict]:
@@ -70,12 +70,24 @@ def analyze_episode(
 ) -> EpisodeSummary:
     """
     High-level entrypoint.
-    Loads logs, computes DaySummary for each day, threads previous_day_stats,
-    applies supervisor activity if provided, and returns EpisodeSummary.
-    Must reuse existing compute_day_summary + summarize_episode pipeline.
+    Loads logs, computes DaySummary for each day from the slice that matches
+    the provided (run_id, episode_id), applies supervisor activity if provided,
+    and returns EpisodeSummary.
+
+    Sprint E4: analysis is ID-driven only. ID-less logs are not supported.
     """
-    # Touch action log early to fail-soft confirm presence (not strictly needed)
-    _ = read_action_log_entries(action_log_path)
+    # Enforce IDs for analysis
+    if not run_id or not episode_id:
+        raise ValueError("analyze_episode requires run_id and episode_id; ID-less logs are no longer supported.")
+
+    # Load only matching entries (raw dicts)
+    entries = read_action_log_entries_for_episode(
+        action_log_path,
+        run_id=str(run_id),
+        episode_id=str(episode_id),
+    )
+    if not entries:
+        raise ValueError(f"No action log entries found for run_id={run_id} and episode_id={episode_id}.")
 
     supervisor_by_day: Dict[int, List[dict]] = {}
     if supervisor_log_path is not None:
@@ -95,29 +107,18 @@ def analyze_episode(
             steps_per_day=steps_per_day,
             previous_day_stats=prev_stats,
             supervisor_activity=supervisor_activity,
+            entries=entries,
         )
         day_summaries.append(ds)
         prev_stats = ds.agent_stats
 
-    # Prefer provided IDs; otherwise generate deterministic-enough ones in-memory.
-    if run_id is None:
-        try:
-            from .ids import generate_run_id as _gen_run_id
-            run_id = _gen_run_id()
-        except Exception:
-            run_id = "run-unknown"
-    if episode_id is None:
-        try:
-            from .ids import generate_episode_id as _gen_ep_id
-            episode_id = _gen_ep_id(run_id, int(episode_index or 0))
-        except Exception:
-            try:
-                import time as _time
-                episode_id = f"ep-{int(_time.time())}"
-            except Exception:
-                episode_id = "ep-unknown"
-
-    return summarize_episode(day_summaries, episode_id=episode_id, run_id=run_id, episode_index=int(episode_index or 0))
+    # Thread identity (already provided, do not generate fallbacks)
+    return summarize_episode(
+        day_summaries,
+        episode_id=str(episode_id),
+        run_id=str(run_id),
+        episode_index=int(episode_index or 0),
+    )
 
 
 def _dataclass_to_dict(obj: Any) -> Any:

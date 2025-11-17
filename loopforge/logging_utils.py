@@ -129,6 +129,38 @@ def read_action_log_entries(path: Path) -> List[ActionLogEntry]:
     return entries
 
 
+def read_action_log_entries_for_episode(path: Path, run_id: str, episode_id: str) -> List[dict]:
+    """Read JSONL and return only dict rows matching run_id AND episode_id.
+
+    - Lines missing these keys or with non-matching values are ignored.
+    - Fail-soft on malformed lines (skip), same as existing readers.
+    - Returns raw dicts so callers can construct strong types as needed.
+    """
+    p = Path(path)
+    if not p.exists():
+        return []
+    out: List[dict] = []
+    try:
+        with p.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except Exception:
+                    continue
+                try:
+                    if isinstance(data, dict) and data.get("run_id") == run_id and data.get("episode_id") == episode_id:
+                        out.append(data)
+                except Exception:
+                    # Any unexpected shapes are ignored
+                    continue
+    except Exception:
+        return out
+    return out
+
+
 class JsonlReflectionLogger:
     """Minimal JSONL logger for daily reflections."""
 
