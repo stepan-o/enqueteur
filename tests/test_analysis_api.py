@@ -8,6 +8,11 @@ from loopforge.reporting import EpisodeSummary
 from loopforge.types import ActionLogEntry
 
 
+RUN_ID = "test-run-001"
+EPISODE_ID = "test-ep-001"
+EPISODE_INDEX = 0
+
+
 def _write_minimal_actions(path: Path, steps_per_day: int = 10) -> None:
     rows = []
     # Day 0: two guardrail steps for agent Delta
@@ -55,6 +60,12 @@ def _write_minimal_actions(path: Path, steps_per_day: int = 10) -> None:
         outcome=None,
     ).to_dict())
 
+    # Inject IDs into every row (post–to_dict, like the real logger does)
+    for r in rows:
+        r["run_id"] = RUN_ID
+        r["episode_id"] = EPISODE_ID
+        r["episode_index"] = EPISODE_INDEX
+
     path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
 
 
@@ -67,6 +78,9 @@ def test_analyze_episode_returns_summary_with_days_and_agents(tmp_path: Path):
         supervisor_log_path=None,
         steps_per_day=10,
         days=2,
+        run_id=RUN_ID,
+        episode_id=EPISODE_ID,
+        episode_index=EPISODE_INDEX,
     )
 
     assert isinstance(ep, EpisodeSummary)
