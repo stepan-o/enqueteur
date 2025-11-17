@@ -146,7 +146,9 @@ def derive_trait_snapshot(
             traits["resilience"] -= 0.03
     if isinstance(emotional_color, str):
         if "exhaustion" in emotional_color:
-            traits["resilience"] -= 0.02
+            # Exhaustion should outweigh small improvements from falling stress
+            # Net effect with typical -/+ 0.03 stress delta should not increase resilience
+            traits["resilience"] -= 0.04
         if "wired_to_calm" in emotional_color:
             traits["resilience"] += 0.02
 
