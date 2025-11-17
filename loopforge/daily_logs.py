@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Mapping, Any
 
 from .reporting import DaySummary, AgentDayStats
-from .types import BeliefState
+from .types import BeliefState, AgentEmotionState
 
 
 # ----------------------- Public types -----------------------
@@ -92,6 +92,8 @@ def _agent_beats_for(stats: AgentDayStats, prev: Optional[AgentDayStats]) -> Lis
         second = "Splits decisions between protocol and context."
     lines.append(second)
 
+    # Optional Line 2b: Emotion overlay (inserted after leaning when available via build_daily_log)
+
     # Optional Line 3: deltas vs previous day (if provided)
     if prev is not None:
         prev_s = float(getattr(prev, "avg_stress", 0.0) or 0.0)
@@ -164,6 +166,56 @@ def _closing_by_tension(t: float) -> str:
     if t <= 0.30:
         return "The day ends balanced and steady."
     return "The day closes with a lingering edge."
+
+
+# ----------------------- Emotion overlay (optional) ---------------------
+
+def _emotion_bullet(emotion: Optional[AgentEmotionState]) -> Optional[str]:
+    """Return a compact emotion bullet based on AgentEmotionState, or None.
+    Examples:
+    - "Emotion: wired and locked-in."
+    - "Emotion: uneasy and unsure."
+    - "Emotion: calm but spent."
+    Deterministic mapping only.
+    """
+    if emotion is None:
+        return None
+    try:
+        mood = getattr(emotion, "mood", None)
+        certainty = getattr(emotion, "certainty", None)
+        energy = getattr(emotion, "energy", None)
+        # Simple decision tree
+        if energy == "wired" and mood in {"tense", "brittle"}:
+            if certainty == "confident":
+                return "Emotion: wired and locked-in."
+            elif certainty == "doubtful":
+                return "Emotion: on edge and second-guessing."
+            else:
+                return "Emotion: wired and uneasy."
+        if mood == "uneasy":
+            if certainty == "doubtful":
+                return "Emotion: uneasy and unsure."
+            else:
+                return "Emotion: uneasy but composed."
+        if mood == "calm":
+            if energy == "drained":
+                if certainty == "confident":
+                    return "Emotion: calm but spent."
+                elif certainty == "doubtful":
+                    return "Emotion: exhausted and uncertain."
+                else:
+                    return "Emotion: calm and low on energy."
+            # calm + steady/wired
+            if certainty == "confident":
+                return "Emotion: calm and sure-footed."
+            elif certainty == "doubtful":
+                return "Emotion: calm but uncertain."
+            else:
+                return "Emotion: calm and steady."
+        # Default fallback phrasing
+        return f"Emotion: {str(mood)} and {str(energy)}." if mood and energy else None
+    except Exception:
+        return None
 
 
 # ----------------------- Belief snapshot (optional) ---------------------
@@ -239,6 +291,17 @@ def build_daily_log(
                 lines[1] = "Splits decisions between protocol and context."
             else:
                 lines[1] = "Acts on local judgment."
+        # Optional emotion bullet inserted after leaning line
+        try:
+            emo_map = getattr(day_summary, "emotion_states", {}) or {}
+            emo = emo_map.get(name)
+        except Exception:
+            emo = None
+        if emo is not None and len(lines) >= 2:
+            eb = _emotion_bullet(emo)
+            if eb:
+                # Insert after leaning line (position 1)
+                lines.insert(2, eb)
         # Optional belief snapshot line (Phase 1–2): read-only
         try:
             belief = (day_summary.beliefs or {}).get(name)  # type: ignore[attr-defined]

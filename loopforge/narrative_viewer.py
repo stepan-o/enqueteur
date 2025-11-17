@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Optional
 
 from .reporting import DaySummary, AgentDayStats
-from .types import BeliefState
+from .types import BeliefState, AgentEmotionState, AgentReflectionState
 
 
 @dataclass
@@ -61,12 +61,17 @@ def build_day_narrative(
     for name, stats in sorted(day_summary.agent_stats.items()):
         role = stats.role
         closing = _describe_agent_closing(stats)
-        # Optional: reflection state to steer leaning/closing (deterministic, fallback-safe)
+        # Optional: reflection/emotion state (deterministic, fallback-safe)
         try:
             rs_map = getattr(day_summary, "reflection_states", {}) or {}
             rs = rs_map.get(name)
         except Exception:
             rs = None
+        try:
+            emo_map = getattr(day_summary, "emotion_states", {}) or {}
+            emo = emo_map.get(name)
+        except Exception:
+            emo = None
         # Optional: append belief tagline if present in summary
         try:
             belief = (day_summary.beliefs or {}).get(name)  # type: ignore[attr-defined]
@@ -76,14 +81,12 @@ def build_day_narrative(
             tagline = _belief_tagline(belief)
             if tagline:
                 closing = f"{closing} {name} ends the day showing signs of {tagline}."
-        # Stress trend can influence closing (use existing phrases only)
-        if rs is not None:
-            trend = getattr(rs, "stress_trend", "unknown")
-            if trend == "rising":
-                closing = "Ends the day carrying some weight."
-            elif trend == "falling":
-                closing = "Ends the day calm, nothing sticking."
-            # flat/unknown → keep existing closing
+        # Closing variant influenced by stress trend + mood (fallback to existing closing)
+        try:
+            if emo is not None or rs is not None:
+                closing = _closing_variant_for(emo, rs, stats)
+        except Exception:
+            pass
         # Optional: append attribution sentence if available (additive, deterministic)
         try:
             attr_map = getattr(day_summary, "belief_attributions", {}) or {}
@@ -103,6 +106,12 @@ def build_day_narrative(
             pass
         # Build intro/perception/actions lines and adjust with reflection state if available
         intro = _describe_agent_intro(name, role, stats)
+        # Emotion-aware intro variant
+        try:
+            if emo is not None:
+                intro = _intro_variant_for(name, role, emo)
+        except Exception:
+            pass
         perception = _describe_agent_perception(stats)
         actions = _describe_agent_actions(role, stats)
         if rs is not None:
@@ -166,6 +175,59 @@ def build_day_narrative(
 
 
 # ----------------- Module-private helpers -----------------
+
+def _intro_variant_for(name: str, role: str, emotion: AgentEmotionState) -> str:
+    """Deterministically choose an intro line variant using emotion.
+    Falls back to existing phrasing and appends role flavor like _describe_agent_intro.
+    """
+    # Base by mood/energy
+    if getattr(emotion, "mood", None) in {"tense", "brittle"} or getattr(emotion, "energy", None) == "wired":
+        base = f"{name} starts the shift wound a little tight."
+    elif getattr(emotion, "mood", None) == "uneasy":
+        base = f"{name} comes online steady but alert."
+    else:  # calm or default
+        if getattr(emotion, "energy", None) == "drained":
+            base = f"{name} drifts into the shift almost relaxed."
+        else:
+            base = f"{name} comes online steady but alert."
+    # Append light character flavor based on role (reuse ROLE_FLAVOR behavior)
+    flavor = ROLE_FLAVOR.get((role or "").lower().strip())
+    if flavor:
+        if base.endswith("."):
+            base = base[:-1] + f" — {flavor}."
+        else:
+            base = base + f" — {flavor}."
+    return base
+
+
+def _closing_variant_for(
+    emotion: Optional[AgentEmotionState],
+    reflect: Optional[AgentReflectionState],
+    stats: AgentDayStats,
+) -> str:
+    """Deterministically choose a closing line using stress trend + mood bands.
+    Falls back to _describe_agent_closing(stats) when insufficient state.
+    """
+    try:
+        trend = getattr(reflect, "stress_trend", "unknown") if reflect is not None else "unknown"
+    except Exception:
+        trend = "unknown"
+    s = float(getattr(stats, "avg_stress", 0.0) or 0.0)
+    # If no emotion and no reflect, keep default
+    if emotion is None and (trend == "unknown"):
+        return _describe_agent_closing(stats)
+    # High-tension preference
+    mood = getattr(emotion, "mood", None) if emotion is not None else None
+    if trend == "rising" or (trend == "flat" and mood in {"tense", "brittle"}):
+        return "Ends the day carrying some weight."
+    if trend == "falling":
+        if s <= 0.08:
+            return "Ends the day calm, nothing sticking."
+        else:
+            return "Ends the day balanced, tension kept in check."
+    # Unknown trend → default
+    return _describe_agent_closing(stats)
+
 
 def _describe_tension(tension: float) -> str:
     if tension < 0.1:

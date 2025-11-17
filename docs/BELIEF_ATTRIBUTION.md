@@ -1,9 +1,11 @@
-🌒 BELIEF ATTRIBUTION ENGINE
-Design, Rationale, Mechanics, and Troubleshooting Guide
+# 🌒 BELIEF ATTRIBUTION ENGINE
+_**Design, Rationale, Mechanics, and Troubleshooting Guide**_
 
-(Loopforge Narrative Layer — Parallax Edition)
+_(Loopforge Narrative Layer — Parallax Edition)_
 
-0. Purpose
+---
+
+# 0. Purpose
 
 Loopforge is a simulation with characters whose “internal states” form part of the narrative.
 Belief Attribution is the mechanism that gives agents a deterministic opinion about why their day turned out the way it did, without using randomness or LLM inference.

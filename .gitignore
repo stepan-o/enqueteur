@@ -56,3 +56,7 @@ pgdata/
 
 # Local scratch scripts
 scratch.py
+
+
+# Analysis exports
+episode_export.json
