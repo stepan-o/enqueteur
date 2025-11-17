@@ -53,3 +53,6 @@ pgdata/
 
 # Keep Alembic migrations tracked; keep uv.lock tracked
 # (Intentional: do not ignore alembic/ or uv.lock)
+
+# Local scratch scripts
+scratch.py
