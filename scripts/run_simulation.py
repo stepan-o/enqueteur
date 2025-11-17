@@ -260,6 +260,11 @@ def view_episode(
                 typer.echo("-" * 30)
                 for line in recap_obj.story_arc_lines:  # type: ignore[union-attr]
                     typer.echo(line)
+            # Sprint 12: ARC COHESION note — after STORY ARC, before PRESSURE NOTES
+            if getattr(recap_obj, "arc_cohesion", None):
+                typer.echo("\nARC COHESION")
+                typer.echo("-" * 30)
+                typer.echo(str(recap_obj.arc_cohesion))
             # Sprint 10: optional MEMORY DRIFT block
             if getattr(recap_obj, "memory_lines", None):
                 typer.echo("\nMEMORY DRIFT")

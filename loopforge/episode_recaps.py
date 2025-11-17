@@ -22,6 +22,8 @@ class EpisodeRecap:
     closing: str
     # Sprint 8: Optional story arc lines to render as a block in recap output
     story_arc_lines: List[str] | None = None
+    # Sprint 12: Optional Arc Cohesion one-liner (deterministic)
+    arc_cohesion: str | None = None
     # Sprint 10: Optional memory drift lines block
     memory_lines: List[str] | None = None
     # Sprint 11: Optional pressure notes lines block (additive, deterministic)
@@ -236,6 +238,16 @@ def build_episode_recap(
     except Exception:
         memory_lines = None
 
+    # Sprint 12: Optional ARC COHESION one-liner based on story arc + reflections
+    arc_cohesion: str | None = None
+    try:
+        from .arc_cohesion import build_arc_cohesion_line
+        arc_line = build_arc_cohesion_line(episode_summary, getattr(episode_summary, "story_arc", None))
+        if isinstance(arc_line, str) and arc_line:
+            arc_cohesion = arc_line
+    except Exception:
+        arc_cohesion = None
+
     # Sprint 11: Optional pressure notes block
     pressure_lines: List[str] | None = None
     try:
@@ -251,6 +263,7 @@ def build_episode_recap(
         per_agent_blurbs=per_agent,
         closing=closing,
         story_arc_lines=story_arc_lines,
+        arc_cohesion=arc_cohesion,
         memory_lines=memory_lines,
         pressure_lines=pressure_lines,
     )
