@@ -66,6 +66,8 @@ class EpisodeSummary:
     days: List[DaySummary]
     agents: Dict[str, AgentEpisodeStats]
     tension_trend: List[float]
+    # Additive: Episode identifier for analysis threading (Sprint E1)
+    episode_id: Optional[str] = None
     # Sprint 8: Optional episode-level story arc (deterministic, additive)
     story_arc: Optional["EpisodeStoryArc"] = None
     # Sprint 10: Optional per-agent long memory map (deterministic, additive)
@@ -270,7 +272,7 @@ def summarize_day(
     )
 
 
-def summarize_episode(day_summaries: List[DaySummary], *, previous_long_memory: Optional[Dict[str, "AgentLongMemory"]] = None) -> EpisodeSummary:
+def summarize_episode(day_summaries: List[DaySummary], *, previous_long_memory: Optional[Dict[str, "AgentLongMemory"]] = None, episode_id: Optional[str] = None) -> EpisodeSummary:
     """Aggregate day summaries into an episode-level view per agent and overall.
 
     - Totals guardrail/context per agent across days.
@@ -327,7 +329,7 @@ def summarize_episode(day_summaries: List[DaySummary], *, previous_long_memory: 
         )
 
     tension_trend = [d.tension_score for d in day_summaries]
-    summary = EpisodeSummary(days=day_summaries, agents=agents, tension_trend=tension_trend)
+    summary = EpisodeSummary(days=day_summaries, agents=agents, tension_trend=tension_trend, episode_id=episode_id)
 
     # Sprint A0: derive per-day World Pulse (fail-soft, additive)
     try:

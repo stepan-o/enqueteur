@@ -218,7 +218,14 @@ def view_episode(
         day_summaries.append(ds)
         prev_stats = ds.agent_stats
 
-    episode = summarize_episode(day_summaries)
+    # Generate a simple per-run episode_id (deterministic per invocation)
+    try:
+        import time as _time
+        episode_id = f"ep-{int(_time.time())}"
+    except Exception:
+        episode_id = "ep-unknown"
+
+    episode = summarize_episode(day_summaries, episode_id=episode_id)
 
     # Psychology Board: render only this view when requested, then exit
     if psych_board:

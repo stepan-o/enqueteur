@@ -64,6 +64,7 @@ def analyze_episode(
     supervisor_log_path: Optional[Path] = None,
     steps_per_day: int = 50,
     days: int = 3,
+    episode_id: Optional[str] = None,
 ) -> EpisodeSummary:
     """
     High-level entrypoint.
@@ -96,7 +97,15 @@ def analyze_episode(
         day_summaries.append(ds)
         prev_stats = ds.agent_stats
 
-    return summarize_episode(day_summaries)
+    # Prefer a provided episode_id; otherwise, generate a simple per-run id.
+    if episode_id is None:
+        try:
+            import time as _time
+            episode_id = f"ep-{int(_time.time())}"
+        except Exception:
+            episode_id = "ep-unknown"
+
+    return summarize_episode(day_summaries, episode_id=episode_id)
 
 
 def _dataclass_to_dict(obj: Any) -> Any:
@@ -114,6 +123,7 @@ def episode_summary_to_dict(summary: EpisodeSummary) -> dict:
     """
     # Base structure
     out: Dict[str, Any] = {
+        "episode_id": getattr(summary, "episode_id", None),
         "days": [],
         "agents": {},
         "tension_trend": list(summary.tension_trend or []),
