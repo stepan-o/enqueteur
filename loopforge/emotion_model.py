@@ -5,9 +5,11 @@ Deterministic Emotional Arc Engine (Sprint 6, EA-1)
 - Pure, read-only mapping from telemetry → AgentEmotionState
 - No randomness, no LLM, lives above the seam
 """
-from typing import Optional
+from typing import Optional, TYPE_CHECKING, Any
 
-from .reporting import AgentDayStats
+# Avoid circular import at runtime: only import types for typing
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .reporting import AgentDayStats
 from .types import AgentReflectionState, AgentEmotionState
 from .attribution import BeliefAttribution
 
