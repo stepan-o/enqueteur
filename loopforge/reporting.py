@@ -54,6 +54,8 @@ class AgentEpisodeStats:
     visual: str = ""
     vibe: str = ""
     tagline: str = ""
+    # Sprint 9: Optional per-episode trait snapshot (deterministic, additive)
+    trait_snapshot: Optional[Dict[str, float]] = None
 
 
 @dataclass
@@ -325,6 +327,24 @@ def summarize_episode(day_summaries: List[DaySummary]) -> EpisodeSummary:
         summary.story_arc = derive_episode_story_arc(summary)
     except Exception:
         # Keep summary.story_arc as None on any failure
+        pass
+
+    # Sprint 9: derive and attach trait drift snapshots per agent (fail-soft)
+    try:
+        from .trait_drift import derive_trait_snapshot
+        for name in list(summary.agents.keys()):
+            try:
+                snap = derive_trait_snapshot(
+                    prev_traits=None,  # future: pass persisted previous episode snapshot if available
+                    episode_summary=summary,
+                    agent_name=name,
+                )
+                summary.agents[name].trait_snapshot = snap
+            except Exception:
+                # Do not block episode summarization on per-agent trait computation
+                continue
+    except Exception:
+        # If module import fails, leave snapshots unset
         pass
 
     return summary

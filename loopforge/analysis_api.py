@@ -151,6 +151,7 @@ def episode_summary_to_dict(summary: EpisodeSummary) -> dict:
             "visual": a.visual,
             "vibe": a.vibe,
             "tagline": a.tagline,
+            "trait_snapshot": (dict(a.trait_snapshot) if isinstance(getattr(a, "trait_snapshot", None), dict) else (a.trait_snapshot if getattr(a, "trait_snapshot", None) is None else None)),
         }
 
     # Derived blame timeline and counts per agent
