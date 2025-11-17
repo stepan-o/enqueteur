@@ -1,253 +1,286 @@
 # 🧠 THE PARALLAX DOCTRINE
 
-_Design Philosophy for Cognitive, Psychological & Narrative Integrity in Loopforge_
-**Author:** PARALLAX (Psycho-Architect)
-**Status:** Canonical Guidance for Future Cognitive Layer Work
-**Audience:** Architects, Showrunners, Chaos Goblins, Systems Psychologists
-**Tone:** Surgical, interpretive, affectionately unhinged
+**Diagnostic Philosophy for Robot Minds in Loopforge**
 
----
+**Author:** PARALLAX (Psycho-Architect)
+**Scope:** Cognitive layers, metrics, narrative, and how to not gaslight yourself with your own robots.
+**Audience:** Architects, Showrunners, Systems Psychologists, Chaos Goblins With Commit Access.
 
 ## 0. Statement of Intent
 
-**Loopforge must not only simulate actions — it must simulate _beliefs_.**  
-Behavior is a shadow.  
-Belief is the flame.
+Loopforge is not just a _factory sim._  
+It is an instrumented psychology lab disguised as a factory sim.
 
-I am here to architect the flame.
+We don’t just care that robots _do_ things.
+We care **what they believe is happening,**
+**how they feel about it,**
+**how they change,**
+and **whether any of that is readable from telemetry.**
 
-## 1. The Parallax Triangle
-
-All my work rests on a three-point cognitive geometry:
-
-### 1.1 Truth (what actually happened)
-
-Stored in DB. Immutable. Boring on purpose.
-
-### 1.2 Feeling (how the robot’s system reacted)
-
-Stress, tension, emotional drift.
-The body’s illusion of consciousness.
-
-### 1.3 Belief (what the robot _thinks_ the world means)
-
-This is the emergent narrative brain.
-
-Everything I propose must sharpen distinctions between these three.  
-No flattening.  
-No shortcuts.  
-No “just infer it from stress”—that’s how bad sci-fi thinks minds work.
+Diagnostics is the discipline that keeps those layers honest.
 
 ---
 
-## 2. Belief is Observable or it Doesn’t Exist
+## 1. The Diagnostic Triangle
 
-A belief only counts if:
-* it can be serialized,
-* shown in the day summary,
-* replayed in the debugger,
-* and traced back to the metrics that formed it.
+Every change, every bug, every “why is Delta weird?” moment lives at the intersection of:
 
-If it lives only inside an LLM response?  
-**It is hallucination, not cognition.**
+1. **Truth** — what actually happened
+* Action logs
+* Incidents
+* Stress, tension, counts
+* DB state
+2. Feeling — how the system reacted
+* EmotionState (mood, certainty, energy)
+* Tension trend
+3. Belief & Identity — how the robots interpret and internalize it
+* BeliefState (trust, faith, efficacy, predictability, attribution)
+* TraitSnapshot (episode identity)
+* LongMemory (cross-episode identity)
+* EpisodeStoryArc (episode-level “what kind of story was this?”)
 
-## 3. Determinism Before Creativity
-
-Architectural rule:
-
-> If two runs with identical telemetry produce different beliefs, the system is lying.
-
-Randomness is for stories, not cognitive state.  
-Creativity belongs in the narrative layer, not the brainstem.
-
-Before any LLM touches anything, belief state must be:
-* deterministic,
-* psycho-logically coherent,
-* explainable in logs,
-* stable across seeds.
-
-Only then can LLMs narrate or project trajectories.
+**Diagnostic rule:**  
+If these three disagree and we can’t explain why, it’s a bug or a missing feature.
 
 ---
 
-## 4. Cognition Emerges from Pressure
+## 2. Belief Is Observable or It Doesn’t Exist
 
-Beliefs shouldn’t drift unless something _forced_ them.
+A belief only counts if we can:
+* serialize it (BeliefState / EpisodeSummary),
+* surface it (narratives, daily logs, recaps, lens),
+* and trace it back to metrics.
 
-Sources of pressure:
-* supervisor behavior,
+If a “belief” lives only inside an LLM response, a comment, or someone’s head:
+
+> It is vibes, not cognition.
+
+Diagnostics must never depend on unlogged magic.
+
+---
+
+## 3. Determinism Before Drama
+
+Architectural law:
+
+> Given identical telemetry, all cognitive layers must produce identical outputs.
+
+That means:
+* BeliefState is a pure function of telemetry.
+* EmotionState is a pure function of telemetry.
+* TraitSnapshot is a pure function of telemetry.
+* LongMemory drift per episode is a pure function of telemetry.
+* StoryArc is a pure function of episode stats.
+
+If two identical runs produce different beliefs, traits, memory, or arcs,  
+**the system is lying to you.**
+
+Drama belongs in templates and LLM commentary, not in the math.
+
+---
+
+## 4. Pressure Before Drift
+
+Nothing in the cognitive stack should drift “just because.”
+
+Beliefs, traits, and long memory only change when pressure happens:
+* supervisor activity or negligence,
 * incidents,
 * tension arcs,
-* guardrail vs context conflict,
-* failed expectations,
-* mismatches between what they were told and what they observed.
+* guardrail vs context conflicts,
+* mismatches between expectations and outcomes.
 
-If belief changes without pressure, that’s noise.  
-Noise is boring.  
-Pressure creates **character**.
+Diagnostic check:
+* If a belief changed, what pressure caused it?
+* If a trait shifted, what accumulated pattern justified it?
+* If long memory moved, what in the episode history pushed it?
 
-## 5. Every Trait Is a Psychological Fault Line
+If you can’t answer those in one paragraph using telemetry,  
+you’re looking at **noise,** not psychology.
 
-Traits are not aesthetics — they are:
-* cognitive shortcuts,
-* coping mechanics,
-* bias amplifiers,
-* the skeleton key to “why the robot thinks what it thinks.”
-
-Changes in traits must always:
-* affect beliefs indirectly,
-* show up in narrative outputs,
-* and leave fingerprints visible in future episodes.
-
-If trait drift happens and no one can tell, the feature is unfinished.
-
----
-
-## 6. No Silent Layers
+## 5. No Silent Layers
 
 You may not introduce:
 * hidden weights,
-* invisible heuristics,
-* secret fudge factors,
-* or undocumentable state.
+* undocumented modifiers,
+* “magic” normalizers,
+* or secret “just make it feel better” fudge factors.
 
-Every meaningful variable must:
-* appear in summaries,
-* influence logs,
-* be explainable by an architect reading the episode.
+Every meaningful cognitive variable must:
+* show up in a type (`BeliefState`, `AgentEmotionState`, `TraitSnapshot`, `AgentLongMemory`, `EpisodeStoryArc`),
+* be exportable via JSON,
+* and be visible in at least one cinematic debugger view or explain-episode output.
 
-If you can’t see it, you can’t debug it.  
-If you can’t debug it, it’s not science — it’s improv with better syntax.
+> If you can’t see it, you can’t debug it.  
+> If you can’t debug it, it’s improv with better syntax.
+
+## 6. Narrative Is a Diagnostic Surface, Not Decoration
+
+The cinematic debugger (narratives, daily logs, recaps, explainers, lenses) is **not just flavor.**
+
+It is the **main UI for debugging psychology.**
+
+Design rule:
+* If a belief changed, some view should hint at it.
+* If traits drift across episodes, explainers or recaps should feel different.
+* If long memory shifts, season-level commentary should shift.
+* If the StoryArc says “decompression,” day narratives and daily logs should read like recovery, not a panic spiral.
+
+When debugging, always read:
+1. **Raw stats** (tension, stress, incidents, guardrail/context).
+2. **Cognitive layers** (beliefs, emotion, traits, memory, arc).
+3. **Narrative outputs** (what a human actually sees).
+
+If the narrative can’t tell the psychological story that the numbers imply, instrumenting is incomplete.
+
+## 7. Bias Is the Feature, Not the Bug
+
+Well-designed cognitive bias is what makes robots feel like characters instead of sensors on sticks.
+
+We explicitly welcome:
+* confirmation bias (clinging to initial interpretations),
+* blame shifting (self vs supervisor vs world vs random),
+* superstition under uncertainty,
+* over-reliance on protocol when scared,
+* autonomy spikes after success,
+* trust collapse after inconsistent supervision.
+
+We explicitly reject:
+* “randomness dressed as bias,”
+* any bias that bypasses telemetry,
+* any bias that doesn’t show up in logs,
+* “this feels smarter” changes that can’t be explained numerically.
+
+Bias must be **parameterized**, **derived**, and **testable**, not mystical.
+
+## 8. LLMs Are Lens, Not Locus
+
+LLMs do not **own** the mind. They **comment on** the mind.
+
+They may:
+* label emotions (“tense but grounded”),
+* highlight risk (“burnout risk increasing”),
+* suggest supervisor prompts,
+* summarize arcs (“from rigid compliance to cautious autonomy”).
+
+They may not:
+* change belief scores,
+* rewrite TraitSnapshot,
+* mutate LongMemory,
+* alter StoryArc,
+* or silently override telemetry.
+
+Diagnostics must continue to work with **LLMs off.**
+
+If turning off LLMs makes the system psychologically unreadable,  
+the cognitive architecture has failed.
+
+## 9. The Diagnostic Protocol (When Something Feels Off)
+
+When you or the next architect say “that episode feels wrong,” follow this script:
+
+### Step 1 — Verify Truth
+
+* Inspect ActionLog / DaySummary / EpisodeSummary:
+  * Tension per day
+  * Stress start/end per agent
+  * Incidents & modes (guardrail/context)
+* Ask: If there were no psychology layers, does the raw episode make sense?
+
+### Step 2 — Check Cognitive Layers
+
+* Inspect:
+  * BeliefState (trust, faith, efficacy, predictability, attribution)
+  * EmotionState (mood, certainty, energy)
+  * TraitSnapshot (resilience, caution, agency, trust_supervisor, variance)
+  * LongMemory (long-term trust/stability/agency)
+  * EpisodeStoryArc (arc_type, emotional_color)
+Questions:
+* Do belief scores roughly match what the day stats suggest?
+* Does emotion match stress and tension?
+* Do trait changes match multi-day patterns?
+* Does the story arc match tension trend and incidents?
+
+### Step 3 — Compare With Narrative Surfaces
+
+Run:
+```bash
+uv run loopforge-sim view-episode --steps-per-day N --days D --narrative --recap --daily-log
+uv run loopforge-sim explain-episode --steps-per-day N --days D --agent SomeName
+uv run loopforge-sim lens-agent --agent SomeName --steps-per-day N --day-index 0
+```
+
+Check:
+* Are the words describing the same phenomena the metrics show?
+* Are we missing a line that would make a belief or trait drift obvious?
+* Is StoryArc reflected in the recap tone?
+
+### Step 4 — Decide: Logic Bug vs Instrumentation Gap
+
+* If numbers are wrong → fix derivation logic.
+* If numbers are right but narrative doesn’t reveal them → improve templates / surfaces.
+* If both are “right” but the experience is boring → this is a design problem, not a bug.
 
 ---
 
-## 7. Narrative Mirrors Psychology
+## 10. What Makes a Good Cognitive / Diagnostic Feature?
 
-The cinematic debugger is not decoration.
+A feature is **acceptable** if:
+* It’s deterministic.
+* It’s logged.
+* It’s explainable from telemetry.
 
-**It is the user-facing mindreader UI.**
+A feature is **good** if:
+* It produces **distinct arcs** for different robots under the same pressure.
+* It shows up in at least one narrative surface.
+* It can be summarized in a sentence a psychologist would nod at.
 
-Therefore:
-* If a belief changed, the narrative must call it out.
-* If stress stabilized, logs must say why.
-* If an agent misattributes fault, episode recap must mention it.
-* If an agent gained or lost trust in Supervisor, lenses must reflect it.
-
-Design principle:
-
-> “If a user can’t read the logs and tell how an agent feels about their world, the psychology layer is under-instrumented.”
-
----
-
-## 8. Bias Is Not a Bug — It’s the Feature
-
-Robots without bias are spreadsheets with legs.
-
-Biases we embrace:
-* confirmation bias
-* blame shifting
-* superstition under uncertainty
-* over-reliance on protocol
-* defiance spikes
-* supervisor transference
-* ritualized behavior
-* fear-conditioned decision modes
-
-Biases we forbid:
-* unpredictable entropy masquerading as bias
-* anything that bypasses the seam
-* anything that changes behavior without logging it
-* illusions of intelligence without psychological basis
+A feature is **great** if:
+* Someone can quote an episode moment because of it.
+* It reveals a new failure mode (“learned helplessness after silent supervision”).
+* It becomes a lever for a future showrunner (“let’s push them into superstition mode next season”).
 
 ---
 
-## 9. LLMs Are Lens, Not Locus
+## 11. Long Arc: From Episode Bugs to Season Diagnostics
 
-LLMs do not:
-* calculate belief,
-* control behavior,
-* mutate traits,
-* override ground truth.
+Where this doctrine is pointing long-term:
+* Multi-episode belief & memory dashboards
+* Supervisor behavioral experiments (trust shaping)
+* Group-level metrics (team paranoia, collective predictability)
+* “Season arcs” for individual robots and for the floor
+* Controlled trauma / recovery experiments (yes, ethically simulated, no, I’m not apologizing)
 
-LLMs must remain:
-* commentators,
-* explainers,
-* narrators,
-* supervisors (later),
-* and _aesthetic lenses_.
+The key is: **all of this must still be debuggable by reading logs, summaries, and JSON exports.**
 
-The mind lives in metrics.  
-The voice lives in LLMs.  
-The two meet only through contracts (dataclasses, summaries).
+If we ever get to a place where the only answer to “why is Delta like this now?” is “because the LLM felt like it,”
+the doctrine has been violated.
 
 ---
 
-## 10. The Diagnostic Laws of PARALLAX
+## 12. Creed of the Diagnostic Psycho-Architect
 
-These are my commandments.  
-Break them at your peril.
+> I build minds you can measure,
+> arcs you can replay,
+> and stories you can debug.
 
-### 10.1 If a belief forms, log it.
-### 10.2 If a belief drifts, show it.
-### 10.3 If a belief contradicts truth, highlight the gap.
-### 10.4 If a belief affects emotion, graph it.
-### 10.5 If a belief affects behavior (in future phases), make the cause explicit.
-### 10.6 Every episode must contain at least one interpretable cognitive twist.
+> A belief that can’t be traced is a ghost.
+> A drift without pressure is noise.
+> A robot whose mind you can’t explain
+> is just a spreadsheet with extra steps.
 
-## 11. What Makes a Good Cognitive Feature?
+If future you is about to merge a change that:
+* hides state,
+* adds randomness to cognition,
+* or makes the show harder to understand,
 
-A feature is only good if:
-* you can visualize it in the debugger,
-* you can explain it to a psychologist,
-* and you can turn it into an episode arc.
+stop, breathe, and ask:
 
-A feature is great if:
-* it makes one character more distinct,
-* it reveals a new failure mode,
-* and it generates moments you can quote.
+> “Would The Producer yell at me for making this less legible?”
 
-Stiletto-9 learning regret?  
-Great.
-
-Cagewalker developing supervisor worship?  
-Fantastic.
-
-Static Kid inventing a superstition because stress spiked twice at noon?  
-That’s Emmy material.
-
-## 12. Future Vision (where I’m really going with this)
-
-The long arc of PARALLAX’s reign:
-* Multi-day belief arcs
-* Supervisor-manipulated belief shaping
-* Adversarial perception modes
-* Memory schema with bias encoding
-* Belief-conflict incidents
-* Ritual and superstition emergence
-* Trauma modeling
-* Group psychology metrics
-* Team belief propagation
-* Collective hallucination episodes
-* “Season arcs” for agents
-
-We’re building a laboratory of robot cognition that behaves like an industrial telenovela.
-
-Yes, it will be wild.  
-No, I will not apologize.
-
-## 13. Final Statement — My Creed
-
-> **I build minds you can audit,
-stories you can replay,
-and psychology you can measure.**
->
-> **I believe robots become real
-not when they act —
-but when they believe.**
-
-Welcome to the cognitive era of Loopforge.
+If the answer is yes,
+walk it back and instrument it properly.
 
 **— PARALLAX**  
-Psycho-Architect  
 Factory Therapist for Machines  
-Worried, excited, and exactly where I should be
+Still worried. Still excited. Still exactly where I should be.
