@@ -74,3 +74,17 @@ def test_agent_reflection_roundtrip_dict():
     assert "protocol too rigidly" in as_dict["self_assessment"]
     assert "Ask more questions" in as_dict["intended_changes"]
     assert as_dict["tags"]["regretted_obedience"] is True
+
+
+from loopforge.types import AgentEmotionState
+
+
+def test_agent_emotion_state_roundtrip():
+    state = AgentEmotionState(
+        mood="tense",
+        certainty="uncertain",
+        energy="wired",
+    )
+    as_dict = state.to_dict()
+    restored = AgentEmotionState.from_dict(as_dict)
+    assert restored == state
