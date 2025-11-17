@@ -459,6 +459,43 @@ Notes:
 - All of the above are optional and can be used offline.
 - Default runs behave exactly as before; new fields are nullable and logging remains fail‑soft.
 
+### Story Arc, Trait Drift & Long Memory (EA-II–IV, deterministic)
+
+Higher-order episode structure and slow character memory sit purely on the analysis side. They never change how the sim runs; they only decorate `EpisodeSummary`, recaps, and exports.
+
+- **Episode Story Arc (`EpisodeStoryArc`)**
+  - **Type:** `EpisodeStoryArc { arc_type, tension_pattern, supervisor_pattern, emotional_color, summary_lines }`
+  - **Engine:** `loopforge/story_arc.py::derive_episode_story_arc(episode_summary)`
+  - **Inputs:** per-day tension, supervisor activity, per-day emotion states.
+  - **Where it shows up:**
+    - `EpisodeSummary.story_arc` (optional).
+    - CLI `view-episode --recap`: **STORY ARC** block with 3–6 deterministic summary lines.
+    - JSON export: root `"story_arc"` dict.
+
+- **Trait Drift (`trait_snapshot` per agent)**
+  - **Type:** additive `trait_snapshot: Dict[str, float]` on `AgentEpisodeStats` with keys like `resilience`, `caution`, `agency`, `trust_supervisor`, `variance`.
+  - **Engine:** `loopforge/trait_drift.py::derive_trait_snapshot(...)`  
+    Small clamped steps (≈0.02–0.05) based on:
+    - stress start→end for the episode,
+    - guardrail vs context reliance,
+    - dominant attribution cause(s),
+    - belief drift and story arc.
+  - **Where it shows up:**
+    - `summary.agents[name].trait_snapshot` in memory.
+    - JSON export: per-agent `"trait_snapshot"` dict.
+
+- **Episode Long Memory (`AgentLongMemory`)**
+  - **Type:** `AgentLongMemory { episodes, cumulative_stress, cumulative_incidents, trust_supervisor, self_trust, stability, reactivity, agency }`
+  - **Engine:** `loopforge/long_memory.py::update_long_memory_for_agent(...)`  
+    - Aggregates stats across episodes (episodes count, cumulative stress/incidents).
+    - Updates identity-like axes via tiny, clamped steps driven by blame mix, stress arc, guardrail vs context, and attribution diversity.
+  - **Where it shows up:**
+    - `EpisodeSummary.long_memory[name]` (optional).
+    - CLI `view-episode --recap`: **MEMORY DRIFT** block (up to 3–4 lines like “Delta: growing more sure-footed with each shift.”) when thresholds are crossed.
+    - JSON export: root `"long_memory"` dict keyed by agent.
+
+All of these are **read-only, deterministic** and hang off `EpisodeSummary`; the sim loop and JSONL step logs remain unchanged.
+
 ## Testing & Coverage
 
 - Run all tests locally:
@@ -560,6 +597,7 @@ Dockerfile, docker-compose.yml, alembic.ini, pyproject.toml, README.md
 - Narrative layer (Phase 1): Environment builds `AgentPerception`; policy produces an `AgentActionPlan` with a short narrative; simulation persists the narrative into `Memory` ("Plan: ...").
 - Optional LLM decision mode behind a feature flag with safe fallback to deterministic policies.
 - Pytest suite covering config flags, LLM wrapper, narrative layer, emotions, triggers, event engine, and both simulation modes.
+- Read-only diagnostic stack for Beliefs, Emotion, Story Arc, Trait Drift, and Long Memory, surfaced via `view-episode` recaps and `export-episode` JSON.
 
 ## LLM decision mode (optional)
 The project runs deterministically by default. To let an LLM propose next actions (robots and supervisor) while keeping the same contracts and safe fallback:
@@ -619,6 +657,7 @@ This repository now includes a developer-facing “cinematic debugger” that tu
 Key layers (all read-only, telemetry-only):
 - Day Narratives: `--narrative` (per-day story beats)
 - Episode Recaps: `--recap` (episode-level intro + per-agent blurbs)
+- When long-memory is present, `--recap` also prints a **MEMORY DRIFT** block: 1–4 deterministic lines summarizing how each agent’s long-term trust/agency/stability is drifting.
 - Daily Narrative Logs: `--daily-log` (ops-style daily shift report)
 - Agent Explainer: `explain-episode` (short, deterministic paragraph for one agent)
 - LLM Lens (scaffolding): `lens-agent` (typed inputs + deterministic fake outputs)
@@ -747,13 +786,18 @@ A lightweight state that keeps phrases consistent across days/logs, attached to 
 
 ## Emotional Arc Engine (EA‑1, deterministic)
 
-A low‑dimensional emotional snapshot per agent/day, attached to `DaySummary` as `emotion_states[name]`.
+**Emotional Arc Engine (EA-1, deterministic)**
+A low-dimensional emotional snapshot per agent/day, attached to `DaySummary` as `emotion_states[name]`.
 
-- Type: `AgentEmotionState { mood, certainty, energy }`
-- Mapper: `loopforge/emotion_model.py::derive_emotion_state(...)`
-  - Mood from stress bands + trend; Certainty from attribution + trend; Energy from stress bands only.
-- Scope: read‑only; not yet used for narrative phrasing by default.
-- Docs: `docs/EMOTIONAL_ARC_ENGINE.md`
+- **Type:** `AgentEmotionState { mood, certainty, energy }`  
+- **Mapper:** `loopforge/emotion_model.py::derive_emotion_state(...)`  
+- **Inputs:** stress bands + trend, attribution cause, previous day.  
+- **Where it’s used now:**
+  - **Day Narratives:** emotion-aware intros (“comes online steady but alert” vs “drifts into the shift almost relaxed”) and closings (“carrying some weight” vs “calm, nothing sticking”).
+  - **Daily Logs:** a compact `Emotion: …` bullet per agent.
+- **Scope:** pure, read-only; does not affect the sim loop or DB writes.
+
+See `docs/EMOTIONAL_ARC_ENGINE.md` for rule details.
 
 ## Episode Analysis API + JSON Export (read‑only)
 
@@ -761,7 +805,16 @@ Programmatic API and CLI to compute multi‑day episode summaries and export a J
 
 - API: `loopforge/analysis_api.py::analyze_episode(action_log_path, supervisor_log_path=None, steps_per_day=50, days=3)` → `EpisodeSummary`
 - Export helper: `episode_summary_to_dict(EpisodeSummary)` → JSON‑serializable dict including:
-  - `days` (per‑day basics), `agents` (aggregates), `tension_trend`, and per‑agent `blame_timeline` + `blame_counts`.
+  - `days`: per-day basics (tension, incidents, per-agent guardrails/context/stress).
+  - `agents`: per-agent episode aggregates (`guardrail_total`, `context_total`, `stress_start`/`stress_end`, etc.).
+  - `tension_trend`: list of per-day tension scores.
+  - `story_arc`: optional `EpisodeStoryArc` block (arc type, patterns, summary lines).
+  - Per-agent:
+    - `blame_timeline` + `blame_counts` (from the attribution engine),
+    - `trait_snapshot` (episode-level drift snapshot).
+  - `long_memory`: optional map of `name → AgentLongMemory` for slow character memory across episodes.
+
+  All fields are additive; existing shapes remain backward-compatible.
 - CLI:
   ```bash
   uv run loopforge-sim export-episode \
