@@ -715,3 +715,59 @@ Notes:
 - All narrative layers are pure, deterministic, and read‑only over logs.
 - Numeric stats are telemetry‑only; reflections and text never change counts.
 - See `docs/CINEMATIC_DEBUGGER.md` for a deeper “how to read it” guide.
+
+
+---
+
+## Supervisor Activity (daily scalar, deterministic)
+
+A pure, telemetry‑derived scalar in [0,1] representing how often the Supervisor acted that day. Computed read‑only during analysis; it never changes simulation behavior.
+
+- Definition: supervisor_activity = supervisor steps / steps_per_day (clamped 0..1)
+- Where computed: `loopforge/supervisor_activity.py::compute_supervisor_activity(...)`
+- Where used: threaded through CLI/analysis into `reporting.summarize_day(...)` to influence Attribution and Reflection (e.g., supervisor blame on rising stress).
+- Docs: `docs/SUPERVISOR_ACTIVITY.md`
+
+## Attribution Engine (read‑only, deterministic)
+
+Per‑agent causal attribution for the day’s outcome, attached to each `DaySummary` as `belief_attributions[name]`.
+
+- Function: `loopforge/attribution.py::derive_belief_attribution(...)`
+- Inputs: guardrail/context counts, incidents, stress trend (vs previous day), supervisor_activity.
+- Outputs: `cause` in {`self`,`supervisor`,`system`,`random`} + `confidence` (0..1).
+- Surfaces: narrative closing line, daily log bullet (e.g., `- Attribution: system-driven (conf=0.70).`), recap arc (first → last).
+
+## Narrative Consistency — Agent Reflection State (deterministic)
+
+A lightweight state that keeps phrases consistent across days/logs, attached to `DaySummary` as `reflection_states[name]`.
+
+- Type: `AgentReflectionState { stress_trend, rulebook_reliance, supervisor_presence }`
+- Mapper: `loopforge/narrative_reflection.py::derive_reflection_state(...)` (EPS=0.01 trend bands; guardrail reliance ratio).
+- Purpose: stabilize wording like “leans on protocol” and stress‑arc hints. Purely presentational; no behavior change.
+
+## Emotional Arc Engine (EA‑1, deterministic)
+
+A low‑dimensional emotional snapshot per agent/day, attached to `DaySummary` as `emotion_states[name]`.
+
+- Type: `AgentEmotionState { mood, certainty, energy }`
+- Mapper: `loopforge/emotion_model.py::derive_emotion_state(...)`
+  - Mood from stress bands + trend; Certainty from attribution + trend; Energy from stress bands only.
+- Scope: read‑only; not yet used for narrative phrasing by default.
+- Docs: `docs/EMOTIONAL_ARC_ENGINE.md`
+
+## Episode Analysis API + JSON Export (read‑only)
+
+Programmatic API and CLI to compute multi‑day episode summaries and export a JSON representation with derived per‑agent blame timelines/counts.
+
+- API: `loopforge/analysis_api.py::analyze_episode(action_log_path, supervisor_log_path=None, steps_per_day=50, days=3)` → `EpisodeSummary`
+- Export helper: `episode_summary_to_dict(EpisodeSummary)` → JSON‑serializable dict including:
+  - `days` (per‑day basics), `agents` (aggregates), `tension_trend`, and per‑agent `blame_timeline` + `blame_counts`.
+- CLI:
+  ```bash
+  uv run loopforge-sim export-episode \
+    --steps-per-day 20 \
+    --days 3 \
+    --output logs/episode_export.json
+  ```
+
+All of the above are deterministic, read‑only layers. They extend `DaySummary`/`EpisodeSummary` additively and never modify simulation behavior or JSONL log schemas.
