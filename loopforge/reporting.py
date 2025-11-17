@@ -254,6 +254,7 @@ def summarize_day(
         beliefs=beliefs,
         belief_attributions=belief_attributions,
         reflection_states=reflection_states,
+        emotion_states=emotion_states,
     )
 
 
