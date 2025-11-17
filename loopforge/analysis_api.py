@@ -65,6 +65,8 @@ def analyze_episode(
     steps_per_day: int = 50,
     days: int = 3,
     episode_id: Optional[str] = None,
+    run_id: Optional[str] = None,
+    episode_index: int = 0,
 ) -> EpisodeSummary:
     """
     High-level entrypoint.
@@ -97,15 +99,25 @@ def analyze_episode(
         day_summaries.append(ds)
         prev_stats = ds.agent_stats
 
-    # Prefer a provided episode_id; otherwise, generate a simple per-run id.
+    # Prefer provided IDs; otherwise generate deterministic-enough ones in-memory.
+    if run_id is None:
+        try:
+            from .ids import generate_run_id as _gen_run_id
+            run_id = _gen_run_id()
+        except Exception:
+            run_id = "run-unknown"
     if episode_id is None:
         try:
-            import time as _time
-            episode_id = f"ep-{int(_time.time())}"
+            from .ids import generate_episode_id as _gen_ep_id
+            episode_id = _gen_ep_id(run_id, int(episode_index or 0))
         except Exception:
-            episode_id = "ep-unknown"
+            try:
+                import time as _time
+                episode_id = f"ep-{int(_time.time())}"
+            except Exception:
+                episode_id = "ep-unknown"
 
-    return summarize_episode(day_summaries, episode_id=episode_id)
+    return summarize_episode(day_summaries, episode_id=episode_id, run_id=run_id, episode_index=int(episode_index or 0))
 
 
 def _dataclass_to_dict(obj: Any) -> Any:
@@ -123,7 +135,9 @@ def episode_summary_to_dict(summary: EpisodeSummary) -> dict:
     """
     # Base structure
     out: Dict[str, Any] = {
+        "run_id": getattr(summary, "run_id", None),
         "episode_id": getattr(summary, "episode_id", None),
+        "episode_index": getattr(summary, "episode_index", 0),
         "days": [],
         "agents": {},
         "tension_trend": list(summary.tension_trend or []),

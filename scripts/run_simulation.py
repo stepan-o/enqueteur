@@ -218,14 +218,22 @@ def view_episode(
         day_summaries.append(ds)
         prev_stats = ds.agent_stats
 
-    # Generate a simple per-run episode_id (deterministic per invocation)
+    # Generate run/episode identity for this invocation (in-memory only)
     try:
-        import time as _time
-        episode_id = f"ep-{int(_time.time())}"
+        from loopforge.ids import generate_run_id, generate_episode_id
+        run_id = generate_run_id()
+        episode_index = 0
+        episode_id = generate_episode_id(run_id, episode_index)
     except Exception:
-        episode_id = "ep-unknown"
+        run_id = "run-unknown"
+        episode_index = 0
+        try:
+            import time as _time
+            episode_id = f"ep-{int(_time.time())}"
+        except Exception:
+            episode_id = "ep-unknown"
 
-    episode = summarize_episode(day_summaries, episode_id=episode_id)
+    episode = summarize_episode(day_summaries, episode_id=episode_id, run_id=run_id, episode_index=episode_index)
 
     # Psychology Board: render only this view when requested, then exit
     if psych_board:
