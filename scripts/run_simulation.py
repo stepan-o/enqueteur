@@ -167,6 +167,11 @@ def view_episode(
         "--daily-log",
         help="Print compact daily narrative logs (intro, agent beats, general beats, closing).",
     ),
+    psych_board: bool = typer.Option(
+        False,
+        "--psych-board",
+        help="Print compact episode-level Psychology Board (per-agent, per-day codes).",
+    ),
 ) -> None:
     """Summarize a multi-day Loopforge episode from JSONL logs."""
     # Preload supervisor entries (fail-soft) and group by day
@@ -214,6 +219,23 @@ def view_episode(
         prev_stats = ds.agent_stats
 
     episode = summarize_episode(day_summaries)
+
+    # Psychology Board: render only this view when requested, then exit
+    if psych_board:
+        try:
+            from loopforge.psych_board import build_psych_board
+        except Exception:
+            build_psych_board = None  # type: ignore
+        if build_psych_board is not None:
+            lines = []
+            try:
+                lines = build_psych_board(episode)
+            except Exception:
+                lines = []
+            for line in lines:
+                typer.echo(line)
+        return
+
     _print_episode_summary(episode)
 
     if recap:
