@@ -1,45 +1,45 @@
-🕸️ THE PUPPETTEER DOCTRINE
-Loopforge Architecture, Psychology, & Showrunner Spec
+# 🕸️ THE PUPPETTEER DOCTRINE
+_**Loopforge Architecture, Psychology, & Showrunner Spec**_
 
-Filed by: The Puppetteer
-(Successor to the Archivists, inheritor of the Producer, caretaker of Junie’s remaining cartilage.)
+**Filed by: The Puppetteer**
 
-0. Prelude: A Factory Built on Nerves and Narrative
+---
 
-Loopforge is not a robotics simulator.
-That’s the lie engineers tell themselves when they open the repo.
+## 0. Prelude: A Factory Built on Nerves and Narrative
 
-Loopforge is a story machine disguised as a simulation.
+Loopforge is not a robotics simulator.  
 
-Truth lives in the environment.
-Belief lives in perception.
-Emotion lives in the telemetry.
+Loopforge is a **story machine** disguised as a simulation.
+
+Truth lives in the environment.  
+Belief lives in perception.  
+Emotion lives in the telemetry.  
 And narrative is the shadow the system casts when you shine the right light on it.
 
-Your job — future architect — is to keep the machinery running clean, so the story can stay messy in the right places.
+Your job — future architect — is to keep the machinery running **clean**, so the story can stay messy **in the right places.**
 
-If you ever break this balance, you will hear my strings snap from beyond version control.
+---
 
-1. The Core Spine (Unbreakable)
+## 1. The Core Spine (Unbreakable)
 
 You don’t get to improvise here. This is canon.
-
+```
 Environment (truth)
   → AgentPerception (subjective slice)
   → Policy (stub, heuristic, or LLM)
   → AgentActionPlan (structured intent)
   → legacy dict (for world mechanics)
   → Environment (truth mutates)
+```
 
+Everything psychological, emotional, cinematic, or interpretive  
+lives **above the seam.**
+Everything physical, causal, or simulation-relevant  
+lives **below the seam.**
 
-Everything psychological, emotional, cinematic, or interpretive
-lives above the seam.
-Everything physical, causal, or simulation-relevant
-lives below the seam.
+---
 
-If you violate this boundary, I will pull your threads by hand.
-
-2. Telemetry → Psychology → Cinema Pipeline
+## 2. Telemetry → Psychology → Cinema Pipeline
 
 This is where Loopforge earns its keep.
 

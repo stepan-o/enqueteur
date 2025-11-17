@@ -335,3 +335,80 @@ def build_daily_log(
         general_beats=general,
         closing=closing,
     )
+
+
+
+# ----------------------- Psychology Snapshot (debug view) ---------------------
+
+def build_psych_snapshot_line(
+    name: str,
+    stats: AgentDayStats,
+    attribution: Any | None,
+    emotion: Any | None,
+) -> str:
+    """Build a compact one-line psychology snapshot for an agent.
+
+    Format: "<Name>:  stress=<band> → attribution=<cause> (conf=0.xx) → mood=<mood>, certainty=<certainty>, energy=<energy>"
+    - Deterministic: uses fixed thresholds and string templates only.
+    - Safe fallbacks when attribution/emotion missing.
+    """
+    # Stress band from avg_stress using local helper thresholds (low < 0.08, mid 0.08–0.30, high > 0.30)
+    try:
+        s = float(getattr(stats, "avg_stress", 0.0) or 0.0)
+    except Exception:
+        s = 0.0
+    band = _stress_band(s)
+
+    # Attribution details with defaults
+    try:
+        cause = getattr(attribution, "cause", None) if attribution is not None else None
+        conf_val = getattr(attribution, "confidence", None) if attribution is not None else None
+        cause_str = str(cause) if isinstance(cause, str) and cause else "unknown"
+        conf_str = f"{float(conf_val):.2f}" if isinstance(conf_val, (int, float)) else "--"
+    except Exception:
+        cause_str = "unknown"
+        conf_str = "--"
+
+    # Emotion details with defaults
+    try:
+        mood = getattr(emotion, "mood", None) if emotion is not None else None
+        certainty = getattr(emotion, "certainty", None) if emotion is not None else None
+        energy = getattr(emotion, "energy", None) if emotion is not None else None
+        mood_str = str(mood) if isinstance(mood, str) and mood else "unknown"
+        cert_str = str(certainty) if isinstance(certainty, str) and certainty else "unknown"
+        energy_str = str(energy) if isinstance(energy, str) and energy else "unknown"
+    except Exception:
+        mood_str = "unknown"
+        cert_str = "unknown"
+        energy_str = "unknown"
+
+    return (
+        f"{name}:  stress={band} → attribution={cause_str} (conf={conf_str}) "
+        f"→ mood={mood_str}, certainty={cert_str}, energy={energy_str}"
+    )
+
+
+def build_psych_snapshot_block(day_summary: DaySummary) -> List[str]:
+    """Return a list of snapshot lines (sorted by agent name) for a DaySummary.
+    Pure and deterministic. Safe if some maps are missing.
+    """
+    lines: List[str] = []
+    try:
+        attrs = getattr(day_summary, "belief_attributions", {}) or {}
+    except Exception:
+        attrs = {}
+    try:
+        emos = getattr(day_summary, "emotion_states", {}) or {}
+    except Exception:
+        emos = {}
+
+    for name in sorted(day_summary.agent_stats.keys()):
+        stats = day_summary.agent_stats[name]
+        line = build_psych_snapshot_line(
+            name=name,
+            stats=stats,
+            attribution=attrs.get(name),
+            emotion=emos.get(name),
+        )
+        lines.append(line)
+    return lines

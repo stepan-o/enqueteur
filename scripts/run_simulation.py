@@ -260,6 +260,11 @@ def view_episode(
         except Exception:
             build_daily_log = None
         if build_daily_log is not None:
+            # Lazy import to avoid circulars at module import time
+            try:
+                from loopforge.daily_logs import build_psych_snapshot_block
+            except Exception:
+                build_psych_snapshot_block = None  # type: ignore
             typer.echo("\nDAILY LOG")
             typer.echo("----------")
             for idx, day in enumerate(episode.days):
@@ -277,6 +282,16 @@ def view_episode(
                     typer.echo("General:")
                     for line in log.general_beats:
                         typer.echo(f"- {line}")
+                # Psychology Snapshot block (debug view)
+                if build_psych_snapshot_block is not None:
+                    try:
+                        lines = build_psych_snapshot_block(day)
+                    except Exception:
+                        lines = []
+                    if lines:
+                        typer.echo("\nPsychology Snapshot:")
+                        for line in lines:
+                            typer.echo(f"  {line}")
                 if log.closing:
                     typer.echo(log.closing)
 
