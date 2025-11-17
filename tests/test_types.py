@@ -76,7 +76,7 @@ def test_agent_reflection_roundtrip_dict():
     assert as_dict["tags"]["regretted_obedience"] is True
 
 
-from loopforge.types import AgentEmotionState
+from loopforge.types import AgentEmotionState, EpisodeStoryArc
 
 
 def test_agent_emotion_state_roundtrip():
@@ -88,3 +88,22 @@ def test_agent_emotion_state_roundtrip():
     as_dict = state.to_dict()
     restored = AgentEmotionState.from_dict(as_dict)
     assert restored == state
+
+
+def test_episode_story_arc_roundtrip():
+    arc = EpisodeStoryArc(
+        arc_type="decompression",
+        tension_pattern="steady_cooldown",
+        supervisor_pattern="background",
+        emotional_color="wired_to_calm",
+        summary_lines=[
+            "The episode opens tight and slowly unwinds.",
+            "Tension steps down a notch each day.",
+            "The Supervisor remains in the background.",
+            "The floor moves from wired energy to calmer footing.",
+        ],
+    )
+    as_dict = arc.to_dict()
+    restored = EpisodeStoryArc.from_dict(as_dict)
+    assert restored == arc
+    assert restored.summary_lines == arc.summary_lines

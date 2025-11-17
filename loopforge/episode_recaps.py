@@ -20,6 +20,8 @@ class EpisodeRecap:
     intro: str
     per_agent_blurbs: Dict[str, str]
     closing: str
+    # Sprint 8: Optional story arc lines to render as a block in recap output
+    story_arc_lines: List[str] | None = None
 
 
 # ----------------------------- Helpers ---------------------------------
@@ -188,4 +190,13 @@ def build_episode_recap(
     else:
         closing = "The shift winds down quietly, nothing pressing."
 
-    return EpisodeRecap(intro=intro, per_agent_blurbs=per_agent, closing=closing)
+    # Sprint 8: Optional story arc block from EpisodeSummary.story_arc
+    story_arc_lines: List[str] | None = None
+    try:
+        arc = getattr(episode_summary, "story_arc", None)
+        if arc is not None and getattr(arc, "summary_lines", None):
+            story_arc_lines = list(getattr(arc, "summary_lines"))
+    except Exception:
+        story_arc_lines = None
+
+    return EpisodeRecap(intro=intro, per_agent_blurbs=per_agent, closing=closing, story_arc_lines=story_arc_lines)

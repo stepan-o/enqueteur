@@ -141,6 +141,85 @@ class AgentEmotionState:
         )
 
 
+# --- EpisodeStoryArc (Sprint 8: Multi-Day Story Arc) -------------------------
+
+
+@dataclass
+class EpisodeStoryArc:
+    """Deterministic, high-level narrative arc for an episode.
+
+    Purely additive/read-only; JSON-safe via helpers. Summary lines are short,
+    deterministic strings chosen from fixed templates.
+    """
+
+    arc_type: Literal[
+        "decompression",      # stress generally falling
+        "escalation",         # stress rising
+        "back_and_forth",     # mixed / oscillating
+        "flatline",           # almost no change
+        "uncertain",
+    ]
+    tension_pattern: Literal[
+        "early_spike",
+        "late_spike",
+        "steady_cooldown",
+        "uneven",
+        "unknown",
+    ]
+    supervisor_pattern: Literal[
+        "background",
+        "looming",
+        "hands_off",
+        "unknown",
+    ]
+    emotional_color: Literal[
+        "wired_to_calm",
+        "calm_to_wired",
+        "exhaustion",
+        "steady_calm",
+        "dissonant",
+        "unknown",
+    ]
+    summary_lines: List[str]
+
+    def to_dict(self) -> Dict[str, Any]:
+        # Ensure summary_lines is a list[str]
+        lines: List[str] = []
+        for s in (self.summary_lines or []):
+            try:
+                lines.append(str(s))
+            except Exception:
+                continue
+        return {
+            "arc_type": str(self.arc_type),
+            "tension_pattern": str(self.tension_pattern),
+            "supervisor_pattern": str(self.supervisor_pattern),
+            "emotional_color": str(self.emotional_color),
+            "summary_lines": lines,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "EpisodeStoryArc":
+        raw = data or {}
+        lines_in = raw.get("summary_lines", [])
+        if not isinstance(lines_in, list):
+            lines: List[str] = []
+        else:
+            lines = []
+            for s in lines_in:
+                try:
+                    lines.append(str(s))
+                except Exception:
+                    continue
+        return cls(
+            arc_type=str(raw.get("arc_type", "uncertain")),
+            tension_pattern=str(raw.get("tension_pattern", "unknown")),
+            supervisor_pattern=str(raw.get("supervisor_pattern", "unknown")),
+            emotional_color=str(raw.get("emotional_color", "unknown")),
+            summary_lines=lines,
+        )
+
+
 # --- SupervisorIntentSnapshot (Phase 9: Supervisor Bias Field) -------------
 
 

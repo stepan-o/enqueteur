@@ -179,4 +179,11 @@ def episode_summary_to_dict(summary: EpisodeSummary) -> dict:
         out["agents"][name]["blame_timeline"] = timeline
         out["agents"][name]["blame_counts"] = blame_counts
 
+    # Sprint 8: Optional story arc block (additive)
+    try:
+        arc = getattr(summary, "story_arc", None)
+        out["story_arc"] = arc.to_dict() if arc is not None else None
+    except Exception:
+        out["story_arc"] = None
+
     return out

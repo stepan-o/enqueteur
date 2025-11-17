@@ -61,6 +61,8 @@ class EpisodeSummary:
     days: List[DaySummary]
     agents: Dict[str, AgentEpisodeStats]
     tension_trend: List[float]
+    # Sprint 8: Optional episode-level story arc (deterministic, additive)
+    story_arc: Optional["EpisodeStoryArc"] = None
 
 
 # ------------------------- Helpers -------------------------------------------
@@ -315,4 +317,14 @@ def summarize_episode(day_summaries: List[DaySummary]) -> EpisodeSummary:
         )
 
     tension_trend = [d.tension_score for d in day_summaries]
-    return EpisodeSummary(days=day_summaries, agents=agents, tension_trend=tension_trend)
+    summary = EpisodeSummary(days=day_summaries, agents=agents, tension_trend=tension_trend)
+
+    # Sprint 8: derive optional episode-level story arc (fail-soft)
+    try:
+        from .story_arc import derive_episode_story_arc
+        summary.story_arc = derive_episode_story_arc(summary)
+    except Exception:
+        # Keep summary.story_arc as None on any failure
+        pass
+
+    return summary

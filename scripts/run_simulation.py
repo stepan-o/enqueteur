@@ -232,6 +232,12 @@ def view_episode(
             for name in sorted(recap_obj.per_agent_blurbs.keys()):
                 typer.echo(f"- {name}: {recap_obj.per_agent_blurbs[name]}")
             typer.echo(recap_obj.closing)
+            # Sprint 8: optional STORY ARC block
+            if getattr(recap_obj, "story_arc_lines", None):
+                typer.echo("\nSTORY ARC")
+                typer.echo("-" * 30)
+                for line in recap_obj.story_arc_lines:  # type: ignore[union-attr]
+                    typer.echo(line)
 
     if narrative:
         from loopforge.narrative_viewer import build_day_narrative
