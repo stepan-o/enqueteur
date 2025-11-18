@@ -202,10 +202,55 @@ class JsonlSupervisorLogger:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    def write_message(self, message: SupervisorMessage) -> None:
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(message.to_dict()))
-            f.write("\n")
+    def write_message(
+        self,
+        message: SupervisorMessage,
+        *,
+        run_id: Optional[str] = None,
+        episode_id: Optional[str] = None,
+        episode_index: Optional[int] = None,
+    ) -> None:
+        """Write one SupervisorMessage JSON line.
+        Add identity fields additively when provided to keep schema backward-compatible.
+        """
+        try:
+            data: Dict[str, Any] = message.to_dict()
+            # Merge identity fields if provided (keep additive only)
+            if run_id is not None or episode_id is not None or episode_index is not None:
+                # Prefer complete bundle when all present
+                try:
+                    if run_id is not None and episode_id is not None and episode_index is not None:
+                        data.update(identity_dict(str(run_id), str(episode_id), int(episode_index)))
+                    else:
+                        if run_id is not None:
+                            data["run_id"] = str(run_id)
+                        if episode_id is not None:
+                            data["episode_id"] = str(episode_id)
+                        if episode_index is not None:
+                            data["episode_index"] = int(episode_index)
+                except Exception:
+                    # identity merge must never break logging
+                    pass
+        except Exception:
+            # Fall back to direct serialization if to_dict fails unexpectedly
+            try:
+                data = {
+                    "agent_name": getattr(message, "agent_name", None),
+                    "role": getattr(message, "role", None),
+                    "day_index": getattr(message, "day_index", None),
+                    "intent": getattr(message, "intent", None),
+                    "body": getattr(message, "body", None),
+                    "episode_index": getattr(message, "episode_index", None),
+                }
+            except Exception:
+                data = {}
+        try:
+            with self.path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(data))
+                f.write("\n")
+        except Exception:
+            # fail-soft: never crash caller on logging
+            pass
 
 
 class JsonlWeaveLogger:

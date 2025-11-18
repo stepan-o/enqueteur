@@ -145,6 +145,8 @@ def run_one_day_with_supervisor(
     reflection_logger: Optional[JsonlReflectionLogger] = None,
     *,
     episode_index: Optional[int] = None,
+    run_id: Optional[str] = None,
+    episode_id: Optional[str] = None,
 ) -> List[SupervisorMessage]:
     """
     Orchestrate one simulated day and emit Supervisor messages.
@@ -220,7 +222,12 @@ def run_one_day_with_supervisor(
         sup_logger = JsonlSupervisorLogger(sup_path)
         for m in messages:
             try:
-                sup_logger.write_message(m)
+                sup_logger.write_message(
+                    m,
+                    run_id=run_id,
+                    episode_id=episode_id,
+                    episode_index=episode_index,
+                )
             except Exception:
                 pass
     except Exception:

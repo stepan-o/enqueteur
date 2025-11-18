@@ -128,6 +128,13 @@ def analyze_episode(
     supervisor_by_day: Dict[int, List[dict]] = {}
     if supervisor_log_path is not None:
         sup_rows = _read_supervisor_jsonl(supervisor_log_path)
+        # Sprint E6: supervisor logs must be ID-aware and strictly filtered
+        # Validate all rows have identity fields; ID-less supervisor logs are no longer supported.
+        missing_id = [r for r in sup_rows if not (isinstance(r, dict) and all(k in r for k in ("run_id", "episode_id", "episode_index")))]
+        if missing_id:
+            raise ValueError("Supervisor log entry missing run_id/episode_id")
+        # Filter to matching run/episode; ignore others
+        sup_rows = [r for r in sup_rows if r.get("run_id") == run_id and r.get("episode_id") == episode_id]
         supervisor_by_day = _group_supervisor_by_day(sup_rows, steps_per_day)
 
     day_summaries: List[DaySummary] = []
