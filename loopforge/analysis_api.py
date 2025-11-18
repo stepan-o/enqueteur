@@ -316,4 +316,22 @@ def episode_summary_to_dict(summary: EpisodeSummary) -> dict:
     except Exception:
         out["world_pulse_history"] = None
 
+    # Sprint N2 (optional): micro-incidents export (fail-soft)
+    try:
+        from .micro_incidents import build_micro_incidents
+        incidents = build_micro_incidents(summary)
+        out["micro_incidents"] = [
+            {
+                "day_index": mi.day_index,
+                "incident_type": mi.incident_type,
+                "severity": mi.severity,
+                "agents_involved": list(mi.agents_involved),
+                "summary": mi.summary,
+            }
+            for mi in incidents
+        ] if incidents else []
+    except Exception:
+        # Do not fail export if micro_incidents module or inputs are missing
+        pass
+
     return out

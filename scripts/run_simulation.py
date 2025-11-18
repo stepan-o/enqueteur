@@ -59,6 +59,12 @@ def _print_episode_recap(episode: EpisodeSummary) -> None:
         typer.echo("-" * 30)
         for line in recap_obj.world_pulse_lines:  # type: ignore[union-attr]
             typer.echo(line)
+    # MICRO-INCIDENTS — after WORLD PULSE, before ARC COHESION
+    if getattr(recap_obj, "micro_incident_lines", None):
+        typer.echo("\nMICRO-INCIDENTS")
+        typer.echo("-" * 30)
+        for line in recap_obj.micro_incident_lines:  # type: ignore[union-attr]
+            typer.echo(line)
     # ARC COHESION
     if getattr(recap_obj, "arc_cohesion", None):
         typer.echo("\nARC COHESION")

@@ -24,6 +24,8 @@ class EpisodeRecap:
     story_arc_lines: List[str] | None = None
     # Sprint A0: Optional world pulse lines block (deterministic)
     world_pulse_lines: List[str] | None = None
+    # Sprint N2: Optional micro-incidents lines block (deterministic)
+    micro_incident_lines: List[str] | None = None
     # Sprint 12: Optional Arc Cohesion one-liner (deterministic)
     arc_cohesion: str | None = None
     # Sprint 13: Optional Memory Line one-liner (deterministic)
@@ -229,6 +231,31 @@ def build_episode_recap(
     except Exception:
         world_pulse_lines = None
 
+    # Sprint N2: Optional MICRO-INCIDENTS lines derived from episode telemetry
+    micro_incident_lines: List[str] | None = None
+    try:
+        from .micro_incidents import build_micro_incidents
+        incidents = build_micro_incidents(episode_summary)
+        if incidents:
+            # Deterministic string rendering
+            lines: List[str] = []
+            for mi in incidents:
+                agents_txt = ", ".join(mi.agents_involved) if mi.agents_involved else ""
+                # Preserve short summary in the line, prefix with day
+                sev = f" ({mi.severity})" if mi.severity else ""
+                if agents_txt and agents_txt not in mi.summary:
+                    line = f"Day {mi.day_index} — {mi.summary}"
+                else:
+                    line = f"Day {mi.day_index} — {mi.summary}"
+                # Append severity tag for quick scanning
+                line = f"{line} {sev}".rstrip()
+                lines.append(line)
+            # Sort lines by (day_index, then stable string)
+            lines.sort()
+            micro_incident_lines = lines
+    except Exception:
+        micro_incident_lines = None
+
     # Sprint 10: Optional memory drift block from EpisodeSummary.long_memory
     memory_lines: List[str] | None = None
     try:
@@ -301,6 +328,7 @@ def build_episode_recap(
         closing=closing,
         story_arc_lines=story_arc_lines,
         world_pulse_lines=world_pulse_lines,
+        micro_incident_lines=micro_incident_lines,  # <-- add this
         arc_cohesion=arc_cohesion,
         memory_line=memory_line,
         memory_lines=memory_lines,
