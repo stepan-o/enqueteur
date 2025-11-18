@@ -121,3 +121,111 @@ It aims to demonstrate a practical blueprint for agent-driven development that i
 * grounded in real workflows
 
 This combination — ReAct reasoning + architectural memory + deterministic execution + a structured sprint cycle — is what makes Loopforge distinct in the rapidly evolving landscape of agent research.
+
+## Related Work
+
+Loopforge builds on several established research threads in agent reasoning, tool-use, and iterative code generation. While prior work explores parts of this space, Loopforge combines them into a cohesive architecture tailored for multi-step software development with long-horizon planning, structured memory, and human-governed safety boundaries.
+
+---
+
+### ReAct: Reasoning + Acting
+
+The [ReAct](https://arxiv.org/abs/2210.03629) paradigm demonstrated that LLMs benefit from alternating between free-form reasoning and structured tool use. This work introduced the idea of **explicit thought–action loops,** which inspired the Architect’s internal planning cycle in Loopforge.  
+However, ReAct itself is _stateless_: it does not define persistent memory, multi-step workflows, agent roles, or task decomposition for engineering domains.
+
+Loopforge extends ReAct by layering on:
+* episodic memory reconstruction
+* sprint-based workflows
+* division of responsibilities
+* controlled execution by a separate agent
+
+This turns ReAct from an inference-level pattern into a **reusable engineering protocol.**
+
+---
+
+### Reflexion and Memory-Augmented Agents
+
+Memory-augmented agents such as those explored in [Reflexion](https://arxiv.org/abs/2303.11366) showed that LLMs can improve performance across episodes when given structured self-feedback. This work motivates the Architect’s **retro → belief update → next-cycle onboarding** loop.
+
+Loopforge builds on this idea by treating retrospectives not merely as error-correction, but as **architectural memory** that guides long-term structural decisions. Unlike Reflexion-style systems, memory is not free-form LLM notes; it is a curated, human-readable record that defines architectural intent for future cycles.
+
+---
+
+### Planner–Executor Architectures
+
+Several research efforts explore splitting agent behavior into a high-level planner and a low-level executor. These systems demonstrate that:
+* planners should reason broadly
+* executors should follow constraints strictly
+* tool-use should be grounded in external actions
+* decomposition improves reliability
+
+Loopforge adopts this separation but formalizes it more strongly:
+* The **Architect** is the persistent reasoning agent with memory.
+* The **Executor** is strictly a tool: narrow, mechanical, deterministic.
+* Humans maintain control over context provisioning and merging.
+
+This avoids the common failure mode where planners and executors blur roles and produce runaway changes.
+
+---
+
+### Skill Libraries & Lifelong Agents
+
+Work on lifelong learning agents (e.g., “skill libraries,” “self-growing agents,” and exploratory frameworks) has explored agents that accumulate knowledge across episodes. These systems demonstrate the value of:
+* persistent agent identity
+* reusable patterns
+* long-term self-improvement
+
+Loopforge adapts this idea to software engineering by giving the Architect onboarding - **a structured memory of product vision, project constraints, design decisions, and sprint histories,** enabling it to plan coherently across weeks or months of system evolution.
+
+---
+
+### Program Synthesis & LLM Code Generation
+
+Research in LLM-based program synthesis and code editing highlights two central challenges:
+(1) LLMs can generate correct code, but (2) they lack reliability when making multi-step or multi-file changes.
+
+Loopforge addresses these challenges by:
+
+isolating architectural reasoning from code editing
+
+constraining the Executor to file-scoped, reversible tasks
+
+introducing acceptance criteria for every change
+
+inserting human oversight at every transition
+
+enforcing strict boundaries around what agents may modify
+
+This turns multi-step code generation into a structured, auditable process.
+
+Human-in-the-Loop AI Systems
+
+There is extensive research emphasizing the need for human governance in agentic workflows. Loopforge adopts this principle explicitly:
+
+humans provide context
+
+humans approve plans
+
+humans mediate uncertainties
+
+humans merge code
+
+Rather than pursuing autonomous agents, Loopforge focuses on collaborative intelligence—agents that assist humans within a disciplined engineering framework.
+
+Summary
+
+While individual components of Loopforge resemble prior work—ReAct-style reasoning, memory-augmented agents, planner–executor decomposition, skill accumulation, and LLM-based code generation—these approaches are often treated in isolation.
+
+Loopforge contributes:
+
+a unified structure that combines these ideas
+
+a long-memory Architect designed for evolving systems
+
+a deterministic Executor with strict boundaries
+
+a sprint-based protocol grounded in real engineering practice
+
+an explicit, safe human-in-the-loop design
+
+This positions Loopforge as a practical and principled approach for exploring multi-agent software development, distinct from previous research efforts that focus on single-episode problem solving or loosely structured agent behaviors.
