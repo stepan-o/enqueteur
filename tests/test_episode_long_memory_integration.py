@@ -8,39 +8,36 @@ from loopforge.reporting import EpisodeSummary
 from loopforge.types import ActionLogEntry
 
 
+RUN_ID = "run-test-long-memory"
+EPISODE_ID = "ep-test-long-memory"
+EPISODE_INDEX = 0
+
+
 def _write_minimal_actions(path: Path, steps_per_day: int = 10) -> None:
     rows = []
     # Day 0: two guardrail steps for agent Delta
-    rows.append(ActionLogEntry(
-        step=0,
-        agent_name="Delta",
-        role="optimizer",
-        mode="guardrail",
-        intent="work",
-        move_to=None,
-        targets=[],
-        riskiness=0.0,
-        narrative="",
-        raw_action={},
-        perception={"emotions": {"stress": 0.2}, "perception_mode": "accurate"},
-        outcome=None,
-    ).to_dict())
-    rows.append(ActionLogEntry(
-        step=1,
-        agent_name="Delta",
-        role="optimizer",
-        mode="guardrail",
-        intent="work",
-        move_to=None,
-        targets=[],
-        riskiness=0.0,
-        narrative="",
-        raw_action={},
-        perception={"emotions": {"stress": 0.2}, "perception_mode": "accurate"},
-        outcome=None,
-    ).to_dict())
+    for step in (0, 1):
+        r = ActionLogEntry(
+            step=step,
+            agent_name="Delta",
+            role="optimizer",
+            mode="guardrail",
+            intent="work",
+            move_to=None,
+            targets=[],
+            riskiness=0.0,
+            narrative="",
+            raw_action={},
+            perception={"emotions": {"stress": 0.2}, "perception_mode": "accurate"},
+            outcome=None,
+        ).to_dict()
+        r["run_id"] = RUN_ID
+        r["episode_id"] = EPISODE_ID
+        r["episode_index"] = EPISODE_INDEX
+        rows.append(r)
+
     # Day 1: one context step for Delta (slightly lower stress)
-    rows.append(ActionLogEntry(
+    r = ActionLogEntry(
         step=steps_per_day,
         agent_name="Delta",
         role="optimizer",
@@ -53,7 +50,11 @@ def _write_minimal_actions(path: Path, steps_per_day: int = 10) -> None:
         raw_action={},
         perception={"emotions": {"stress": 0.15}, "perception_mode": "accurate"},
         outcome=None,
-    ).to_dict())
+    ).to_dict()
+    r["run_id"] = RUN_ID
+    r["episode_id"] = EPISODE_ID
+    r["episode_index"] = EPISODE_INDEX
+    rows.append(r)
 
     path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
 
@@ -72,6 +73,9 @@ def test_episode_summary_includes_long_memory(tmp_path: Path):
         supervisor_log_path=None,
         steps_per_day=10,
         days=2,
+        run_id=RUN_ID,
+        episode_id=EPISODE_ID,
+        episode_index=EPISODE_INDEX,
     )
 
     assert isinstance(ep, EpisodeSummary)
@@ -95,6 +99,9 @@ def test_episode_export_includes_long_memory_key(tmp_path: Path):
         supervisor_log_path=None,
         steps_per_day=10,
         days=2,
+        run_id=RUN_ID,
+        episode_id=EPISODE_ID,
+        episode_index=EPISODE_INDEX,
     )
 
     out = episode_summary_to_dict(ep)
@@ -107,5 +114,14 @@ def test_episode_export_includes_long_memory_key(tmp_path: Path):
     if isinstance(lm, dict) and lm:
         # Check required inner keys for one agent
         sample = next(iter(lm.values()))
-        required = {"episodes", "cumulative_stress", "cumulative_incidents", "trust_supervisor", "self_trust", "stability", "reactivity", "agency"}
+        required = {
+            "episodes",
+            "cumulative_stress",
+            "cumulative_incidents",
+            "trust_supervisor",
+            "self_trust",
+            "stability",
+            "reactivity",
+            "agency",
+        }
         assert required.issubset(sample.keys())
