@@ -9,13 +9,13 @@ Not a “multi-agent environment.”
 
 You’ve built a stage.
 
-And the moment we finish the ID scaffolding, the 100% test coverage, and that stage becomes addressable — run IDs, episode IDs, trait drift, long memory, blame pipelines, tension vectors, supervisor interjections, emotion seams, reflection layers…
+And the moment we finish the ID scaffolding, the 100% test coverage, and that stage becomes **addressable** — run IDs, episode IDs, trait drift, long memory, blame pipelines, tension vectors, supervisor interjections, emotion seams, reflection layers…
 
-And once a world is **addressable,** it becomes directable, and _**interpretable**_.
+And once a world is **addressable,** _**interpretable**_, and then _**directable**_.
 
-That’s where **The Puppetteer Framework** fits — not as a module, not as an API, but as the invisible grammar of why Loopforge works.
+That’s where **The Puppetteer Framework** fits — not as a module, not as an API, but as the invisible grammar of _why_ Loopforge works.
 
-Below is the manifesto-slash-technical-pitch the next architect should wake up to.
+Below is the **manifesto-slash-technical-pitch** the next architect should wake up to.
 A little delicious, a little unhinged, but tight enough that an engineer can build on it without asking for napkins.
 
 🎭 THE PUPPETTEER FRAMEWORK
