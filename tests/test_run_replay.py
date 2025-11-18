@@ -60,7 +60,13 @@ def test_analyze_episode_from_record_round_trip(tmp_path: Path):
     assert len(ep.days) == 1
 
 
-def test_replay_latest_uses_registry(tmp_path: Path, capsys):
+from typer.testing import CliRunner
+from scripts.run_simulation import app
+
+
+def test_replay_latest_uses_registry(tmp_path: Path):
+    runner = CliRunner()
+
     # Prepare logs and registry
     actions_path = tmp_path / "actions.jsonl"
     # Two agents over 10 steps day 0
@@ -81,41 +87,36 @@ def test_replay_latest_uses_registry(tmp_path: Path, capsys):
     )
     append_episode_record(rec, base_dir=tmp_path)
 
-    # Invoke CLI function directly (like other tests)
-    import scripts.run_simulation as cli
-
-    cli.replay_episode(
-        run_id=None,
-        episode_index=0,
-        latest=True,
-        recap=True,
-        action_log_path=actions_path,
-        supervisor_log_path=None,
-        registry_base=tmp_path,
+    # Invoke Typer CLI via CliRunner
+    result = runner.invoke(
+        app,
+        [
+            "replay-episode",
+            "--latest",
+            "--recap",
+            "--registry-base", str(tmp_path),
+            "--action-log-path", str(actions_path),
+        ],
     )
 
-    out = capsys.readouterr().out
-    assert "EPISODE RECAP" in out
-    assert "RUN HISTORY" not in out
+    assert result.exit_code == 0
+    assert "EPISODE RECAP" in result.stdout
+    assert "RUN HISTORY" not in result.stdout
 
 
-def test_replay_missing_run_id_errors(tmp_path: Path, capsys):
-    # No registry rows; calling without --latest and without --run-id should error
-    import scripts.run_simulation as cli
+def test_replay_missing_run_id_errors(tmp_path: Path):
+    runner = CliRunner()
 
-    try:
-        cli.replay_episode(
-            run_id=None,
-            episode_index=0,
-            latest=False,
-            recap=False,
-            action_log_path=tmp_path / "actions.jsonl",
-            supervisor_log_path=None,
-            registry_base=tmp_path,
-        )
-    except SystemExit:
-        # Typer.Exit triggers SystemExit when called directly
-        pass
+    # No registry rows; calling without --latest and without --run-id should error (non-zero exit)
+    result = runner.invoke(
+        app,
+        [
+            "replay-episode",
+            "--episode-index", "0",
+            "--registry-base", str(tmp_path),
+            "--action-log-path", str(tmp_path / "actions.jsonl"),
+        ],
+    )
 
-    out = capsys.readouterr().out
-    assert "Missing required --run-id" in out
+    assert result.exit_code != 0
+    assert "Missing required --run-id" in result.stdout
