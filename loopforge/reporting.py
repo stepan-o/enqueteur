@@ -76,6 +76,8 @@ class EpisodeSummary:
     long_memory: Optional[Dict[str, "AgentLongMemory"]] = None
     # Sprint A0: Optional per-day World Pulse history (deterministic, additive)
     world_pulse_history: Optional[List[Dict[str, float | str]]] = None
+    # Sprint S1: Optional Supervisor Weather (deterministic, additive)
+    supervisor_weather: Optional["SupervisorEpisodeWeather"] = None
 
 
 # ------------------------- Helpers -------------------------------------------
@@ -417,5 +419,12 @@ def summarize_episode(day_summaries: List[DaySummary], *, previous_long_memory: 
     except Exception:
         # Leave long_memory unset on any failure
         pass
+
+    # Sprint S1: Supervisor Weather (fail-soft, additive)
+    try:
+        from .supervisor_weather import build_supervisor_weather
+        summary.supervisor_weather = build_supervisor_weather(summary, day_summaries)
+    except Exception:
+        summary.supervisor_weather = getattr(summary, "supervisor_weather", None)
 
     return summary

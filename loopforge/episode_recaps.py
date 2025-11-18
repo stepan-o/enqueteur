@@ -322,6 +322,43 @@ def build_episode_recap(
     except Exception:
         pressure_lines = None
 
+    # Sprint S1: Enrich pressure notes with Supervisor Weather (additive)
+    try:
+        sw = getattr(episode_summary, "supervisor_weather", None)
+        if sw is not None:
+            # Episode-level one-liner
+            line = f"Supervisor mood this episode: {getattr(sw, 'mood_baseline', 'focused')} and {getattr(sw, 'mood_trend', 'steady')}."
+            if pressure_lines is None:
+                pressure_lines = [line]
+            else:
+                pressure_lines.append(line)
+            # Optional per-agent hints (highest pressure per agent across days)
+            # Build a max level per agent deterministically
+            level_rank = {"soft": 1, "firm": 2, "hard": 3}
+            best: Dict[str, tuple[int, str]] = {}
+            for d in getattr(sw, 'days', []) or []:
+                for t in getattr(d, 'targets', []) or []:
+                    name = getattr(t, 'agent_name', '')
+                    lvl = getattr(t, 'pressure_level', 'none')
+                    if lvl == 'none' or not name:
+                        continue
+                    rank = level_rank.get(lvl, 0)
+                    cur = best.get(name)
+                    if cur is None or rank > cur[0] or (rank == cur[0] and name < name):
+                        best[name] = (rank, lvl)
+            # Emit up to 3 lines for agents under pressure (deterministic order)
+            for agent in sorted(best.keys())[:3]:
+                lvl = best[agent][1]
+                if lvl == 'soft':
+                    txt = f"{agent}: lightly monitored; mostly aligned with Supervisor expectations."
+                elif lvl == 'firm':
+                    txt = f"{agent}: under firm pressure due to repeated misalignment."
+                else:  # hard
+                    txt = f"{agent}: facing hard pressure after sustained misalignment."
+                pressure_lines.append(txt)
+    except Exception:
+        pass
+
     return EpisodeRecap(
         intro=intro,
         per_agent_blurbs=per_agent,

@@ -334,4 +334,34 @@ def episode_summary_to_dict(summary: EpisodeSummary) -> dict:
         # Do not fail export if micro_incidents module or inputs are missing
         pass
 
+    # Sprint S1: supervisor_weather export (fail-soft)
+    try:
+        sw = getattr(summary, "supervisor_weather", None)
+        if sw is not None:
+            out["supervisor_weather"] = {
+                "mood_baseline": getattr(sw, "mood_baseline", None),
+                "mood_trend": getattr(sw, "mood_trend", None),
+                "days": [
+                    {
+                        "day_index": getattr(d, "day_index", 0),
+                        "mood": getattr(d, "mood", None),
+                        "tone_volatility": getattr(d, "tone_volatility", None),
+                        "global_pressure": getattr(d, "global_pressure", None),
+                        "alignment_score": float(getattr(d, "alignment_score", 0.0) or 0.0),
+                        "targets": [
+                            {
+                                "agent_name": getattr(t, "agent_name", None),
+                                "pressure_level": getattr(t, "pressure_level", None),
+                                "reason": getattr(t, "reason", None),
+                                "misalignment_score": float(getattr(t, "misalignment_score", 0.0) or 0.0),
+                            }
+                            for t in (getattr(d, "targets", []) or [])
+                        ],
+                    }
+                    for d in (getattr(sw, "days", []) or [])
+                ],
+            }
+    except Exception:
+        pass
+
     return out
