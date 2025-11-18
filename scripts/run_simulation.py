@@ -235,6 +235,22 @@ def view_episode(
 
     episode = summarize_episode(day_summaries, episode_id=episode_id, run_id=run_id, episode_index=episode_index)
 
+    # Append episode metadata to the append-only Run & Episode Registry (fail-soft)
+    try:
+        from loopforge.run_registry import EpisodeRecord, append_episode_record, utc_now_iso
+        record = EpisodeRecord(
+            run_id=str(getattr(episode, "run_id", run_id) or run_id),
+            episode_id=str(getattr(episode, "episode_id", episode_id) or episode_id),
+            episode_index=int(getattr(episode, "episode_index", episode_index) or 0),
+            created_at=utc_now_iso(),
+            steps_per_day=int(steps_per_day),
+            days=int(days),
+        )
+        append_episode_record(record)
+    except Exception:
+        # Registry must not affect CLI behavior
+        pass
+
     # Psychology Board: render only this view when requested, then exit
     if psych_board:
         try:
@@ -559,6 +575,48 @@ def lens_agent(
         "suggested_focus": lens_out.suggested_focus,
         "supervisor_comment_prompt": lens_out.supervisor_comment_prompt,
     }, indent=2))
+
+
+@app.command("list-runs")
+def list_runs(
+    limit: int = typer.Option(20, help="Max number of records to show (most recent last)."),
+    registry_base: Path | None = None,
+) -> None:
+    """List recent run/episode history from the append-only registry.
+
+    - Prints a simple, grep-friendly summary oldest → newest, truncated by `limit`.
+    - When `registry_base` is provided (tests), the registry file is resolved under that directory.
+    """
+    try:
+        from loopforge.run_registry import load_registry
+    except Exception as e:
+        typer.echo(f"Registry unavailable: {e}")
+        raise typer.Exit(code=1)
+
+    try:
+        records = load_registry(base_dir=registry_base)
+    except Exception:
+        records = []
+
+    # Take the tail of the list to show most recent records while preserving order
+    if isinstance(limit, int) and limit > 0:
+        records = records[-limit:]
+
+    typer.echo("RUN HISTORY")
+    typer.echo("===========")
+    if not records:
+        typer.echo("(no records)")
+        return
+
+    for r in records:
+        # Keep formatting compact and stable
+        created = getattr(r, "created_at", "")
+        line = (
+            f"run_id={r.run_id}  episode_id={r.episode_id}  idx={int(getattr(r, 'episode_index', 0) or 0)}  "
+            f"days={int(getattr(r, 'days', 0) or 0)}  steps_per_day={int(getattr(r, 'steps_per_day', 0) or 0)}  "
+            f"created_at={created}"
+        )
+        typer.echo(line)
 
 
 if __name__ == "__main__":
