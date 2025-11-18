@@ -78,6 +78,8 @@ class EpisodeSummary:
     world_pulse_history: Optional[List[Dict[str, float | str]]] = None
     # Sprint S1: Optional Supervisor Weather (deterministic, additive)
     supervisor_weather: Optional["SupervisorEpisodeWeather"] = None
+    # Sprint A1: Optional Attribution Drift (deterministic, additive)
+    attribution_drift: Optional["AttributionDrift"] = None
 
 
 # ------------------------- Helpers -------------------------------------------
@@ -426,5 +428,12 @@ def summarize_episode(day_summaries: List[DaySummary], *, previous_long_memory: 
         summary.supervisor_weather = build_supervisor_weather(summary, day_summaries)
     except Exception:
         summary.supervisor_weather = getattr(summary, "supervisor_weather", None)
+
+    # Sprint A1: Attribution Drift (fail-soft, additive)
+    try:
+        from .attribution_drift import build_attribution_drift
+        summary.attribution_drift = build_attribution_drift(summary, day_summaries)
+    except Exception:
+        summary.attribution_drift = getattr(summary, "attribution_drift", None)
 
     return summary

@@ -81,6 +81,12 @@ def _print_episode_recap(episode: EpisodeSummary) -> None:
         typer.echo("-" * 30)
         for line in recap_obj.memory_lines:  # type: ignore[union-attr]
             typer.echo(line)
+    # DISTORTIONS (Attribution Drift)
+    if getattr(recap_obj, "distortion_lines", None):
+        typer.echo("\nDISTORTIONS")
+        typer.echo("-" * 30)
+        for line in recap_obj.distortion_lines:  # type: ignore[union-attr]
+            typer.echo(line)
     # PRESSURE NOTES
     if getattr(recap_obj, "pressure_lines", None):
         typer.echo("\nPRESSURE NOTES")

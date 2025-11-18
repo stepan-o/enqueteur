@@ -32,6 +32,8 @@ class EpisodeRecap:
     memory_line: str | None = None
     # Sprint 10: Optional memory drift lines block
     memory_lines: List[str] | None = None
+    # Sprint A1: Optional attribution/distortion lines block
+    distortion_lines: List[str] | None = None
     # Sprint 11: Optional pressure notes lines block (additive, deterministic)
     pressure_lines: List[str] | None = None
 
@@ -322,6 +324,31 @@ def build_episode_recap(
     except Exception:
         pressure_lines = None
 
+    # Sprint A1: Optional Distortion/Attribution lines block (deterministic)
+    distortion_lines: List[str] | None = None
+    try:
+        drift = getattr(episode_summary, "attribution_drift", None)
+        agents_map = getattr(drift, "agents", None) if drift is not None else None
+        if isinstance(agents_map, dict) and agents_map:
+            lines: List[str] = []
+            for name in sorted(agents_map.keys()):
+                try:
+                    arc = agents_map[name]
+                    start = getattr(arc, "start_cause", "unknown")
+                    end = getattr(arc, "end_cause", "unknown")
+                    voice = getattr(arc, "voice_label", "mixed")
+                    maxd = float(getattr(arc, "max_distortion", 0.0) or 0.0)
+                    line = f"{name}: attribution drift {start} → {end}; voice: {voice} (max distortion {maxd:.2f})."
+                    lines.append(line)
+                except Exception:
+                    continue
+                if len(lines) >= 4:
+                    break
+            if lines:
+                distortion_lines = lines
+    except Exception:
+        distortion_lines = None
+
     # Sprint S1: Enrich pressure notes with Supervisor Weather (additive)
     try:
         sw = getattr(episode_summary, "supervisor_weather", None)
@@ -365,9 +392,10 @@ def build_episode_recap(
         closing=closing,
         story_arc_lines=story_arc_lines,
         world_pulse_lines=world_pulse_lines,
-        micro_incident_lines=micro_incident_lines,  # <-- add this
+        micro_incident_lines=micro_incident_lines,
         arc_cohesion=arc_cohesion,
         memory_line=memory_line,
         memory_lines=memory_lines,
+        distortion_lines=distortion_lines,
         pressure_lines=pressure_lines,
     )

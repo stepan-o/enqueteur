@@ -364,4 +364,31 @@ def episode_summary_to_dict(summary: EpisodeSummary) -> dict:
     except Exception:
         pass
 
+    # Sprint A1: attribution_drift export (fail-soft)
+    try:
+        drift = getattr(summary, "attribution_drift", None)
+        agents_map = getattr(drift, "agents", None) if drift is not None else None
+        if isinstance(agents_map, dict):
+            out["attribution_drift"] = {
+                name: {
+                    "start_cause": getattr(arc, "start_cause", None),
+                    "end_cause": getattr(arc, "end_cause", None),
+                    "max_distortion": float(getattr(arc, "max_distortion", 0.0) or 0.0),
+                    "voice_label": getattr(arc, "voice_label", None),
+                    "days": [
+                        {
+                            "day_index": int(getattr(s, "day_index", 0) or 0),
+                            "base_cause": getattr(s, "base_cause", None),
+                            "distorted_cause": getattr(s, "distorted_cause", None),
+                            "distortion_level": float(getattr(s, "distortion_level", 0.0) or 0.0),
+                            "drivers": list(getattr(s, "drivers", []) or []),
+                        }
+                        for s in (getattr(arc, "days", []) or [])
+                    ],
+                }
+                for name, arc in agents_map.items()
+            }
+    except Exception:
+        pass
+
     return out
