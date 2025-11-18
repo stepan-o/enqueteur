@@ -9,7 +9,7 @@ from collections import defaultdict, Counter
 from .day_runner import compute_day_summary
 from .reporting import summarize_episode, EpisodeSummary, DaySummary, AgentEpisodeStats, AgentDayStats
 from .supervisor_activity import compute_supervisor_activity
-from .logging_utils import read_action_log_entries, read_action_log_entries_for_episode
+from .logging_utils import read_action_log_entries
 
 
 def _read_supervisor_jsonl(path: Path) -> List[dict]:
@@ -58,6 +58,33 @@ def _group_supervisor_by_day(rows: List[dict], steps_per_day: int) -> Dict[int, 
     return dict(by_day)
 
 
+def _read_action_jsonl_raw(path: Path) -> List[dict]:
+    """Read the action JSONL file and return a list of raw dict rows.
+
+    - Skips empty/malformed lines (fail-soft)
+    - Does not coerce into strong types; callers decide how to interpret
+    """
+    p = Path(path)
+    if not p.exists():
+        return []
+    rows: List[dict] = []
+    try:
+        with p.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception:
+                    continue
+                if isinstance(obj, dict):
+                    rows.append(obj)
+    except Exception:
+        return rows
+    return rows
+
+
 def analyze_episode(
     action_log_path: Path,
     *,
@@ -80,14 +107,23 @@ def analyze_episode(
     if not run_id or not episode_id:
         raise ValueError("analyze_episode requires run_id and episode_id; ID-less logs are no longer supported.")
 
-    # Load only matching entries (raw dicts)
-    entries = read_action_log_entries_for_episode(
-        action_log_path,
-        run_id=str(run_id),
-        episode_id=str(episode_id),
-    )
-    if not entries:
+    # Load full file as raw rows, enforce identity presence on every row
+    all_rows = _read_action_jsonl_raw(action_log_path)
+    if any(("run_id" not in r or "episode_id" not in r) for r in all_rows):
+        raise ValueError("Action log contains rows without identity fields; analyze_episode now requires IDs on all rows.")
+
+    # Filter strictly by (run_id, episode_id)
+    rows = [r for r in all_rows if r.get("run_id") == run_id and r.get("episode_id") == episode_id]
+    if not rows:
         raise ValueError(f"No action log entries found for run_id={run_id} and episode_id={episode_id}.")
+
+    # Sort by step ascending (missing/invalid treated as 0)
+    def _step_key(d: dict) -> int:
+        try:
+            return int(d.get("step", 0) or 0)
+        except Exception:
+            return 0
+    rows.sort(key=_step_key)
 
     supervisor_by_day: Dict[int, List[dict]] = {}
     if supervisor_log_path is not None:
@@ -107,7 +143,7 @@ def analyze_episode(
             steps_per_day=steps_per_day,
             previous_day_stats=prev_stats,
             supervisor_activity=supervisor_activity,
-            entries=entries,
+            entries=rows,
         )
         day_summaries.append(ds)
         prev_stats = ds.agent_stats
