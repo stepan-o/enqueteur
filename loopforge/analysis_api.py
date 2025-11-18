@@ -10,6 +10,8 @@ from .day_runner import compute_day_summary
 from .reporting import summarize_episode, EpisodeSummary, DaySummary, AgentEpisodeStats, AgentDayStats
 from .supervisor_activity import compute_supervisor_activity
 from .logging_utils import read_action_log_entries
+from .run_registry import EpisodeRecord
+from pathlib import Path as _P
 
 
 def _read_supervisor_jsonl(path: Path) -> List[dict]:
@@ -168,6 +170,43 @@ def _dataclass_to_dict(obj: Any) -> Any:
     if is_dataclass(obj):
         return asdict(obj)
     return obj
+
+
+def analyze_episode_from_record(
+    record: EpisodeRecord,
+    *,
+    action_log_path: Path,
+    supervisor_log_path: Optional[Path] = None,
+) -> EpisodeSummary:
+    """Thin adapter: EpisodeRecord -> analyze_episode call.
+
+    Validates presence of required fields on the record and invokes
+    analyze_episode with those values. This is above-the-seam and read-only.
+    """
+    if record is None:
+        raise ValueError("EpisodeRecord is required")
+    # Validate required fields
+    rid = getattr(record, "run_id", None)
+    eid = getattr(record, "episode_id", None)
+    eidx = getattr(record, "episode_index", None)
+    spd = getattr(record, "steps_per_day", None)
+    ndays = getattr(record, "days", None)
+    if not rid or not eid:
+        raise ValueError("EpisodeRecord missing run_id or episode_id")
+    if eidx is None:
+        eidx = 0
+    if not isinstance(spd, int) or not isinstance(ndays, int):
+        raise ValueError("EpisodeRecord missing steps_per_day or days")
+
+    return analyze_episode(
+        action_log_path=action_log_path,
+        supervisor_log_path=supervisor_log_path,
+        steps_per_day=int(spd),
+        days=int(ndays),
+        episode_id=str(eid),
+        run_id=str(rid),
+        episode_index=int(eidx),
+    )
 
 
 def episode_summary_to_dict(summary: EpisodeSummary) -> dict:

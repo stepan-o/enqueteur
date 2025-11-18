@@ -21,7 +21,7 @@ Notes:
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import json
 
 REGISTRY_FILENAME = "loopforge_run_registry.jsonl"
@@ -114,6 +114,29 @@ def load_registry(base_dir: Path | None = None) -> List[EpisodeRecord]:
     except Exception:
         return out
     return out
+
+
+def find_episode_record(run_id: str, episode_index: int = 0, *, base_dir: Path | None = None) -> Optional[EpisodeRecord]:
+    """Return the latest EpisodeRecord matching (run_id, episode_index).
+
+    Since the registry is append-only, we pick the last match to reflect the
+    most recent recording for that identity pair.
+    """
+    rows = load_registry(base_dir=base_dir)
+    match: Optional[EpisodeRecord] = None
+    for r in rows:
+        try:
+            if r.run_id == run_id and int(getattr(r, "episode_index", 0) or 0) == int(episode_index):
+                match = r
+        except Exception:
+            continue
+    return match
+
+
+def latest_episode_record(*, base_dir: Path | None = None) -> Optional[EpisodeRecord]:
+    """Return the most recently appended EpisodeRecord, or None if empty."""
+    rows = load_registry(base_dir=base_dir)
+    return rows[-1] if rows else None
 
 
 def utc_now_iso() -> str:

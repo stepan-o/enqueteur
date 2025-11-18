@@ -20,12 +20,67 @@ from loopforge.reporting import summarize_episode, EpisodeSummary, AgentEpisodeS
 from loopforge.reporting import AgentDayStats
 from loopforge.types import ActionLogEntry
 from loopforge.supervisor_activity import compute_supervisor_activity
-from loopforge.analysis_api import analyze_episode, episode_summary_to_dict
+from loopforge.analysis_api import analyze_episode, episode_summary_to_dict, analyze_episode_from_record
 from pathlib import Path
 from collections import Counter, defaultdict
-from typing import Optional, Dict
+from typing import Optional, Dict, Optional as _Optional
 
 app = typer.Typer(add_completion=False, help="Run the Loopforge City simulation loop")
+
+
+# ---------------- Shared Printers ----------------
+
+def _print_episode_recap(episode: EpisodeSummary) -> None:
+    try:
+        from loopforge.episode_recaps import build_episode_recap
+        from loopforge.characters import CHARACTERS
+    except Exception:
+        build_episode_recap = None
+        CHARACTERS = {}
+    if build_episode_recap is None:
+        return
+    recap_obj = build_episode_recap(episode, episode.days, CHARACTERS)
+    typer.echo("\nEPISODE RECAP")
+    typer.echo("=" * 30)
+    typer.echo(recap_obj.intro)
+    # Deterministic ordering of agents
+    for name in sorted(recap_obj.per_agent_blurbs.keys()):
+        typer.echo(f"- {name}: {recap_obj.per_agent_blurbs[name]}")
+    typer.echo(recap_obj.closing)
+    # STORY ARC
+    if getattr(recap_obj, "story_arc_lines", None):
+        typer.echo("\nSTORY ARC")
+        typer.echo("-" * 30)
+        for line in recap_obj.story_arc_lines:  # type: ignore[union-attr]
+            typer.echo(line)
+    # WORLD PULSE — after STORY ARC and before ARC COHESION
+    if getattr(recap_obj, "world_pulse_lines", None):
+        typer.echo("\nWORLD PULSE")
+        typer.echo("-" * 30)
+        for line in recap_obj.world_pulse_lines:  # type: ignore[union-attr]
+            typer.echo(line)
+    # ARC COHESION
+    if getattr(recap_obj, "arc_cohesion", None):
+        typer.echo("\nARC COHESION")
+        typer.echo("-" * 30)
+        typer.echo(str(recap_obj.arc_cohesion))
+    # MEMORY LINE
+    if getattr(recap_obj, "memory_line", None):
+        typer.echo("\nMEMORY LINE")
+        typer.echo("-" * 30)
+        typer.echo(str(recap_obj.memory_line))
+    # MEMORY DRIFT
+    if getattr(recap_obj, "memory_lines", None):
+        typer.echo("\nMEMORY DRIFT")
+        typer.echo("-" * 30)
+        for line in recap_obj.memory_lines:  # type: ignore[union-attr]
+            typer.echo(line)
+    # PRESSURE NOTES
+    if getattr(recap_obj, "pressure_lines", None):
+        typer.echo("\nPRESSURE NOTES")
+        typer.echo("-" * 30)
+        for line in recap_obj.pressure_lines:  # type: ignore[union-attr]
+            typer.echo(line)
 
 
 # Allow invoking the module without an explicit subcommand, e.g.:
@@ -270,55 +325,7 @@ def view_episode(
     _print_episode_summary(episode)
 
     if recap:
-        try:
-            from loopforge.episode_recaps import build_episode_recap
-            from loopforge.characters import CHARACTERS
-        except Exception:
-            build_episode_recap = None
-            CHARACTERS = {}
-        if build_episode_recap is not None:
-            recap_obj = build_episode_recap(episode, episode.days, CHARACTERS)
-            typer.echo("\nEPISODE RECAP")
-            typer.echo("=" * 30)
-            typer.echo(recap_obj.intro)
-            # Deterministic ordering of agents
-            for name in sorted(recap_obj.per_agent_blurbs.keys()):
-                typer.echo(f"- {name}: {recap_obj.per_agent_blurbs[name]}")
-            typer.echo(recap_obj.closing)
-            # Sprint 8: optional STORY ARC block
-            if getattr(recap_obj, "story_arc_lines", None):
-                typer.echo("\nSTORY ARC")
-                typer.echo("-" * 30)
-                for line in recap_obj.story_arc_lines:  # type: ignore[union-attr]
-                    typer.echo(line)
-            # WORLD PULSE block — after STORY ARC and before ARC COHESION
-            if getattr(recap_obj, "world_pulse_lines", None):
-                typer.echo("\nWORLD PULSE")
-                typer.echo("-" * 30)
-                for line in recap_obj.world_pulse_lines:  # type: ignore[union-attr]
-                    typer.echo(line)
-            # Sprint 12: ARC COHESION note — after STORY ARC, before PRESSURE NOTES
-            if getattr(recap_obj, "arc_cohesion", None):
-                typer.echo("\nARC COHESION")
-                typer.echo("-" * 30)
-                typer.echo(str(recap_obj.arc_cohesion))
-            # Sprint 13: MEMORY LINE — must appear after ARC COHESION and before PRESSURE NOTES
-            if getattr(recap_obj, "memory_line", None):
-                typer.echo("\nMEMORY LINE")
-                typer.echo("-" * 30)
-                typer.echo(str(recap_obj.memory_line))
-            # Sprint 10: optional MEMORY DRIFT block
-            if getattr(recap_obj, "memory_lines", None):
-                typer.echo("\nMEMORY DRIFT")
-                typer.echo("-" * 30)
-                for line in recap_obj.memory_lines:  # type: ignore[union-attr]
-                    typer.echo(line)
-            # Sprint 11: optional PRESSURE NOTES block
-            if getattr(recap_obj, "pressure_lines", None):
-                typer.echo("\nPRESSURE NOTES")
-                typer.echo("-" * 30)
-                for line in recap_obj.pressure_lines:  # type: ignore[union-attr]
-                    typer.echo(line)
+        _print_episode_recap(episode)
 
     if narrative:
         from loopforge.narrative_viewer import build_day_narrative
@@ -617,6 +624,60 @@ def list_runs(
             f"created_at={created}"
         )
         typer.echo(line)
+
+
+@app.command("replay-episode")
+def replay_episode(
+    run_id: str | None = typer.Option(None, "--run-id", help="Run ID to replay (ignored if --latest)."),
+    episode_index: int = typer.Option(0, "--episode-index", help="Episode index within the run."),
+    latest: bool = typer.Option(False, "--latest", help="Replay the latest recorded episode."),
+    recap: bool = typer.Option(False, "--recap", help="Print an episode-level recap."),
+    action_log_path: Path = typer.Option(Path("logs/loopforge_actions.jsonl"), help="Path to JSONL action log"),
+    supervisor_log_path: Path | None = typer.Option(None, help="Path to supervisor JSONL (optional)"),
+    registry_base: Path | None = None,
+) -> None:
+    """Replay a recorded episode from the registry without running the sim.
+
+    - Selects an EpisodeRecord via --latest or (--run-id, --episode-index).
+    - Loads action/supervisor logs and analyzes strictly by (run_id, episode_id).
+    - Prints a recap when --recap is supplied; otherwise prints numeric summary.
+    """
+    try:
+        from loopforge.run_registry import latest_episode_record, find_episode_record
+    except Exception as e:
+        typer.echo(f"Registry unavailable: {e}")
+        raise typer.Exit(code=1)
+
+    record = None
+    if latest:
+        record = latest_episode_record(base_dir=registry_base)
+        if record is None:
+            typer.echo("No records found in registry.")
+            raise typer.Exit(code=1)
+    else:
+        if not run_id:
+            typer.echo("Missing required --run-id (or use --latest).")
+            raise typer.Exit(code=1)
+        record = find_episode_record(run_id, episode_index=episode_index, base_dir=registry_base)
+        if record is None:
+            typer.echo(f"No registry entry found for run_id={run_id} episode_index={episode_index}.")
+            raise typer.Exit(code=1)
+
+    # Analyze using the adapter (strict ID rules inside)
+    try:
+        episode = analyze_episode_from_record(
+            record,
+            action_log_path=action_log_path,
+            supervisor_log_path=supervisor_log_path,
+        )
+    except Exception as e:
+        typer.echo(f"Failed to analyze episode: {e}")
+        raise typer.Exit(code=1)
+
+    # Print summary and optional recap to mirror view-episode
+    _print_episode_summary(episode)
+    if recap:
+        _print_episode_recap(episode)
 
 
 if __name__ == "__main__":
