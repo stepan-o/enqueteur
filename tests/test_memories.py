@@ -3,7 +3,6 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
-from loopforge.simulation import run_simulation
 from loopforge import models as m
 
 
@@ -23,6 +22,9 @@ def _setup_sqlite_bind(monkeypatch, engine):
     TestSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False, future=True)
     monkeypatch.setattr(db, "SessionLocal", TestSessionLocal, raising=True)
 
+    # Optional: debug to confirm test-side engine
+    print("TEST DB engine:", engine)
+
     # Create schema directly
     models.Base.metadata.create_all(engine)
 
@@ -34,6 +36,9 @@ def test_memory_contains_narrative_suffix(tmp_path, monkeypatch):
     # Ensure LLM disabled (deterministic path that adds narrative via plan)
     import loopforge.llm_stub as stub
     monkeypatch.setattr(stub, "USE_LLM_POLICY", False, raising=True)
+
+    # Import AFTER monkeypatch so simulation sees the patched DB layer
+    from loopforge.simulation import run_simulation
 
     # Run a short DB-backed simulation
     run_simulation(num_steps=2, persist_to_db=True)
