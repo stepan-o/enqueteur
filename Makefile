@@ -17,6 +17,8 @@ ALEMBIC := $(UV) run alembic
 DC := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || (command -v docker-compose >/dev/null 2>&1 && echo docker-compose || echo docker-compose))
 CZ := $(UV) run cz
 PRECOMMIT := $(UV) run pre-commit
+# Default DB for tests; can be overridden on the command line
+TEST_DATABASE_URL ?= sqlite:///./loopforge_test.db
 
 help:
 	@echo "Loopforge City - common commands"
@@ -104,7 +106,7 @@ docker-logs:
 .PHONY: test
 # Tests
 test:
-	$(UV) run pytest
+	DATABASE_URL=$(TEST_DATABASE_URL) $(UV) run pytest
 
 # Dev cockpit: summarize one day from logs
 run-day:
