@@ -101,6 +101,7 @@ docker-down:
 docker-logs:
 	$(DC) logs -f --tail=200
 
+.PHONY: test
 # Tests
 test:
 	$(UV) run pytest
