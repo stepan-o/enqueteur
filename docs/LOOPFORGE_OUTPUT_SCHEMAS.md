@@ -1,3 +1,17 @@
+# CARTOGRAPHER OUTPUT SCHEMAS
+Agent invocation script prompt for CARTOGRAPHER:
+
+```
+Cartographer, run extraction.
+
+Please scan the repository and produce an updated ARCHITECTURE_SUMMARY.
+Here is the previous summary (if available):
+
+<PASTE PREVIOUS SUMMARY HERE OR WRITE: none>
+
+Follow the schemas strictly.
+```
+
 # Schema 1 — ARCHITECTURE_SUMMARY
 
 Used by: CARTOGRAPHER (provides briefs each eng cycle to LLM-Architect)
