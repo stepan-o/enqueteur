@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 
-from loopforge.types import ActionLogEntry, AgentReflection
+from loopforge.schema.types import ActionLogEntry, AgentReflection
 from loopforge.logging_utils import JsonlReflectionLogger
 from loopforge.config import get_perception_mode
 

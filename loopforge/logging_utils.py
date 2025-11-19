@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Optional, Iterable, List
 
-from loopforge.types import (
+from loopforge.schema.types import (
     ActionLogEntry,
     AgentPerception,
     AgentActionPlan,

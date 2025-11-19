@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Any
 
-from loopforge.types import AgentReflection, SupervisorMessage
+from loopforge.schema.types import AgentReflection, SupervisorMessage
 
 
 def build_supervisor_messages_for_day(

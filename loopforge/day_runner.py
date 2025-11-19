@@ -11,7 +11,7 @@ from loopforge.reflection import (
     run_daily_reflections_for_all_agents,
 )
 from loopforge.supervisor import build_supervisor_messages_for_day, set_supervisor_messages_on_env
-from loopforge.types import ActionLogEntry, AgentReflection, SupervisorMessage
+from loopforge.schema.types import ActionLogEntry, AgentReflection, SupervisorMessage
 from loopforge.reporting import DaySummary, summarize_day, AgentDayStats
 
 

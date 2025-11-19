@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, List
 
 # Import and re-expose shared types to keep imports stable for existing tests
-from loopforge.types import AgentPerception, AgentActionPlan
+from loopforge.schema.types import AgentPerception, AgentActionPlan
 from .perception_shaping import shape_perception
 from .supervisor_bias import infer_supervisor_intent
 
