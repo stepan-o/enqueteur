@@ -21,6 +21,7 @@ from .emotions import (
     traits_from_robot,
     apply_traits_to_robot,
 )
+from loopforge.db import get_engine
 from .environment import LoopforgeEnvironment, generate_environment_events
 from .models import ActionLog, EnvironmentEvent, Memory, Robot
 from .narrative import build_agent_perception
@@ -113,6 +114,7 @@ def run_simulation(
     settings = get_settings()
     if persist_to_db is None:
         persist_to_db = settings.persist_to_db
+    print("SIM DB engine:", get_engine())
 
     env = LoopforgeEnvironment()
     supervisor = SupervisorAgent()
