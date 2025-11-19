@@ -102,7 +102,7 @@ docker-logs:
 	$(DC) logs -f --tail=200
 
 # Tests
- test:
+test:
 	$(UV) run pytest
 
 # Dev cockpit: summarize one day from logs
