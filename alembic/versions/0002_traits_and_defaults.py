@@ -20,15 +20,18 @@ def upgrade() -> None:
     # Add traits_json column to robots
     op.add_column("robots", sa.Column("traits_json", sa.JSON(), nullable=True))
 
-    # Update server default for social_need from 0.5 to 0.3
-    # Note: existing rows will keep their current values; this affects new inserts only.
-    op.alter_column(
-        "robots",
-        "social_need",
-        existing_type=sa.Float(),
-        server_default=sa.text("0.3"),
-        existing_nullable=False,
-    )
+    # SQLite is used for fake-db test runs and does not accept this ALTER TABLE syntax (its fine for Postgres)
+    bind = op.get_bind()
+    if bind.dialect.name != "sqlite":
+        # Update server default for social_need from 0.5 to 0.3
+        # Note: existing rows will keep their current values; this affects new inserts only.
+        op.alter_column(
+            "robots",
+            "social_need",
+            existing_type=sa.Float(),
+            server_default=sa.text("0.3"),
+            existing_nullable=False,
+        )
 
 
 def downgrade() -> None:
