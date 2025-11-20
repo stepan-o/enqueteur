@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from loopforge.types import ActionLogEntry, AgentReflection
+from loopforge.schema.types import ActionLogEntry, AgentReflection
 from loopforge.emotions import Traits
 from loopforge.reflection import (
     summarize_agent_day,

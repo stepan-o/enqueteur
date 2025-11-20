@@ -5,7 +5,7 @@ from pathlib import Path
 
 from loopforge.core.day_runner import compute_day_summary
 from loopforge.reporting import summarize_day, DaySummary
-from loopforge.types import ActionLogEntry, AgentReflection
+from loopforge.schema.types import ActionLogEntry, AgentReflection
 
 
 def _mk_entry(step: int, name: str, role: str, mode: str, *, stress: float = 0.0, outcome: str | None = None):

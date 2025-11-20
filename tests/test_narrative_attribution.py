@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loopforge.reporting import DaySummary, AgentDayStats
 from loopforge.narrative_viewer import build_day_narrative
-from loopforge.types import BeliefAttribution
+from loopforge.schema.types import BeliefAttribution
 
 
 def test_narrative_includes_attribution_sentence():

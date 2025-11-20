@@ -3,7 +3,7 @@ import importlib
 from pathlib import Path
 from types import SimpleNamespace
 
-from loopforge.types import ActionLogEntry
+from loopforge.schema.types import ActionLogEntry
 from loopforge.core.logging_utils import JsonlReflectionLogger
 
 

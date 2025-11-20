@@ -6,7 +6,7 @@ from loopforge.reflection import (
     apply_reflection_to_traits,
     run_daily_reflection_for_agent,
 )
-from loopforge.types import ActionLogEntry
+from loopforge.schema.types import ActionLogEntry
 
 
 def _entry(step, name, mode="guardrail", outcome=None):

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from loopforge.supervisor import build_supervisor_messages_for_day, set_supervisor_messages_on_env
 from loopforge.narrative import build_agent_perception
 from loopforge.core.logging_utils import JsonlSupervisorLogger
-from loopforge.types import AgentReflection, SupervisorMessage
+from loopforge.schema.types import AgentReflection, SupervisorMessage
 
 
 def test_build_supervisor_messages_for_day_regretted_risk():

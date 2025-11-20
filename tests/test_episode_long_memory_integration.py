@@ -5,7 +5,7 @@ import json
 
 from loopforge.analysis_api import analyze_episode, episode_summary_to_dict
 from loopforge.reporting import EpisodeSummary
-from loopforge.types import ActionLogEntry
+from loopforge.schema.types import ActionLogEntry
 
 
 RUN_ID = "run-test-long-memory"

@@ -33,7 +33,7 @@ def test_supervisor_trust_decreases_when_active_and_stress_increases():
 
 def test_day_summary_contains_beliefs_per_agent():
     # Build two minimal entries to feed summarize_day; ensure beliefs dict is populated
-    from loopforge.types import ActionLogEntry
+    from loopforge.schema.types import ActionLogEntry
 
     entries = [
         ActionLogEntry(

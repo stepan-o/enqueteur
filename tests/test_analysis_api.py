@@ -5,7 +5,7 @@ import json
 
 from loopforge.analysis_api import analyze_episode
 from loopforge.reporting import EpisodeSummary
-from loopforge.types import ActionLogEntry
+from loopforge.schema.types import ActionLogEntry
 
 
 RUN_ID = "test-run-001"

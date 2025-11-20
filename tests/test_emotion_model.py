@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from loopforge.reporting import AgentDayStats
-from loopforge.types import AgentReflectionState, AgentEmotionState, BeliefAttribution
+from loopforge.schema.types import AgentReflectionState, AgentEmotionState, BeliefAttribution
 from loopforge.emotion_model import derive_emotion_state
 
 

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from loopforge.core.logging_utils import JsonlActionLogger, log_action_step, read_action_log_entries
-from loopforge.types import AgentPerception, AgentActionPlan
+from loopforge.schema.types import AgentPerception, AgentActionPlan
 
 
 def _mk_perception(step: int = 0, name: str = "Delta", role: str = "maintenance") -> AgentPerception:

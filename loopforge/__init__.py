@@ -3,7 +3,7 @@
 This package contains the core modules for the Loopforge City simulation.
 """
 
-from .types import AgentPerception, AgentActionPlan, AgentReflection  # re-export core types
+from loopforge.schema.types import AgentPerception, AgentActionPlan, AgentReflection  # re-export core types
 
 __all__ = [
     "config",

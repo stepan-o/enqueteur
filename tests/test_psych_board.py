@@ -9,7 +9,7 @@ from loopforge.psych_board import (
 )
 from loopforge.reporting import DaySummary
 from loopforge.reporting import AgentDayStats, EpisodeSummary
-from loopforge.types import BeliefAttribution, AgentEmotionState
+from loopforge.schema.types import BeliefAttribution, AgentEmotionState
 
 
 def _mk_stats(name: str, role: str = "qa", stress: float = 0.0, g: int = 0, c: int = 0) -> AgentDayStats:

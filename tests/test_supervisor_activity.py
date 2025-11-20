@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.supervisor_activity import compute_supervisor_activity
-from loopforge.types import ActionLogEntry
+from loopforge.schema.types import ActionLogEntry
 
 
 def _mk_entry(step: int = 0) -> ActionLogEntry:

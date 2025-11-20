@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.long_memory import update_long_memory_for_agent
-from loopforge.types import AgentLongMemory, EpisodeStoryArc
+from loopforge.schema.types import AgentLongMemory, EpisodeStoryArc
 
 
 def _prev(name: str = "Delta") -> AgentLongMemory:

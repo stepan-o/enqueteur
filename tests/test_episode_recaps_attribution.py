@@ -3,7 +3,7 @@ from __future__ import annotations
 from loopforge.reporting import EpisodeSummary, DaySummary, AgentEpisodeStats
 from loopforge.episode_recaps import build_episode_recap
 from loopforge.reporting import AgentDayStats
-from loopforge.types import BeliefAttribution
+from loopforge.schema.types import BeliefAttribution
 
 
 def _mk_day(idx: int, tension: float, name: str, role: str) -> DaySummary:

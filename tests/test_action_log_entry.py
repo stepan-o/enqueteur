@@ -1,4 +1,4 @@
-from loopforge.types import ActionLogEntry
+from loopforge.schema.types import ActionLogEntry
 
 
 def test_action_log_entry_to_dict_basic():

@@ -1,6 +1,6 @@
 import math
 
-from loopforge.types import AgentPerception, AgentActionPlan, AgentReflection
+from loopforge.schema.types import AgentPerception, AgentActionPlan, AgentReflection
 
 
 def test_agent_perception_roundtrip_dict():
@@ -76,7 +76,7 @@ def test_agent_reflection_roundtrip_dict():
     assert as_dict["tags"]["regretted_obedience"] is True
 
 
-from loopforge.types import AgentEmotionState, EpisodeStoryArc
+from loopforge.schema.types import AgentEmotionState, EpisodeStoryArc
 
 
 def test_agent_emotion_state_roundtrip():

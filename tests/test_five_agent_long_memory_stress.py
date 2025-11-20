@@ -8,10 +8,10 @@ from loopforge.reporting import (
     AgentDayStats,
     summarize_episode,
 )
-from loopforge.types import BeliefAttribution
+from loopforge.schema.types import BeliefAttribution
 from loopforge.episode_recaps import build_episode_recap
 from loopforge.analysis_api import episode_summary_to_dict
-from loopforge.types import AgentLongMemory
+from loopforge.schema.types import AgentLongMemory
 
 
 def _mk_day(

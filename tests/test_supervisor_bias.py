@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.supervisor_bias import infer_supervisor_intent
-from loopforge.types import SupervisorMessage
+from loopforge.schema.types import SupervisorMessage
 
 
 def _msg(intent: str) -> SupervisorMessage:

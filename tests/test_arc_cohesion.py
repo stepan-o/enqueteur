@@ -6,7 +6,7 @@ from loopforge.arc_cohesion import (
     build_arc_cohesion_line,
 )
 from loopforge.reporting import EpisodeSummary, AgentEpisodeStats, DaySummary, AgentDayStats
-from loopforge.types import EpisodeStoryArc
+from loopforge.schema.types import EpisodeStoryArc
 
 
 def _mk_day(idx: int, tension: float = 0.0) -> DaySummary:

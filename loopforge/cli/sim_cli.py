@@ -18,7 +18,7 @@ from loopforge.core.logging_utils import read_action_log_entries
 from loopforge.core.day_runner import run_one_day_with_supervisor, compute_day_summary
 from loopforge.reporting import summarize_episode, EpisodeSummary, AgentEpisodeStats, DaySummary
 from loopforge.reporting import AgentDayStats
-from loopforge.types import ActionLogEntry
+from loopforge.schema.types import ActionLogEntry
 from loopforge.supervisor_activity import compute_supervisor_activity
 from loopforge.analysis_api import analyze_episode, episode_summary_to_dict, analyze_episode_from_record
 from pathlib import Path
@@ -466,7 +466,7 @@ def view_episode(
     # Identity for this episode summary: prefer resolved IDs when available
     if run_id is None or episode_id is None:
         try:
-            from loopforge.ids import generate_run_id, generate_episode_id
+            from loopforge.core.ids import generate_run_id, generate_episode_id
             run_id = generate_run_id()
             episode_index = 0
             episode_id = generate_episode_id(run_id, episode_index)

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from loopforge.core.logging_utils import JsonlWeaveLogger
-from loopforge.types import EpisodeTensionSnapshot
+from loopforge.schema.types import EpisodeTensionSnapshot
 
 
 def test_jsonl_weave_logger_writes_snapshot(tmp_path: Path):

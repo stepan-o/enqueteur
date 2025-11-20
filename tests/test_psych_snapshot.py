@@ -1,6 +1,6 @@
 from loopforge.daily_logs import build_psych_snapshot_line, build_psych_snapshot_block
 from loopforge.reporting import DaySummary, AgentDayStats
-from loopforge.types import BeliefAttribution, AgentEmotionState
+from loopforge.schema.types import BeliefAttribution, AgentEmotionState
 
 
 def _mk_stats(name: str, role: str = "qa", stress: float = 0.0, g: int = 0, c: int = 0) -> AgentDayStats:

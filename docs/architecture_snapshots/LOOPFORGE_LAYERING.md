@@ -210,7 +210,7 @@ Replace old imports like:
 from loopforge import simulation
 from loopforge import emotions
 from loopforge import reporting
-from loopforge.types import AgentPerception
+from loopforge.schema.types import AgentPerception
 
 
 With:

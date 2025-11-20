@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import List, Dict
 
 from loopforge.reporting import DaySummary, AgentDayStats, EpisodeSummary
-from loopforge.types import BeliefAttribution, BeliefState, EpisodeStoryArc
+from loopforge.schema.types import BeliefAttribution, BeliefState, EpisodeStoryArc
 from loopforge.trait_drift import derive_trait_snapshot
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loopforge.types import ActionLogEntry, AgentReflection, ReflectionLogEntry
+from loopforge.schema.types import ActionLogEntry, AgentReflection, ReflectionLogEntry
 from loopforge.core.logging_utils import JsonlActionLogger, JsonlReflectionLogger
 
 

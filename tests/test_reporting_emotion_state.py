@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.reporting import summarize_day, DaySummary
-from loopforge.types import ActionLogEntry, AgentEmotionState
+from loopforge.schema.types import ActionLogEntry, AgentEmotionState
 
 
 def _mk_entry(step: int, name: str, role: str, mode: str, *, stress: float = 0.0):

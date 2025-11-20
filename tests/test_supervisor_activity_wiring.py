@@ -8,7 +8,7 @@ from loopforge.reporting import DaySummary, AgentDayStats
 
 def test_compute_day_summary_threads_supervisor_activity_into_reflection_state(tmp_path: Path):
     # Build a tiny JSONL action log for one day with one agent (no need to write supervisor logs)
-    from loopforge.types import ActionLogEntry
+    from loopforge.schema.types import ActionLogEntry
     import json
 
     actions_path = tmp_path / "actions.jsonl"

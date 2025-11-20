@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loopforge.reporting import DaySummary, AgentDayStats
 from loopforge.daily_logs import build_daily_log
-from loopforge.types import BeliefAttribution
+from loopforge.schema.types import BeliefAttribution
 
 
 def test_daily_log_includes_attribution_bullet():

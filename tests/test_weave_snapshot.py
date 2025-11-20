@@ -7,7 +7,7 @@ from loopforge.weave import (
     compute_episode_tension_snapshot,
     compute_all_episode_snapshots,
 )
-from loopforge.types import ActionLogEntry, AgentReflection, ReflectionLogEntry
+from loopforge.schema.types import ActionLogEntry, AgentReflection, ReflectionLogEntry
 
 
 def _action(step: int, name: str, mode: str, outcome: str | None, episode_index: int, day_index: int) -> ActionLogEntry:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.reporting import summarize_day, DaySummary, AgentDayStats
-from loopforge.types import ActionLogEntry
+from loopforge.schema.types import ActionLogEntry
 from loopforge.attribution import derive_belief_attribution
 
 

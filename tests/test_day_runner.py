@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from loopforge.core.day_runner import run_one_day
 from loopforge.reflection import filter_entries_for_day, run_daily_reflections_for_all_agents
 from loopforge.core.logging_utils import JsonlReflectionLogger
-from loopforge.types import ActionLogEntry
+from loopforge.schema.types import ActionLogEntry
 
 
 def test_filter_entries_for_day_basic():
