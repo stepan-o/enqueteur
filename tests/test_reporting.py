@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopforge.reporting import summarize_day, summarize_episode, DaySummary
+from loopforge.analytics.reporting import summarize_day, summarize_episode, DaySummary
 from loopforge.schema.types import ActionLogEntry, AgentReflection
 
 
@@ -48,7 +48,7 @@ def test_summarize_day_basic():
 
 def test_summarize_episode_aggregates():
     # Construct two day summaries by hand for one agent
-    from loopforge.reporting import AgentDayStats
+    from loopforge.analytics.reporting import AgentDayStats
 
     day0 = DaySummary(
         day_index=0,

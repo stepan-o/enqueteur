@@ -5,7 +5,7 @@ from loopforge.psych.arc_cohesion import (
     compute_arc_cohesion,
     build_arc_cohesion_line,
 )
-from loopforge.reporting import EpisodeSummary, AgentEpisodeStats, DaySummary, AgentDayStats
+from loopforge.analytics.reporting import EpisodeSummary, AgentEpisodeStats, DaySummary, AgentDayStats
 from loopforge.schema.types import EpisodeStoryArc
 
 

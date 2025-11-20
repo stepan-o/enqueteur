@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopforge.reporting import summarize_day, DaySummary, AgentDayStats
+from loopforge.analytics.reporting import summarize_day, DaySummary, AgentDayStats
 from loopforge.schema.types import ActionLogEntry
 
 

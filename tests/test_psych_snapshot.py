@@ -1,5 +1,5 @@
 from loopforge.narrative.daily_logs import build_psych_snapshot_line, build_psych_snapshot_block
-from loopforge.reporting import DaySummary, AgentDayStats
+from loopforge.analytics.reporting import DaySummary, AgentDayStats
 from loopforge.schema.types import BeliefAttribution, AgentEmotionState
 
 

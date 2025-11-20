@@ -5,7 +5,7 @@ import json
 
 from typer.testing import CliRunner
 
-from loopforge.reporting import DaySummary, AgentDayStats, EpisodeSummary
+from loopforge.analytics.reporting import DaySummary, AgentDayStats, EpisodeSummary
 from loopforge.narrative.explainer_context import build_episode_context, build_agent_focus_context
 from loopforge.narrative.explainer import explain_agent_episode
 from scripts.run_simulation import app as cli_app
@@ -119,7 +119,7 @@ def _mk_stats(name: str, role: str, g: int, c: int, s: float) -> AgentDayStats:
 def _mk_episode(tensions: list[float], agents_stats_by_day: list[dict[str, AgentDayStats]]) -> EpisodeSummary:
     days = [_mk_day(i, t, stats) for i, (t, stats) in enumerate(zip(tensions, agents_stats_by_day))]
     # Aggregate like summarize_episode would for AgentEpisodeStats via reporting.summarize_episode
-    from loopforge.reporting import summarize_episode
+    from loopforge.analytics.reporting import summarize_episode
     ep = summarize_episode(days)
     return ep
 

@@ -1,7 +1,7 @@
 import pytest
 
 from loopforge.psych.attribution import derive_belief_attribution
-from loopforge.reporting import AgentDayStats
+from loopforge.analytics.reporting import AgentDayStats
 
 
 def test_attribution_blames_supervisor_on_rising_stress_and_high_activity():

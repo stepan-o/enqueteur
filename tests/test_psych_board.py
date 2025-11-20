@@ -7,8 +7,8 @@ from loopforge.narrative.psych_board import (
     cell_code,
     build_psych_board,
 )
-from loopforge.reporting import DaySummary
-from loopforge.reporting import AgentDayStats, EpisodeSummary
+from loopforge.analytics.reporting import DaySummary
+from loopforge.analytics.reporting import AgentDayStats, EpisodeSummary
 from loopforge.schema.types import BeliefAttribution, AgentEmotionState
 
 

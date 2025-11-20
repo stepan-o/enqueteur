@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopforge.supervisor_activity import compute_supervisor_activity
+from loopforge.analytics.supervisor_activity import compute_supervisor_activity
 from loopforge.schema.types import ActionLogEntry
 
 

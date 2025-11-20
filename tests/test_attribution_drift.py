@@ -6,8 +6,8 @@ from typing import Dict
 
 import pytest
 
-from loopforge.reporting import DaySummary, AgentDayStats, EpisodeSummary, summarize_episode
-from loopforge.analysis_api import episode_summary_to_dict
+from loopforge.analytics.reporting import DaySummary, AgentDayStats, EpisodeSummary, summarize_episode
+from loopforge.analytics.analysis_api import episode_summary_to_dict
 
 
 def _mk_day(idx: int, agents: Dict[str, Dict], *, tension: float = 0.0, sup: float = 0.0,

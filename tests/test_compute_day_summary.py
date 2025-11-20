@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from loopforge.core.day_runner import compute_day_summary
-from loopforge.reporting import summarize_day, DaySummary
+from loopforge.analytics.reporting import summarize_day, DaySummary
 from loopforge.schema.types import ActionLogEntry, AgentReflection
 
 

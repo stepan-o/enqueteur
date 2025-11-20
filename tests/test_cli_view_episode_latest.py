@@ -6,7 +6,7 @@ import json
 from typer.testing import CliRunner
 
 from scripts.run_simulation import app
-from loopforge.run_registry import EpisodeRecord
+from loopforge.analytics.run_registry import EpisodeRecord
 
 runner = CliRunner()
 

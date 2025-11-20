@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 
 from loopforge.analysis_api import analyze_episode, episode_summary_to_dict
-from loopforge.reporting import EpisodeSummary
+from loopforge.analytics.reporting import EpisodeSummary
 from loopforge.schema.types import ActionLogEntry
 
 

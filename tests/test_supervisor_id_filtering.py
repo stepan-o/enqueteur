@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 import pytest
 
-from loopforge.analysis_api import analyze_episode
-from loopforge.supervisor_activity import compute_supervisor_activity
+from loopforge.analytics.analysis_api import analyze_episode
+from loopforge.analytics.supervisor_activity import compute_supervisor_activity
 
 
 RUN_A = "run-A"

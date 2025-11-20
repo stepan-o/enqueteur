@@ -7,7 +7,7 @@ from loopforge.narrative.pressure_notes import (
     summarize_traits,
     build_pressure_lines,
 )
-from loopforge.reporting import DaySummary, AgentDayStats, EpisodeSummary, AgentEpisodeStats
+from loopforge.analytics.reporting import DaySummary, AgentDayStats, EpisodeSummary, AgentEpisodeStats
 
 
 def _mk_day(agent_defs: Dict[str, dict], *, day_index: int = 0, tension: float = 0.0, supervisor_activity: float = 0.0) -> DaySummary:

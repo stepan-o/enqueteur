@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import List
 
-from loopforge.run_registry import (
+from loopforge.analytics.run_registry import (
     EpisodeRecord,
     append_episode_record,
     load_registry,

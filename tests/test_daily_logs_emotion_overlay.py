@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopforge.reporting import DaySummary, AgentDayStats
+from loopforge.analytics.reporting import DaySummary, AgentDayStats
 from loopforge.schema.types import AgentEmotionState
 from loopforge.narrative.daily_logs import build_daily_log
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Dict
 
-from loopforge.reporting import DaySummary, AgentDayStats, EpisodeSummary
+from loopforge.analytics.reporting import DaySummary, AgentDayStats, EpisodeSummary
 from loopforge.narrative.llm_lens import (
     LLMPerceptionLensInput,
     LLMPerceptionLensOutput,
@@ -32,7 +32,7 @@ def _mk_stats(name: str, role: str, g: int, c: int, s: float) -> AgentDayStats:
 
 def _mk_episode(tensions: list[float], agents_stats_by_day: list[dict[str, AgentDayStats]]) -> EpisodeSummary:
     days = [_mk_day(i, t, stats) for i, (t, stats) in enumerate(zip(tensions, agents_stats_by_day))]
-    from loopforge.reporting import summarize_episode
+    from loopforge.analytics.reporting import summarize_episode
     return summarize_episode(days)
 
 

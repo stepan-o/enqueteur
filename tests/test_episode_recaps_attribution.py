@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from loopforge.reporting import EpisodeSummary, DaySummary, AgentEpisodeStats
+from loopforge.analytics.reporting import EpisodeSummary, DaySummary, AgentEpisodeStats
 from loopforge.narrative.episode_recaps import build_episode_recap
-from loopforge.reporting import AgentDayStats
+from loopforge.analytics.reporting import AgentDayStats
 from loopforge.schema.types import BeliefAttribution
 
 

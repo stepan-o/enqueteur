@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loopforge.reporting import EpisodeSummary, DaySummary, AgentEpisodeStats
+from loopforge.analytics.reporting import EpisodeSummary, DaySummary, AgentEpisodeStats
 from loopforge.narrative.episode_recaps import build_episode_recap
-from loopforge.analysis_api import episode_summary_to_dict
+from loopforge.analytics.analysis_api import episode_summary_to_dict
 
 
 def _mk_day(idx: int, tension: float) -> DaySummary:
-    from loopforge.reporting import AgentDayStats
+    from loopforge.analytics.reporting import AgentDayStats
     return DaySummary(day_index=idx, perception_mode="accurate", tension_score=tension, agent_stats={}, total_incidents=0)
 
 

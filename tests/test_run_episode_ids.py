@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from loopforge.reporting import DaySummary, AgentDayStats, summarize_episode, EpisodeSummary
-from loopforge.analysis_api import episode_summary_to_dict
+from loopforge.analytics.reporting import DaySummary, AgentDayStats, summarize_episode, EpisodeSummary
+from loopforge.analytics.analysis_api import episode_summary_to_dict
 
 
 def _mk_day(idx: int, tension: float = 0.0) -> DaySummary:

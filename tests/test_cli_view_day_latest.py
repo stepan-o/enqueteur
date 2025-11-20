@@ -7,7 +7,7 @@ import typer
 from typer.testing import CliRunner
 
 from scripts.run_simulation import app
-from loopforge.run_registry import EpisodeRecord, append_episode_record, registry_path
+from loopforge.analytics.run_registry import EpisodeRecord, append_episode_record, registry_path
 
 runner = CliRunner()
 

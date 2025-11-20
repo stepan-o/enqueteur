@@ -16,11 +16,11 @@ from loopforge.core.simulation import run_simulation
 from loopforge.core.config import get_settings
 from loopforge.core.logging_utils import read_action_log_entries
 from loopforge.core.day_runner import run_one_day_with_supervisor, compute_day_summary
-from loopforge.reporting import summarize_episode, EpisodeSummary, AgentEpisodeStats, DaySummary
-from loopforge.reporting import AgentDayStats
+from loopforge.analytics.reporting import summarize_episode, EpisodeSummary, AgentEpisodeStats, DaySummary
+from loopforge.analytics.reporting import AgentDayStats
 from loopforge.schema.types import ActionLogEntry
-from loopforge.supervisor_activity import compute_supervisor_activity
-from loopforge.analysis_api import analyze_episode, episode_summary_to_dict, analyze_episode_from_record
+from loopforge.analytics.supervisor_activity import compute_supervisor_activity
+from loopforge.analytics.analysis_api import analyze_episode, episode_summary_to_dict, analyze_episode_from_record
 from pathlib import Path
 from collections import Counter, defaultdict
 from typing import Optional, Dict, Optional as _Optional
@@ -486,7 +486,7 @@ def view_episode(
 
     # Append episode metadata to the append-only Run & Episode Registry (fail-soft)
     try:
-        from loopforge.run_registry import EpisodeRecord, append_episode_record, utc_now_iso
+        from loopforge.analytics.run_registry import EpisodeRecord, append_episode_record, utc_now_iso
         record = EpisodeRecord(
             run_id=str(getattr(episode, "run_id", run_id) or run_id),
             episode_id=str(getattr(episode, "episode_id", episode_id) or episode_id),
@@ -789,7 +789,7 @@ def list_runs(
     - When `registry_base` is provided (tests), the registry file is resolved under that directory.
     """
     try:
-        from loopforge.run_registry import load_registry
+        from loopforge.analytics.run_registry import load_registry
     except Exception as e:
         typer.echo(f"Registry unavailable: {e}")
         raise typer.Exit(code=1)
@@ -837,7 +837,7 @@ def replay_episode(
     - Prints a recap when --recap is supplied; otherwise prints numeric summary.
     """
     try:
-        from loopforge.run_registry import latest_episode_record, find_episode_record
+        from loopforge.analytics.run_registry import latest_episode_record, find_episode_record
     except Exception as e:
         typer.echo(f"Registry unavailable: {e}")
         raise typer.Exit(code=1)

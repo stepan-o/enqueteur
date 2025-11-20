@@ -3,14 +3,14 @@ from __future__ import annotations
 import json
 from typing import Dict, List
 
-from loopforge.reporting import (
+from loopforge.analytics.reporting import (
     DaySummary,
     AgentDayStats,
     summarize_episode,
 )
 from loopforge.schema.types import BeliefAttribution
 from loopforge.narrative.episode_recaps import build_episode_recap
-from loopforge.analysis_api import episode_summary_to_dict
+from loopforge.analytics.analysis_api import episode_summary_to_dict
 from loopforge.schema.types import AgentLongMemory
 
 

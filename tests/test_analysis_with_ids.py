@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import pytest
 
-from loopforge.analysis_api import analyze_episode
+from loopforge.analytics.analysis_api import analyze_episode
 
 
 def _mk_line(step: int, name: str, role: str, mode: str, *, run_id: str, episode_id: str) -> dict:

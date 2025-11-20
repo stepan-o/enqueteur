@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from loopforge.core.day_runner import compute_day_summary
-from loopforge.reporting import DaySummary, AgentDayStats
+from loopforge.analytics.reporting import DaySummary, AgentDayStats
 
 
 def test_compute_day_summary_threads_supervisor_activity_into_reflection_state(tmp_path: Path):

@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loopforge.analysis_api import analyze_episode_from_record
-from loopforge.run_registry import EpisodeRecord, append_episode_record, registry_path
+from loopforge.analytics.analysis_api import analyze_episode_from_record
+from loopforge.analytics.run_registry import EpisodeRecord, append_episode_record, registry_path
 
 
 RUN_ID = "r2-run"
@@ -52,7 +52,7 @@ def test_analyze_episode_from_record_round_trip(tmp_path: Path):
 
     ep = analyze_episode_from_record(rec, action_log_path=actions_path, supervisor_log_path=None)
 
-    from loopforge.reporting import EpisodeSummary
+    from loopforge.analytics.reporting import EpisodeSummary
     assert isinstance(ep, EpisodeSummary)
     assert getattr(ep, "run_id", None) == RUN_ID
     assert getattr(ep, "episode_id", None) == EPISODE_ID

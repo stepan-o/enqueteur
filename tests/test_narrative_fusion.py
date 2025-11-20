@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from loopforge.narrative.narrative_fusion import build_day_narrative_kernel, DayNarrativeKernel
-from loopforge.reporting import DaySummary, AgentDayStats
+from loopforge.analytics.reporting import DaySummary, AgentDayStats
 
 
 def _mk_day(

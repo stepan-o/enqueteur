@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.narrative.narrative_reflection import derive_reflection_state
-from loopforge.reporting import AgentDayStats
+from loopforge.analytics.reporting import AgentDayStats
 
 
 def test_reflection_state_trend_rising_falling_flat_unknown():

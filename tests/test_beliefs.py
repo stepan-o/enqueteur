@@ -4,7 +4,7 @@ import math
 from typing import Optional
 
 from loopforge.psych.beliefs import derive_belief_state
-from loopforge.reporting import AgentDayStats, DaySummary, summarize_day
+from loopforge.analytics.reporting import AgentDayStats, DaySummary, summarize_day
 
 
 def _mk_stats(name: str, role: str, g: int, c: int, s: float, incidents: int = 0) -> AgentDayStats:
