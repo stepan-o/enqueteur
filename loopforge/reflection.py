@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 
 from loopforge.schema.types import ActionLogEntry, AgentReflection
-from loopforge.logging_utils import JsonlReflectionLogger
-from loopforge.config import get_perception_mode
+from loopforge.core.logging_utils import JsonlReflectionLogger
+from loopforge.core.config import get_perception_mode
 
 
 def filter_entries_for_day(
@@ -128,7 +128,7 @@ def apply_reflection_to_traits(target: Any, reflection: AgentReflection):
 
     Deltas are small (±0.05) and clamped to [0,1].
     """
-    from loopforge.emotions import Traits  # local import to avoid cycles
+    from loopforge.psych.emotions import Traits  # local import to avoid cycles
 
     def _nudge_traits(tr: Traits) -> Traits:
         new_traits = Traits(

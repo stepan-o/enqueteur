@@ -8,8 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
-from loopforge.emotions import EmotionState, Traits
-from loopforge.llm_stub import decide_robot_action, decide_supervisor_action
+from loopforge.psych.emotions import EmotionState, Traits
+from loopforge.llm.llm_stub import decide_robot_action, decide_supervisor_action
 
 
 @dataclass

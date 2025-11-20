@@ -21,7 +21,7 @@ Notes:
 """
 from typing import Dict, Optional, List
 
-from loopforge.reporting import EpisodeSummary
+from loopforge.analytics.reporting import EpisodeSummary
 
 
 def _clamp01(x: float) -> float:

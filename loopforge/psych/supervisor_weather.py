@@ -20,7 +20,7 @@ from typing import List, Dict, Optional, Tuple
 
 # Local imports are type-only to avoid import cycles at module import time.
 # Concrete types are only used for annotations and runtime attributes access.
-from loopforge.reporting import EpisodeSummary, DaySummary, AgentDayStats
+from loopforge.analytics.reporting import EpisodeSummary, DaySummary, AgentDayStats
 
 
 # ------------------------ Data classes ------------------------

@@ -8,7 +8,7 @@ Deterministic episode-level Story Arc engine (Sprint 8, EA-II)
 from typing import List, Dict, Optional
 
 from loopforge.schema.types import EpisodeStoryArc
-from loopforge.reporting import EpisodeSummary, DaySummary, AgentDayStats
+from loopforge.analytics.reporting import EpisodeSummary, DaySummary, AgentDayStats
 
 
 def _mean(xs: List[float]) -> float:

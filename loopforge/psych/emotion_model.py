@@ -9,7 +9,7 @@ from typing import Optional, TYPE_CHECKING, Any
 
 # Avoid circular import at runtime: only import types for typing
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from loopforge.reporting import AgentDayStats
+    from loopforge.analytics.reporting import AgentDayStats
 from loopforge.schema.types import AgentReflectionState, AgentEmotionState
 from loopforge.attribution import BeliefAttribution
 

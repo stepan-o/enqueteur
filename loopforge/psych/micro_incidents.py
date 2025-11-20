@@ -22,7 +22,7 @@ from typing import List, Dict, Optional
 import hashlib
 import random
 
-from loopforge.reporting import EpisodeSummary, DaySummary, AgentDayStats
+from loopforge.analytics.reporting import EpisodeSummary, DaySummary, AgentDayStats
 
 
 # Canonical incident/type enums for this sprint

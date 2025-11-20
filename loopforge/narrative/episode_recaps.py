@@ -12,7 +12,7 @@ Constraints:
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Mapping, Any
 
-from loopforge.reporting import EpisodeSummary, DaySummary, AgentEpisodeStats
+from loopforge.analytics.reporting import EpisodeSummary, DaySummary, AgentEpisodeStats
 
 
 @dataclass

@@ -24,7 +24,7 @@ Notes:
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
-from loopforge.reporting import DaySummary, AgentDayStats
+from loopforge.analytics.reporting import DaySummary, AgentDayStats
 
 # ---------------------- Tunable constants (deterministic) ---------------------
 

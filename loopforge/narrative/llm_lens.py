@@ -16,7 +16,7 @@ Constraints:
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional
 
-from loopforge.reporting import DaySummary, EpisodeSummary
+from loopforge.analytics.reporting import DaySummary, EpisodeSummary
 from loopforge.narrative.characters import CHARACTERS
 
 

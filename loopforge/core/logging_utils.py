@@ -13,7 +13,7 @@ from loopforge.schema.types import (
     SupervisorMessage,
     EpisodeTensionSnapshot,
 )
-from loopforge.ids import identity_dict
+from loopforge.core.ids import identity_dict
 
 
 class JsonlActionLogger:

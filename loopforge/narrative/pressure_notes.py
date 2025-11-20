@@ -17,7 +17,7 @@ Outputs:
 """
 from typing import List, Dict, Optional
 
-from loopforge.reporting import EpisodeSummary, DaySummary, AgentEpisodeStats
+from loopforge.analytics.reporting import EpisodeSummary, DaySummary, AgentEpisodeStats
 
 
 def _mean(values: List[float]) -> float:

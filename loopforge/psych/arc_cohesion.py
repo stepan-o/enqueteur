@@ -10,7 +10,7 @@ No randomness, no side effects. Read-only over EpisodeSummary.
 """
 from typing import Optional, List
 
-from loopforge.reporting import EpisodeSummary
+from loopforge.analytics.reporting import EpisodeSummary
 from loopforge.schema.types import EpisodeStoryArc
 
 

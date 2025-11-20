@@ -16,7 +16,7 @@ Public helpers:
 """
 from typing import List
 
-from loopforge.reporting import EpisodeSummary, DaySummary
+from loopforge.analytics.reporting import EpisodeSummary, DaySummary
 
 
 _DEF_EPS = 0.05

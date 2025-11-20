@@ -5,14 +5,14 @@ import os
 from pathlib import Path
 from typing import Any, List, Optional, Dict
 
-from loopforge.logging_utils import JsonlReflectionLogger, JsonlSupervisorLogger, read_action_log_entries
+from loopforge.core.logging_utils import JsonlReflectionLogger, JsonlSupervisorLogger, read_action_log_entries
 from loopforge.reflection import (
     filter_entries_for_day,
     run_daily_reflections_for_all_agents,
 )
 from loopforge.supervisor import build_supervisor_messages_for_day, set_supervisor_messages_on_env
 from loopforge.schema.types import ActionLogEntry, AgentReflection, SupervisorMessage
-from loopforge.reporting import DaySummary, summarize_day, AgentDayStats
+from loopforge.analytics.reporting import DaySummary, summarize_day, AgentDayStats
 
 
 def _read_action_log(path: Path) -> List[ActionLogEntry]:

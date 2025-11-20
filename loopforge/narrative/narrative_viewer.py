@@ -12,7 +12,7 @@ Constraints:
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 
-from loopforge.reporting import DaySummary, AgentDayStats
+from loopforge.analytics.reporting import DaySummary, AgentDayStats
 from loopforge.schema.types import BeliefState, AgentEmotionState, AgentReflectionState
 
 

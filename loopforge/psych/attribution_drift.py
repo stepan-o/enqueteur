@@ -20,7 +20,7 @@ Notes:
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from loopforge.reporting import EpisodeSummary, DaySummary, AgentDayStats
+from loopforge.analytics.reporting import EpisodeSummary, DaySummary, AgentDayStats
 
 ATTR_CAUSES: Tuple[str, str, str, str] = ("self", "system", "other_agent", "random")
 

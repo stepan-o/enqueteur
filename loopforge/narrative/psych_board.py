@@ -12,7 +12,7 @@ Episode-level Psychology Board renderer.
 """
 from typing import List, Dict, Set
 
-from loopforge.reporting import EpisodeSummary, DaySummary
+from loopforge.analytics.reporting import EpisodeSummary, DaySummary
 
 # Reuse the exact Sprint 1 thresholds by importing the daily log helper
 try:

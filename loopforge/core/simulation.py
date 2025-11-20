@@ -10,11 +10,11 @@ from typing import List, Tuple, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-# Use top-level shims to avoid deep relative imports while we transition layers
-from loopforge.agents import RobotAgent, SupervisorAgent, default_traits_for, default_triggers_for
-from loopforge.config import get_settings, get_action_log_path
+# Use canonical layered modules (no root shims)
+from loopforge.core.agents import RobotAgent, SupervisorAgent, default_traits_for, default_triggers_for
+from loopforge.core.config import get_settings, get_action_log_path
 from loopforge.db import session_scope, get_engine
-from loopforge.emotions import (
+from loopforge.psych.emotions import (
     EmotionState,
     update_emotions,
     emotion_from_robot,
@@ -22,14 +22,14 @@ from loopforge.emotions import (
     traits_from_robot,
     apply_traits_to_robot,
 )
-from loopforge.environment import LoopforgeEnvironment, generate_environment_events
-from loopforge.models import ActionLog, EnvironmentEvent, Memory, Robot
-from loopforge.narrative import build_agent_perception
+from loopforge.core.environment import LoopforgeEnvironment, generate_environment_events
+from loopforge.db.models import ActionLog, EnvironmentEvent, Memory, Robot
+from loopforge.narrative.narrative import build_agent_perception
 from loopforge.llm_stub import decide_robot_action_plan, decide_robot_action_plan_and_dict
 from pathlib import Path
-from loopforge.logging_utils import JsonlActionLogger, log_action_step
-from loopforge.ids import generate_run_id, generate_episode_id
-from loopforge import llm_stub
+from loopforge.core.logging_utils import JsonlActionLogger, log_action_step
+from loopforge.core.ids import generate_run_id, generate_episode_id
+from loopforge.llm import llm_stub
 
 
 INITIAL_ROBOTS: List[Tuple[str, str, dict]] = [

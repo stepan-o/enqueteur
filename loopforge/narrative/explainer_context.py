@@ -11,7 +11,7 @@ Constraints:
 
 from typing import Any, Dict, List, Mapping, Optional
 
-from loopforge.reporting import EpisodeSummary, DaySummary
+from loopforge.analytics.reporting import EpisodeSummary, DaySummary
 
 
 def _tension_direction(values: List[float], eps: float = 0.05) -> str:
