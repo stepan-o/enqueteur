@@ -124,21 +124,127 @@ def main(
 
 @app.command()
 def view_day(
+    run_id: Optional[str] = typer.Argument(
+        None,
+        help="Run ID (ignored when using --latest)",
+    ),
+    episode_id: Optional[str] = typer.Argument(
+        None,
+        help="Episode ID (ignored when using --latest)",
+    ),
+    day_index: Optional[int] = typer.Argument(
+        None,
+        help="Day index (0-based). When using --latest, this is the only positional arg.",
+    ),
+    latest: bool = typer.Option(
+        False,
+        "--latest",
+        help="Use the latest episode from the run registry and infer run_id/episode_id.",
+    ),
     action_log_path: Path = typer.Option(Path("logs/loopforge_actions.jsonl"), help="Path to JSONL action log"),
     reflection_log_path: Path | None = typer.Option(None, help="Where to write reflections JSONL (optional)"),
     supervisor_log_path: Path | None = typer.Option(None, help="Where to write supervisor JSONL (optional)"),
     steps_per_day: int = typer.Option(50, help="Number of steps per simulated day"),
-    day_index: int = typer.Option(0, help="Day index to summarize (0-based)"),
+    registry_base: Path | None = None,
 ) -> None:
-    """Summarize one day of Loopforge from JSONL logs.
-
-    Reads action entries, builds a minimal env + agent stubs, runs the day runner
-    with supervisor, and prints a compact report for devs.
     """
-    entries: list[ActionLogEntry] = read_action_log_entries(action_log_path)
+    View a day-level summary for a given run / episode / day.
+
+    With --latest:
+      - Automatically picks the latest episode from the registry
+      - 'day_index' is taken from the single positional argument (defaults to 0)
+    """
+    from loopforge import run_registry
+    from loopforge.logging_utils import read_action_log_entries_for_episode
+
+    import typer as _typer
+
+    # Branch 1: --latest path
+    if latest:
+        # Convenience: allow a single positional argument as day_index when using --latest
+        # Typer will bind it to run_id in our signature. If episode_id and day_index are None
+        # and run_id looks like an int, reinterpret it as day_index and clear run_id.
+        if run_id is not None and episode_id is None and day_index is None:
+            try:
+                maybe_idx = int(str(run_id))
+                day_index = maybe_idx
+                run_id = None
+            except Exception:
+                # leave as-is; will be caught by mix guard below
+                pass
+
+        # Disallow mixing explicit IDs with --latest for now (keeps UX predictable)
+        if run_id is not None or episode_id is not None:
+            raise _typer.BadParameter(
+                "Do not provide RUN_ID/EPISODE_ID when using --latest. Use either explicit IDs OR --latest."
+            )
+
+        # Resolve latest episode record
+        record = run_registry.latest_episode_record(base_dir=registry_base)
+        if record is None:
+            _typer.echo("No episodes found in the registry yet.", err=True)
+            raise _typer.Exit(code=1)
+
+        # Decide day index: use argument if provided, else default to 0
+        if day_index is None:
+            day_index_resolved = 0
+        else:
+            day_index_resolved = int(day_index)
+
+        # Validate day index against record.days
+        if getattr(record, "days", 0) <= 0:
+            _typer.echo(
+                f"Latest episode has 0 full days (run_id={record.run_id}, episode_id={record.episode_id}). "
+                "Run with more steps or use 'view-episode' instead.",
+                err=True,
+            )
+            raise _typer.Exit(code=1)
+
+        if not (0 <= day_index_resolved < int(getattr(record, "days", 0) or 0)):
+            _typer.echo(
+                f"Invalid day index {day_index_resolved} for latest episode (days={record.days}).",
+                err=True,
+            )
+            raise _typer.Exit(code=1)
+
+        # Override IDs with the latest record
+        run_id = record.run_id
+        episode_id = record.episode_id
+        day_index = day_index_resolved
+
+    # Branch 2: legacy / explicit IDs path (no --latest)
+    else:
+        # Enforce that all three are provided
+        if run_id is None or episode_id is None or day_index is None:
+            raise _typer.BadParameter(
+                "Usage: loopforge-sim view-day RUN_ID EPISODE_ID DAY_INDEX\n"
+                "Or:    loopforge-sim view-day --latest [DAY_INDEX]"
+            )
+
+    # At this point we have concrete run_id, episode_id, day_index
+    assert run_id is not None and episode_id is not None and day_index is not None
+
+    # Load entries limited strictly to this episode
+    try:
+        raw_entries = read_action_log_entries_for_episode(action_log_path, str(run_id), str(episode_id))
+    except Exception:
+        raw_entries = []
+
+    # If no entries found, fall back to reading all and continue (maintain fail-soft UX)
+    if not raw_entries:
+        entries: list[ActionLogEntry] = read_action_log_entries(action_log_path)
+    else:
+        # Convert to ActionLogEntry objects for uniform downstream handling
+        entries = []
+        for d in raw_entries:
+            try:
+                entries.append(ActionLogEntry.from_dict(d))
+            except Exception:
+                continue
+
     if not entries:
-        typer.echo(f"No action entries found at {action_log_path}")
-        raise typer.Exit(code=0)
+        _typer.echo(f"No action entries found at {action_log_path}")
+        raise _typer.Exit(code=0)
 
     # Build minimal env + agent stubs inferred from entries
     class _Env:
@@ -157,15 +263,15 @@ def view_day(
         env=env,
         agents=agents,
         steps_per_day=steps_per_day,
-        day_index=day_index,
+        day_index=int(day_index),
         action_log_path=action_log_path,
         reflection_log_path=reflection_log_path,
         supervisor_log_path=supervisor_log_path,
     )
 
     # Slice entries for this day for stats
-    start = day_index * steps_per_day
-    end = (day_index + 1) * steps_per_day
+    start = int(day_index) * steps_per_day
+    end = (int(day_index) + 1) * steps_per_day
     day_entries = [e for e in entries if start <= e.step < end]
 
     # Prepare aggregates
@@ -173,9 +279,9 @@ def view_day(
     for e in day_entries:
         by_agent[e.agent_name].append(e)
 
-    typer.echo(f"Day {day_index} — Summary")
-    typer.echo("=" * 25)
-    typer.echo("")
+    _typer.echo(f"Day {int(day_index)} — Summary")
+    _typer.echo("=" * 25)
+    _typer.echo("")
 
     for name in sorted(agent_roles.keys()):
         role = agent_roles[name]
@@ -194,9 +300,9 @@ def view_day(
         def _avg(vs: list[float]) -> float:
             return sum(vs) / len(vs) if vs else 0.0
         top3 = ", ".join(f"{k} ({v})" for k, v in intents.most_common(3)) or "(no intents)"
-        typer.echo(f"{name} ({role})")
-        typer.echo(f"- Intents: {top3}")
-        typer.echo(
+        _typer.echo(f"{name} ({role})")
+        _typer.echo(f"- Intents: {top3}")
+        _typer.echo(
             f"- Emotions: stress={_avg(stress_vals):.2f}, curiosity={_avg(curiosity_vals):.2f}, satisfaction={_avg(satisfaction_vals):.2f}"
         )
         # Best-effort reflection summary: take the last narrative for the agent on that day
@@ -205,12 +311,12 @@ def view_day(
             if e.narrative:
                 summary_line = e.narrative
                 break
-        typer.echo(f"- Reflection: \"{summary_line or '—'}\"")
-        typer.echo("")
+        _typer.echo(f"- Reflection: \"{summary_line or '—'}\"")
+        _typer.echo("")
 
-    typer.echo("Supervisor")
+    _typer.echo("Supervisor")
     sup_intents = ", ".join(f"\"{m.intent}\"" for m in messages) or "(none)"
-    typer.echo(f"- Messages: {sup_intents}")
+    _typer.echo(f"- Messages: {sup_intents}")
 
 
 @app.command()
