@@ -2,9 +2,9 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from loopforge.day_runner import run_one_day
+from loopforge.core.day_runner import run_one_day
 from loopforge.reflection import filter_entries_for_day, run_daily_reflections_for_all_agents
-from loopforge.logging_utils import JsonlReflectionLogger
+from loopforge.core.logging_utils import JsonlReflectionLogger
 from loopforge.types import ActionLogEntry
 
 
@@ -91,8 +91,8 @@ def test_run_one_day_reads_logs_and_runs_reflections(tmp_path: Path):
     env = DummyEnv()
     agents = [SimpleNamespace(name="A", role="maintenance", traits={}), SimpleNamespace(name="B", role="qa", traits={})]
 
-    from loopforge.day_runner import run_one_day
-    from loopforge.logging_utils import JsonlReflectionLogger
+    from loopforge.core.day_runner import run_one_day
+    from loopforge.core.logging_utils import JsonlReflectionLogger
 
     refl_log_path = tmp_path / "reflections.jsonl"
     reflections = run_one_day(

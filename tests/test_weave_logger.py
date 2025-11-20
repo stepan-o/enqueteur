@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loopforge.logging_utils import JsonlWeaveLogger
+from loopforge.core.logging_utils import JsonlWeaveLogger
 from loopforge.types import EpisodeTensionSnapshot
 
 

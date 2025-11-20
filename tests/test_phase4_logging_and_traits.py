@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-import loopforge.simulation as sim
+import loopforge.core.simulation as sim
 from loopforge.narrative import build_agent_perception
 from loopforge.emotions import EmotionState, Traits
 
@@ -38,7 +38,7 @@ def test_build_agent_perception_includes_guardrail_reliance():
 
 def test_jsonl_action_logging_writes_one_line_per_decision(tmp_path, monkeypatch):
     # Arrange: monkeypatch the JsonlActionLogger used within simulation
-    from loopforge import logging_utils
+    from loopforge.core import logging_utils
 
     log_file = tmp_path / "actions.jsonl"
 

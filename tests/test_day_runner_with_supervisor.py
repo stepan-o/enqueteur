@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
-from loopforge.day_runner import run_one_day_with_supervisor
+from loopforge.core.day_runner import run_one_day_with_supervisor
 
 
 def test_run_one_day_with_supervisor_writes_log_and_returns_messages(tmp_path: Path, monkeypatch):

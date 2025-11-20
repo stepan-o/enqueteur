@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from loopforge.types import ActionLogEntry, AgentReflection, ReflectionLogEntry
-from loopforge.logging_utils import JsonlActionLogger, JsonlReflectionLogger
+from loopforge.core.logging_utils import JsonlActionLogger, JsonlReflectionLogger
 
 
 def test_action_log_entry_roundtrip_with_episode_day(tmp_path: Path):

@@ -38,7 +38,7 @@ def test_memory_contains_narrative_suffix(tmp_path, monkeypatch):
     monkeypatch.setattr(stub, "USE_LLM_POLICY", False, raising=True)
 
     # Import AFTER monkeypatch so simulation sees the patched DB layer
-    from loopforge.simulation import run_simulation
+    from loopforge.core.simulation import run_simulation
 
     # Run a short DB-backed simulation
     run_simulation(num_steps=2, persist_to_db=True)

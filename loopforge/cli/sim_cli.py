@@ -12,10 +12,10 @@ import sys
 import json
 import typer
 
-from loopforge.simulation import run_simulation
-from loopforge.config import get_settings
-from loopforge.logging_utils import read_action_log_entries
-from loopforge.day_runner import run_one_day_with_supervisor, compute_day_summary
+from loopforge.core.simulation import run_simulation
+from loopforge.core.config import get_settings
+from loopforge.core.logging_utils import read_action_log_entries
+from loopforge.core.day_runner import run_one_day_with_supervisor, compute_day_summary
 from loopforge.reporting import summarize_episode, EpisodeSummary, AgentEpisodeStats, DaySummary
 from loopforge.reporting import AgentDayStats
 from loopforge.types import ActionLogEntry
@@ -155,7 +155,7 @@ def view_day(
       - 'day_index' is taken from the single positional argument (defaults to 0)
     """
     from loopforge import run_registry
-    from loopforge.logging_utils import read_action_log_entries_for_episode
+    from loopforge.core.logging_utils import read_action_log_entries_for_episode
 
     import typer as _typer
 

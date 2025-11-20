@@ -35,7 +35,7 @@ def test_run_simulation_nodb(monkeypatch):
     import loopforge.llm_stub as stub
     monkeypatch.setattr(stub, "USE_LLM_POLICY", False, raising=True)
 
-    from loopforge.simulation import run_simulation
+    from loopforge.core.simulation import run_simulation
 
     # Should complete without exceptions
     run_simulation(num_steps=3, persist_to_db=False)
@@ -49,7 +49,7 @@ def test_run_simulation_db_sqlite_llm_off(tmp_path, monkeypatch):
     import loopforge.llm_stub as stub
     monkeypatch.setattr(stub, "USE_LLM_POLICY", False, raising=True)
 
-    from loopforge.simulation import run_simulation
+    from loopforge.core.simulation import run_simulation
     from loopforge.db import SessionLocal
     from loopforge import models as m
 
@@ -87,7 +87,7 @@ def test_run_simulation_db_sqlite_llm_mocked(tmp_path, monkeypatch):
 
     monkeypatch.setattr(stub, "chat_json", lambda *a, **k: robot_resp(*a, **k) if "Robot state:" in a[1][0]["content"] else sup_resp(*a, **k))
 
-    from loopforge.simulation import run_simulation
+    from loopforge.core.simulation import run_simulation
     from loopforge.db import SessionLocal
     from loopforge import models as m
 

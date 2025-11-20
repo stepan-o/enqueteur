@@ -45,7 +45,7 @@ def _seed_robots(session: Session) -> None:
     for name, role, personality in INITIAL_ROBOTS:
         if name not in existing:
             # Seed with initial traits presets
-            from loopforge.agents import default_traits_for  # local import to avoid cycles
+            from loopforge.core.agents import default_traits_for  # local import to avoid cycles
             traits = default_traits_for(name)
             session.add(
                 Robot(

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from loopforge.day_runner import run_episode
+from loopforge.core.day_runner import run_episode
 
 
 def test_run_episode_writes_indices_in_reflection_and_supervisor(tmp_path: Path):

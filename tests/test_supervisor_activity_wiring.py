@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loopforge.day_runner import compute_day_summary
+from loopforge.core.day_runner import compute_day_summary
 from loopforge.reporting import DaySummary, AgentDayStats
 
 

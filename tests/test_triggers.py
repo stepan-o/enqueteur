@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopforge.agents import RobotAgent, default_triggers_for
+from loopforge.core.agents import RobotAgent, default_triggers_for
 from loopforge.emotions import EmotionState, Traits
 
 

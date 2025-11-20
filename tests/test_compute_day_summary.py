@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loopforge.day_runner import compute_day_summary
+from loopforge.core.day_runner import compute_day_summary
 from loopforge.reporting import summarize_day, DaySummary
 from loopforge.types import ActionLogEntry, AgentReflection
 

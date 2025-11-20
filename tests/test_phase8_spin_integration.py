@@ -3,8 +3,8 @@ from pathlib import Path
 from types import SimpleNamespace
 import importlib
 
-from loopforge.day_runner import run_one_day_with_supervisor
-from loopforge.logging_utils import JsonlReflectionLogger
+from loopforge.core.day_runner import run_one_day_with_supervisor
+from loopforge.core.logging_utils import JsonlReflectionLogger
 
 
 def test_integration_spin_mode_reflection_log_contains_mode(tmp_path, monkeypatch):

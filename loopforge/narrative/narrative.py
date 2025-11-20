@@ -10,8 +10,8 @@ from typing import Any, List
 
 # Import and re-expose shared types to keep imports stable for existing tests
 from loopforge.schema.types import AgentPerception, AgentActionPlan
-from loopforge.perception_shaping import shape_perception
-from loopforge.supervisor_bias import infer_supervisor_intent
+from loopforge.core.perception_shaping import shape_perception
+from loopforge.psych.supervisor_bias import infer_supervisor_intent
 
 __all__ = ["AgentPerception", "AgentActionPlan", "build_agent_perception"]
 

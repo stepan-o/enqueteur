@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from loopforge.types import ActionLogEntry
-from loopforge.logging_utils import JsonlReflectionLogger
+from loopforge.core.logging_utils import JsonlReflectionLogger
 
 
 def test_reflection_carries_perception_mode_and_logged(tmp_path, monkeypatch):

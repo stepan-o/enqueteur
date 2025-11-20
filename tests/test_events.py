@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
-from loopforge.environment import LoopforgeEnvironment, generate_environment_events
+from loopforge.core.environment import LoopforgeEnvironment, generate_environment_events
 from loopforge import models as m
 
 
