@@ -1,198 +1,97 @@
-Loopforge Architecture Migration Snapshot
+Sprint 3 — Psych Layer Migration (Part 1: Foundations)
 
-Status: Up to Date (Post Sprint 2B.2)
-Scope: Reflects all migrations completed so far
+Architect: Gantry
+Implementation Agent: Junie
+Status: ✅ Complete
 
-This document captures the current state of Loopforge’s ongoing architecture migration, tracking which modules have been moved into the new layered structure and which remain in legacy locations.
-It exists to support future Architects, Cartographer snapshots, and to ensure that the migration continues smoothly and deterministically.
+1. Executive Summary
 
-1. Purpose of the Migration
+Sprint 3 focused on migrating the foundational psychological model modules into the new layered architecture, while preserving 100% backward compatibility through shims. The work included moving all core psych primitives—emotions, emotion models, and belief structures—into loopforge.psych.*, then repairing any API mismatches to ensure legacy imports remain fully functional.
 
-Loopforge is being reorganized into explicit, layered subpackages to:
+All tests passed, import parity was verified, and a small parity regression was corrected (_clamp export). This completes Phase 3 of the migration plan.
 
-Make module responsibilities clearer
+2. What Changed (High-Level)
+Moved to the new canonical location (loopforge/psych/)
 
-Support future Architect Cycles (Producer → PARALLAX → Puppetteer → Next Architect)
+emotions.py → loopforge/psych/emotions.py
 
-Reduce accidental cross-layer coupling
+emotion_model.py → loopforge/psych/emotion_model.py
 
-Establish a cleaner “seam” between deterministic simulation vs. psycho-narrative layers
+beliefs.py → loopforge/psych/beliefs.py
 
-Prepare the codebase for long-term maintainability and external contributions
+Legacy Shim Modules Added
 
-The refactor is behavior-preserving.
-All file moves include compatibility shims at old paths to avoid breaking existing imports.
+These maintain full backward compatibility for all existing imports:
 
-2. Current Directory State (AFTER Sprints 1 → 2 → 2B.1 → 2B.2)
+loopforge/emotions.py
 
-Below is the authoritative listing of everything that has already been migrated.
+loopforge/emotion_model.py
 
-2.1 Schema & DB Layer (Sprint 1 — Complete)
-Migrated Into Layered Structure
-Old Location	New Location
-loopforge/types.py	loopforge/schema/types.py
-loopforge/db/__init__.py	(canonical DB entrypoint)
-loopforge/db/models.py	loopforge/db/models.py
-loopforge/db/memory_store.py	loopforge/db/memory_store.py
-loopforge/db.py (shim file)	Removed (module/file conflict resolved)
-Notes
+loopforge/beliefs.py
 
-DB imports are now unified under loopforge.db.
+Each shim now fully mirrors the canonical module’s public and private surfaces.
 
-All tests that patch SQLite now correctly patch loopforge.db.SessionLocal and loopforge.db.get_engine.
+3. API Parity Fix
 
-Log schemas unchanged.
+Using a REPL diff check:
 
-2.2 Core Layer (Phase 2 + 2B.1 + 2B.2 — Complete)
-Core simulation & environment
-Old File	New File
-loopforge/simulation.py	loopforge/core/simulation.py
-loopforge/agents.py	loopforge/core/agents.py
-loopforge/environment.py	loopforge/core/environment.py
-loopforge/day_runner.py	loopforge/core/day_runner.py
-Core utilities
-Old File	New File
-loopforge/logging_utils.py	loopforge/core/logging_utils.py
-loopforge/config.py	loopforge/core/config.py
-loopforge/ids.py	loopforge/core/ids.py
-loopforge/perception_shaping.py	loopforge/core/perception_shaping.py
-Shims
+sorted(set(dir(new_emotions)) - set(dir(shim_emotions)))
 
-Each old path still exists and re-exports from the new structure:
 
-loopforge/simulation.py
+Initially revealed a mismatch:
 
-loopforge/agents.py
+['_clamp']
 
-loopforge/environment.py
 
-loopforge/logging_utils.py
+This was fixed by updating the shim to mirror all attributes of the canonical module (including private helpers) and normalizing __all__ where appropriate.
 
-loopforge/config.py
+Result:
+dir(shim) ⊇ dir(canonical) — perfect parity.
 
-loopforge/ids.py
+4. Verification
+Test Suite
 
-loopforge/perception_shaping.py
+pytest -q → All green
 
-Special note:
-loopforge/config.py shim includes a reload() hook so that importlib.reload(loopforge.config) still updates environment-backed values as tests expect.
+Manual Sanity Checks
 
-2.3 Narrative Layer (Phase 2 — Partial)
+Importing psych modules from both new and legacy paths works identically.
 
-The narrative system has the new package scaffold, and the main narrative module has been migrated.
+Shim now exposes all canonical symbols, including helper utilities.
 
-Migrated
-Old File	New File
-loopforge/narrative.py	loopforge/narrative/narrative.py
-(new)	loopforge/narrative/__init__.py
-Shim
+Migration introduced no behavioral changes.
 
-loopforge/narrative.py now re-exports the symbols from loopforge/narrative/narrative.py.
+5. Risks Mitigated
 
-Notes
+Prevented silent breakage in any code still importing from legacy paths.
 
-Auxiliary narrative modules (e.g., story_arc.py, pressure_notes.py) are not migrated yet; they remain in the root package.
+Eliminated inconsistencies between psych canonical modules and shims.
 
-2.4 Newly Created Empty Packages
+Ensured future refactors using canonical paths remain safe.
 
-The following layered packages now exist and are ready for incoming modules:
+6. What This Enables Next
 
-loopforge/core/
-loopforge/psych/
-loopforge/analytics/
-loopforge/llm/
-loopforge/cli/
+With the foundational psych layer migrated and stable, we can now proceed to:
 
+Sprint 4 — Psych Layer Migration (Part 2: Higher-Order Cognition)
+Moving deeper modules:
 
-Each created with an empty (or minimal) __init__.py.
+psychology.py
 
-3. What Has NOT Been Migrated Yet
+personality.py
 
-(These are the upcoming sprints)
+mental_state.py
 
-Psych layer (all psychological engines)
+Any inference or appraisal modules
 
-emotions, emotion_model
+Followed by shim creation and another parity check.
 
-beliefs, attribution, attribution_drift
+This positions us to complete the psych migration and prepare for the narrative-psych seam refinements later in the cycle.
 
-supervisor_bias, supervisor_weather
-
-trait_drift, long_memory
-
-world_pulse, micro_incidents
-
-arc_cohesion
-(currently still at root: loopforge/*.py)
-
-Narrative auxiliary modules
-
-narrative_reflection, narrative_fusion, narrative_viewer
-
-pressure_notes, daily_logs, memory_line
-
-story_arc, psych_board
-
-episode_recaps
-
-explainer_context, explainer
-
-llm_lens, characters
-
-Analytics modules
-
-reporting, metrics, weave, supervisor_activity
-
-run_registry
-
-analysis_api
-
-LLM seam
-
-llm_stub
-
-llm_client
-
-CLI rewrite
-
-scripts/run_simulation.py → loopforge/cli/sim_cli.py
-
-scripts/metrics.py → loopforge/cli/metrics_cli.py
-
-4. Compatibility Status
-
-All moved modules have shims.
-
-No public API breakage.
-
-pytest -q fully passes.
-
-CLI still runs using legacy paths (to be migrated later).
-
-5. Next Migration Steps (High Level)
-
-Finish moving all psych modules → loopforge/psych/
-
-Move all narrative auxiliary modules → loopforge/narrative/
-
-Move analytics modules → loopforge/analytics/
-
-Move LLM seam → loopforge/llm/
-
-Migrate CLI entrypoints → loopforge/cli/
-
-Internal import hardening (optional)
-
-Regenerate Cartographer snapshot (final step)
-
-6. Migration Guarantees
-
-No functional changes
-
-Deterministic sim behavior
-
-DB schema unchanged
-
-Logs unchanged
-
-Full backwards compatibility until shim removal in a future major version
+7. Sprint Status
+Area	Status
+Psych foundations migrated	✅
+Shims implemented	✅
+Parity regression fixed	✅
+Tests green	✅
+Ready for next sprint	YES
