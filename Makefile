@@ -132,3 +132,8 @@ test-cov:
 # Dev cockpit: episode recap (episode + recap output)
 run-recap:
 	$(UV) run loopforge-sim view-episode --recap
+
+# reset local run logs and SQLite databases
+.PHONY: reset-local
+reset-local:
+	$(UV) run python -m scripts.reset_local_state
