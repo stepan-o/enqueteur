@@ -389,8 +389,15 @@ def view_episode(
             # Programmatic usage: ignore explicit IDs and proceed with latest
             run_id = None
             episode_id = None
-        from loopforge import run_registry
-        record = run_registry.latest_episode_record()
+        from loopforge import run_registry as _rr
+        # Respect test monkeypatch of loopforge.run_registry.registry_path by deriving base_dir
+        base_dir = None
+        try:
+            _reg_path = _rr.registry_path()
+            base_dir = _reg_path.parent if _reg_path is not None else None
+        except Exception:
+            base_dir = None
+        record = _rr.latest_episode_record(base_dir=base_dir)
         if record is None:
             _typer.echo("No episodes found in the registry yet.", err=True)
             raise _typer.Exit(code=1)
