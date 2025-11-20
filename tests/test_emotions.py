@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopforge.emotions import EmotionState, update_emotions
+from loopforge.psych.emotions import EmotionState, update_emotions
 
 
 class FakeAgent:

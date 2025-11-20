@@ -11,7 +11,7 @@ from typing import Optional, TYPE_CHECKING, Any
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from loopforge.analytics.reporting import AgentDayStats
 from loopforge.schema.types import AgentReflectionState, AgentEmotionState
-from loopforge.attribution import BeliefAttribution
+from loopforge.psych.attribution import BeliefAttribution
 
 
 def derive_emotion_state(

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from loopforge.reporting import DaySummary, AgentDayStats, EpisodeSummary, summarize_episode
-from loopforge.supervisor_weather import (
+from loopforge.psych.supervisor_weather import (
     build_supervisor_weather,
     SupervisorEpisodeWeather,
 )

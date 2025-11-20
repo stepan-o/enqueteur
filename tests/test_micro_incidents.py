@@ -6,7 +6,7 @@ from typing import Dict
 
 from loopforge.reporting import DaySummary, AgentDayStats, EpisodeSummary, summarize_episode
 from loopforge.episode_recaps import build_episode_recap
-from loopforge.micro_incidents import build_micro_incidents, MicroIncident
+from loopforge.psych.micro_incidents import build_micro_incidents, MicroIncident
 
 
 def _mk_day(idx: int, *, tension: float = 0.0, agents: Dict[str, Dict] | None = None) -> DaySummary:

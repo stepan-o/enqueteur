@@ -4,7 +4,7 @@ import pytest
 
 from loopforge.reporting import AgentDayStats
 from loopforge.schema.types import AgentReflectionState, AgentEmotionState, BeliefAttribution
-from loopforge.emotion_model import derive_emotion_state
+from loopforge.psych.emotion_model import derive_emotion_state
 
 
 def _stats(avg_stress: float) -> AgentDayStats:

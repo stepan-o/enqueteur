@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.psych import emotions as new_emotions
-from loopforge import emotions as shim_emotions
+from loopforge.psych import emotions as shim_emotions
 
 
 def test_emotions_shim_exports_superset():

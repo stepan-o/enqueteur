@@ -339,7 +339,7 @@ def summarize_episode(day_summaries: List[DaySummary], *, previous_long_memory: 
     # Sprint A0: derive per-day World Pulse (fail-soft, additive)
     try:
         if getattr(summary, "world_pulse_history", None) is None:
-            from loopforge.world_pulse import compute_world_pulse as _compute_world_pulse
+            from loopforge.psych.world_pulse import compute_world_pulse as _compute_world_pulse
             summary.world_pulse_history = [
                 _compute_world_pulse(idx) for idx in range(len(day_summaries))
             ]
@@ -357,7 +357,7 @@ def summarize_episode(day_summaries: List[DaySummary], *, previous_long_memory: 
 
     # Sprint 9: derive and attach trait drift snapshots per agent (fail-soft)
     try:
-        from loopforge.trait_drift import derive_trait_snapshot
+        from loopforge.psych.trait_drift import derive_trait_snapshot
         for name in list(summary.agents.keys()):
             try:
                 snap = derive_trait_snapshot(
@@ -375,7 +375,7 @@ def summarize_episode(day_summaries: List[DaySummary], *, previous_long_memory: 
 
     # Sprint 10: derive and attach long-memory per agent (fail-soft, additive)
     try:
-        from loopforge.long_memory import update_long_memory_for_agent
+        from loopforge.psych.long_memory import update_long_memory_for_agent
         from loopforge.schema.types import AgentLongMemory as _AgentLongMemory
         incidents_in_episode = sum(int(getattr(d, "total_incidents", 0) or 0) for d in day_summaries)
         long_mem: Dict[str, _AgentLongMemory] = {}
@@ -423,14 +423,14 @@ def summarize_episode(day_summaries: List[DaySummary], *, previous_long_memory: 
 
     # Sprint S1: Supervisor Weather (fail-soft, additive)
     try:
-        from loopforge.supervisor_weather import build_supervisor_weather
+        from loopforge.psych.supervisor_weather import build_supervisor_weather
         summary.supervisor_weather = build_supervisor_weather(summary, day_summaries)
     except Exception:
         summary.supervisor_weather = getattr(summary, "supervisor_weather", None)
 
     # Sprint A1: Attribution Drift (fail-soft, additive)
     try:
-        from loopforge.attribution_drift import build_attribution_drift
+        from loopforge.psych.attribution_drift import build_attribution_drift
         summary.attribution_drift = build_attribution_drift(summary, day_summaries)
     except Exception:
         summary.attribution_drift = getattr(summary, "attribution_drift", None)

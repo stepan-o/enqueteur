@@ -2,7 +2,7 @@ import importlib
 
 import types
 
-from loopforge.emotions import EmotionState
+from loopforge.psych.emotions import EmotionState
 
 
 def test_robot_decision_stub_path(monkeypatch):

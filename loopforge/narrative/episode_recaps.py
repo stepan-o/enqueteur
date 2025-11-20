@@ -236,7 +236,7 @@ def build_episode_recap(
     # Sprint N2: Optional MICRO-INCIDENTS lines derived from episode telemetry
     micro_incident_lines: List[str] | None = None
     try:
-        from loopforge.micro_incidents import build_micro_incidents
+        from loopforge.psych.micro_incidents import build_micro_incidents
         incidents = build_micro_incidents(episode_summary)
         if incidents:
             # Deterministic string rendering
@@ -294,7 +294,7 @@ def build_episode_recap(
     # Sprint 12: Optional ARC COHESION one-liner based on story arc + reflections
     arc_cohesion: str | None = None
     try:
-        from loopforge.arc_cohesion import build_arc_cohesion_line, compute_reflection_tone
+        from loopforge.psych.arc_cohesion import build_arc_cohesion_line, compute_reflection_tone
         arc_line = build_arc_cohesion_line(episode_summary, getattr(episode_summary, "story_arc", None))
         if isinstance(arc_line, str) and arc_line:
             arc_cohesion = arc_line

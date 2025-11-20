@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.core.agents import RobotAgent, default_triggers_for
-from loopforge.emotions import EmotionState, Traits
+from loopforge.psych.emotions import EmotionState, Traits
 
 
 class FakeEnv:

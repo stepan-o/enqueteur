@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import loopforge.core.simulation as sim
 from loopforge.narrative import build_agent_perception
-from loopforge.emotions import EmotionState, Traits
+from loopforge.psych.emotions import EmotionState, Traits
 
 
 def test_build_agent_perception_includes_guardrail_reliance():

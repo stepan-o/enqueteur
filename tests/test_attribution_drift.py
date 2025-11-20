@@ -105,7 +105,7 @@ def test_supervisor_reinforcement_pushes_self_with_high_trust():
                    beliefs={"Delta": _Belief(0.9)}, attributions={"Delta": _Attrib("system")})
     # Attach a minimal supervisor_weather that targets Delta firmly
     ep = EpisodeSummary(days=[day0], agents={}, tension_trend=[0.50], episode_id="ep-a1-sup", run_id="r", episode_index=0)
-    from loopforge.supervisor_weather import SupervisorEpisodeWeather, SupervisorDayWeather, SupervisorPressureTarget
+    from loopforge.psych.supervisor_weather import SupervisorEpisodeWeather, SupervisorDayWeather, SupervisorPressureTarget
     sw = SupervisorEpisodeWeather(
         mood_baseline="focused",
         mood_trend="steady",
@@ -127,7 +127,7 @@ def test_supervisor_reinforcement_pushes_self_with_high_trust():
     ep2.supervisor_weather = sw
     # Recompute drift on the fresh object with sw present
     try:
-        from loopforge.attribution_drift import build_attribution_drift
+        from loopforge.psych.attribution_drift import build_attribution_drift
         ep2.attribution_drift = build_attribution_drift(ep2, ep2.days)
     except Exception:
         ep2.attribution_drift = None

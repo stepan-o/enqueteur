@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopforge.arc_cohesion import (
+from loopforge.psych.arc_cohesion import (
     compute_reflection_tone,
     compute_arc_cohesion,
     build_arc_cohesion_line,

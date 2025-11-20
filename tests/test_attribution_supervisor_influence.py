@@ -1,6 +1,6 @@
 import pytest
 
-from loopforge.attribution import derive_belief_attribution
+from loopforge.psych.attribution import derive_belief_attribution
 from loopforge.reporting import AgentDayStats
 
 

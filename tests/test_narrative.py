@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.narrative import build_agent_perception, AgentActionPlan
-from loopforge.emotions import EmotionState, Traits
+from loopforge.psych.emotions import EmotionState, Traits
 from loopforge.llm_stub import decide_robot_action_plan
 
 

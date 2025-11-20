@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-from loopforge.beliefs import derive_belief_state
+from loopforge.psych.beliefs import derive_belief_state
 from loopforge.reporting import AgentDayStats, DaySummary, summarize_day
 
 

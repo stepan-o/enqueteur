@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from loopforge.world_pulse import compute_world_pulse
+from loopforge.psych.world_pulse import compute_world_pulse
 from loopforge.reporting import DaySummary, EpisodeSummary, summarize_episode, AgentDayStats
 from loopforge.episode_recaps import build_episode_recap
 

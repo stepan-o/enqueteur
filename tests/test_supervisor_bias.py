@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopforge.supervisor_bias import infer_supervisor_intent
+from loopforge.psych.supervisor_bias import infer_supervisor_intent
 from loopforge.schema.types import SupervisorMessage
 
 
