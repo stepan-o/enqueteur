@@ -321,6 +321,14 @@ def view_day(
 
 @app.command()
 def view_episode(
+    run_id: Optional[str] = typer.Argument(
+        None,
+        help="Run ID (ignored when using --latest).",
+    ),
+    episode_id: Optional[str] = typer.Argument(
+        None,
+        help="Episode ID (ignored when using --latest).",
+    ),
     action_log_path: Path = typer.Option(Path("logs/loopforge_actions.jsonl"), help="Path to JSONL action log"),
     supervisor_log_path: Path | None = typer.Option(None, help="Path to supervisor JSONL (optional)"),
     steps_per_day: int = typer.Option(50, help="Number of steps per simulated day"),
@@ -345,8 +353,57 @@ def view_episode(
         "--psych-board",
         help="Print compact episode-level Psychology Board (per-agent, per-day codes).",
     ),
+    latest: bool = typer.Option(
+        False,
+        "--latest",
+        help="Use the latest episode from the run registry (no RUN_ID/EPISODE_ID needed).",
+    ),
 ) -> None:
-    """Summarize a multi-day Loopforge episode from JSONL logs."""
+    """Summarize a multi-day Loopforge episode from JSONL logs.
+
+    Explicit mode:
+        loopforge-sim view-episode RUN_ID EPISODE_ID [--recap] [--narrative]
+
+    Latest mode:
+        loopforge-sim view-episode --latest [--recap] [--narrative]
+    """
+    import typer as _typer
+
+    # Resolve IDs based on --latest flag
+    if latest:
+        # Disallow mixing explicit IDs with --latest to avoid confusing precedence
+        if run_id is not None or episode_id is not None:
+            raise _typer.BadParameter(
+                "Do not provide RUN_ID/EPISODE_ID when using --latest.\n"
+                "Use either: loopforge-sim view-episode RUN_ID EPISODE_ID [OPTIONS]\n"
+                "   or:       loopforge-sim view-episode --latest [OPTIONS]"
+            )
+        from loopforge import run_registry
+        record = run_registry.latest_episode_record()
+        if record is None:
+            _typer.echo("No episodes found in the registry yet.", err=True)
+            raise _typer.Exit(code=1)
+        run_id = record.run_id
+        episode_id = record.episode_id
+        # Optionally honor recorded steps_per_day/days if user didn't override
+        try:
+            if isinstance(getattr(record, "steps_per_day", None), int) and steps_per_day == 50:
+                steps_per_day = int(record.steps_per_day)
+            if isinstance(getattr(record, "days", None), int) and days == 3:
+                days = int(record.days)
+        except Exception:
+            pass
+    else:
+        # Explicit mode requires both positional IDs
+        if run_id is None or episode_id is None:
+            raise _typer.BadParameter(
+                "Missing arguments.\n\n"
+                "Usage:\n"
+                "  loopforge-sim view-episode RUN_ID EPISODE_ID [--recap] [--narrative]\n"
+                "or:\n"
+                "  loopforge-sim view-episode --latest [--recap] [--narrative]"
+            )
+
     # Preload supervisor entries (fail-soft) and group by day
     supervisor_entries_by_day: Dict[int, list[dict]] = {}
     try:
@@ -391,20 +448,24 @@ def view_episode(
         day_summaries.append(ds)
         prev_stats = ds.agent_stats
 
-    # Generate run/episode identity for this invocation (in-memory only)
-    try:
-        from loopforge.ids import generate_run_id, generate_episode_id
-        run_id = generate_run_id()
-        episode_index = 0
-        episode_id = generate_episode_id(run_id, episode_index)
-    except Exception:
-        run_id = "run-unknown"
-        episode_index = 0
+    # Identity for this episode summary: prefer resolved IDs when available
+    if run_id is None or episode_id is None:
         try:
-            import time as _time
-            episode_id = f"ep-{int(_time.time())}"
+            from loopforge.ids import generate_run_id, generate_episode_id
+            run_id = generate_run_id()
+            episode_index = 0
+            episode_id = generate_episode_id(run_id, episode_index)
         except Exception:
-            episode_id = "ep-unknown"
+            run_id = "run-unknown"
+            episode_index = 0
+            try:
+                import time as _time
+                episode_id = f"ep-{int(_time.time())}"
+            except Exception:
+                episode_id = "ep-unknown"
+    else:
+        # Keep episode_index at 0 unless a registry record was used
+        episode_index = 0
 
     episode = summarize_episode(day_summaries, episode_id=episode_id, run_id=run_id, episode_index=episode_index)
 
