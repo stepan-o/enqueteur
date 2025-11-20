@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loopforge.reporting import DaySummary, AgentDayStats
 from loopforge.schema.types import AgentEmotionState, AgentReflectionState
-from loopforge.narrative_viewer import build_day_narrative
+from loopforge.narrative.narrative_viewer import build_day_narrative
 
 
 def _ds_with(name: str, role: str, avg_stress: float,

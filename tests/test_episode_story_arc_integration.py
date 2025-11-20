@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from loopforge.reporting import EpisodeSummary, DaySummary, AgentEpisodeStats
-from loopforge.episode_recaps import build_episode_recap
+from loopforge.narrative.episode_recaps import build_episode_recap
 from loopforge.analysis_api import episode_summary_to_dict
 
 
@@ -18,7 +18,7 @@ def _mk_ep(ten: list[float], agents: dict[str, AgentEpisodeStats]) -> EpisodeSum
     ep = EpisodeSummary(days=days, agents=agents, tension_trend=ten)
     # Simulate story arc attachment as summarize_episode would do
     try:
-        from loopforge.story_arc import derive_episode_story_arc
+        from loopforge.narrative.story_arc import derive_episode_story_arc
         ep.story_arc = derive_episode_story_arc(ep)
     except Exception:
         ep.story_arc = None

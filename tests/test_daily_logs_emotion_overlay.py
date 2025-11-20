@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loopforge.reporting import DaySummary, AgentDayStats
 from loopforge.schema.types import AgentEmotionState
-from loopforge.daily_logs import build_daily_log
+from loopforge.narrative.daily_logs import build_daily_log
 
 
 def _day(name: str, role: str, avg_stress: float, emotion: AgentEmotionState | None):

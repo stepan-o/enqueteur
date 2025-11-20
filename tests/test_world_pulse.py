@@ -4,7 +4,7 @@ from typing import Dict
 
 from loopforge.psych.world_pulse import compute_world_pulse
 from loopforge.reporting import DaySummary, EpisodeSummary, summarize_episode, AgentDayStats
-from loopforge.episode_recaps import build_episode_recap
+from loopforge.narrative.episode_recaps import build_episode_recap
 
 
 def _mk_day(idx: int, tension: float = 0.0) -> DaySummary:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from loopforge.pressure_notes import (
+from loopforge.narrative.pressure_notes import (
     classify_pressure,
     summarize_traits,
     build_pressure_lines,

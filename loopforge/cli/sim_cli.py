@@ -32,8 +32,8 @@ app = typer.Typer(add_completion=False, help="Run the Loopforge City simulation 
 
 def _print_episode_recap(episode: EpisodeSummary) -> None:
     try:
-        from loopforge.episode_recaps import build_episode_recap
-        from loopforge.characters import CHARACTERS
+        from loopforge.narrative.episode_recaps import build_episode_recap
+        from loopforge.narrative.characters import CHARACTERS
     except Exception:
         build_episode_recap = None
         CHARACTERS = {}
@@ -503,7 +503,7 @@ def view_episode(
     # Psychology Board: render only this view when requested, then exit
     if psych_board:
         try:
-            from loopforge.psych_board import build_psych_board
+            from loopforge.narrative.psych_board import build_psych_board
         except Exception:
             build_psych_board = None  # type: ignore
         if build_psych_board is not None:
@@ -522,7 +522,7 @@ def view_episode(
         _print_episode_recap(episode)
 
     if narrative:
-        from loopforge.narrative_viewer import build_day_narrative
+        from loopforge.narrative.narrative_viewer import build_day_narrative
         typer.echo("\nDAY NARRATIVES")
         typer.echo("==============================")
         for idx, day in enumerate(episode.days):
@@ -532,13 +532,13 @@ def view_episode(
 
     if daily_log:
         try:
-            from loopforge.daily_logs import build_daily_log
+            from loopforge.narrative.daily_logs import build_daily_log
         except Exception:
             build_daily_log = None
         if build_daily_log is not None:
             # Lazy import to avoid circulars at module import time
             try:
-                from loopforge.daily_logs import build_psych_snapshot_block
+                from loopforge.narrative.daily_logs import build_psych_snapshot_block
             except Exception:
                 build_psych_snapshot_block = None  # type: ignore
             typer.echo("\nDAILY LOG")
@@ -675,9 +675,9 @@ def explain_episode(
 
     # Build contexts and explanation text
     try:
-        from loopforge.characters import CHARACTERS
-        from loopforge.explainer_context import build_episode_context, build_agent_focus_context
-        from loopforge.explainer import explain_agent_episode
+        from loopforge.narrative.characters import CHARACTERS
+        from loopforge.narrative.explainer_context import build_episode_context, build_agent_focus_context
+        from loopforge.narrative.explainer import explain_agent_episode
     except Exception as e:
         typer.echo(f"Explainer modules not available: {e}")
         raise typer.Exit(code=1)
@@ -739,7 +739,7 @@ def lens_agent(
     )
 
     try:
-        from loopforge.llm_lens import build_llm_perception_lens_input, fake_llm_perception_lens
+        from loopforge.narrative.llm_lens import build_llm_perception_lens_input, fake_llm_perception_lens
     except Exception as e:
         typer.echo(f"LLM lens module not available: {e}")
         raise typer.Exit(code=1)

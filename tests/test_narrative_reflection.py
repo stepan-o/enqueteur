@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopforge.narrative_reflection import derive_reflection_state
+from loopforge.narrative.narrative_reflection import derive_reflection_state
 from loopforge.reporting import AgentDayStats
 
 

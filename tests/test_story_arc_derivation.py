@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from loopforge.story_arc import derive_episode_story_arc
+from loopforge.narrative.story_arc import derive_episode_story_arc
 from loopforge.reporting import EpisodeSummary, DaySummary, AgentDayStats
 from loopforge.schema.types import AgentEmotionState, AgentReflectionState
 

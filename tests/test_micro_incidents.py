@@ -5,7 +5,7 @@ from dataclasses import asdict
 from typing import Dict
 
 from loopforge.reporting import DaySummary, AgentDayStats, EpisodeSummary, summarize_episode
-from loopforge.episode_recaps import build_episode_recap
+from loopforge.narrative.episode_recaps import build_episode_recap
 from loopforge.psych.micro_incidents import build_micro_incidents, MicroIncident
 
 

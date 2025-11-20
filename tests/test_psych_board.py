@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopforge.psych_board import (
+from loopforge.narrative.psych_board import (
     stress_band,
     attr_cause_to_letter,
     mood_to_bucket,

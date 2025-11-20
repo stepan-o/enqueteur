@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.reporting import DaySummary, AgentDayStats
-from loopforge.daily_logs import build_daily_log, DailyLog
+from loopforge.narrative.daily_logs import build_daily_log, DailyLog
 
 
 def _mk_stats(name: str, role: str, g: int, c: int, s: float) -> AgentDayStats:

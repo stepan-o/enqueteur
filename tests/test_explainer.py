@@ -6,8 +6,8 @@ import json
 from typer.testing import CliRunner
 
 from loopforge.reporting import DaySummary, AgentDayStats, EpisodeSummary
-from loopforge.explainer_context import build_episode_context, build_agent_focus_context
-from loopforge.explainer import explain_agent_episode
+from loopforge.narrative.explainer_context import build_episode_context, build_agent_focus_context
+from loopforge.narrative.explainer import explain_agent_episode
 from scripts.run_simulation import app as cli_app
 
 

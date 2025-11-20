@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Dict
 
-from loopforge.memory_line import compute_episode_intensity, build_memory_line
+from loopforge.narrative.memory_line import compute_episode_intensity, build_memory_line
 from loopforge.psych.arc_cohesion import compute_reflection_tone
 from loopforge.reporting import DaySummary, AgentDayStats, EpisodeSummary, AgentEpisodeStats
-from loopforge.episode_recaps import build_episode_recap
+from loopforge.narrative.episode_recaps import build_episode_recap
 
 
 def _mk_day(agent_defs: Dict[str, dict], *, day_index: int = 0, tension: float = 0.0, supervisor_activity: float = 0.0) -> DaySummary:

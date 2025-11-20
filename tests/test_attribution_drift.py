@@ -148,7 +148,7 @@ def test_recap_integration_distortion_lines_present():
                  beliefs={"Delta": _Belief(0.6)}, attributions={"Delta": _Attrib("system")})
     ep = summarize_episode([d0, d1], episode_id="ep-a1-recap", run_id="r", episode_index=0)
 
-    from loopforge.episode_recaps import build_episode_recap
+    from loopforge.narrative.episode_recaps import build_episode_recap
     recap = build_episode_recap(ep, ep.days, characters={})
 
     lines = getattr(recap, "distortion_lines", None)

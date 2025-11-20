@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.reporting import DaySummary, AgentDayStats
-from loopforge.narrative_viewer import build_day_narrative
+from loopforge.narrative.narrative_viewer import build_day_narrative
 
 
 def _mk_stats(name: str, role: str, *, g: int, c: int, s: float) -> AgentDayStats:

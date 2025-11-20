@@ -307,7 +307,7 @@ def build_episode_recap(
     # Sprint 13: Optional MEMORY LINE one-liner — after ARC COHESION
     memory_line: str | None = None
     try:
-        from loopforge.memory_line import build_memory_line
+        from loopforge.narrative.memory_line import build_memory_line
         ml = build_memory_line(episode_summary, day_summaries, reflection_tone)
         if isinstance(ml, str) and ml:
             memory_line = ml
@@ -317,7 +317,7 @@ def build_episode_recap(
     # Sprint 11: Optional pressure notes block
     pressure_lines: List[str] | None = None
     try:
-        from loopforge.pressure_notes import build_pressure_lines
+        from loopforge.narrative.pressure_notes import build_pressure_lines
         pl = build_pressure_lines(episode_summary, day_summaries)
         if pl:
             pressure_lines = pl

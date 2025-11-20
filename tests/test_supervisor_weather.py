@@ -8,7 +8,7 @@ from loopforge.psych.supervisor_weather import (
     build_supervisor_weather,
     SupervisorEpisodeWeather,
 )
-from loopforge.episode_recaps import build_episode_recap
+from loopforge.narrative.episode_recaps import build_episode_recap
 from loopforge.analysis_api import episode_summary_to_dict
 
 

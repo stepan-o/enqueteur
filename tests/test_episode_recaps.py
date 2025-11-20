@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopforge.reporting import EpisodeSummary, DaySummary, AgentEpisodeStats
-from loopforge.episode_recaps import build_episode_recap
+from loopforge.narrative.episode_recaps import build_episode_recap
 
 
 def _mk_day(idx: int, tension: float) -> DaySummary:

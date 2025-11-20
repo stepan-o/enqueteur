@@ -4,7 +4,7 @@ import json
 from typing import Dict
 
 from loopforge.reporting import DaySummary, AgentDayStats, EpisodeSummary
-from loopforge.llm_lens import (
+from loopforge.narrative.llm_lens import (
     LLMPerceptionLensInput,
     LLMPerceptionLensOutput,
     LLMEpisodeLensInput,

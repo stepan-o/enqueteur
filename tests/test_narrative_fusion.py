@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from loopforge.narrative_fusion import build_day_narrative_kernel, DayNarrativeKernel
+from loopforge.narrative.narrative_fusion import build_day_narrative_kernel, DayNarrativeKernel
 from loopforge.reporting import DaySummary, AgentDayStats
 
 
