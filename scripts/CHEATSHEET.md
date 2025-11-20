@@ -3,6 +3,16 @@
 * `view-episode --latest --recap` = high-level beat sheet
 * `view-day --latest` = day-level emotional telemetry view
 ```bash
+# Reset local state - delete log files and SQLite databases
+make reset-local
+```
+
+```bash
+# Run a basic simulation
+uv run python -m scripts.run_simulation --steps 10
+```
+
+```bash
 # List everything
 uv run loopforge-sim list-runs
 ```
