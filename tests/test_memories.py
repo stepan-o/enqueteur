@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
-from loopforge import models as m
+from loopforge.db import models as m
 
 
 def _sqlite_engine(tmp_path):
@@ -13,7 +13,7 @@ def _sqlite_engine(tmp_path):
 
 def _setup_sqlite_bind(monkeypatch, engine):
     import loopforge.db as db
-    import loopforge.models as models
+    from loopforge.db import models as models
 
     # Replace get_engine to return our test engine
     monkeypatch.setattr(db, "get_engine", lambda echo=None: engine, raising=True)

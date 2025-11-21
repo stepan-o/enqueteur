@@ -19,7 +19,7 @@ if config.config_file_name is not None:
 # Add your model's MetaData object here
 # for 'autogenerate' support
 from loopforge.db import Base  # noqa: E402
-from loopforge import models  # noqa: F401,E402
+from loopforge.db import models  # noqa: F401,E402
 
 target_metadata = Base.metadata
 

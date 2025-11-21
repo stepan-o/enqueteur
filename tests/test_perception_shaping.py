@@ -30,7 +30,7 @@ def _make_env(local_events=None, recent_supervisor_text=None):
 def test_shape_perception_accurate_mode(monkeypatch):
     monkeypatch.setenv("PERCEPTION_MODE", "accurate")
     # Reload modules to pick up env var where needed
-    import loopforge.narrative as narrative
+    from loopforge.narrative import narrative as narrative
     importlib.reload(narrative)
 
     agent = _make_agent()
@@ -46,7 +46,7 @@ def test_shape_perception_accurate_mode(monkeypatch):
 
 def test_shape_perception_partial_mode(monkeypatch):
     monkeypatch.setenv("PERCEPTION_MODE", "partial")
-    import loopforge.narrative as narrative
+    from loopforge.narrative import narrative as narrative
     importlib.reload(narrative)
 
     agent = _make_agent()

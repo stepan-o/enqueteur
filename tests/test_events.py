@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
 from loopforge.core.environment import LoopforgeEnvironment, generate_environment_events
-from loopforge import models as m
+from loopforge.db import models as m
 
 
 def _sqlite_engine(tmp_path):

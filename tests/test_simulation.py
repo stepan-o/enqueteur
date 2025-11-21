@@ -17,7 +17,7 @@ def _setup_sqlite_bind(monkeypatch, engine):
     Also create tables.
     """
     import loopforge.db as db
-    import loopforge.models as models
+    from loopforge.db import models as models
 
     # Replace get_engine to return our test engine
     monkeypatch.setattr(db, "get_engine", lambda echo=None: engine, raising=True)
@@ -51,7 +51,7 @@ def test_run_simulation_db_sqlite_llm_off(tmp_path, monkeypatch):
 
     from loopforge.core.simulation import run_simulation
     from loopforge.db import SessionLocal
-    from loopforge import models as m
+    from loopforge.db import models as m
 
     run_simulation(num_steps=3, persist_to_db=True)
 
@@ -89,7 +89,7 @@ def test_run_simulation_db_sqlite_llm_mocked(tmp_path, monkeypatch):
 
     from loopforge.core.simulation import run_simulation
     from loopforge.db import SessionLocal
-    from loopforge import models as m
+    from loopforge.db import models as m
 
     run_simulation(num_steps=3, persist_to_db=True)
 

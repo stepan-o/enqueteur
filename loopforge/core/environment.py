@@ -10,7 +10,7 @@ from typing import List
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from loopforge.models import ActionLog, EnvironmentEvent, Robot
+from loopforge.db.models import ActionLog, EnvironmentEvent, Robot
 
 
 DEFAULT_ROOMS = ["factory_floor", "control_room", "charging_bay", "street"]
