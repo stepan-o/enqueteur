@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from loopforge.core.day_runner import run_one_day
-from loopforge.reflection import filter_entries_for_day, run_daily_reflections_for_all_agents
+from loopforge.analytics.reflection import filter_entries_for_day, run_daily_reflections_for_all_agents
 from loopforge.core.logging_utils import JsonlReflectionLogger
 from loopforge.schema.types import ActionLogEntry
 
@@ -33,7 +33,7 @@ def test_run_daily_reflections_for_all_agents_logs(tmp_path: Path):
     log_path = tmp_path / "refl.jsonl"
     logger = JsonlReflectionLogger(log_path)
 
-    from loopforge.reflection import run_daily_reflections_for_all_agents
+    from loopforge.analytics.reflection import run_daily_reflections_for_all_agents
 
     res = run_daily_reflections_for_all_agents(agents, entries, logger, day_index=0)
 

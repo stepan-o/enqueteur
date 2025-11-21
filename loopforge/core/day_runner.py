@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Any, List, Optional, Dict
 
 from loopforge.core.logging_utils import JsonlReflectionLogger, JsonlSupervisorLogger, read_action_log_entries
-from loopforge.reflection import (
+from loopforge.analytics.reflection import (
     filter_entries_for_day,
     run_daily_reflections_for_all_agents,
 )
-from loopforge.supervisor import build_supervisor_messages_for_day, set_supervisor_messages_on_env
+from loopforge.psych.supervisor import build_supervisor_messages_for_day, set_supervisor_messages_on_env
 from loopforge.schema.types import ActionLogEntry, AgentReflection, SupervisorMessage
 from loopforge.analytics.reporting import DaySummary, summarize_day, AgentDayStats
 

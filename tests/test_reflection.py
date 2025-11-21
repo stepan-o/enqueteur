@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from loopforge.reflection import (
+from loopforge.analytics.reflection import (
     summarize_agent_day,
     build_agent_reflection,
     apply_reflection_to_traits,

@@ -12,7 +12,7 @@ def test_reflection_carries_perception_mode_and_logged(tmp_path, monkeypatch):
     monkeypatch.setenv("PERCEPTION_MODE", "partial")
 
     # Reload reflection module if needed (get_perception_mode reads env at call time)
-    import loopforge.reflection as reflection
+    import loopforge.analytics.reflection as reflection
     importlib.reload(reflection)
 
     entries = [

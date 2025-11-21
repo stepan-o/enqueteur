@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from loopforge.supervisor import build_supervisor_messages_for_day, set_supervisor_messages_on_env
-from loopforge.narrative import build_agent_perception
+from loopforge.psych.supervisor import build_supervisor_messages_for_day, set_supervisor_messages_on_env
+from loopforge.narrative.narrative import build_agent_perception
 from loopforge.core.logging_utils import JsonlSupervisorLogger
 from loopforge.schema.types import AgentReflection, SupervisorMessage
 
