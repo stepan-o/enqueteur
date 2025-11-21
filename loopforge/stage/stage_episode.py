@@ -132,11 +132,18 @@ class StageEpisode:
 
     This object is stable and JSON-serializable. It mirrors the analytics
     summary shapes but stays decoupled from their internal implementations.
+
+    Phase 1: introduce stage_version to support UI compatibility checks. This is
+    additive and defaults to 1. Future changes must bump this number and remain
+    backward-compatible at the field level where possible.
     """
 
     episode_id: Optional[str]
     run_id: Optional[str]
     episode_index: int
+
+    # Stage schema version (Phase 1 UI contract)
+    stage_version: int = 1
 
     # Episode-level analytics overlays
     tension_trend: List[float] = field(default_factory=list)
@@ -159,6 +166,7 @@ class StageEpisode:
             "episode_id": self.episode_id,
             "run_id": self.run_id,
             "episode_index": self.episode_index,
+            "stage_version": int(self.stage_version),
             "tension_trend": list(self.tension_trend),
             "days": [d.to_dict() for d in self.days],
             "agents": {k: v.to_dict() for k, v in self.agents.items()},

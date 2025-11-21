@@ -87,5 +87,6 @@ def test_list_and_detail_endpoints(monkeypatch):
     episode_json = resp2.json()
     assert episode_json["episode_id"] == "ep-X"
     assert episode_json["tension_trend"] == [0.2, 0.4]
+    assert episode_json.get("stage_version") == 1
     assert "days" in episode_json and isinstance(episode_json["days"], list)
     assert "agents" in episode_json and isinstance(episode_json["agents"], dict)

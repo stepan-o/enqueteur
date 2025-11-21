@@ -94,6 +94,8 @@ def test_stage_episode_instantiation_and_serialization():
 
     # Dict serialization for all primary dataclasses
     as_dict = stage_ep.to_dict()
+    # Stage schema version should be present
+    assert as_dict.get("stage_version") == 1
     json_str = json.dumps(as_dict)  # must be JSON-serializable
     assert isinstance(json_str, str)
 
