@@ -1,3 +1,6 @@
+# Architect chat histories
+/docs/architecture/architect_chat_history/
+
 # Python
 __pycache__/
 *.py[cod]
