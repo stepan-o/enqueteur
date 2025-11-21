@@ -778,6 +778,74 @@ def lens_agent(
     }, indent=2))
 
 
+@app.command("export-stage-episode")
+def export_stage_episode(
+    run_id: str = typer.Option(..., "--run-id", help="Run ID to export from"),
+    episode_index: int = typer.Option(0, "--episode-index", help="Episode index within the run"),
+    action_log_path: Path = typer.Option(Path("logs/loopforge_actions.jsonl"), help="Path to JSONL action log"),
+    supervisor_log_path: Path | None = typer.Option(None, help="Path to supervisor JSONL (optional)"),
+    output: Path = typer.Option(Path("logs/stage_episode.json"), help="Where to write StageEpisode JSON"),
+) -> None:
+    """Export a fully built StageEpisode JSON for a given (run_id, episode_index).
+
+    - Read-only path: registry → analysis → stage builder.
+    - No dependency on API server; pure function calls.
+    """
+    try:
+        from loopforge.analytics.run_registry import find_episode_record
+        from loopforge.analytics.analysis_api import analyze_episode_from_record
+        from loopforge.stage import build_stage_episode
+        from loopforge.narrative.characters import CHARACTERS
+    except Exception as e:
+        typer.echo(f"Required modules not available: {e}")
+        raise typer.Exit(code=1)
+
+    rec = find_episode_record(run_id=run_id, episode_index=episode_index)
+    if rec is None:
+        typer.echo(f"No episode found for run_id={run_id} episode_index={episode_index}")
+        raise typer.Exit(code=1)
+
+    ep = analyze_episode_from_record(
+        rec,
+        action_log_path=action_log_path,
+        supervisor_log_path=supervisor_log_path,
+    )
+
+    stage_ep = build_stage_episode(
+        episode_summary=ep,
+        day_summaries=ep.days,
+        story_arc=getattr(ep, "story_arc", None),
+        long_memory=getattr(ep, "long_memory", None),
+        character_defs=CHARACTERS,
+        include_narrative=True,
+    )
+
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("w", encoding="utf-8") as f:
+            json.dump(stage_ep.to_dict(), f, indent=2, ensure_ascii=False)
+        typer.echo(f"Wrote StageEpisode to {output}")
+    except Exception as e:
+        typer.echo(f"Failed to write StageEpisode: {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command("api-server")
+def api_server(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port"),
+    reload: bool = typer.Option(False, "--reload"),
+) -> None:
+    """Run the Loopforge FastAPI server (read-only endpoints)."""
+    try:
+        import uvicorn
+    except Exception as e:
+        typer.echo(f"Uvicorn not available: {e}")
+        raise typer.Exit(code=1)
+
+    uvicorn.run("loopforge.api.app:app", host=host, port=port, reload=reload)
+
+
 @app.command("list-runs")
 def list_runs(
     limit: int = typer.Option(20, help="Max number of records to show (most recent last)."),

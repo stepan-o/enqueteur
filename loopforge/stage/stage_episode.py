@@ -56,6 +56,10 @@ class StageAgentDayView:
     avg_stress: float = 0.0
     guardrail_count: int = 0
     context_count: int = 0
+    # Optional emotional read if available (mood/certainty/energy)
+    emotional_read: Optional[Mapping[str, Any]] = None
+    # Optional attribution cause ("random" | "system" | "self" | "supervisor"), if available
+    attribution_cause: Optional[str] = None
     # Room for narrative snippets tied to this agent/day
     narrative: List[StageNarrativeBlock] = field(default_factory=list)
 
@@ -66,6 +70,8 @@ class StageAgentDayView:
             "avg_stress": self.avg_stress,
             "guardrail_count": self.guardrail_count,
             "context_count": self.context_count,
+            "emotional_read": dict(self.emotional_read) if isinstance(self.emotional_read, dict) else (self.emotional_read if self.emotional_read is None else None),
+            "attribution_cause": self.attribution_cause,
             "narrative": [n.to_dict() for n in self.narrative],
         }
 
@@ -132,6 +138,9 @@ class StageEpisode:
     run_id: Optional[str]
     episode_index: int
 
+    # Episode-level analytics overlays
+    tension_trend: List[float] = field(default_factory=list)
+
     days: List[StageDay] = field(default_factory=list)
     agents: Dict[str, StageAgentSummary] = field(default_factory=dict)
 
@@ -150,6 +159,7 @@ class StageEpisode:
             "episode_id": self.episode_id,
             "run_id": self.run_id,
             "episode_index": self.episode_index,
+            "tension_trend": list(self.tension_trend),
             "days": [d.to_dict() for d in self.days],
             "agents": {k: v.to_dict() for k, v in self.agents.items()},
             "story_arc": dict(self.story_arc) if self.story_arc else None,
