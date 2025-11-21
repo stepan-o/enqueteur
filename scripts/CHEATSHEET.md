@@ -9,7 +9,7 @@ make reset-local
 
 ```bash
 # Run a basic simulation
-uv run python -m scripts.run_simulation --steps 10
+uv run python -m loopforge.cli.sim_cli --steps 10
 ```
 
 ```bash

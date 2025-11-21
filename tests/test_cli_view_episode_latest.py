@@ -5,7 +5,7 @@ from pathlib import Path
 import json
 from typer.testing import CliRunner
 
-from scripts.run_simulation import app
+from loopforge.cli.sim_cli import app
 from loopforge.analytics.run_registry import EpisodeRecord
 
 runner = CliRunner()
@@ -23,7 +23,7 @@ def test_view_episode_latest_happy_path(tmp_path, monkeypatch):
     # Point the registry to a temp file
     reg_file = tmp_path / "loopforge_run_registry.jsonl"
     monkeypatch.setattr(
-        "loopforge.run_registry.registry_path", lambda base_dir=None: reg_file, raising=True
+        "loopforge.analytics.run_registry.registry_path", lambda base_dir=None: reg_file, raising=True
     )
 
     # Write two records, the last one is the latest
@@ -55,7 +55,7 @@ def test_view_episode_latest_no_episodes(tmp_path, monkeypatch):
     reg_file.parent.mkdir(parents=True, exist_ok=True)
     reg_file.write_text("")
     monkeypatch.setattr(
-        "loopforge.run_registry.registry_path", lambda base_dir=None: reg_file, raising=True
+        "loopforge.analytics.run_registry.registry_path", lambda base_dir=None: reg_file, raising=True
     )
 
     result = runner.invoke(app, ["view-episode", "--latest"])
@@ -68,7 +68,7 @@ def test_view_episode_latest_mixing_ids_error(tmp_path, monkeypatch):
     # Minimal registry so latest would otherwise work
     reg_file = tmp_path / "loopforge_run_registry.jsonl"
     monkeypatch.setattr(
-        "loopforge.run_registry.registry_path", lambda base_dir=None: reg_file, raising=True
+        "loopforge.analytics.run_registry.registry_path", lambda base_dir=None: reg_file, raising=True
     )
     only = EpisodeRecord(
         run_id="run-x", episode_id="ep-x", episode_index=0,

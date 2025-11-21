@@ -68,8 +68,8 @@ revision:
 	fi
 	$(ALEMBIC) revision -m "$(NAME)"
 
-run:
-	$(PY) -m scripts.run_simulation --no-db --steps 10
+	run:
+		$(PY) -m loopforge.cli.sim_cli --no-db --steps 10
 
 run-all: migrate run
 

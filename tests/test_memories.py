@@ -34,7 +34,7 @@ def test_memory_contains_narrative_suffix(tmp_path, monkeypatch):
     _setup_sqlite_bind(monkeypatch, engine)
 
     # Ensure LLM disabled (deterministic path that adds narrative via plan)
-    import loopforge.llm_stub as stub
+    import loopforge.llm.llm_stub as stub
     monkeypatch.setattr(stub, "USE_LLM_POLICY", False, raising=True)
 
     # Import AFTER monkeypatch so simulation sees the patched DB layer

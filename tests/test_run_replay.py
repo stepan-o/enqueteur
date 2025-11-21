@@ -61,7 +61,7 @@ def test_analyze_episode_from_record_round_trip(tmp_path: Path):
 
 
 from typer.testing import CliRunner
-from scripts.run_simulation import app
+from loopforge.cli.sim_cli import app
 
 
 def test_replay_latest_uses_registry(tmp_path: Path):

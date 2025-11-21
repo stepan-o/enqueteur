@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loopforge.metrics import read_action_logs, read_reflection_logs, compute_belief_vs_truth_drift
+from loopforge.analytics.metrics import read_action_logs, read_reflection_logs, compute_belief_vs_truth_drift
 
 
 def test_compute_belief_vs_truth_drift_from_logs(tmp_path: Path):

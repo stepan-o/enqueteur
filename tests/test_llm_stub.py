@@ -6,7 +6,7 @@ from loopforge.psych.emotions import EmotionState
 
 
 def test_robot_decision_stub_path(monkeypatch):
-    import loopforge.llm_stub as stub
+    import loopforge.llm.llm_stub as stub
     importlib.reload(stub)
 
     # Force LLM off at the module level
@@ -28,7 +28,7 @@ def test_robot_decision_stub_path(monkeypatch):
 
 
 def test_robot_decision_llm_success(monkeypatch):
-    import loopforge.llm_stub as stub
+    import loopforge.llm.llm_stub as stub
     importlib.reload(stub)
 
     # Enable LLM path
@@ -60,7 +60,7 @@ def test_robot_decision_llm_success(monkeypatch):
 
 
 def test_robot_decision_llm_fallback(monkeypatch):
-    import loopforge.llm_stub as stub
+    import loopforge.llm.llm_stub as stub
     importlib.reload(stub)
 
     monkeypatch.setattr(stub, "USE_LLM_POLICY", True, raising=True)
@@ -81,7 +81,7 @@ def test_robot_decision_llm_fallback(monkeypatch):
 
 
 def test_supervisor_stub_path(monkeypatch):
-    import loopforge.llm_stub as stub
+    import loopforge.llm.llm_stub as stub
     importlib.reload(stub)
 
     monkeypatch.setattr(stub, "USE_LLM_POLICY", False, raising=True)
@@ -93,7 +93,7 @@ def test_supervisor_stub_path(monkeypatch):
 
 
 def test_supervisor_llm_success(monkeypatch):
-    import loopforge.llm_stub as stub
+    import loopforge.llm.llm_stub as stub
     importlib.reload(stub)
 
     monkeypatch.setattr(stub, "USE_LLM_POLICY", True, raising=True)
@@ -117,7 +117,7 @@ def test_supervisor_llm_success(monkeypatch):
 
 
 def test_supervisor_llm_fallback(monkeypatch):
-    import loopforge.llm_stub as stub
+    import loopforge.llm.llm_stub as stub
     importlib.reload(stub)
 
     monkeypatch.setattr(stub, "USE_LLM_POLICY", True, raising=True)

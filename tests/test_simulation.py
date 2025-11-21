@@ -32,7 +32,7 @@ def _setup_sqlite_bind(monkeypatch, engine):
 
 def test_run_simulation_nodb(monkeypatch):
     # Ensure LLM path is off for deterministic behavior
-    import loopforge.llm_stub as stub
+    import loopforge.llm.llm_stub as stub
     monkeypatch.setattr(stub, "USE_LLM_POLICY", False, raising=True)
 
     from loopforge.core.simulation import run_simulation
@@ -46,7 +46,7 @@ def test_run_simulation_db_sqlite_llm_off(tmp_path, monkeypatch):
     _setup_sqlite_bind(monkeypatch, engine)
 
     # Ensure LLM is disabled
-    import loopforge.llm_stub as stub
+    import loopforge.llm.llm_stub as stub
     monkeypatch.setattr(stub, "USE_LLM_POLICY", False, raising=True)
 
     from loopforge.core.simulation import run_simulation
@@ -71,7 +71,7 @@ def test_run_simulation_db_sqlite_llm_mocked(tmp_path, monkeypatch):
     _setup_sqlite_bind(monkeypatch, engine)
 
     # Enable LLM policy and mock decisions
-    import loopforge.llm_stub as stub
+    import loopforge.llm.llm_stub as stub
     monkeypatch.setattr(stub, "USE_LLM_POLICY", True, raising=True)
 
     def robot_resp(*a, **k):

@@ -1,7 +1,7 @@
 """CLI entrypoint for Loopforge City simulation.
 
 Usage (uv):
-  uv run python -m scripts.run_simulation --steps 10
+  uv run python -m loopforge.cli.sim_cli --steps 10
 
 Or via installed script:
   loopforge-sim --steps 10
@@ -96,7 +96,7 @@ def _print_episode_recap(episode: EpisodeSummary) -> None:
 
 
 # Allow invoking the module without an explicit subcommand, e.g.:
-#   uv run python -m scripts.run_simulation --no-db --steps 10
+#   uv run python -m loopforge.cli.sim_cli --no-db --steps 10
 # This preserves backward compatibility with the Makefile target `make run`.
 @app.callback(invoke_without_command=True)
 def _root(
@@ -154,7 +154,7 @@ def view_day(
       - Automatically picks the latest episode from the registry
       - 'day_index' is taken from the single positional argument (defaults to 0)
     """
-    from loopforge import run_registry
+    from loopforge.analytics import run_registry
     from loopforge.core.logging_utils import read_action_log_entries_for_episode
 
     import typer as _typer
@@ -389,7 +389,7 @@ def view_episode(
             # Programmatic usage: ignore explicit IDs and proceed with latest
             run_id = None
             episode_id = None
-        from loopforge import run_registry as _rr
+        from loopforge.analytics import run_registry as _rr
         # Respect test monkeypatch of loopforge.run_registry.registry_path by deriving base_dir
         base_dir = None
         try:

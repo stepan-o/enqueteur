@@ -25,11 +25,11 @@ from loopforge.psych.emotions import (
 from loopforge.core.environment import LoopforgeEnvironment, generate_environment_events
 from loopforge.db.models import ActionLog, EnvironmentEvent, Memory, Robot
 from loopforge.narrative.narrative import build_agent_perception
-from loopforge.llm_stub import decide_robot_action_plan, decide_robot_action_plan_and_dict
+# Use canonical LLM module; call functions via module to preserve monkeypatchability in tests
+from loopforge.llm import llm_stub
 from pathlib import Path
 from loopforge.core.logging_utils import JsonlActionLogger, log_action_step
 from loopforge.core.ids import generate_run_id, generate_episode_id
-from loopforge.llm import llm_stub
 
 
 INITIAL_ROBOTS: List[Tuple[str, str, dict]] = [
@@ -163,7 +163,7 @@ def run_simulation(
             for agent in robots_agents:
                 # Build perception → plan via explicit seam (always), regardless of LLM flag.
                 perception = build_agent_perception(agent, env, step)
-                plan, decision = decide_robot_action_plan_and_dict(perception)
+                plan, decision = llm_stub.decide_robot_action_plan_and_dict(perception)
                 # Log the action step exactly once (fail-soft)
                 try:
                     log_action_step(
@@ -235,7 +235,7 @@ def run_simulation(
             for r, agent in zip(robots, agents):
                 # Build perception → plan via explicit seam (always), regardless of LLM flag.
                 perception = build_agent_perception(agent, env, step)
-                plan, decision = decide_robot_action_plan_and_dict(perception)
+                plan, decision = llm_stub.decide_robot_action_plan_and_dict(perception)
                 try:
                     log_action_step(
                         logger=action_logger,

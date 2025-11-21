@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loopforge.metrics import read_action_logs, compute_mode_distribution
+from loopforge.analytics.metrics import read_action_logs, compute_mode_distribution
 
 
 essential_row = {

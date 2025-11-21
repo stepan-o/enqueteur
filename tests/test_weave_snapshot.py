@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import List
 
-from loopforge.weave import (
+from loopforge.analytics.weave import (
     compute_episode_tension_snapshot,
     compute_all_episode_snapshots,
 )

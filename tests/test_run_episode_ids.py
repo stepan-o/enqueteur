@@ -58,7 +58,7 @@ def test_cli_view_episode_threads_ids(monkeypatch: pytest.MonkeyPatch, days: int
     Patch summarize_episode in CLI module to capture the identity kwargs
     passed from view_episode without running the whole pipeline.
     """
-    import scripts.run_simulation as cli
+    from loopforge.cli import sim_cli as cli
 
     captured = {}
 

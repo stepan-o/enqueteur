@@ -33,7 +33,7 @@ Homepage = "https://example.com/loopforge-city"
 
 [project.scripts]
 # Use the Typer app object as the console entrypoint
-loopforge-sim = "scripts.run_simulation:app"
+loopforge-sim = "loopforge.cli.sim_cli:app"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

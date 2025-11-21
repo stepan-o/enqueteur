@@ -8,7 +8,7 @@ def test_chat_json_disabled(monkeypatch):
     monkeypatch.setenv("USE_LLM_POLICY", "false")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-    import loopforge.llm_client as lc
+    import loopforge.llm.llm_client as lc
     importlib.reload(lc)
 
     # get_client should return None; chat_json returns None
@@ -22,7 +22,7 @@ def test_chat_json_success(monkeypatch):
     monkeypatch.setenv("USE_LLM_POLICY", "true")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
-    import loopforge.llm_client as lc
+    import loopforge.llm.llm_client as lc
     importlib.reload(lc)
 
     class FakeMsg:
@@ -67,7 +67,7 @@ def test_chat_json_non_json(monkeypatch):
     monkeypatch.setenv("USE_LLM_POLICY", "true")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
-    import loopforge.llm_client as lc
+    import loopforge.llm.llm_client as lc
     importlib.reload(lc)
 
     class FakeMsg:

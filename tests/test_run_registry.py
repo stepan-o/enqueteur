@@ -93,7 +93,7 @@ def test_list_runs_cli_prints_something(tmp_path: Path, capsys):
     append_episode_record(rec2, base_dir=base)
 
     # Invoke the CLI command function directly with a base override
-    import scripts.run_simulation as cli
+    from loopforge.cli import sim_cli as cli
 
     # Call with limit=1 to only print the most recent of the two records
     cli.list_runs(limit=1, registry_base=base)

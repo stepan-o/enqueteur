@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from loopforge import llm_stub
+from loopforge.llm import llm_stub
 
 
 class DummyEnv:
