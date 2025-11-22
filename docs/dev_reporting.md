@@ -153,7 +153,7 @@ Chosen: (1) for now; document clearly in CONTRIBUTING.
 10) Implemented Fix & Current State — 2025-11-22 13:13
 
 Implemented fix:
-- Added tests/conftest.py that sets DATABASE_URL to sqlite+pysqlite:///loopforge_test.db for the pytest session. This removes the import‑time requirement for the Postgres driver (psycopg) and a running Postgres instance by ensuring SQLAlchemy binds a SQLite engine during tests.
+- Added tests/conftest.py that sets DATABASE_URL to sqlite+pysqlite:///loopforge_test.db for the pytest session. This removes the import‑time requirement for the Postgres driver (psycopg) and a running Postgres instance by ensuring SQLAlchemy binds an SQLite engine during tests.
 
 Current state:
 - Backend: pytest runs to completion with 100% passing tests in the current environment.
