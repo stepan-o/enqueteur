@@ -21,7 +21,11 @@ from pathlib import Path
 from typing import Literal
 
 
-DEFAULT_DB_URL = "postgresql+psycopg://loopforge:loopforge@localhost:5432/loopforge"
+# NOTE FOR DEVELOPERS:
+# Default DB is SQLite for local dev/tests.
+# Production MUST override DATABASE_URL with PostgreSQL or another backend.
+# The default SQLite database file lives in the project root for convenience.
+DEFAULT_DB_URL = "sqlite:///./loopforge_test.db"
 # Default path for JSONL action logs (can be overridden via env ACTION_LOG_PATH)
 DEFAULT_ACTION_LOG_PATH = Path(os.getenv("ACTION_LOG_PATH", "logs/loopforge_actions.jsonl"))
 

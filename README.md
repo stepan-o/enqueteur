@@ -824,3 +824,28 @@ Programmatic API and CLI to compute multi‑day episode summaries and export a J
   ```
 
 All of the above are deterministic, read‑only layers. They extend `DaySummary`/`EpisodeSummary` additively and never modify simulation behavior or JSONL log schemas.
+
+
+### Python SDK / Interpreter
+
+This project uses uv to manage a local virtual environment at .venv in the project root. To ensure your tools run with the correct interpreter:
+
+- CLI
+  - Install deps: make uv-sync
+  - Verify interpreter path: make sdk-check
+    - The printed Python executable should reside under .venv (for example: /path/to/repo/.venv/bin/python).
+
+- JetBrains IDEs (PyCharm / IntelliJ IDEA)
+  - Open the project folder (loopforge) as the project root.
+  - Go to: Settings → Project → Python Interpreter.
+  - Click the gear icon → Add Local Interpreter → Existing environment.
+  - Select the interpreter at: <project_root>/.venv/bin/python (macOS/Linux) or <project_root>\.venv\Scripts\python.exe (Windows).
+  - Apply and ensure the interpreter is used for running and testing.
+
+- VS Code
+  - Run: make uv-sync
+  - Use the Python interpreter selector and choose the one under .venv.
+
+Notes
+- uv run ... and the Makefile targets already execute within the uv-managed environment, so using the Makefile is the easiest path.
+- Production/CI systems may supply their own Python, but local development should use the .venv created by uv.

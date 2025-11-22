@@ -40,6 +40,7 @@ help:
 	@echo "make docker-up         - Build and start app + db via docker-compose"
 	@echo "make docker-down       - Stop and remove compose services"
 	@echo "make docker-logs       - Tail logs from compose services"
+	@echo "make sdk-check         - Print interpreter info (should be .venv-managed)"
 
 uv-sync:
 	$(UV) sync --extra dev
@@ -137,3 +138,10 @@ run-recap:
 .PHONY: reset-local
 reset-local:
 	$(UV) run python -m scripts.reset_local_state
+
+# Quick verification that the Python SDK/interpreter is the uv-managed .venv
+.PHONY: sdk-check
+sdk-check:
+	@echo "Python executable (uv-managed):"
+	$(UV) run python -c 'import sys, sysconfig, platform; print(sys.executable); print("Version:", platform.python_version()); print("Base prefix:", sys.base_prefix);'
+	@echo "If the path above points into .venv, the SDK is correctly set."
