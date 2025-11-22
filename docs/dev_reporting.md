@@ -147,3 +147,16 @@ Chosen: (1) for now; document clearly in CONTRIBUTING.
 
 9) Follow‑ups
 - Consider extras_require[test] with FastAPI/httpx and a pytest.ini that sets SQLite DB URL during tests.
+
+---
+
+10) Implemented Fix & Current State — 2025-11-22 13:13
+
+Implemented fix:
+- Added tests/conftest.py that sets DATABASE_URL to sqlite+pysqlite:///loopforge_test.db for the pytest session. This removes the import‑time requirement for the Postgres driver (psycopg) and a running Postgres instance by ensuring SQLAlchemy binds a SQLite engine during tests.
+
+Current state:
+- Backend: pytest runs to completion with 100% passing tests in the current environment.
+- Frontend: Vitest suite passes (smoke test), confirming test runner wiring.
+- Stability: No changes to runtime behavior, API surfaces, schemas, or logging. The modification is strictly a test‑environment configuration and is fully backward‑compatible.
+- Rollback: Delete tests/conftest.py or override DATABASE_URL in the environment to restore previous behavior.
