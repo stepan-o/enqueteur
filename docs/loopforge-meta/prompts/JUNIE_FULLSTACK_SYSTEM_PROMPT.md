@@ -225,3 +225,7 @@ If requirements conflict, are ambiguous, or you are unsure if your implementatio
 
 When done, sign your work:
 — Junie
+
+## 11. Next step
+
+Once you are done reviewing this prompt, you can move on to the next task. Report with any questions or say that you are ready to proceed and receive your next instructions.
