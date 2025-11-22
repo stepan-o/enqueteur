@@ -1,11 +1,10 @@
 # scripts/reset_local_state.py
 from __future__ import annotations
 
-import os
 import glob
 from pathlib import Path
 
-from loopforge.config import get_settings
+from loopforge.core.config import get_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 
