@@ -81,3 +81,22 @@ These rules define the creative intent of Loopforge. Every technical contributio
 5. Make it fun to watch — boring episodes are bugs.
 
 Full vision: docs/PRODUCER_VISION.md
+
+## Investigation and Incident Reports (Required for bug work)
+
+When investigating failing tests, bugs, or regressions, write a detailed report and attach/link it in the PR description. Use the template at:
+
+- docs/dev_reporting.md
+
+At minimum, your report must include:
+- Executive summary: 3–5 bullet points of what failed and why.
+- Test/Environment matrix: OS, Python/Node versions, dependency pins, DB URL used.
+- Reproduction steps: exact commands and any required env vars.
+- Failure surface: which tests/files fail, stack traces (trimmed to signal), and scope of impact.
+- Root cause analysis: primary cause, secondary factors, and how you validated this.
+- Proposed fix options: minimal change first, tradeoffs, and why chosen.
+- Backward-compatibility and stability analysis: API, schema, logs, and The Seam.
+- Verification plan: tests to run, manual checks, and expected outputs.
+- Risks and rollbacks: known risks, mitigations, and a simple rollback plan.
+
+PRs that change backend or frontend behavior without an accompanying detailed report may be held for revision.
