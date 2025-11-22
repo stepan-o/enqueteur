@@ -1,43 +1,6 @@
 import { useEffect, useState } from "react";
 import "./App.css";
-
-// -------------------------------
-// Types matching StageEpisode v1
-// -------------------------------
-interface StageEpisode {
-    stage_version: number;
-    episode_id: string;
-    run_id: string;
-    episode_index: number;
-    tension_trend: number[];
-    days: StageDay[];
-    agents: Record<string, StageAgentSummary>;
-    narrative?: any;
-}
-
-interface StageDay {
-    day_index: number;
-    tension_score: number;
-    total_incidents: number;
-    perception_mode: string;
-    supervisor_activity: number;
-    agents: Record<string, StageAgentDayView>;
-}
-
-interface StageAgentSummary {
-    stress_start: number;
-    stress_end: number;
-    guardrail_total: number;
-    context_total: number;
-}
-
-interface StageAgentDayView {
-    avg_stress: number;
-    guardrail_count: number;
-    context_count: number;
-    emotional_read?: string | null;
-    attribution_cause?: string | null;
-}
+import type { StageEpisode } from "./types/stage";
 
 // -------------------------------
 // Component
@@ -49,12 +12,14 @@ export default function App() {
     useEffect(() => {
         async function load() {
             try {
-                const res = await fetch("http://127.0.0.1:8000/episodes/latest");
+                const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+                const res = await fetch(`${API_BASE}/episodes/latest`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
                 setEpisode(data);
-            } catch (err: any) {
-                setError(err.message);
+            } catch (err: unknown) {
+                if (err instanceof Error) setError(err.message);
+                else setError("Unknown error");
             }
         }
         load();

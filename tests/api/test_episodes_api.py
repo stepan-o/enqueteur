@@ -92,8 +92,9 @@ def test_list_and_detail_endpoints(monkeypatch):
     assert "agents" in episode_json and isinstance(episode_json["agents"], dict)
 
 
-def test_get_latest_episode_ok(monkeypatch):
-    # Prepare a fake registry with two records; the latest should be the last appended
+def test_get_latest_episode_happy_path(monkeypatch):
+    # Prepare a fake registry with three records to exercise ordering:
+    # Latest = max(created_at, episode_index)
     from loopforge.analytics.run_registry import EpisodeRecord
 
     fake_rows = [
@@ -105,10 +106,20 @@ def test_get_latest_episode_ok(monkeypatch):
             steps_per_day=50,
             days=2,
         ),
+        # Newer timestamp but lower index than the next one we'll add later
         EpisodeRecord(
             run_id="run-2",
             episode_id="ep-2",
             episode_index=2,
+            created_at="2025-01-02T00:00:00+00:00",
+            steps_per_day=60,
+            days=3,
+        ),
+        # Same created_at as ep-2 but higher episode_index → should win
+        EpisodeRecord(
+            run_id="run-2",
+            episode_id="ep-2b",
+            episode_index=3,
             created_at="2025-01-02T00:00:00+00:00",
             steps_per_day=60,
             days=3,
@@ -160,8 +171,8 @@ def test_get_latest_episode_ok(monkeypatch):
     resp = client.get("/episodes/latest")
     assert resp.status_code == 200
     data = resp.json()
-    # Expect the latest record (last appended) to be chosen
-    assert data["episode_id"] == "ep-2"
+    # Expect the chosen record by ordering (created_at, episode_index)
+    assert data["episode_id"] == "ep-2b"
     assert data.get("stage_version") == 1
     assert "days" in data and isinstance(data["days"], list)
     assert "tension_trend" in data and data["tension_trend"] == [0.5]

@@ -54,6 +54,19 @@ def _build_stage_episode_from_record(rec: EpisodeRecord) -> Dict[str, Any]:
     return stage_ep.to_dict()
 
 
+def _pick_latest_episode(records: List[EpisodeRecord]) -> EpisodeRecord:
+    """Pick the latest EpisodeRecord using explicit ordering.
+
+    Ordering: most recent created_at timestamp, then highest episode_index.
+    Handles empty/None lists by raising 404.
+    """
+    if not records:
+        raise HTTPException(status_code=404, detail="No episodes found")
+
+    # EpisodeRecord.created_at is ISO 8601 string; lexicographic compare works for ISO
+    return max(records, key=lambda r: (getattr(r, "created_at", ""), int(getattr(r, "episode_index", 0) or 0)))
+
+
 @router.get("/episodes")
 def list_episodes() -> List[Dict[str, Any]]:
     """List known episodes from the append-only run registry (read-only)."""
@@ -81,10 +94,7 @@ def get_latest_episode() -> Dict[str, Any]:
     canonical order (most recent record is the last entry).
     """
     rows = run_registry.load_registry()
-    if not rows:
-        raise HTTPException(status_code=404, detail="No episodes found")
-
-    latest_record = rows[-1]
+    latest_record = _pick_latest_episode(rows)
     return _build_stage_episode_from_record(latest_record)
 
 
