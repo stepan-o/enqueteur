@@ -29,35 +29,12 @@ def _find_latest_by_episode_id(records: List[EpisodeRecord], episode_id: str) ->
     return match
 
 
-@router.get("/episodes")
-def list_episodes() -> List[Dict[str, Any]]:
-    """List known episodes from the append-only run registry (read-only)."""
-    rows = run_registry.load_registry()
-    out: List[Dict[str, Any]] = []
-    for r in rows:
-        out.append(
-            {
-                "episode_id": r.episode_id,
-                "run_id": r.run_id,
-                "episode_index": int(getattr(r, "episode_index", 0) or 0),
-                "days": int(getattr(r, "days", 0) or 0),
-                "created_at": str(getattr(r, "created_at", "")),
-            }
-        )
-    return out
+def _build_stage_episode_from_record(rec: EpisodeRecord) -> Dict[str, Any]:
+    """Load analytics for a registry record and return StageEpisode JSON.
 
-
-@router.get("/episodes/{episode_id}")
-def get_episode(episode_id: str) -> Dict[str, Any]:
-    """Return a fully built StageEpisode JSON for the latest record with this episode_id.
-
-    This endpoint is read-only and operates on the registry → analysis → builder path.
+    This mirrors the analysis → builder pipeline used by the detail endpoint.
+    It is pure/read-only aside from reading analysis results.
     """
-    records = run_registry.load_registry()
-    rec = _find_latest_by_episode_id(records, episode_id)
-    if rec is None:
-        raise HTTPException(status_code=404, detail="Episode not found")
-
     # Analyze to rebuild EpisodeSummary and DaySummary slice
     ep = analysis_api.analyze_episode_from_record(
         rec,
@@ -77,6 +54,54 @@ def get_episode(episode_id: str) -> Dict[str, Any]:
     return stage_ep.to_dict()
 
 
+@router.get("/episodes")
+def list_episodes() -> List[Dict[str, Any]]:
+    """List known episodes from the append-only run registry (read-only)."""
+    rows = run_registry.load_registry()
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "episode_id": r.episode_id,
+                "run_id": r.run_id,
+                "episode_index": int(getattr(r, "episode_index", 0) or 0),
+                "days": int(getattr(r, "days", 0) or 0),
+                "created_at": str(getattr(r, "created_at", "")),
+            }
+        )
+    return out
+
+
+@router.get("/episodes/latest")
+def get_latest_episode() -> Dict[str, Any]:
+    """Return the latest StageEpisode JSON according to the registry ordering.
+
+    Convenience wrapper that uses the same registry → analysis → builder pipeline
+    as the detail endpoint. "Latest" is defined by the append-only registry’s
+    canonical order (most recent record is the last entry).
+    """
+    rows = run_registry.load_registry()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No episodes found")
+
+    latest_record = rows[-1]
+    return _build_stage_episode_from_record(latest_record)
+
+
+@router.get("/episodes/{episode_id}")
+def get_episode(episode_id: str) -> Dict[str, Any]:
+    """Return a fully built StageEpisode JSON for the latest record with this episode_id.
+
+    This endpoint is read-only and operates on the registry → analysis → builder path.
+    """
+    records = run_registry.load_registry()
+    rec = _find_latest_by_episode_id(records, episode_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    return _build_stage_episode_from_record(rec)
+
+
 @router.get("/episodes/{episode_id}/raw")
 def get_episode_raw(episode_id: str) -> Dict[str, Any]:
     """Return the raw export (EpisodeSummary) dict for debugging.
@@ -94,3 +119,4 @@ def get_episode_raw(episode_id: str) -> Dict[str, Any]:
         supervisor_log_path=DEFAULT_SUPERVISOR_LOG,
     )
     return analysis_api.episode_summary_to_dict(ep)
+
