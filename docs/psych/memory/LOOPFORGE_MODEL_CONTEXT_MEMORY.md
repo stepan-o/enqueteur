@@ -1,4 +1,11 @@
-🧠 1. What “Model Context Memory” actually is
+# Model Context Memory
+
+When we say **“persistent memory points,”** we're referring to **Model Context Memory** — the entire structured memory layer the system maintains across conversations.  
+It’s not random facts; it’s an **internal, architected state** that evolves exactly like a Loopforge long-memory + supervisor-memory system.
+
+These are explicit, stored semantic units capturing context — not perceptions, not hunches.
+
+## 🧠 1. What “Model Context Memory” actually is
 
 It’s a structured internal document the system builds as you talk to me over time.
 It’s not your full chat history — it’s a curated, compressed, highly relevant summary of things that:
