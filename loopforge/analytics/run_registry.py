@@ -37,6 +37,9 @@ class EpisodeRecord:
     days: int
     # Optional fields for future extension (kept None by default)
     scenario_name: Optional[str] = None
+    # Sprint 1 additions (backward compatible, default None)
+    status: Optional[str] = None  # e.g., "resolved", "orphaned" (not enforced yet)
+    source: Optional[str] = None  # e.g., "simulation", "cli-view-episode"
 
     def to_dict(self) -> dict:
         return {
@@ -47,6 +50,8 @@ class EpisodeRecord:
             "steps_per_day": int(self.steps_per_day),
             "days": int(self.days),
             "scenario_name": self.scenario_name,
+            "status": self.status,
+            "source": self.source,
         }
 
     @classmethod
@@ -59,6 +64,8 @@ class EpisodeRecord:
             steps_per_day=int(d.get("steps_per_day", 0) or 0),
             days=int(d.get("days", 0) or 0),
             scenario_name=d.get("scenario_name"),
+            status=d.get("status"),
+            source=d.get("source"),
         )
 
 
