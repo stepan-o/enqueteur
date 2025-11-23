@@ -12,17 +12,20 @@ from typing import Dict, List, Optional, Mapping, Any
 
 @dataclass
 class StageAgentTraits:
-    """Optional snapshot of agent traits for episode-level summaries.
+    """Snapshot of agent traits for episode-level summaries.
 
-    This is intentionally sparse in Sprint 0.1 — future sprints may expand it.
-    Values are clamped/normalized upstream; here we just carry the snapshot.
+    These fields mirror the canonical psych trait engine output.
+    Values are expected to be floats in [0, 1], clamped upstream.
     """
 
-    risk_aversion: Optional[float] = None
-    obedience: Optional[float] = None
-    guardrail_reliance: Optional[float] = None
+    resilience: Optional[float] = None
+    caution: Optional[float] = None
+    agency: Optional[float] = None
+    trust_supervisor: Optional[float] = None
+    variance: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        # Only include non-None values
         return {k: v for k, v in asdict(self).items() if v is not None}
 
 

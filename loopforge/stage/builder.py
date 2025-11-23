@@ -150,7 +150,26 @@ def build_stage_episode(
     # Agents (episode-level)
     stage_agents: Dict[str, StageAgentSummary] = {}
     for name, a in episode_summary.agents.items():
-        traits = StageAgentTraits(**a.trait_snapshot) if isinstance(getattr(a, "trait_snapshot", None), dict) else None
+        # Canonical trait snapshot mapping (Sprint 3 — Trait Schema Unification)
+        # Accept dict snapshots from psych engine, filter to allowed keys, ignore extras.
+        raw_traits = getattr(a, "trait_snapshot", None)
+        traits: Optional[StageAgentTraits] = None
+        if isinstance(raw_traits, dict) and raw_traits:
+            allowed_keys = {
+                "resilience",
+                "caution",
+                "agency",
+                "trust_supervisor",
+                "variance",
+            }
+            filtered = {k: v for k, v in raw_traits.items() if k in allowed_keys}
+            if filtered:
+                try:
+                    traits = StageAgentTraits(**filtered)
+                except Exception:
+                    traits = None
+        else:
+            traits = None
         stage_agents[name] = StageAgentSummary(
             name=name,
             role=a.role,
