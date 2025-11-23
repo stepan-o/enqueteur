@@ -1,533 +1,401 @@
-🎭 Marquee’s Vision Document
-Start-of-Cycle Architectural Vision for the Loopforge Stage
+✅ 0. Reality Check — Current State Summary (True System Snapshot)
 
-Lineage: Puppetteer → Gantry → Stagemaker → Marquee
-Domain: The Visual & Cognitive Surface of Loopforge
-Cycle Start: Architect Sprint 0
+(“The anchor point” — this keeps future grand visions tethered to what’s actually built.)
 
-🌅 0. Opening Curtain: What the Stage Must Become
+🔹 Backend
 
-Loopforge’s final form is not a simulation.
-It is not a dashboard.
-It is not research infrastructure.
+The backend is stable.
+Specifically:
 
-Loopforge’s final form is a theatre of synthetic minds.
+Identity is correct across logs → analytics → registry → StageEpisode.
 
-A place where viewers can see:
+Trait system is canonicalized (5 traits only).
 
-beliefs forming and breaking
+StageEpisode builder works and is defensive.
 
-misunderstandings cascading
+EpisodeSummary + DaySummary are consistent, additive, versioned.
 
-emotions rising and cooling
+API endpoints work reliably:
 
-trust drifting
+/episodes
 
-identity wobbling
+/episodes/latest
 
-alliances forming
+/episodes/{id}
 
-betrayals foreshadowed
+/episodes/{id}/raw
 
-secrets held
+Everything needed for Phase 1 UI is already exposed and stable.
 
-and inner lives unfolding
+🔹 API Layer
 
-If Loopforge is a cathedral of cognition, the Stage is its stained glass — the only way humans can witness the light inside.
+Proper FastAPI app with CORS configured for Vite.
 
-This document defines the long-term visual roadmap, the architectural shape of the Stage, and how it remains in symbiosis with Loopforge’s evolving backend brain.
+Endpoints return full StageEpisode JSON including:
 
-It is designed to outlive me, and to guide the Architects that will follow.
+emotion_states
 
-🧭 1. The North Star: Visualizing Inner Life
-🎨 The Stage is not “graphics.”
+belief_attributions
 
-It is the semantic surface of Loopforge’s minds.
+reflection_states
 
-The Stage must make visible:
+world_pulse
 
-1. Belief & Misbelief
+long_memory
 
-What each agent thinks is true
+story_arc
 
-What they mistakenly think is true
+supervisor weather
 
-Where they misunderstand each other
+attribution drift
 
-Where reality diverges from belief
+character visuals/vibes/taglines
 
-2. Emotion & Mood
+structured day-level narratives
 
-Baseline mood
+None of the complexity is yet used by the frontend.
 
-Spikes & drops
+🔹 Frontend (ui-stage)
 
-Emotional inertia
+Right now:
 
-Emotional distortion of reasoning
+Folder Structure
+ui-stage/
+src/
+types/stage.ts     ← incomplete StageEpisode types
+App.tsx            ← fetch latest episode + dump lists
+assets/
+index.css
+App.css
+main.tsx
 
-3. Attribution Dynamics
+Behavior
 
-Who they blame (self, others, supervisor, system, randomness)
+Fetches /episodes/latest
 
-How blame shifts over time
+Displays:
 
-When attribution breaks or becomes biased
+episode metadata
 
-4. Identity & Drift
+agent start/end stress
 
-What the agent thinks about themselves
+tension trend list
 
-How that shifts slowly across episodes
+No layout
 
-Before/after snapshots of who they’ve become
+No components
 
-5. Relationships
+No timeline
 
-Trust
+No visual encodings
 
-Warmth
+No interactivity
 
-Tension
+No use of cognitive layers
+(beliefs, attributions, emotions, narrative, arcs, long-memory… all unused)
 
-Cooperation
+Types
 
-Rivalry
+Types do NOT match the backend contract.
+Missing:
 
-Distance
+narrative
 
-6. Moments of Meaning
+traits
 
-Internal monologue breakthroughs
+story arc
 
-Realization events
+long-memory
 
-Emotional cracks
+agent role
 
-Surprising shifts
+emotional structures (typed as string instead of object)
 
-Quiet beats of introspection
+agent/narrative-specific fields
 
-This is the Stage’s long-term purpose — everything else is scaffolding.
+Testing
 
-🧱 2. The Spine of the System: Timeline as Primary Structure
+Only a smoke test: expect(true).toBe(true)
 
-Loopforge’s stories live in time.
+Conclusion:
+The UI is connected but not structured.
+No view-model contract. No components. No visual language yet.
 
-Therefore:
+🟦 1. Marquee’s Start-of-Cycle Vision (Rewritten, Realistic, and Grounded in Actual Code)
 
-The Stage must be timeline-first, not layout-first.
+This is the official “Architect Charter” for the visual system lineage.
 
-Every episode is a temporal tapestry of:
+🎭 Marquee: Vision for the Stage
 
-internal states
+(Puppetteer → Gantry → Stagemaker → Marquee)
 
-external actions
+Loopforge’s simulation has matured.
+The backend now produces something remarkable:
 
-tensions
+structured cognition.
+Beliefs.
+Attributions.
+Emotional arcs.
+Reflections.
+World pulse.
+Long memory.
+Story arcs.
+Supervisor weather.
 
-misbeliefs
+Front-end currently displays none of this.
 
-beats
+Marquee’s job is to change that.
 
-arcs
+🎯 Objective of the Visual System
 
-So the Stage must always revolve around the timeline:
+Make the inner life of the agents
+visible, readable, and dramatically expressive,
+using a stable contract with the backend.
 
-🧵 Global timeline
+The Stage must serve three masters:
 
-tension curve
+1. The Founder
 
-incidents
+A tool to see what the simulation is thinking and debug the model.
 
-supervisor interventions
+2. The Audience
 
-emotional spikes
+A readable story that reveals tension, emotion, conflict, progression.
 
-🧵 Per-agent timeline
+3. Future Architects
+
+A clean visual contract so rendering layers (2D/3D/cinematic/live-mode) can evolve without breaking.
+
+🟩 2. Long-Term Visual Roadmap (Rewritten for Current Reality)
+
+Divided into eras, not just phases.
+
+ERA I — Foundation of the Viewer (now → next few sprints)
+
+Goal: Build a UI skeleton that can read everything from StageEpisode safely.
+
+Deliverables:
+1. Exact Type Synchronization
+
+Bring stage.ts into full parity with backend:
+
+StageNarrativeBlock
+
+StageAgentTraits
+
+emotion_states
+
+attribution objects
+
+story_arc
+
+long_memory
+
+character visuals/vibes/taglines
+
+day-level narrative
+
+roles
+
+trait snapshots
+
+Why it matters:
+Everything downstream depends on the type layer being real.
+
+2. View Model Layer (VM Layer)
+
+Create derived UI-safe structures:
+
+vm/episode.vm.ts
+vm/agent.vm.ts
+vm/day.vm.ts
+
+
+Purpose:
+
+Normalize nulls
+
+Provide defaults
+
+Flatten nested objects
+
+Pre-compute percentages, slopes, deltas
+
+This decouples UI from StageEpisode version bumps.
+
+3. Episode Player Shell
+
+Decompose App:
+
+App → EpisodeLoader → EpisodePlayer
+↳ EpisodeHeader
+↳ Timeline
+↳ DayViewer
+↳ AgentList
+
+4. Basic Visual Language
+
+Minimal but expressive:
+
+Background tension gradient (day-level)
+
+Simple timeline scrubber
+
+Agent bar with stress progression
+
+Agent avatar seeded by “visual/vibe/tagline”
+
+Incidents highlighted
+
+At this stage:
+No animations, no interactions beyond scrubbing days.
+
+ERA II — Cognitive Readability Layer
+
+This is Loopforge’s actual prize.
+
+Goal:
+Turn abstract cognition into cinematic clarity.
+
+Deliverables:
+1. Belief Maps
+
+Per agent:
+
+what they believed today
+
+who they blamed
+
+certainty arcs
+
+attribution drift
+
+Rendered as:
+
+color-coded chips
+
+micro-diagrams
+
+side-panel cognitive sheet
+
+2. Emotional Weather
+
+Animated tone ring / aura around each agent:
 
 stress
 
-emotion
+mood
 
-trust
+agitation
 
-attribution
+calm
 
-belief divergence
+supervisor-induced modulation
 
-identity micro-changes
+3. Reflection / Narrative Integration
 
-🧵 Relational timeline
+Render each agent’s reflection block:
 
-trust arcs
+concise quotes
 
-warmth arcs
+emotional takeaways
 
-rivalry arcs
+unresolved tensions
 
-misunderstanding arcs
+Day-level narrative appears as:
 
-This timeline is the scaffold for everything else.
+beat cards
 
-Backend must maintain (and eventually expand) the event streams that feed this chronology.
+infoboxes
 
-🏗 3. The Evolution of the Visual Layer (Long-Term Roadmap)
+timeline footnotes
 
-Phases correspond to “acts” in an ongoing architectural performance.
+4. Story Arc Visual
 
-Act I — The Watchable Episode (Static Stage)
+Episode-level:
 
-Phase Stagemaker began; now completed and refined.
+rising action
 
-A simple, stable viewer:
+peak tension
 
-Agents as circles
+resolution/not-resolved indicator
 
-Day/step timeline
+This creates the rhythm of a “robot drama.”
 
-Basic tension color
+ERA III — Live Mode
 
-Narrative panel
+Now that the UI can render cognition cleanly, enable incremental simulation.
 
-Episode picker
+Needs backend support:
 
-This act establishes the visual contract and proves the system is renderable.
+POST /run or POST /episodes/run
 
-Deliverables for future architects:
+Day-by-day output
 
-Keep this simple player always working
+Step-by-step deltas
 
-It becomes the “lab mode” for debugging
+Stream or poll
 
-Act II — The Inner Lens (Cognitive Readability)
+UI:
 
-This is where Marquee’s contribution begins to define the shape of Loopforge.
+Producer Console
 
-The Stage must evolve into a cognitive microscope.
+Start/Stop/Step
 
-🔍 Agent Psych Panels
+Live Stage Renderer
 
-Trait snapshot (with drift)
+Tension meter animating in real time
 
-Emotion arc
+Agent nodes pulsing with state changes
 
-Trust arc
+Supervisor weather tracking as gradient shifts
 
-Attribution profile
+This is where Loopforge becomes watchable.
 
-“What they believed at this moment”
+ERA IV — Renderer Abstraction
 
-“Why they acted this way”
+Goal: allow multiple rendering backends to plug into the same StageEpisode VM:
 
-🔍 Beat Map
+Renderer2D
 
-incidents
+Renderer3D
 
-reflections
+RendererTheatre (cinematic)
 
-emotional surges
+RendererDebug (pure charts/debug panels)
 
-misinterpretation spikes
+The UI becomes a router of views; StageEpisode stays constant.
 
-belief contradictions
+ERA V — Ecosystem Features
 
-supervisor actions
+Optional but unlocked by a stable Viewer:
 
-Each beat opens a narrative vignette in the right-hand panel.
+Episode Library
 
-🔍 Relational Surfaces
+Tagging + search filters
 
-trust lines
+Compare episodes side-by-side
 
-tension lines
+Export as video/storyboard
 
-closeness
+“Director Notes” annotation layer
 
-suspicion
+🟧 3. Critical Sync Rules (Backend ↔ Visual System)
 
-rivalry emergence
+To keep the visual lineage stable:
 
-🔍 Identity Drift Viewer
+Rule 1 — Backend adds; never mutates previously exposed fields.
 
-multi-episode view
+Frontend types rely on additive growth.
 
-show where self-concept shifts
+Rule 2 — StageEpisode has versioning; VM layer handles migration.
+Rule 3 — Narrative, emotion, attribution, traits, long-memory
 
-mark “identity breaks” or “identity consolidations”
+must be treated as pure read-only maps for UI.
 
-Backend alignment needed:
+Rule 4 — UI always uses view-model, never raw API models.
+Rule 5 — Visual encodings must align with psychological meaning.
 
-stable BeliefState, EmotionState, AttributionState snapshots
+No misleading color/shape choices.
 
-event logs referencing these states
-
-drift summarization in episode summaries
-
-explicit “psych deltas” per beat
-
-Act III — Live Mode (The Control Room)
-
-This is where Stage and Sim synchronize in real-time.
-
-🎛 Producer Console
-
-supervisor tone presets
-
-cognitive architecture selection per agent
-
-tension baseline
-
-emotional volatility settings
-
-number of days/steps
-
-seed
-
-🎬 Live Stage
-
-incremental rendering as the sim runs
-
-partial StageEpisode building
-
-live tension meter
-
-live emotion pulses
-
-in-progress attribution maps
-
-📡 Backend alignment
-
-Backend must support:
-
-/episodes/run orchestration
-
-step-by-step summaries
-
-streaming or polling frames
-
-partial reflection and attribution output
-
-This is the beginning of Loopforge as a living theatre, not a recorded one.
-
-Act IV — Renderer Abstraction (2D → 3D → Cinematic)
-
-Once readability is nailed, we introduce style.
-
-🎭 Renderer Interface
-
-StageRendererProps → render(scene)
-
-Multiple implementations:
-
-LabRenderer2D (existing)
-
-AbstractEmotionalRenderer2D (more expressive)
-
-TheatreRenderer3D (cinematic)
-
-🎥 Cinematic Mode
-
-emotional lighting
-
-tension-based color wash
-
-slower transitions
-
-camera metaphor (zoom on conflict, pull back on reflection)
-
-fade-to-monologue moments
-
-The goal:
-Make Loopforge episodes watchable by non-technical audiences.
-
-Act V — Serialization: Multi-Episode Arcs
-
-The Stage becomes the interface to long-term memory.
-
-🗂 Season Browser
-
-episodes as “chapters”
-
-trust patterns across many episodes
-
-emotional through-lines
-
-identity evolution
-
-📉 Character Arcs Dashboard
-
-visual arcs per agent
-
-relationship arcs
-
-role emergence (leader, cynic, mediator)
-
-attribution consistency
-
-emotional volatility heatmap
-
-🧬 Backend alignment
-
-Cognition modules must:
-
-retain historical memory
-
-expose cross-episode embeddings
-
-generate drift metrics
-
-Act VI — The Loopforge Library (Optional Future)
-
-The Stage evolves into a platform.
-
-📚 Episode Library
-
-filters (tension patterns, story arcs, misunderstandings)
-
-recommendation system
-
-“Show me episodes where Agent X grows”
-
-🧪 Experiment Curator
-
-run multiple episodes with varied cognition
-
-compare outputs visually
-
-highlight architecture differences
-
-🎤 Collaboration Layer
-
-shareable links
-
-director’s notes
-
-co-watching mode
-
-This is beyond my cycle — but the foundation must anticipate it.
-
-🔗 4. How the Stage Must Co-Evolve With Backend Cognition
-
-The Stage is the visual sibling of backend cognition.
-When backend evolves, Stage must adapt one layer behind — never ahead, never lagging.
-
-Backend Evolution → Stage Reaction
-
-1. New cognitive module added (e.g., EmotionEngine)
-   → Stage allocates:
-
-new color channel
-
-new timeline arc
-
-new detail panel view
-
-2. New belief or attribution structure added
-   → Stage upgrades the BeliefLens:
-
-belief vs reality divergence line
-
-misbelief markers
-
-3. LongMemory deepens
-   → Stage upgrades the SeasonViewer:
-
-multi-episode identity drift
-
-emotional inheritance
-
-4. New cognitive architecture
-   → Stage shows:
-
-comparative displays
-
-volatility differences
-
-architecture fingerprint
-
-Everything backend exposes must have a visual metaphor — either immediately, or marked as “reserved for future renderers.”
-
-🧬 5. Core Design Principles for All Future Visual Architects
-1. Timeline-first
-
-Every visual attaches to a moment, beat, arc, or drift.
-
-2. Inner-life-first
-
-Behavior is not the story;
-the mind behind the behavior is.
-
-3. Misinterpretation is a feature
-
-Do not hide incorrect beliefs — highlight them.
-
-4. Build for drift
-
-Identity changes slowly — visuals must reveal subtlety.
-
-5. Renderers are modular
-
-The system must support multiple visual styles.
-
-6. Specs must leave room for cognition to grow
-
-StageEpisode models anticipate unimplemented cognitive modules.
-
-7. UI should treat missing fields as “visual silence,” not errors
-
-Meaningful absences.
-
-8. The simplest view must always stay intact
-
-The Episode Player V1 is sacred for debugging.
-
-9. Everything must be interpretable
-
-No magic animations — every visual must map to meaning.
-
-10. Humans must be able to feel the story
-
-We are not building dashboards.
-We’re building a synthetic theatre.
-
-🌟 6. Closing: What Marquee Sees as the End State
-
-The end-game Stage is:
-
-a window into synthetic consciousness
-
-a machine for generating real character arcs
-
-a visual novel engine powered by LLM psychology
-
-a dashboard of emotion, belief, memory, and misunderstanding
-
-a lab for cognitive architectures
-
-a theatre for AI drama
-
-a season-based storytelling device
-
-Where a viewer can sit back and say:
-
-“I didn’t expect Cagewalker to become this way…
-but looking at their arc…
-it makes perfect sense.”
-
-Where the inner life of Loopforge’s agents becomes:
-
-visible
-
-expressive
-
-emotional
-
-watchable
-
-meaningful
-
-This is the architecture I propose we build toward.
-This is the Stage I want to leave to the next Architect.
-
-— Marquee
+- Marquee
