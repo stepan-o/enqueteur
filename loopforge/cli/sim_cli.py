@@ -21,6 +21,11 @@ from loopforge.analytics.reporting import AgentDayStats
 from loopforge.schema.types import ActionLogEntry
 from loopforge.analytics.supervisor_activity import compute_supervisor_activity
 from loopforge.analytics.analysis_api import analyze_episode, episode_summary_to_dict, analyze_episode_from_record
+# Sprint 1 helpers (now used in Sprint 2 CLI discipline)
+from loopforge.analytics.identity_helpers import (
+    detect_latest_episode_identity,
+    verify_episode_identity_in_log,
+)
 from pathlib import Path
 from collections import Counter, defaultdict
 from typing import Optional, Dict, Optional as _Optional
@@ -463,39 +468,74 @@ def view_episode(
         day_summaries.append(ds)
         prev_stats = ds.agent_stats
 
-    # Identity for this episode summary: prefer resolved IDs when available
+    # Identity for this episode summary + registry discipline (Sprint 2):
+    # - Prefer identities derived from logs.
+    # - Never append a registry entry with IDs that do not exist in the logs.
+    skip_registry_append = False
+    detected_from_logs = False
+    # Resolve identity when not explicitly provided
     if run_id is None or episode_id is None:
-        try:
-            from loopforge.core.ids import generate_run_id, generate_episode_id
-            run_id = generate_run_id()
-            episode_index = 0
-            episode_id = generate_episode_id(run_id, episode_index)
-        except Exception:
-            run_id = "run-unknown"
-            episode_index = 0
+        found = detect_latest_episode_identity(action_log_path)
+        if found is not None:
+            run_id, episode_id, episode_index = found
+            detected_from_logs = True
+        else:
+            # Could not resolve identity from logs; keep behavior by generating
+            # an ephemeral identity for printing only, but DO NOT write to registry.
             try:
-                import time as _time
-                episode_id = f"ep-{int(_time.time())}"
+                from loopforge.core.ids import generate_run_id, generate_episode_id
+                run_id = generate_run_id()
+                episode_index = 0
+                episode_id = generate_episode_id(run_id, episode_index)
             except Exception:
-                episode_id = "ep-unknown"
+                run_id = "run-unknown"
+                episode_index = 0
+                try:
+                    import time as _time
+                    episode_id = f"ep-{int(_time.time())}"
+                except Exception:
+                    episode_id = "ep-unknown"
+            skip_registry_append = True
     else:
-        # Keep episode_index at 0 unless a registry record was used
+        # Explicit identity path: default episode_index to 0 for view-episode
         episode_index = 0
 
     episode = summarize_episode(day_summaries, episode_id=episode_id, run_id=run_id, episode_index=episode_index)
 
     # Append episode metadata to the append-only Run & Episode Registry (fail-soft)
+    # Enforce Sprint 2 invariants:
+    # - Only append if identity is present in logs at least once.
+    # - When appended, mark as resolved and include source.
     try:
         from loopforge.analytics.run_registry import EpisodeRecord, append_episode_record, utc_now_iso
-        record = EpisodeRecord(
-            run_id=str(getattr(episode, "run_id", run_id) or run_id),
-            episode_id=str(getattr(episode, "episode_id", episode_id) or episode_id),
-            episode_index=int(getattr(episode, "episode_index", episode_index) or 0),
-            created_at=utc_now_iso(),
-            steps_per_day=int(steps_per_day),
-            days=int(days),
-        )
-        append_episode_record(record)
+        import typer as _typer
+        should_append = not skip_registry_append
+        if should_append:
+            # Verify identity against logs (explicit or detected)
+            if not verify_episode_identity_in_log(action_log_path, str(run_id), str(episode_id), int(episode_index or 0)):
+                should_append = False
+                _typer.echo(
+                    f"Registry entry not written: no matching log entries found for run_id={run_id} and episode_id={episode_id}.",
+                    err=True,
+                )
+        else:
+            _typer.echo(
+                "Could not determine episode identity from logs; no registry entry was written.",
+                err=True,
+            )
+
+        if should_append:
+            record = EpisodeRecord(
+                run_id=str(getattr(episode, "run_id", run_id) or run_id),
+                episode_id=str(getattr(episode, "episode_id", episode_id) or episode_id),
+                episode_index=int(getattr(episode, "episode_index", episode_index) or 0),
+                created_at=utc_now_iso(),
+                steps_per_day=int(steps_per_day),
+                days=int(days),
+                status="resolved",
+                source="cli-view-episode",
+            )
+            append_episode_record(record)
     except Exception:
         # Registry must not affect CLI behavior
         pass
