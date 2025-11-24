@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 import type { StageEpisode } from "./types/stage";
+import { getLatestEpisode } from "./api/episodes";
 
 // -------------------------------
 // Component
@@ -12,10 +13,7 @@ export default function App() {
     useEffect(() => {
         async function load() {
             try {
-                const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "http://127.0.0.1:8000";
-                const res = await fetch(`${API_BASE}/episodes/latest`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
+                const data = await getLatestEpisode();
                 setEpisode(data);
             } catch (err: unknown) {
                 if (err instanceof Error) setError(err.message);
