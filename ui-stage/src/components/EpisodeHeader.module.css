@@ -1,0 +1,21 @@
+.header {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  color: #222;
+  font-size: 0.95rem;
+}
+
+.item {
+  white-space: nowrap;
+}
+
+.sep {
+  opacity: 0.5;
+}
