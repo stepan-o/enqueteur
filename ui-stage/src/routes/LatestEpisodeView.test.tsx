@@ -23,20 +23,33 @@ describe("LatestEpisodeView — Episode Agents Overview integration", () => {
       stageVersion: 1,
       days: [],
       tensionTrend: [],
-      agents: [
-        {
-          name: "Ava",
-          role: "ops",
-          stressStart: 0.2,
-          stressEnd: 0.1,
-          stressDelta: -0.1,
-          guardrailTotal: 0,
-          contextTotal: 0,
-          visual: "ava",
-          vibe: "focused",
-          tagline: "",
+      agents: [],
+      _raw: {
+        episode_id: "ep-overview",
+        run_id: "run-overview",
+        episode_index: 0,
+        stage_version: 1,
+        tension_trend: [],
+        days: [],
+        agents: {
+          Ava: {
+            name: "Ava",
+            role: "ops",
+            guardrail_total: 0,
+            context_total: 0,
+            stress_start: 0.2,
+            stress_end: 0.1,
+            trait_snapshot: null,
+            visual: "ava",
+            vibe: "focused",
+            tagline: "",
+          },
         },
-      ],
+        story_arc: null,
+        narrative: [],
+        long_memory: null,
+        character_defs: null,
+      },
     } as any;
 
     vi.spyOn(api, "getLatestEpisode").mockResolvedValue(vm);

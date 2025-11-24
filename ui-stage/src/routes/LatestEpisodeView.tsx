@@ -3,7 +3,7 @@ import type { EpisodeViewModel } from "../vm/episodeVm";
 import EpisodeHeader from "../components/EpisodeHeader";
 import TimelineStrip from "../components/TimelineStrip";
 import DayDetailPanel from "../components/DayDetailPanel";
-import EpisodeAgentsOverview from "../components/EpisodeAgentsOverview";
+import EpisodeAgentsPanel from "../components/EpisodeAgentsPanel";
 import { useEpisodeLoader } from "../hooks/useEpisodeLoader";
 
 export default function LatestEpisodeView() {
@@ -44,7 +44,7 @@ export default function LatestEpisodeView() {
       <DayDetailPanel episode={episode} dayIndex={selectedDayIndex} />
 
       <h2>Episode Agents Overview</h2>
-      <EpisodeAgentsOverview agents={episode.agents} />
+      <EpisodeAgentsPanel episode={episode} />
     </div>
   );
 }
