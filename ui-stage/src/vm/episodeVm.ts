@@ -3,6 +3,8 @@ import type { AgentViewModel } from "./agentVm";
 import type { DayViewModel } from "./dayVm";
 import { buildAgentViews } from "./agentVm";
 import { buildDayViews } from "./dayVm";
+import type { EpisodeStoryViewModel } from "./storyVm";
+import { buildEpisodeStory } from "./storyVm";
 
 export interface EpisodeViewModel {
   id: string | null;
@@ -12,6 +14,7 @@ export interface EpisodeViewModel {
   days: DayViewModel[];
   agents: AgentViewModel[];
   tensionTrend: number[];
+  story: EpisodeStoryViewModel;
   /**
    * Raw StageEpisode backing this VM. Internal use only for detail builders;
    * UI should not rely on this shape.
@@ -28,6 +31,7 @@ export function buildEpisodeView(ep: StageEpisode): EpisodeViewModel {
     days: buildDayViews(ep.days),
     agents: buildAgentViews(ep),
     tensionTrend: ep.tension_trend,
+    story: buildEpisodeStory(ep),
     _raw: ep,
   };
 }

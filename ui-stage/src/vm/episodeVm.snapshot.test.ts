@@ -42,6 +42,11 @@ describe("buildEpisodeView snapshot", () => {
             "id": "ep-1",
             "index": 0,
             "runId": "run-1",
+            "story": {
+              "longMemory": null,
+              "storyArc": null,
+              "topLevelNarrative": [],
+            },
             "stageVersion": 1,
             "tensionTrend": [
               0.1,

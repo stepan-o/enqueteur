@@ -18,10 +18,10 @@ function computeAvgStress(raw: StageEpisode, agentName: string): number {
   let count = 0;
   for (const d of days) {
     const map = d.agents || {};
-    const a = (map as any)[agentName];
+    const a = map[agentName as keyof typeof map];
     if (a) {
-      const v = (a as any).avg_stress;
-      const num = typeof v === "number" && Number.isFinite(v) ? v : 0;
+      const v = a.avg_stress;
+      const num = Number.isFinite(v) ? v : 0;
       sum += num;
       count += 1;
     }
@@ -35,7 +35,8 @@ function latestAttribution(raw: StageEpisode, agentName: string): string | null 
   // Iterate in ascending order, keep the last non-null seen
   let last: string | null = null;
   for (const d of days) {
-    const a = (d.agents || ({} as any))[agentName];
+    const map = d.agents || {};
+    const a = map[agentName as keyof typeof map];
     const cause = a && typeof a.attribution_cause === "string" ? a.attribution_cause : null;
     if (cause) last = cause;
   }
@@ -43,7 +44,7 @@ function latestAttribution(raw: StageEpisode, agentName: string): string | null 
 }
 
 export default function EpisodeAgentsPanel({ episode }: EpisodeAgentsPanelProps) {
-  const raw = (episode as any)?._raw as StageEpisode | undefined;
+  const raw = episode?._raw as StageEpisode | undefined;
   const agentsMap = raw?.agents || {};
   const names = Object.keys(agentsMap);
 
@@ -57,7 +58,7 @@ export default function EpisodeAgentsPanel({ episode }: EpisodeAgentsPanelProps)
 
   const items = names
     .map((name) => {
-      const s = (agentsMap as any)[name];
+      const s = agentsMap[name as keyof typeof agentsMap] as (typeof agentsMap)[string] | undefined;
       const role: string = s?.role ?? "";
       const guardrail: number = typeof s?.guardrail_total === "number" ? s.guardrail_total : 0;
       const context: number = typeof s?.context_total === "number" ? s.context_total : 0;

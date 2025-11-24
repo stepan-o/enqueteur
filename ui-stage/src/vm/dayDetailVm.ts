@@ -28,7 +28,7 @@ function findStageDay(raw: StageEpisode | undefined, dayIndex: number): StageDay
 }
 
 export function buildDayDetail(ep: EpisodeViewModel, dayIndex: number): DayDetailViewModel {
-  const day = findStageDay((ep as any)._raw as StageEpisode | undefined, dayIndex);
+  const day = findStageDay(ep._raw as StageEpisode | undefined, dayIndex);
 
   if (!day) {
     return {
@@ -45,9 +45,9 @@ export function buildDayDetail(ep: EpisodeViewModel, dayIndex: number): DayDetai
   const agents: DayAgentDetail[] = Object.values(day.agents ?? {}).map((a) => ({
     name: a.name,
     role: a.role,
-    avgStress: (a as any).avg_stress ?? 0,
-    guardrailCount: (a as any).guardrail_count ?? 0,
-    contextCount: (a as any).context_count ?? 0,
+    avgStress: a.avg_stress ?? 0,
+    guardrailCount: a.guardrail_count ?? 0,
+    contextCount: a.context_count ?? 0,
     emotionalRead:
       a.emotional_read && typeof a.emotional_read === "object"
         ? (a.emotional_read as Record<string, unknown>)
