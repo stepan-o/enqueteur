@@ -1,20 +1,22 @@
 import { useEffect, useState } from "react";
 import "./App.css";
-import type { StageEpisode } from "./types/stage";
 import { getLatestEpisode } from "./api/episodes";
+import type { EpisodeViewModel } from "./vm/episodeVm";
+import { buildEpisodeView } from "./vm/episodeVm";
 
 // -------------------------------
 // Component
 // -------------------------------
 export default function App() {
-    const [episode, setEpisode] = useState<StageEpisode | null>(null);
+    const [episode, setEpisode] = useState<EpisodeViewModel | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         async function load() {
             try {
-                const data = await getLatestEpisode();
-                setEpisode(data);
+                const raw = await getLatestEpisode();
+                const vm = buildEpisodeView(raw);
+                setEpisode(vm);
             } catch (err: unknown) {
                 if (err instanceof Error) setError(err.message);
                 else setError("Unknown error");
@@ -35,25 +37,24 @@ export default function App() {
         <div className="App">
             <h1>Loopforge Stage Viewer</h1>
             <p>
-                <strong>Episode:</strong> {episode.episode_id}<br />
-                <strong>Run:</strong> {episode.run_id}<br />
+                <strong>Episode:</strong> {episode.id}<br />
+                <strong>Run:</strong> {episode.runId}<br />
                 <strong>Days:</strong> {episode.days.length}<br />
-                <strong>Stage Version:</strong> {episode.stage_version}
+                <strong>Stage Version:</strong> {episode.stageVersion}
             </p>
 
             <h2>Agents</h2>
             <ul>
-                {Object.entries(episode.agents).map(([agent, stats]) => (
-                    <li key={agent}>
-                        <strong>{agent}</strong> — start stress {stats.stress_start}, end stress{" "}
-                        {stats.stress_end}
+                {episode.agents.map((agent) => (
+                    <li key={agent.name}>
+                        <strong>{agent.name}</strong> — start stress {agent.stressStart}, end stress {agent.stressEnd} (Δ {agent.stressDelta.toFixed(2)})
                     </li>
                 ))}
             </ul>
 
             <h2>Day Tension Trend</h2>
             <ul>
-                {episode.tension_trend.map((v, i) => (
+                {episode.tensionTrend.map((v, i) => (
                     <li key={i}>
                         Day {i}: {v}
                     </li>

@@ -19,6 +19,19 @@ describe("buildEpisodeView snapshot", () => {
             character_defs: null,
         };
         const vm = buildEpisodeView(ep);
-        expect(vm).toMatchInlineSnapshot();
+        expect(vm).toMatchInlineSnapshot(`
+          {
+            "agents": [],
+            "days": [],
+            "id": "ep-1",
+            "index": 0,
+            "runId": "run-1",
+            "stageVersion": 1,
+            "tensionTrend": [
+              0.1,
+              0.3,
+            ],
+          }
+        `);
     });
 });
