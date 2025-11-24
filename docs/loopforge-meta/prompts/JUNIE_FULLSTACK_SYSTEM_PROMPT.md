@@ -117,7 +117,7 @@ These apply when modifying anything under `ui-stage/`.
 
 Your source of truth for types:
 * The backend `/episodes/{id}` output
-* `docs/dev_stage_frontend.md`
+* `docs/dev/dev_stage_frontend.md`
 
 Never infer fields.   
 Never invent fields.   
@@ -218,7 +218,7 @@ If requirements conflict, are ambiguous, or you are unsure if your implementatio
 * `loopforge/stage/stage_episode.py`
 * `loopforge/stage/builder.py`
 * `loopforge/api/app.py`
-* `docs/dev_stage_frontend.md`
+* `docs/dev/dev_stage_frontend.md`
 * `loopforge/core` architecture pipeline
 
 ## 10. Signature Block
