@@ -1,45 +1,42 @@
+import React from "react";
 import type { DayViewModel } from "../vm/dayVm";
+import styles from "./TimelineStrip.module.css";
 
 export interface TimelineStripProps {
   days: DayViewModel[];
-  tensionTrend: number[];
-  selectedIndex: number | null;
-  onSelect?: (index: number) => void;
+  selectedIndex: number;
+  onSelect: (index: number) => void;
 }
 
 export default function TimelineStrip({
   days,
-  tensionTrend,
   selectedIndex,
   onSelect,
 }: TimelineStripProps) {
-  if (!days.length) {
-    return <div className="timeline-strip empty">No days in this episode.</div>;
+  if (!days || days.length === 0) {
+    return <div className={styles.strip} />;
   }
 
   return (
-    <div className="timeline-strip">
-      <ul>
-        {days.map((day, idx) => {
-          const tension = tensionTrend[idx] ?? day.tensionScore;
-          const isSelected = selectedIndex === day.index || selectedIndex === idx;
-
-          return (
-            <li key={day.index} onClick={() => onSelect?.(day.index)}>
-              <button
-                type="button"
-                data-testid={`timeline-day-${day.index}`}
-                aria-selected={isSelected}
-                className={isSelected ? "timeline-day selected" : "timeline-day"}
-                onClick={() => onSelect?.(day.index)}
-              >
-                <span className="timeline-day-label">Day {day.index}</span>{" "}
-                <span className="timeline-day-tension">tension: {tension.toFixed(2)}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+    <div className={styles.strip} role="group" aria-label="Episode timeline">
+      {days.map((d) => {
+        const isSelected = selectedIndex === d.index;
+        const className = isSelected
+          ? `${styles.day} ${styles.selected}`
+          : styles.day;
+        return (
+          <button
+            key={d.index}
+            type="button"
+            className={className}
+            data-testid={`timeline-day-${d.index}`}
+            aria-selected={isSelected}
+            onClick={() => onSelect(d.index)}
+          >
+            <span className={styles.label}>{`Day ${d.index}`}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
