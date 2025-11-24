@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent, within } from "@testing-library/react";
 import TimelineStrip from "./TimelineStrip";
 import type { DayViewModel } from "../vm/dayVm";
+import type { DaySummaryViewModel } from "../vm/daySummaryVm";
 
 describe("TimelineStrip", () => {
   const days: DayViewModel[] = [
@@ -51,5 +52,77 @@ describe("TimelineStrip", () => {
     // Renders an empty strip (no buttons)
     const btns = within(container).queryAllByRole("button");
     expect(btns.length).toBe(0);
+  });
+
+  it("renders summary indicators when provided (arrow + agent)", () => {
+    const summaries: DaySummaryViewModel[] = [
+      {
+        dayIndex: 0,
+        tensionDirection: "up",
+        tensionChange: 0.2,
+        primaryAgentName: "Ava",
+        primaryAgentStress: 0.63,
+        notableText: "Tension rose compared...",
+      },
+      {
+        dayIndex: 1,
+        tensionDirection: "flat",
+        tensionChange: 0.0,
+        primaryAgentName: null,
+        primaryAgentStress: null,
+        notableText: "Tension held steady...",
+      },
+    ];
+
+    const { container } = render(
+      <TimelineStrip
+        days={days}
+        selectedIndex={0}
+        onSelect={vi.fn()}
+        daySummaries={summaries}
+      />
+    );
+
+    const day0 = within(container).getByTestId("timeline-day-0");
+    const day1 = within(container).getByTestId("timeline-day-1");
+
+    expect(day0.textContent || "").toMatch(/▲/);
+    expect(day0.textContent || "").toMatch(/Ava/);
+
+    expect(day1.textContent || "").toMatch(/▬/);
+  });
+
+  it("handles missing summaries array or mismatched entries without crashing", () => {
+    // No summaries prop at all
+    const r1 = render(
+      <TimelineStrip days={days} selectedIndex={0} onSelect={vi.fn()} />
+    );
+    const day0a = within(r1.container).getByTestId("timeline-day-0");
+    expect(day0a.textContent || "").not.toMatch(/[▲▼▬]/);
+    r1.unmount();
+
+    // Summaries shorter than days
+    const shortSummaries: DaySummaryViewModel[] = [
+      {
+        dayIndex: 0,
+        tensionDirection: "down",
+        tensionChange: -0.3,
+        primaryAgentName: null,
+        primaryAgentStress: null,
+        notableText: "Tension fell...",
+      },
+    ];
+    const { container } = render(
+      <TimelineStrip
+        days={days}
+        selectedIndex={1}
+        onSelect={vi.fn()}
+        daySummaries={shortSummaries}
+      />
+    );
+    const day0 = within(container).getByTestId("timeline-day-0");
+    const day1 = within(container).getByTestId("timeline-day-1");
+    expect(day0.textContent || "").toMatch(/▼/);
+    expect(day1.textContent || "").not.toMatch(/[▲▼▬]/);
   });
 });

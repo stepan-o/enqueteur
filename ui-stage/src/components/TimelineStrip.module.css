@@ -36,3 +36,23 @@
 .label {
   white-space: nowrap;
 }
+
+/* Summary indicator for each day (arrow + optional agent name) */
+.summary {
+  display: inline-block;
+  margin-left: 0.4rem;
+  font-size: 0.75rem;
+  color: #666; /* muted baseline */
+}
+
+.up {
+  color: #b91c1c; /* subtle red */
+}
+
+.down {
+  color: #059669; /* subtle green */
+}
+
+.flat {
+  color: #6b7280; /* neutral gray */
+}
