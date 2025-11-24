@@ -1,41 +1,31 @@
 import { useEffect, useState } from "react";
-import { getLatestEpisode } from "../api/episodes";
 import type { EpisodeViewModel } from "../vm/episodeVm";
-import { buildEpisodeView } from "../vm/episodeVm";
 import EpisodeHeader from "../components/EpisodeHeader";
 import TimelineStrip from "../components/TimelineStrip";
 import DayDetailPanel from "../components/DayDetailPanel";
 import EpisodeAgentsOverview from "../components/EpisodeAgentsOverview";
+import { useEpisodeLoader } from "../hooks/useEpisodeLoader";
 
 export default function LatestEpisodeView() {
-  const [episode, setEpisode] = useState<EpisodeViewModel | null>(null);
+  const { episode, error, isLoading } = useEpisodeLoader();
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
-  const [error, setError] = useState<string | null>(null);
 
+  // Preserve initial selection logic: set to first day index when episode arrives
   useEffect(() => {
-    async function load() {
-      try {
-        const raw = await getLatestEpisode();
-        const vm = buildEpisodeView(raw);
-        setEpisode(vm);
-        if (vm.days.length > 0) {
-          setSelectedDayIndex(vm.days[0].index);
-        } else {
-          setSelectedDayIndex(0);
-        }
-      } catch (err: unknown) {
-        if (err instanceof Error) setError(err.message);
-        else setError("Unknown error");
+    if (episode) {
+      if (episode.days.length > 0) {
+        setSelectedDayIndex(episode.days[0].index);
+      } else {
+        setSelectedDayIndex(0);
       }
     }
-    load();
-  }, []);
+  }, [episode]);
 
   if (error) {
     return <div className="error">Error loading episode: {error}</div>;
   }
 
-  if (!episode) {
+  if (isLoading && !episode) {
     return <div className="loading">Loading latest StageEpisode…</div>;
   }
 
