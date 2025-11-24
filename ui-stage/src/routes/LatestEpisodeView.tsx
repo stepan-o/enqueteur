@@ -8,6 +8,9 @@ import { useEpisodeLoader } from "../hooks/useEpisodeLoader";
 
 export default function LatestEpisodeView() {
   const { episode, error, isLoading } = useEpisodeLoader();
+
+  console.log("Render LatestEpisodeView", { episode, error, isLoading });
+
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
 
   // Preserve initial selection logic: set to first day index when episode arrives
@@ -25,8 +28,12 @@ export default function LatestEpisodeView() {
     return <div className="error">Error loading episode: {error}</div>;
   }
 
-  if (isLoading && !episode) {
-    return <div className="loading">Loading latest StageEpisode…</div>;
+  // Guard rendering on episode presence; handle both loading and empty states explicitly
+  if (!episode) {
+    if (isLoading) {
+      return <div className="loading">Loading latest StageEpisode…</div>;
+    }
+    return <div className="empty">No episode available.</div>;
   }
 
   return (
