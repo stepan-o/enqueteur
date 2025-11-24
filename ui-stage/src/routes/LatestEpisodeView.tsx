@@ -5,6 +5,7 @@ import { buildEpisodeView } from "../vm/episodeVm";
 import EpisodeHeader from "../components/EpisodeHeader";
 import TimelineStrip from "../components/TimelineStrip";
 import DayDetailPanel from "../components/DayDetailPanel";
+import EpisodeAgentsOverview from "../components/EpisodeAgentsOverview";
 
 export default function LatestEpisodeView() {
   const [episode, setEpisode] = useState<EpisodeViewModel | null>(null);
@@ -52,15 +53,8 @@ export default function LatestEpisodeView() {
       <h2>Day Detail</h2>
       <DayDetailPanel episode={episode} dayIndex={selectedDayIndex} />
 
-      <h2>Agents</h2>
-      <ul>
-        {episode.agents.map((agent) => (
-          <li key={agent.name}>
-            <strong>{agent.name}</strong> — start stress {agent.stressStart}, end
-            stress {agent.stressEnd} (Δ {agent.stressDelta.toFixed(2)})
-          </li>
-        ))}
-      </ul>
+      <h2>Episode Agents Overview</h2>
+      <EpisodeAgentsOverview agents={episode.agents} />
     </div>
   );
 }
