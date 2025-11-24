@@ -31,5 +31,7 @@
 }
 
 .main {
-  padding: 1rem;
+    padding: 1rem;
+    background: #ffffff;
+    color: #222222;
 }
