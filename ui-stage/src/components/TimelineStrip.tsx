@@ -1,4 +1,3 @@
-import React from "react";
 import type { DayViewModel } from "../vm/dayVm";
 import styles from "./TimelineStrip.module.css";
 
