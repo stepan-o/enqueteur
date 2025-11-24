@@ -47,6 +47,11 @@ describe("LatestEpisodeView loading/empty-state regression guard", () => {
         days: [],
         agents: [],
         tensionTrend: [],
+        story: {
+          storyArc: null,
+          longMemory: null,
+          topLevelNarrative: [],
+        },
         _raw: {
           episode_id: "ep-ok",
           run_id: "run-ok",

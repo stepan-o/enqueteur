@@ -30,6 +30,11 @@ describe("App smoke test with mocked API", () => {
       days: [],
       agents: [],
       tensionTrend: [0.1, 0.3],
+      story: {
+        storyArc: null,
+        longMemory: null,
+        topLevelNarrative: [],
+      },
     };
 
     vi.spyOn(api, "getLatestEpisode").mockResolvedValue(vm as unknown as any);

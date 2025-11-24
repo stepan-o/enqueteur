@@ -28,6 +28,11 @@ describe("EpisodeHeader", () => {
     days: [],
     agents: [],
     tensionTrend: [0.1, 0.2],
+    story: {
+      storyArc: null,
+      longMemory: null,
+      topLevelNarrative: [],
+    },
     _raw: raw,
   };
 

@@ -85,6 +85,11 @@ function makeVm(rawOverrides?: Partial<StageEpisode>): EpisodeViewModel {
     days: [],
     agents: [],
     tensionTrend: raw.tension_trend ?? [],
+    story: {
+      storyArc: null,
+      longMemory: null,
+      topLevelNarrative: [],
+    },
     _raw: raw,
   };
 }

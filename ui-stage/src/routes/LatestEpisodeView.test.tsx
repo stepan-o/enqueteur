@@ -24,6 +24,11 @@ describe("LatestEpisodeView — Episode Agents Overview integration", () => {
       days: [],
       tensionTrend: [],
       agents: [],
+      story: {
+        storyArc: null,
+        longMemory: null,
+        topLevelNarrative: [],
+      },
       _raw: {
         episode_id: "ep-overview",
         run_id: "run-overview",
