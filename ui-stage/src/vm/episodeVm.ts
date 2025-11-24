@@ -4,7 +4,7 @@ import type { DayViewModel } from "./dayVm";
 import { buildAgentViews } from "./agentVm";
 import { buildDayViews } from "./dayVm";
 import type { EpisodeStoryViewModel } from "./storyVm";
-import { buildEpisodeStory } from "./storyVm";
+import { buildStoryView } from "./storyVm";
 
 export interface EpisodeViewModel {
   id: string | null;
@@ -31,7 +31,7 @@ export function buildEpisodeView(ep: StageEpisode): EpisodeViewModel {
     days: buildDayViews(ep.days),
     agents: buildAgentViews(ep),
     tensionTrend: ep.tension_trend,
-    story: buildEpisodeStory(ep),
+    story: buildStoryView(ep),
     _raw: ep,
   };
 }
