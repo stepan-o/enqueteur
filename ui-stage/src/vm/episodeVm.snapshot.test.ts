@@ -21,6 +21,22 @@ describe("buildEpisodeView snapshot", () => {
         const vm = buildEpisodeView(ep);
         expect(vm).toMatchInlineSnapshot(`
           {
+            "_raw": {
+              "agents": {},
+              "character_defs": null,
+              "days": [],
+              "episode_id": "ep-1",
+              "episode_index": 0,
+              "long_memory": null,
+              "narrative": [],
+              "run_id": "run-1",
+              "stage_version": 1,
+              "story_arc": null,
+              "tension_trend": [
+                0.1,
+                0.3,
+              ],
+            },
             "agents": [],
             "days": [],
             "id": "ep-1",

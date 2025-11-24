@@ -12,6 +12,11 @@ export interface EpisodeViewModel {
   days: DayViewModel[];
   agents: AgentViewModel[];
   tensionTrend: number[];
+  /**
+   * Raw StageEpisode backing this VM. Internal use only for detail builders;
+   * UI should not rely on this shape.
+   */
+  _raw: StageEpisode;
 }
 
 export function buildEpisodeView(ep: StageEpisode): EpisodeViewModel {
@@ -23,5 +28,6 @@ export function buildEpisodeView(ep: StageEpisode): EpisodeViewModel {
     days: buildDayViews(ep.days),
     agents: buildAgentViews(ep),
     tensionTrend: ep.tension_trend,
+    _raw: ep,
   };
 }
