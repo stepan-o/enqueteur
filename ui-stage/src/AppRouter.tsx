@@ -6,6 +6,9 @@ import AgentsPlaceholder from "./routes/AgentsPlaceholder";
 import SettingsPlaceholder from "./routes/SettingsPlaceholder";
 
 export default function AppRouter() {
+
+  console.log("Render AppRouter");
+
   return (
     <Routes>
       <Route path="/" element={<AppShell />}> 
