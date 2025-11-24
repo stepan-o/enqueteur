@@ -4,6 +4,7 @@ import type { EpisodeViewModel } from "../vm/episodeVm";
 import { buildEpisodeView } from "../vm/episodeVm";
 import EpisodeHeader from "../components/EpisodeHeader";
 import TimelineStrip from "../components/TimelineStrip";
+import DayDetailPanel from "../components/DayDetailPanel";
 
 export default function LatestEpisodeView() {
   const [episode, setEpisode] = useState<EpisodeViewModel | null>(null);
@@ -47,6 +48,9 @@ export default function LatestEpisodeView() {
         selectedIndex={selectedDayIndex}
         onSelect={setSelectedDayIndex}
       />
+
+      <h2>Day Detail</h2>
+      <DayDetailPanel episode={episode} dayIndex={selectedDayIndex} />
 
       <h2>Agents</h2>
       <ul>
