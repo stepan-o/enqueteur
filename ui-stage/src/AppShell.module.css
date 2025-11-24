@@ -2,11 +2,14 @@
   display: grid;
   grid-template-columns: 220px 1fr;
   grid-template-rows: 100vh;
+  background: #f3f4f6; /* app baseline background to avoid bleed */
 }
 
 .nav {
   border-right: 1px solid rgba(0,0,0,0.08);
   padding: 1rem 0.75rem;
+  background: #111827; /* dark slate */
+  color: #e5e7eb; /* light text */
 }
 
 .navInner {
@@ -21,17 +24,17 @@
   display: block;
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
-  color: #222;
+  color: inherit; /* use nav text color */
   text-decoration: none;
 }
 
 .active {
-  background: #e9f1ff;
+  background: #374151; /* active dark variant */
   font-weight: 600;
 }
 
 .main {
-    padding: 1rem;
-    background: #ffffff;
-    color: #222222;
+  padding: 1rem;
+  background: #ffffff; /* explicit white canvas */
+  color: #222222;
 }
