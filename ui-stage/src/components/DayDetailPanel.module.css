@@ -74,3 +74,9 @@
   font-size: 0.85rem;
   color: #555;
 }
+
+.summary {
+  font-size: 0.9rem;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}

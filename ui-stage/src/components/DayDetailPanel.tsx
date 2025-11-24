@@ -1,6 +1,7 @@
 import type { EpisodeViewModel } from "../vm/episodeVm";
 import { buildDayDetail } from "../vm/dayDetailVm";
 import type { StageNarrativeBlock } from "../types/stage";
+import { buildDaySummary } from "../vm/daySummaryVm";
 import styles from "./DayDetailPanel.module.css";
 
 export interface DayDetailPanelProps {
@@ -24,6 +25,7 @@ function renderNarrativeItem(n: StageNarrativeBlock) {
 
 export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProps) {
   const detail = buildDayDetail(episode, dayIndex);
+  const summary = buildDaySummary(episode, dayIndex);
   const isEmpty = detail.narrative.length === 0 && detail.agents.length === 0 && detail.tensionScore === 0 && detail.totalIncidents === 0 && detail.supervisorActivity === 0 && detail.perceptionMode === "unknown";
 
   if (isEmpty) {
@@ -38,6 +40,8 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
   return (
     <section className={styles.panel} aria-label={`Day ${detail.index} detail`}>
       <div className={styles.header}>{`Day ${detail.index} — perception: ${detail.perceptionMode}`}</div>
+
+      <div className={styles.summary}>{summary.notableText}</div>
 
       <div className={styles.metaRow}>
         <span className={styles.metaItem}>Tension: {formatNum(detail.tensionScore)}</span>
