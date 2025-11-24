@@ -11,7 +11,7 @@ import TimelineStrip from "./components/TimelineStrip";
 // -------------------------------
 export default function App() {
     const [episode, setEpisode] = useState<EpisodeViewModel | null>(null);
-    const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
+    const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -22,6 +22,8 @@ export default function App() {
                 setEpisode(vm);
                 if (vm.days.length > 0) {
                     setSelectedDayIndex(vm.days[0].index);
+                } else {
+                    setSelectedDayIndex(0);
                 }
             } catch (err: unknown) {
                 if (err instanceof Error) setError(err.message);
@@ -46,7 +48,6 @@ export default function App() {
             <h2>Timeline</h2>
             <TimelineStrip
                 days={episode.days}
-                tensionTrend={episode.tensionTrend}
                 selectedIndex={selectedDayIndex}
                 onSelect={setSelectedDayIndex}
             />

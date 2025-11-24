@@ -14,7 +14,7 @@ vi.mock("./vm/episodeVm", () => {
   };
 });
 
-import App from "./App";
+import LatestEpisodeView from "./routes/LatestEpisodeView";
 
 describe("App smoke test with mocked API", () => {
   afterEach(() => {
@@ -34,7 +34,7 @@ describe("App smoke test with mocked API", () => {
 
     vi.spyOn(api, "getLatestEpisode").mockResolvedValue(vm as unknown as any);
 
-    render(<App />);
+    render(<LatestEpisodeView />);
 
     // Should eventually show the episode id from the mocked VM
     const epEl = await screen.findByText(/ep-smoke/);
