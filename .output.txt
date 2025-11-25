@@ -1,5 +1,37 @@
 
  RUN  v2.1.9 /Users/stpn/Documents/repos/my_projects/loopforge/ui-stage
+stdout | src/routes/LatestEpisodeView.loading.test.tsx > LatestEpisodeView loading/empty-state regression guard > shows loading when isLoading=true and episode=null
+Render LatestEpisodeView { episode: null, error: null, isLoading: true }
+stdout | src/routes/LatestEpisodeView.loading.test.tsx > LatestEpisodeView loading/empty-state regression guard > shows empty state when not loading and no episode
+Render LatestEpisodeView { episode: null, error: null, isLoading: false }
+stdout | src/routes/LatestEpisodeView.loading.test.tsx > LatestEpisodeView loading/empty-state regression guard > renders episode content when episode is present and loading is false
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-ok',
+    runId: 'run-ok',
+    index: 0,
+    stageVersion: 1,
+    days: [],
+    agents: [],
+    tensionTrend: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-ok',
+      run_id: 'run-ok',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [],
+      days: [],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
 stdout | src/hooks/useEpisodeLoader.test.tsx > useEpisodeLoader > success path: sets episode and clears loading/error
 loader start { episode: null, error: null, isLoading: true }
 loader start { episode: null, error: null, isLoading: true }
@@ -309,55 +341,11 @@ Render AppShell
 stderr | src/components/NavRail.test.tsx > Nav rail navigation > clicking nav links navigates between routes
 ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
 ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
-stdout | src/routes/LatestEpisodeView.loading.test.tsx > LatestEpisodeView loading/empty-state regression guard > shows loading when isLoading=true and episode=null
-Render LatestEpisodeView { episode: null, error: null, isLoading: true }
-stdout | src/routes/LatestEpisodeView.loading.test.tsx > LatestEpisodeView loading/empty-state regression guard > shows empty state when not loading and no episode
-Render LatestEpisodeView { episode: null, error: null, isLoading: false }
-stdout | src/routes/LatestEpisodeView.loading.test.tsx > LatestEpisodeView loading/empty-state regression guard > renders episode content when episode is present and loading is false
-Render LatestEpisodeView {
-  episode: {
-    id: 'ep-ok',
-    runId: 'run-ok',
-    index: 0,
-    stageVersion: 1,
-    days: [],
-    agents: [],
-    tensionTrend: [],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-ok',
-      run_id: 'run-ok',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [],
-      days: [],
-      agents: {},
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
  ✓ src/App.smoke.test.tsx (1)
  ✓ src/AppRouter.test.tsx (3)
  ✓ src/smoke.test.ts (1)
  ✓ src/types.smoke.test.ts (3)
  ✓ src/api/episodes.test.ts (4)
- ✓ src/routes/EpisodesIndexView.test.tsx (3)
- ✓ src/routes/LatestEpisodeView.loading.test.tsx (3)
- ✓ src/routes/LatestEpisodeView.test.tsx (1)
- ✓ src/utils/stressColor.test.ts (5)
- ✓ src/utils/tensionColors.test.ts (5)
- ✓ src/vm/agentVm.test.ts (1)
- ✓ src/vm/dayDetailVm.test.ts (7)
- ✓ src/vm/daySummaryVm.test.ts (5)
- ✓ src/vm/dayVm.test.ts (1)
- ✓ src/vm/episodeVm.snapshot.test.ts (1)
- ✓ src/vm/episodeVm.test.ts (1)
- ✓ src/vm/storyVm.test.ts (3)
  ✓ src/components/DayDetailPanel.agents.visual.test.tsx (2)
  ✓ src/components/DayDetailPanel.narrative.test.tsx (3)
  ✓ src/components/DayDetailPanel.tension.test.tsx (3)
@@ -373,8 +361,24 @@ Render LatestEpisodeView {
  ✓ src/components/NavRail.test.tsx (1)
  ✓ src/components/TimelineStrip.tension.test.tsx (3)
  ✓ src/components/TimelineStrip.test.tsx (9)
+ ✓ src/routes/EpisodesIndexView.test.tsx (5)
+ ✓ src/routes/LatestEpisodeView.loading.test.tsx (3)
+ ✓ src/routes/LatestEpisodeView.test.tsx (1)
+ ✓ src/utils/stressColor.test.ts (5)
+ ✓ src/utils/tensionColors.test.ts (5)
+ ✓ src/vm/agentVm.test.ts (1)
+ ✓ src/vm/dayDetailVm.test.ts (7)
+ ✓ src/vm/daySummaryVm.test.ts (5)
+ ✓ src/vm/dayVm.test.ts (1)
+ ✓ src/vm/episodeVm.snapshot.test.ts (1)
+ ✓ src/vm/episodeVm.test.ts (1)
+ ✓ src/vm/storyVm.test.ts (3)
  ✓ src/hooks/useEpisodeLoader.test.tsx (2)
  Test Files  33 passed (33)
-      Tests  99 passed (99)
-   Start at  08:00:49
-   Duration  21.23s (transform 205ms, setup 0ms, collect 1.32s, tests 789ms, environment 3.72s, prepare 887ms)
+      Tests  101 passed (101)
+   Start at  08:18:31
+   Duration  21.15s (transform 219ms, setup 0ms, collect 1.35s, tests 817ms, environment 3.62s, prepare 849ms)
+........................................................................ [ 28%]
+........................................................................ [ 56%]
+........................................................................ [ 85%]
+.....................................                                    [100%]

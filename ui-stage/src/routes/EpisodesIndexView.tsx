@@ -1,4 +1,5 @@
 import styles from "./EpisodesIndexView.module.css";
+import { useEpisodeNavigator } from "../hooks/useEpisodeNavigator";
 
 export interface EpisodeListItem {
   id: string;
@@ -51,6 +52,7 @@ export interface EpisodesIndexViewProps {
 
 export default function EpisodesIndexView({ items: propsItems }: EpisodesIndexViewProps) {
   const items = propsItems ?? buildMockEpisodeList();
+  const { navigateToEpisode } = useEpisodeNavigator();
 
   return (
     <div className={styles.root}>
@@ -60,53 +62,53 @@ export default function EpisodesIndexView({ items: propsItems }: EpisodesIndexVi
         will be wired to the backend source of truth.
       </p>
 
-      <div className={styles.panel}>
+      <section
+        className={`${styles.panel} ${styles.section}`}
+        aria-label="Episodes overview"
+      >
         {items.length === 0 ? (
-          <div className={styles.empty}>
-            <p>No episodes available yet.</p>
+          <div className={styles.empty} aria-live="polite">
+            <p>No episodes found.</p>
             <p>
-              You can still access the latest episode via the default view on
-              the home route.
+              The latest episode is still accessible via the default view on the home route.
             </p>
           </div>
         ) : (
-          <table className={styles.table} role="table" aria-label="Episodes list">
-            <thead>
-              <tr className={styles.tr}>
-                <th className={styles.th} scope="col">Episode ID</th>
-                <th className={styles.th} scope="col">Run ID</th>
-                <th className={styles.th} scope="col">Index</th>
-                <th className={styles.th} scope="col">Stage Version</th>
-                <th className={styles.th} scope="col">Days</th>
-                <th className={styles.th} scope="col">Summary</th>
-                <th className={styles.th} scope="col">&nbsp;</th>
-              </tr>
-            </thead>
-            <tbody>
+          <div>
+            <div className={styles.headerRow} role="rowheader">
+              <div className={styles.cell}>Episode ID</div>
+              <div className={styles.cell}>Run ID</div>
+              <div className={styles.cell}>Index</div>
+              <div className={styles.cell}>Stage Version</div>
+              <div className={styles.cell}>Days</div>
+              <div className={styles.cell}>Summary</div>
+              <div className={styles.cell}>&nbsp;</div>
+            </div>
+            <ul className={styles.list} aria-label="Episodes list">
               {items.map((it) => (
-                <tr key={it.id} className={styles.tr}>
-                  <td className={`${styles.td} ${styles.id}`}>{truncateId(it.id)}</td>
-                  <td className={`${styles.td} ${styles.runId}`}>{truncateId(it.runId)}</td>
-                  <td className={styles.td}>{it.index}</td>
-                  <td className={styles.td}>{it.stageVersion}</td>
-                  <td className={styles.td}>{it.dayCount}</td>
-                  <td className={styles.td}>{it.summary}</td>
-                  <td className={styles.td}>
+                <li key={it.id} className={styles.row} aria-label={`Episode row ${it.index}`}>
+                  <div className={`${styles.cell} ${styles.id}`}>{truncateId(it.id)}</div>
+                  <div className={`${styles.cell} ${styles.runId}`}>{truncateId(it.runId)}</div>
+                  <div className={styles.cell}>{it.index}</div>
+                  <div className={styles.cell}>{it.stageVersion}</div>
+                  <div className={styles.cell}>{it.dayCount}</div>
+                  <div className={styles.cell}>{it.summary}</div>
+                  <div className={styles.cell}>
                     <button
                       type="button"
                       className={styles.viewBtn}
-                      aria-disabled="true"
-                      title="Coming soon"
+                      onClick={() => navigateToEpisode(it.id)}
+                      aria-label={`View Episode ${it.id}`}
                     >
-                      View
+                      View Episode
                     </button>
-                  </td>
-                </tr>
+                  </div>
+                </li>
               ))}
-            </tbody>
-          </table>
+            </ul>
+          </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
