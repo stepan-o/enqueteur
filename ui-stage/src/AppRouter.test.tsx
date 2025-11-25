@@ -25,13 +25,16 @@ describe("AppRouter routes", () => {
     expect(getByText(/Settings \(Coming Soon\)/)).toBeTruthy();
   });
 
-  it("renders Episodes placeholder at /episodes", () => {
-    const { getByText } = render(
+  it("renders Episodes index at /episodes", () => {
+    const { getByRole, getByText } = render(
       <MemoryRouter initialEntries={["/episodes"]}>
         <AppRouter />
       </MemoryRouter>
     );
 
-    expect(getByText(/Episodes \(Coming Soon\)/)).toBeTruthy();
+    // Heading present
+    expect(getByRole("heading", { name: /Episodes/i })).toBeTruthy();
+    // Mock content present (summary fragment)
+    expect(getByText(/stubbed list; later this will be wired/i)).toBeTruthy();
   });
 });

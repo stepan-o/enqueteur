@@ -1,0 +1,54 @@
+.root {
+  padding: 1rem;
+}
+
+.header {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.375rem;
+}
+
+.explainer {
+  margin: 0 0 0.75rem 0;
+  color: #555;
+  font-size: 0.95rem;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.th, .td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+
+.tr:last-child .td {
+  border-bottom: none;
+}
+
+.id, .runId {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.empty {
+  padding: 1rem;
+  color: #666;
+}
+
+.viewBtn {
+  background: transparent;
+  color: #2563eb;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  cursor: not-allowed;
+}
