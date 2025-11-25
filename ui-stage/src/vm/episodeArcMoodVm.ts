@@ -14,6 +14,8 @@ export interface EpisodeArcMoodViewModel {
   icon: string;         // emoji icon: 🌿, 🔶, 🔺, ⚡
   tensionClass: "calm" | "minor" | "medium" | "spike"; // public enum unchanged
   summaryLine: string;  // one-line capsule
+  /** Optional, additive: expose direction for UI styling. "mixed" when spiky. */
+  direction?: Direction | "mixed";
 }
 
 function classifyDelta(delta: number): "calm" | "minor" | "medium" | "spike" {
@@ -94,6 +96,28 @@ function iconFor(cls: EpisodeArcMoodViewModel["tensionClass"]): string {
   }
 }
 
+// Direction-aware icon mapping (internal). Keeps public type stable.
+function iconForWithDirection(
+  cls: EpisodeArcMoodViewModel["tensionClass"],
+  direction: Direction,
+  mixed: boolean
+): string {
+  if (cls === "calm") return "🌿"; // steady regardless of direction
+  if (cls === "spike") return "⚡"; // spike: glyph remains ⚡ regardless of direction/mixed
+  if (mixed) return "🌀"; // signal wobble/instability for minor/medium
+  if (cls === "minor") {
+    if (direction === "down") return "🔽";
+    // flat or up → maintain gentle diamond for subtle movement
+    return "🔶";
+  }
+  if (cls === "medium") {
+    if (direction === "down") return "🔻";
+    // flat or up → up-triangle
+    return "🔺";
+  }
+  return "🔶"; // fallback shouldn't happen; keep safe glyph
+}
+
 export function buildEpisodeArcMood(episode: EpisodeViewModel): EpisodeArcMoodViewModel {
   // Use the full tensionTrend span and measure global delta. This is an
   // episode-wide arc heuristic; daily up/down is handled elsewhere.
@@ -121,7 +145,7 @@ export function buildEpisodeArcMood(episode: EpisodeViewModel): EpisodeArcMoodVi
   const signChanges = countSignChanges(values);
   const mixed = signChanges >= 2 && cls !== "calm"; // consider 2+ direction flips as mixed
   const label = labelFor(cls, direction, mixed);
-  const icon = iconFor(cls);
+  const icon = iconForWithDirection(cls, direction, mixed);
 
   // Summary: first top-level narrative block text if present, else fallback.
   // The intent is to provide a short human line to accompany the episode arc.
@@ -139,5 +163,5 @@ export function buildEpisodeArcMood(episode: EpisodeViewModel): EpisodeArcMoodVi
     summaryLine = "Tension eases off over the episode.";
   }
 
-  return { label, icon, tensionClass: cls, summaryLine };
+  return { label, icon, tensionClass: cls, summaryLine, direction: mixed ? "mixed" : direction };
 }

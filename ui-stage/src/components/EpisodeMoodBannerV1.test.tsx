@@ -8,6 +8,7 @@ const mood = {
   icon: "🔺",
   tensionClass: "medium" as const,
   summaryLine: "Systems show strain under load.",
+  direction: "up" as const,
 };
 
 describe("EpisodeMoodBannerV1", () => {
@@ -23,7 +24,23 @@ describe("EpisodeMoodBannerV1", () => {
     // Mood class applied on banner
     const banner = screen.getByTestId("episode-mood-banner");
     expect((banner as HTMLElement).className).toMatch(/medium/);
+    expect((banner as HTMLElement).className).toMatch(/directionUp/);
     // Snapshot stable
     expect(container.firstChild).toMatchSnapshot();
+  });
+
+  it("applies direction-down class and icon variant when provided", () => {
+    const moodDown = {
+      ...mood,
+      label: "Softening Arc",
+      icon: "🔻",
+      direction: "down" as const,
+    };
+    render(<EpisodeMoodBannerV1 mood={moodDown} />);
+    const all = screen.getAllByTestId("episode-mood-banner");
+    const banner = all[all.length - 1];
+    expect((banner as HTMLElement).className).toMatch(/medium/);
+    expect((banner as HTMLElement).className).toMatch(/directionDown/);
+    expect(screen.getByText("🔻")).toBeTruthy();
   });
 });

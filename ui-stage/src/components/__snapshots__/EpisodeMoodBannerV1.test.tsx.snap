@@ -2,7 +2,7 @@
 
 exports[`EpisodeMoodBannerV1 > renders icon, label, and summary with correct aria-label 1`] = `
 <div
-  class="_banner_11fbfa _medium_11fbfa"
+  class="_banner_11fbfa _medium_11fbfa _directionUp_11fbfa"
   data-testid="episode-mood-banner"
 >
   <div
