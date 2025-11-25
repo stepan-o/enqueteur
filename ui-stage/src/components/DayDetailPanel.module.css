@@ -80,3 +80,20 @@
   color: #374151;
   margin-bottom: 0.5rem;
 }
+
+/* Tension bar */
+.tensionBar {
+  height: 6px;
+  width: 100%;
+  background: rgba(0,0,0,0.06);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0.35rem 0 0.5rem;
+}
+
+.tensionFill {
+  height: 100%;
+  width: 0%;
+  background: #4FA3FF; /* default */
+  border-radius: 4px;
+}

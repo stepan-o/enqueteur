@@ -1,6 +1,7 @@
 import type { DayViewModel } from "../vm/dayVm";
 import type { DaySummaryViewModel } from "../vm/daySummaryVm";
 import styles from "./TimelineStrip.module.css";
+import { tensionColor } from "../utils/tensionColors";
 
 export interface TimelineStripProps {
   days: DayViewModel[];
@@ -66,6 +67,15 @@ export default function TimelineStrip({
         const className = isSelected
           ? `${styles.day} ${styles.selected}`
           : styles.day;
+        const color = tensionColor(d.tensionScore ?? 0);
+        const dotClass = isSelected
+          ? `${styles.dot} ${styles.dotSelected}`
+          : styles.dot;
+        const title = `Day ${d.index} — tension ${
+          (typeof d.tensionScore === "number" && Number.isFinite(d.tensionScore))
+            ? d.tensionScore.toFixed(2)
+            : "0.00"
+        }`;
         return (
           <button
             key={d.index}
@@ -73,8 +83,15 @@ export default function TimelineStrip({
             className={className}
             data-testid={`timeline-day-${d.index}`}
             aria-selected={isSelected}
+            title={title}
             onClick={() => onSelect(d.index)}
           >
+            <span
+              className={dotClass}
+              data-testid={`timeline-dot-${d.index}`}
+              data-selected={isSelected ? "true" : "false"}
+              style={{ backgroundColor: color }}
+            />
             <span className={styles.label}>{`Day ${d.index}`}</span>
             {renderSummary(d.index)}
           </button>

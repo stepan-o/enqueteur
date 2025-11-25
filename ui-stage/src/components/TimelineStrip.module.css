@@ -37,6 +37,20 @@
   white-space: nowrap;
 }
 
+/* Tension dot */
+.dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #4FA3FF; /* default */
+  display: inline-block;
+  margin-right: 0.4rem;
+}
+
+.dotSelected {
+  box-shadow: 0 0 0 2px #333 inset, 0 0 0 2px #333; /* visible ring without resizing */
+}
+
 /* Summary indicator for each day (arrow + optional agent name) */
 .summary {
   display: inline-block;

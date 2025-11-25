@@ -3,6 +3,7 @@ import { buildDayDetail } from "../vm/dayDetailVm";
 import type { StageNarrativeBlock } from "../types/stage";
 import { buildDaySummary } from "../vm/daySummaryVm";
 import styles from "./DayDetailPanel.module.css";
+import { tensionColor } from "../utils/tensionColors";
 
 export interface DayDetailPanelProps {
   episode: EpisodeViewModel;
@@ -32,6 +33,18 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
     return (
       <div className={styles.panel} aria-live="polite">
         <div className={styles.header}>Day Detail</div>
+        {/* Tension heat bar (empty state renders baseline) */}
+        <div
+          className={styles.tensionBar}
+          data-testid="tension-bar"
+          title={`Tension 0.00`}
+        >
+          <div
+            className={styles.tensionFill}
+            data-testid="tension-fill"
+            style={{ width: `0%`, backgroundColor: tensionColor(0) }}
+          />
+        </div>
         <div className={styles.empty}>No data for day {dayIndex}.</div>
       </div>
     );
@@ -40,6 +53,26 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
   return (
     <section className={styles.panel} aria-label={`Day ${detail.index} detail`}>
       <div className={styles.header}>{`Day ${detail.index} — perception: ${detail.perceptionMode}`}</div>
+
+      {/* Tension heat bar */}
+      <div
+        className={styles.tensionBar}
+        data-testid="tension-bar"
+        title={`Tension ${formatNum(detail.tensionScore)}`}
+      >
+        {(() => {
+          const v = typeof detail.tensionScore === "number" && Number.isFinite(detail.tensionScore) ? Math.min(1, Math.max(0, detail.tensionScore)) : 0;
+          const pct = `${Math.round(v * 100)}%`;
+          const color = tensionColor(v);
+          return (
+            <div
+              className={styles.tensionFill}
+              data-testid="tension-fill"
+              style={{ width: pct, backgroundColor: color }}
+            />
+          );
+        })()}
+      </div>
 
       <div className={styles.summary}>{summary.notableText}</div>
 
