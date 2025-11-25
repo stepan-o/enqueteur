@@ -10,7 +10,7 @@ exports[`EpisodeMoodBannerV1 > renders icon, label, and summary with correct ari
   >
     <span
       aria-hidden="false"
-      aria-label="Episode mood: Building Pressure — Systems show strain under load."
+      aria-label="Episode arc mood: Building Pressure. Episode-wide summary: Systems show strain under load."
       class="_icon_11fbfa"
       role="img"
     >
