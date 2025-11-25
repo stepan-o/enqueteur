@@ -29,4 +29,12 @@
   /* Motion */
   --lf-motion-fade-lift: cubic-bezier(0.2, 0, 0.2, 1);
   --lf-motion-duration-fast: 160ms;
+
+  /* Era II — Agent Vibe Colors */
+  --lf-vibe-calm: #7fc8ff;
+  --lf-vibe-tense: #ffae73;
+  --lf-vibe-analytic: #b1a3ff;
+  --lf-vibe-earnest: #ffd670;
+  --lf-vibe-chaotic: #ff6b6b;
+  --lf-vibe-neutral: #d8d8d8;
 }

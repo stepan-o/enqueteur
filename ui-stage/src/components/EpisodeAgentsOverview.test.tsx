@@ -50,6 +50,12 @@ describe("EpisodeAgentsOverview", () => {
     expect(text).toMatch(/Stress Δ: -0.33/);
     expect(text).toMatch(/start 0.42/);
     expect(text).toMatch(/end 0.09/);
+
+    // Avatars render with data-testid marker
+    const avatars = within(container).getAllByTestId("agent-avatar-v1");
+    expect(avatars.length).toBe(2);
+    // sizing should be lg in overview
+    expect(avatars[0].getAttribute("data-size")).toBe("lg");
   });
 
   it("handles empty list gracefully", () => {

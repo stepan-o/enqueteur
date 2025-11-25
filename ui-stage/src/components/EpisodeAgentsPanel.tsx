@@ -2,6 +2,7 @@ import type { EpisodeViewModel } from "../vm/episodeVm";
 import type { StageEpisode, StageDay } from "../types/stage";
 import styles from "./EpisodeAgentsPanel.module.css";
 import { stressColor } from "../utils/stressColor";
+import AgentAvatarV1 from "./AgentAvatarV1";
 
 export interface EpisodeAgentsPanelProps {
   episode: EpisodeViewModel;
@@ -44,11 +45,7 @@ function latestAttribution(raw: StageEpisode, agentName: string): string | null 
   return last;
 }
 
-function getAvatarSymbol(name: string, visual?: string | null | undefined): string {
-  const source = (typeof visual === "string" && visual.length > 0 ? visual : name) || "?";
-  const ch = source.trim().charAt(0);
-  return ch ? ch.toUpperCase() : "?";
-}
+// Avatar visuals handled by AgentAvatarV1
 
 function buildSparklinePoints(raw: StageEpisode, agentName: string, width = 60, height = 18): string {
   const days: StageDay[] = Array.isArray(raw.days) ? raw.days : [];
@@ -93,10 +90,11 @@ export default function EpisodeAgentsPanel({ episode }: EpisodeAgentsPanelProps)
       const context: number = typeof s?.context_total === "number" ? s.context_total : 0;
       const avg = raw ? computeAvgStress(raw, name) : 0;
       const cause = raw ? latestAttribution(raw, name) : null;
-      const avatar = getAvatarSymbol(name, s?.visual);
+      const visual: string = typeof s?.visual === "string" ? s.visual : name;
+      const vibe: string = typeof s?.vibe === "string" ? s.vibe : "neutral";
       const stress = stressColor(avg);
       const spark = raw ? buildSparklinePoints(raw, name) : "";
-      return { name, role, guardrail, context, avg, cause, avatar, stress, spark };
+      return { name, role, guardrail, context, avg, cause, visual, vibe, stress, spark };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -133,7 +131,9 @@ export default function EpisodeAgentsPanel({ episode }: EpisodeAgentsPanelProps)
                   ) : null}
                 </svg>
               </div>
-              <span className={styles.avatar} aria-label={`Avatar for ${a.name}`}>{a.avatar}</span>
+              <span className={styles.avatar} aria-label={`Avatar for ${a.name}`}>
+                <AgentAvatarV1 name={a.name} role={a.role} vibe={a.vibe} visual={a.visual} size="md" />
+              </span>
             </div>
             <div className={styles.meta}>
               {/* Keep legacy textual line for backward-compatibility with existing tests */}

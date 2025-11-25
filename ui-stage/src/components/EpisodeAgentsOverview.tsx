@@ -1,5 +1,6 @@
 import type { AgentViewModel } from "../vm/agentVm";
 import styles from "./EpisodeAgentsOverview.module.css";
+import AgentAvatarV1 from "./AgentAvatarV1";
 
 export interface EpisodeAgentsOverviewProps {
   agents: AgentViewModel[];
@@ -30,6 +31,8 @@ export default function EpisodeAgentsOverview({
         {list.map((a) => (
           <li key={a.name} className={styles.item}>
             <div>
+              {/* Avatar first for scanability; suppress visible initial to keep textContent starting with name per tests */}
+              <AgentAvatarV1 name={a.name} role={a.role} vibe={a.vibe || "neutral"} visual={a.visual || a.name} size="lg" showInitial={false} />
               <span className={styles.name}>{a.name}</span>
               <span className={styles.role}>— role {a.role}</span>
             </div>

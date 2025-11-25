@@ -79,6 +79,10 @@ describe("DayDetailPanel agents — visual language", () => {
     const bobAvatar = within(container).getByLabelText("Avatar for Bob");
     expect(bobAvatar.textContent).toBe("B");
 
+    // AgentAvatarV1 should be present
+    const avatarEl = within(container).getAllByTestId("agent-avatar-v1");
+    expect(avatarEl.length).toBeGreaterThan(0);
+
     const avaDot = within(container).getByTestId("day-agent-stress-dot-Ava") as HTMLElement;
     const bobDot = within(container).getByTestId("day-agent-stress-dot-Bob") as HTMLElement;
     expect(avaDot.style.backgroundColor).toBe(cssColor(stressColor(0.28)));
