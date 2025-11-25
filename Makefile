@@ -137,3 +137,11 @@ run-recap:
 .PHONY: reset-local
 reset-local:
 	$(UV) run python -m scripts.reset_local_state
+
+# reset local run logs and SQLite databases and run a new test run, run view-episode and api-server
+.PHONY: reset-local-api
+reset-local-api:
+	$(UV) run python -m scripts.reset_local_state
+	$(UV) run loopforge-sim --no-db --steps 60
+	$(UV) run loopforge-sim view-episode --steps-per-day 20 --days 3
+	$(UV) run loopforge-sim api-server
