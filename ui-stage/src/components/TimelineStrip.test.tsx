@@ -45,6 +45,46 @@ describe("TimelineStrip", () => {
     expect(handleSelect).toHaveBeenCalledWith(1);
   });
 
+  it("applies selection ring class on selected dot", () => {
+    const { container } = render(
+      <TimelineStrip days={days} selectedIndex={1} onSelect={vi.fn()} />
+    );
+
+    const selectedDot = within(container).getByTestId("timeline-dot-1");
+    const nonSelectedDot = within(container).getByTestId("timeline-dot-0");
+
+    // data-selected remains the canonical indicator
+    expect(selectedDot.getAttribute("data-selected")).toBe("true");
+    expect(nonSelectedDot.getAttribute("data-selected")).toBe("false");
+
+    // and class should include the selection ring class from CSS modules
+    expect((selectedDot as HTMLElement).className).toMatch(/dotSelected/);
+    expect((nonSelectedDot as HTMLElement).className).not.toMatch(/dotSelected/);
+  });
+
+  it("sets data-focus on keyboard focus for accessibility ring", () => {
+    const { container } = render(
+      <TimelineStrip days={days} selectedIndex={0} onSelect={vi.fn()} />
+    );
+    const button = within(container).getByTestId("timeline-day-0");
+
+    // focus event should set data-focus
+    button.focus();
+    expect(button.getAttribute("data-focus")).toBe("true");
+
+    // blur clears it
+    (button as HTMLElement).blur();
+    expect(button.getAttribute("data-focus")).toBeNull();
+  });
+
+  it("marks strip as horizontally scrollable via data attribute", () => {
+    const { container } = render(
+      <TimelineStrip days={days} selectedIndex={0} onSelect={vi.fn()} />
+    );
+    const strip = container.firstElementChild as HTMLElement;
+    expect(strip.getAttribute("data-scroll")).toBe("x");
+  });
+
   it("does not crash on empty days", () => {
     const { container } = render(
       <TimelineStrip days={[]} selectedIndex={0} onSelect={vi.fn()} />

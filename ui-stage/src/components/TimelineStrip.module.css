@@ -2,7 +2,12 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.625rem; /* ~0.625rem between items to match rhythm */
+  flex-wrap: nowrap; /* keep in one row */
+  overflow-x: auto; /* allow horizontal scroll on small widths */
+  -webkit-overflow-scrolling: touch;
+  padding: 0.5rem 0.25rem; /* small breathing room for scrollbars */
+  border-top: 1px solid #eee; /* subtle divider from header */
 }
 
 .day {
@@ -16,11 +21,15 @@
   color: #222;
   font-size: 0.9rem;
   cursor: pointer;
+  white-space: nowrap; /* keep label intact */
+  flex: none; /* prevent flex from shrinking items */
 }
 
-.day:focus {
-  outline: 2px solid #6aa0ff;
-  outline-offset: 1px;
+/* Keyboard focus visibility */
+.day:focus-visible,
+.day[data-focus="true"] {
+  outline: 3px solid #2563eb; /* accessible contrast */
+  outline-offset: 2px;
 }
 
 .day:hover {
@@ -45,10 +54,16 @@
   background: #4FA3FF; /* default */
   display: inline-block;
   margin-right: 0.4rem;
+  transition: box-shadow 120ms ease;
 }
 
 .dotSelected {
   box-shadow: 0 0 0 2px #333 inset, 0 0 0 2px #333; /* visible ring without resizing */
+}
+
+/* Hover halo (soft ring) */
+.day:hover .dot {
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
 }
 
 /* Summary indicator for each day (arrow + optional agent name) */

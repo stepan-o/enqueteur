@@ -55,8 +55,8 @@ describe("TimelineStrip tension visuals", () => {
     const buttons = within(container).getAllByRole("button");
     expect(buttons.length).toBe(days.length);
 
-    // title attribute lives on the button
+    // title attribute lives on the button; updated format "Day X • Tension 0.xx"
     const btn1 = within(container).getByTestId("timeline-day-1");
-    expect(btn1.getAttribute("title") || "").toMatch(/Day 1 — tension 0\.44/);
+    expect(btn1.getAttribute("title") || "").toMatch(/Day 1 \u2022 Tension 0\.44/);
   });
 });

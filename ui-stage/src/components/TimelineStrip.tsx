@@ -61,7 +61,12 @@ export default function TimelineStrip({
   }
 
   return (
-    <div className={styles.strip} role="group" aria-label="Episode timeline">
+    <div
+      className={styles.strip}
+      role="group"
+      aria-label="Episode timeline"
+      data-scroll="x"
+    >
       {days.map((d) => {
         const isSelected = selectedIndex === d.index;
         const className = isSelected
@@ -71,7 +76,7 @@ export default function TimelineStrip({
         const dotClass = isSelected
           ? `${styles.dot} ${styles.dotSelected}`
           : styles.dot;
-        const title = `Day ${d.index} — tension ${
+        const title = `Day ${d.index} • Tension ${
           (typeof d.tensionScore === "number" && Number.isFinite(d.tensionScore))
             ? d.tensionScore.toFixed(2)
             : "0.00"
@@ -84,6 +89,12 @@ export default function TimelineStrip({
             data-testid={`timeline-day-${d.index}`}
             aria-selected={isSelected}
             title={title}
+            onFocus={(e) => {
+              e.currentTarget.setAttribute("data-focus", "true");
+            }}
+            onBlur={(e) => {
+              e.currentTarget.removeAttribute("data-focus");
+            }}
             onClick={() => onSelect(d.index)}
           >
             <span
