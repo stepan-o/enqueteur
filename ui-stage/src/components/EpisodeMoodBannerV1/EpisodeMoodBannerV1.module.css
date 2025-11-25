@@ -1,4 +1,8 @@
 .banner {
+  /* Episode Mood Banner (v0.5)
+     Episode-wide arc indicator using EpisodeArcMood classification derived from
+     global delta across the full tensionTrend. This complements Timeline/DayDetail
+     which focus on day-to-day direction. */
   position: relative;
   border-radius: 12px;
   padding: 0.75rem 1rem;

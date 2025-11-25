@@ -13,8 +13,8 @@ const mood = {
 describe("EpisodeMoodBannerV1", () => {
   it("renders icon, label, and summary with correct aria-label", () => {
     const { container } = render(<EpisodeMoodBannerV1 mood={mood} />);
-    // Icon role="img" with aria-label
-    const icon = screen.getByRole("img", { name: /Episode mood:/i });
+    // Icon role="img" with aria-label clarifying episode-wide arc
+    const icon = screen.getByRole("img", { name: /Episode arc mood:/i });
     expect(icon).toBeTruthy();
     expect(icon.textContent).toBe("🔺");
     // Label and summary visible

@@ -8,7 +8,8 @@ export interface EpisodeMoodBannerProps {
 export default function EpisodeMoodBannerV1({ mood }: EpisodeMoodBannerProps) {
   if (!mood || !mood.tensionClass) return null;
   const cls = [styles.banner, (styles as any)[mood.tensionClass] || ""].join(" ").trim();
-  const aria = `Episode mood: ${mood.label} — ${mood.summaryLine}`;
+  // Clarify that this is an episode-wide arc indicator, not day-to-day direction.
+  const aria = `Episode arc mood: ${mood.label}. Episode-wide summary: ${mood.summaryLine}`;
   return (
     <div className={cls} data-testid="episode-mood-banner">
       <div className={styles.row}>

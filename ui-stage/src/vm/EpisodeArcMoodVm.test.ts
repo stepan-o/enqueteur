@@ -55,4 +55,11 @@ describe("episodeArcMoodVm", () => {
     const mood = buildEpisodeArcMood(ep);
     expect(["calm", "minor", "medium", "spike"]).toContain(mood.tensionClass);
   });
+
+  it("documents: classification uses global delta, not daily direction", () => {
+    // Both trends have the same min=0.1 and max=0.5, but different daily paths.
+    const increasing = buildEpisodeArcMood(makeEpisode([0.1, 0.3, 0.5])).tensionClass;
+    const spikeThenEase = buildEpisodeArcMood(makeEpisode([0.1, 0.5, 0.2])).tensionClass;
+    expect(increasing).toBe(spikeThenEase); // same global delta → same class
+  });
 });
