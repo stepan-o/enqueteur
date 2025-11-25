@@ -52,6 +52,7 @@ export default function LatestEpisodeView() {
         days={episode.days}
         selectedIndex={selectedDayIndex}
         onSelect={setSelectedDayIndex}
+        daySummaries={episode.daySummaries}
       />
 
       <h2>Day Detail</h2>

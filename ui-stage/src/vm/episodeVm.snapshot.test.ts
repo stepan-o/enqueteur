@@ -38,6 +38,7 @@ describe("buildEpisodeView snapshot", () => {
               ],
             },
             "agents": [],
+            "daySummaries": [],
             "days": [],
             "id": "ep-1",
             "index": 0,

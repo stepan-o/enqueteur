@@ -76,11 +76,27 @@ export default function TimelineStrip({
         const dotClass = isSelected
           ? `${styles.dot} ${styles.dotSelected}`
           : styles.dot;
-        const title = `Day ${d.index} • Tension ${
+        const baseTitle = `Day ${d.index} • Tension ${
           (typeof d.tensionScore === "number" && Number.isFinite(d.tensionScore))
             ? d.tensionScore.toFixed(2)
             : "0.00"
         }`;
+        // Accessibility: include direction phrase if summary exists
+        let directionLabel = "";
+        if (summaryByDay) {
+          const s = summaryByDay.get(d.index);
+          if (s) {
+            directionLabel =
+              s.tensionDirection === "up"
+                ? "Tension rose vs previous day"
+                : s.tensionDirection === "down"
+                ? "Tension fell vs previous day"
+                : s.tensionDirection === "flat"
+                ? "Tension held steady vs previous day"
+                : "";
+          }
+        }
+        const title = directionLabel ? `${baseTitle} • ${directionLabel}` : baseTitle;
         return (
           <button
             key={d.index}

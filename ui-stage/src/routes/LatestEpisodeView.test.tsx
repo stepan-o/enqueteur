@@ -75,4 +75,49 @@ describe("LatestEpisodeView — Episode Agents Overview integration", () => {
     const current = await screen.findByTestId("episode-nav-current");
     expect(current.textContent || "").toMatch(/#0/);
   });
+
+  it("wires daySummaries into TimelineStrip so a direction glyph renders", async () => {
+    const vm = {
+      id: "ep-timeline",
+      runId: "run-timeline",
+      index: 0,
+      stageVersion: 1,
+      days: [
+        { index: 0, tensionScore: 0.1, totalIncidents: 0, perceptionMode: "n", supervisorActivity: 0 },
+        { index: 1, tensionScore: 0.3, totalIncidents: 0, perceptionMode: "n", supervisorActivity: 0 },
+      ],
+      tensionTrend: [0.1, 0.3],
+      agents: [],
+      story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+      daySummaries: [
+        { dayIndex: 0, tensionDirection: "unknown", tensionChange: null, primaryAgentName: null, primaryAgentStress: null, notableText: "" },
+        { dayIndex: 1, tensionDirection: "up", tensionChange: 0.2, primaryAgentName: "Delta", primaryAgentStress: 0.84, notableText: "" },
+      ],
+      _raw: {
+        episode_id: "ep-timeline",
+        run_id: "run-timeline",
+        episode_index: 0,
+        stage_version: 1,
+        tension_trend: [0.1, 0.3],
+        days: [],
+        agents: {},
+        story_arc: null,
+        narrative: [],
+        long_memory: null,
+        character_defs: null,
+      },
+    } as any;
+
+    vi.spyOn(api, "getLatestEpisode").mockResolvedValue(vm);
+
+    render(<LatestEpisodeView />);
+
+    // Wait for timeline header to ensure view is mounted
+    const header = await screen.findByText(/Timeline/i);
+    expect(header).toBeTruthy();
+
+    // Find the Day 1 button and assert it includes the up glyph in textContent
+    const day1 = await screen.findByTestId("timeline-day-1");
+    expect(day1.textContent || "").toMatch(/▲/);
+  });
 });
