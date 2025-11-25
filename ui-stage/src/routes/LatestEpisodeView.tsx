@@ -7,6 +7,8 @@ import EpisodeAgentsPanel from "../components/EpisodeAgentsPanel";
 import EpisodeStoryPanel from "../components/EpisodeStoryPanel";
 import EpisodeNavigator from "../components/EpisodeNavigator";
 import { useEpisodeLoader } from "../hooks/useEpisodeLoader";
+import { buildEpisodeArcMood } from "../vm/episodeArcMoodVm";
+import EpisodeMoodBannerV1 from "../components/EpisodeMoodBannerV1";
 
 export default function LatestEpisodeView() {
   const { episode, error, isLoading } = useEpisodeLoader();
@@ -40,6 +42,14 @@ export default function LatestEpisodeView() {
 
   return (
     <div>
+      {(() => {
+        try {
+          const mood = buildEpisodeArcMood(episode as any);
+          return mood ? <EpisodeMoodBannerV1 mood={mood} /> : null;
+        } catch {
+          return null;
+        }
+      })()}
       <EpisodeHeader episode={episode} />
 
       <EpisodeNavigator

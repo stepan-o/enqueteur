@@ -1,0 +1,25 @@
+.banner {
+  position: relative;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0 0.75rem;
+  box-shadow: 0 6px 14px rgb(var(--lf-color-shadow-warm, 28 17 0) / 0.12);
+  opacity: 0;
+  transform: translateY(8px);
+  animation: enter 200ms var(--lf-motion-fade-lift, cubic-bezier(0.2,0,0.2,1)) forwards;
+}
+
+@keyframes enter {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.row { display: grid; grid-template-columns: auto 1fr; gap: 0.75rem; align-items: start; }
+.icon { font-size: 1.25rem; line-height: 1; filter: saturate(1.1); }
+.label { font-weight: 700; }
+.summary { color: #374151; font-size: 0.95rem; }
+
+/* Gradient mood variants */
+.calm { background: var(--lf-episode-mood-calm); }
+.minor { background: var(--lf-episode-mood-minor); }
+.medium { background: var(--lf-episode-mood-medium); }
+.spike { background: var(--lf-episode-mood-spike); }

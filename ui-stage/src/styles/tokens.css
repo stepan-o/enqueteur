@@ -37,4 +37,10 @@
   --lf-vibe-earnest: #ffd670;
   --lf-vibe-chaotic: #ff6b6b;
   --lf-vibe-neutral: #d8d8d8;
+
+  /* Era II — Episode Mood Gradients */
+  --lf-episode-mood-calm: linear-gradient(90deg, #e4f3eb, #f7faf8);
+  --lf-episode-mood-minor: linear-gradient(90deg, #fff4e5, #fff9f0);
+  --lf-episode-mood-medium: linear-gradient(90deg, #ffe9e9, #fff4f4);
+  --lf-episode-mood-spike: linear-gradient(90deg, #ffe2e2, #ffd6d6);
 }

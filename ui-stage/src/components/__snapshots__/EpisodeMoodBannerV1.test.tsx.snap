@@ -1,0 +1,33 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`EpisodeMoodBannerV1 > renders icon, label, and summary with correct aria-label 1`] = `
+<div
+  class="_banner_11fbfa _medium_11fbfa"
+  data-testid="episode-mood-banner"
+>
+  <div
+    class="_row_11fbfa"
+  >
+    <span
+      aria-hidden="false"
+      aria-label="Episode mood: Building Pressure — Systems show strain under load."
+      class="_icon_11fbfa"
+      role="img"
+    >
+      🔺
+    </span>
+    <div>
+      <div
+        class="_label_11fbfa"
+      >
+        Building Pressure
+      </div>
+      <div
+        class="_summary_11fbfa"
+      >
+        Systems show strain under load.
+      </div>
+    </div>
+  </div>
+</div>
+`;
