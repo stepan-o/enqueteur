@@ -4,7 +4,7 @@ import { buildDaySummary } from "../vm/daySummaryVm";
 import styles from "./DayDetailPanel.module.css";
 import { tensionColor } from "../utils/tensionColors";
 import { stressColor } from "../utils/stressColor";
-import NarrativeBlock from "./NarrativeBlock";
+import NarrativeBlockV2 from "./NarrativeBlockV2";
 
 export interface DayDetailPanelProps {
   episode: EpisodeViewModel;
@@ -81,7 +81,7 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
         {detail.narrative.length > 0 ? (
           <div>
             {detail.narrative.map((b) => (
-              <NarrativeBlock key={b.block_id ?? `${b.kind}-${b.text.slice(0, 12)}`} block={b} />
+              <NarrativeBlockV2 key={b.block_id ?? `${b.kind}-${b.text.slice(0, 12)}`} block={b} />
             ))}
           </div>
         ) : (

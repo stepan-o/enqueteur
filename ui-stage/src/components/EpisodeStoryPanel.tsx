@@ -1,6 +1,7 @@
 import type { EpisodeStoryViewModel } from "../vm/storyVm";
 import type { StageNarrativeBlock } from "../types/stage";
 import styles from "./EpisodeStoryPanel.module.css";
+import NarrativeBlockV2 from "./NarrativeBlockV2";
 
 export interface EpisodeStoryPanelProps {
   story: EpisodeStoryViewModel;
@@ -8,9 +9,11 @@ export interface EpisodeStoryPanelProps {
 
 function renderBlock(b: StageNarrativeBlock) {
   return (
-    <div key={b.block_id ?? `${b.kind}-${b.text.slice(0, 12)}`} className={styles.block}>
-      <strong>{b.kind}</strong>: {b.text}
-    </div>
+    <NarrativeBlockV2
+      key={b.block_id ?? `${b.kind}-${b.text.slice(0, 12)}`}
+      block={b}
+      dedupeKindTag
+    />
   );
 }
 

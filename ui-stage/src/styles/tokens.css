@@ -1,0 +1,32 @@
+:root {
+  /* Color Tokens — Graphic-Novel Edition */
+  --lf-color-stress-low: #f0b56f; /* soft amber */
+  --lf-color-stress-mid: #e98a3a; /* warm orange */
+  --lf-color-stress-high: #c64a3a; /* deep red */
+
+  --lf-color-tension-low: #6c7a8a; /* blue-gray */
+  --lf-color-tension-mid: #525b93; /* indigo */
+  --lf-color-tension-high: #6b4abf; /* violet */
+
+  --lf-color-bg-panel: #faf9f7; /* slightly warm off-white */
+  --lf-color-bg-block: #f4f1eb; /* warm-neutral card */
+  --lf-color-shadow-warm: 28 17 0; /* warm shadow in rgb, used with opacity */
+
+  /* Spacing Scale */
+  --lf-space-1: 4px;
+  --lf-space-2: 8px;
+  --lf-space-3: 12px;
+  --lf-space-4: 16px;
+  --lf-space-5: 24px;
+
+  /* Typography Scale */
+  --lf-type-xs: 12px;
+  --lf-type-s: 13px;
+  --lf-type-base: 15px; /* slightly softer base */
+  --lf-type-m: 17px;
+  --lf-type-l: 20px;
+
+  /* Motion */
+  --lf-motion-fade-lift: cubic-bezier(0.2, 0, 0.2, 1);
+  --lf-motion-duration-fast: 160ms;
+}
