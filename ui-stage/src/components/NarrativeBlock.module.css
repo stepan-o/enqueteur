@@ -1,0 +1,36 @@
+.block {
+  padding: 0.4rem 0.2rem;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.kind {
+  font-weight: 700;
+  font-variant: small-caps;
+  color: #374151;
+  margin-right: 0.35rem;
+}
+
+.text {
+  color: #1f2937;
+}
+
+.tags {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-left: 0.5rem;
+}
+
+.tag {
+  font-size: 0.7rem;
+  border-radius: 999px;
+  background: #e8e8e8;
+  color: #333;
+  padding: 2px 6px;
+}
+
+.meta {
+  display: block;
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.15rem;
+}

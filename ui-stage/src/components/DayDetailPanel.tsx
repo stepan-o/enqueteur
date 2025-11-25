@@ -1,10 +1,10 @@
 import type { EpisodeViewModel } from "../vm/episodeVm";
 import { buildDayDetail } from "../vm/dayDetailVm";
-import type { StageNarrativeBlock } from "../types/stage";
 import { buildDaySummary } from "../vm/daySummaryVm";
 import styles from "./DayDetailPanel.module.css";
 import { tensionColor } from "../utils/tensionColors";
 import { stressColor } from "../utils/stressColor";
+import NarrativeBlock from "./NarrativeBlock";
 
 export interface DayDetailPanelProps {
   episode: EpisodeViewModel;
@@ -16,14 +16,7 @@ function formatNum(n: number, digits = 2): string {
   return n.toFixed(digits);
 }
 
-function renderNarrativeItem(n: StageNarrativeBlock) {
-  return (
-    <li key={n.block_id ?? `${n.kind}-${n.text.slice(0, 12)}` } className={styles.narrativeItem}>
-      <span className={styles.narrativeKind}>[{n.kind}]</span>
-      <span>{n.text}</span>
-    </li>
-  );
-}
+// replaced by NarrativeBlock component for readability and expressiveness
 
 export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProps) {
   const detail = buildDayDetail(episode, dayIndex);
@@ -83,16 +76,18 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
         <span className={styles.metaItem}>Supervisor: {formatNum(detail.supervisorActivity)}</span>
       </div>
 
-      <div className={styles.narrativeSection}>
+      <section className={styles.narrativeSection} aria-label="Day narrative">
         <div className={styles.header} style={{ fontWeight: 600, marginBottom: "0.25rem" }}>Narrative</div>
         {detail.narrative.length > 0 ? (
-          <ul className={styles.narrativeList}>
-            {detail.narrative.map(renderNarrativeItem)}
-          </ul>
+          <div>
+            {detail.narrative.map((b) => (
+              <NarrativeBlock key={b.block_id ?? `${b.kind}-${b.text.slice(0, 12)}`} block={b} />
+            ))}
+          </div>
         ) : (
           <div className={styles.empty}>No narrative for this day.</div>
         )}
-      </div>
+      </section>
 
       <div className={styles.agentsSection}>
         <div className={styles.header} style={{ fontWeight: 600, marginBottom: "0.25rem" }}>Agents</div>
