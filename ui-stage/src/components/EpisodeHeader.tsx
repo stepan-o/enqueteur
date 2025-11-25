@@ -11,25 +11,29 @@ export default function EpisodeHeader({ episode }: EpisodeHeaderProps) {
     <header className={styles.header} aria-label="Episode header">
       <div className={styles.row}>
         <span className={styles.item}>
-          <strong>Episode:</strong> {episode.id ?? "—"}
+          <span className={styles.icon} aria-hidden>◉</span>
+          <span className={styles.label}>Episode:</span> {episode.id ?? "—"}
         </span>
         <span className={styles.sep} aria-hidden>
           •
         </span>
         <span className={styles.item}>
-          <strong>Run:</strong> {episode.runId ?? "—"}
+          <span className={styles.icon} aria-hidden>↳</span>
+          <span className={styles.label}>Run:</span> {episode.runId ?? "—"}
         </span>
         <span className={styles.sep} aria-hidden>
           •
         </span>
         <span className={styles.item}>
-          <strong>Stage Version:</strong> {episode.stageVersion}
+          <span className={styles.icon} aria-hidden>⚙</span>
+          <span className={styles.label}>Stage Version:</span> {episode.stageVersion}
         </span>
         <span className={styles.sep} aria-hidden>
           •
         </span>
         <span className={styles.item}>
-          <strong>Days:</strong> {dayCount}
+          <span className={styles.icon} aria-hidden>∙</span>
+          <span className={styles.label}>Days:</span> {dayCount}
         </span>
       </div>
     </header>
