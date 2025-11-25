@@ -4,6 +4,7 @@ import type { StageNarrativeBlock } from "../types/stage";
 import { buildDaySummary } from "../vm/daySummaryVm";
 import styles from "./DayDetailPanel.module.css";
 import { tensionColor } from "../utils/tensionColors";
+import { stressColor } from "../utils/stressColor";
 
 export interface DayDetailPanelProps {
   episode: EpisodeViewModel;
@@ -61,7 +62,7 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
         title={`Tension ${formatNum(detail.tensionScore)}`}
       >
         {(() => {
-          const v = typeof detail.tensionScore === "number" && Number.isFinite(detail.tensionScore) ? Math.min(1, Math.max(0, detail.tensionScore)) : 0;
+          const v = Number.isFinite(detail.tensionScore) ? Math.min(1, Math.max(0, detail.tensionScore)) : 0;
           const pct = `${Math.round(v * 100)}%`;
           const color = tensionColor(v);
           return (
@@ -99,11 +100,26 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
           <ul className={styles.agentsList}>
             {detail.agents.map((a) => (
               <li key={a.name} className={styles.agentRow}>
-                <span className={styles.agentName}>{a.name}</span>
-                <span className={styles.agentMeta}>
-                  {a.role} • stress {formatNum(a.avgStress)} • guardrails {a.guardrailCount} • context {a.contextCount}
+                <div className={styles.agentLeft}>
+                  <span className={styles.avatar} aria-label={`Avatar for ${a.name}`}>{getAvatarSymbol(a.name)}</span>
+                  <div>
+                    <span className={styles.agentName}>{a.name}</span>
+                    <span className={styles.agentMeta}>— {a.role}</span>
+                    <span
+                      className={styles.stressDot}
+                      title={`Stress ${formatNum(a.avgStress)}`}
+                      style={{ backgroundColor: stressColor(a.avgStress ?? 0) }}
+                      data-testid={`day-agent-stress-dot-${a.name}`}
+                    />
+                  </div>
+                </div>
+                <div className={styles.agentMeta}>
+                  <span className={styles.badges}>
+                    <span className={styles.badge} title="Guardrails" data-testid={`day-badge-g-${a.name}`}>G: {a.guardrailCount}</span>
+                    <span className={styles.badge} title="Context" data-testid={`day-badge-c-${a.name}`}>C: {a.contextCount}</span>
+                  </span>
                   {a.attributionCause ? ` • cause ${a.attributionCause}` : ""}
-                </span>
+                </div>
               </li>
             ))}
           </ul>
@@ -113,4 +129,9 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
       </div>
     </section>
   );
+}
+
+function getAvatarSymbol(name: string): string {
+  const ch = (name || "?").trim().charAt(0);
+  return ch ? ch.toUpperCase() : "?";
 }

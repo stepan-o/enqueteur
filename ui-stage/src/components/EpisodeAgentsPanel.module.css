@@ -16,6 +16,9 @@
   font-size: 0.95rem;
   color: #222;
   margin-bottom: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .name {
@@ -35,4 +38,51 @@
 .empty {
   font-size: 0.9rem;
   color: #777;
+}
+
+/* Agent visual language additions */
+.left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e5e7eb; /* neutral gray */
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.stressDot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-left: 0.25rem;
+}
+
+.sparkline {
+  width: 60px;
+  height: 18px;
+}
+
+.badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.5rem;
+}
+
+.badge {
+  font-size: 0.75rem;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.06);
+  padding: 2px 6px;
 }
