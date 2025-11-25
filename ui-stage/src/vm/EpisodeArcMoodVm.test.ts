@@ -28,14 +28,14 @@ describe("episodeArcMoodVm", () => {
     expect(buildEpisodeArcMood(makeEpisode([0.05, 0.6])).tensionClass).toBe("spike");
   });
 
-  it("maps class to human label and icon", () => {
-    const calm = buildEpisodeArcMood(makeEpisode([0.1, 0.19]));
-    expect(calm.label).toMatch(/Calm/i);
+  it("maps class to icon and new direction-aware labels", () => {
+    const calm = buildEpisodeArcMood(makeEpisode([0.1, 0.11, 0.1]));
+    expect(calm.label).toMatch(/Steady State/i);
     expect(calm.icon).toBe("🌿");
 
-    const spike = buildEpisodeArcMood(makeEpisode([0.0, 0.6]));
-    expect(spike.label).toMatch(/Spike/i);
-    expect(spike.icon).toBe("⚡");
+    const spikeUp = buildEpisodeArcMood(makeEpisode([0.0, 0.6]));
+    expect(spikeUp.label).toMatch(/Spike|Critical/i);
+    expect(spikeUp.icon).toBe("⚡");
   });
 
   it("uses top-level narrative first block text for summary when available", () => {
@@ -44,10 +44,18 @@ describe("episodeArcMoodVm", () => {
     expect(mood.summaryLine).toBe("Hello world summary");
   });
 
-  it("falls back to default summary when narrative missing or malformed", () => {
-    const ep = makeEpisode([0.1, 0.2]);
-    const mood = buildEpisodeArcMood(ep);
-    expect(mood.summaryLine).toMatch(/subtle shifts/i);
+  it("falls back to direction-aligned default summary when narrative missing", () => {
+    const epFlat = makeEpisode([0.12, 0.13, 0.11]);
+    const moodFlat = buildEpisodeArcMood(epFlat);
+    expect(moodFlat.summaryLine).toMatch(/relatively steady/i);
+
+    const epUp = makeEpisode([0.1, 0.2, 0.4]);
+    const moodUp = buildEpisodeArcMood(epUp);
+    expect(moodUp.summaryLine).toMatch(/builds across/i);
+
+    const epDown = makeEpisode([0.5, 0.4, 0.3]);
+    const moodDown = buildEpisodeArcMood(epDown);
+    expect(moodDown.summaryLine).toMatch(/eases off/i);
   });
 
   it("guards malformed tension_trend gracefully (non-array, NaN)", () => {
@@ -56,10 +64,35 @@ describe("episodeArcMoodVm", () => {
     expect(["calm", "minor", "medium", "spike"]).toContain(mood.tensionClass);
   });
 
-  it("documents: classification uses global delta, not daily direction", () => {
+  it("keeps tension class based on global delta regardless of path (back-compat)", () => {
     // Both trends have the same min=0.1 and max=0.5, but different daily paths.
     const increasing = buildEpisodeArcMood(makeEpisode([0.1, 0.3, 0.5])).tensionClass;
     const spikeThenEase = buildEpisodeArcMood(makeEpisode([0.1, 0.5, 0.2])).tensionClass;
     expect(increasing).toBe(spikeThenEase); // same global delta → same class
+  });
+
+  it("direction-aware: upward medium arc → Building Pressure", () => {
+    const mood = buildEpisodeArcMood(makeEpisode([0.1, 0.25, 0.5])); // delta 0.4 → medium, slope up
+    expect(mood.tensionClass).toBe("medium");
+    expect(mood.label).toMatch(/Building Pressure/i);
+  });
+
+  it("direction-aware: downward easing arc never says Building Pressure", () => {
+    const mood = buildEpisodeArcMood(makeEpisode([0.6, 0.5, 0.35])); // delta 0.25 → medium, slope down
+    expect(mood.tensionClass).toBe("medium");
+    expect(mood.label).toMatch(/Softening Arc/i);
+    expect(mood.label).not.toMatch(/Building Pressure/i);
+  });
+
+  it("flat low-delta → Steady State", () => {
+    const mood = buildEpisodeArcMood(makeEpisode([0.4, 0.41, 0.39]));
+    expect(mood.tensionClass).toBe("calm");
+    expect(mood.label).toMatch(/Steady State/i);
+  });
+
+  it("mixed spiky arc → Volatile Arc", () => {
+    const mood = buildEpisodeArcMood(makeEpisode([0.2, 0.6, 0.25, 0.7])); // spike + mixed
+    expect(mood.tensionClass).toBe("spike");
+    expect(mood.label).toMatch(/Volatile Arc/i);
   });
 });

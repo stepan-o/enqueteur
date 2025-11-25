@@ -10,9 +10,9 @@ import type { EpisodeViewModel } from "./episodeVm";
  */
 
 export interface EpisodeArcMoodViewModel {
-  label: string;        // e.g., "Calm Shift", "Minor Escalation", "Building Pressure", "Spike Episode"
+  label: string;        // human label for episode-wide arc mood
   icon: string;         // emoji icon: 🌿, 🔶, 🔺, ⚡
-  tensionClass: "calm" | "minor" | "medium" | "spike";
+  tensionClass: "calm" | "minor" | "medium" | "spike"; // public enum unchanged
   summaryLine: string;  // one-line capsule
 }
 
@@ -26,17 +26,59 @@ function classifyDelta(delta: number): "calm" | "minor" | "medium" | "spike" {
   return "spike";
 }
 
-function labelFor(cls: EpisodeArcMoodViewModel["tensionClass"]): string {
-  switch (cls) {
-    case "calm":
-      return "Calm Shift";
-    case "minor":
-      return "Minor Escalation";
-    case "medium":
-      return "Building Pressure";
-    case "spike":
-      return "Spike Episode";
+type Direction = "up" | "down" | "flat";
+
+const EPS = 0.05; // ignore micro-noise for direction and sign changes
+
+function computeSlope(values: number[]): number {
+  if (values.length < 2) return 0;
+  return values[values.length - 1] - values[0];
+}
+
+function classifyDirection(slope: number): Direction {
+  if (Math.abs(slope) < EPS) return "flat";
+  return slope > 0 ? "up" : "down";
+}
+
+function countSignChanges(values: number[]): number {
+  if (values.length < 3) return 0;
+  let changes = 0;
+  let prevSign = 0; // -1, 0, +1
+  for (let i = 1; i < values.length; i++) {
+    const diff = values[i] - values[i - 1];
+    const sign = Math.abs(diff) < EPS ? 0 : diff > 0 ? 1 : -1;
+    if (sign === 0) continue;
+    if (prevSign !== 0 && sign !== prevSign) changes++;
+    prevSign = sign;
   }
+  return changes;
+}
+
+function labelFor(
+  cls: EpisodeArcMoodViewModel["tensionClass"],
+  direction: Direction,
+  mixed: boolean
+): string {
+  // Icons remain mapped by cls; label reflects direction + shape awareness
+  if (cls === "calm") {
+    return "Steady State";
+  }
+  if (mixed) {
+    if (cls === "spike") return "Volatile Arc";
+    return "Uneven Tension"; // covers minor/medium mixed
+  }
+  if (direction === "up") {
+    if (cls === "minor") return "Minor Escalation";
+    if (cls === "medium") return "Building Pressure";
+    return "Critical Spike"; // spike + up
+  }
+  if (direction === "down") {
+    if (cls === "minor") return "Gentle Release";
+    if (cls === "medium") return "Softening Arc";
+    return "Rapid Unwind"; // spike + down
+  }
+  // flat but not calm (some movement without clear direction)
+  return "Uneven Tension";
 }
 
 function iconFor(cls: EpisodeArcMoodViewModel["tensionClass"]): string {
@@ -74,15 +116,28 @@ export function buildEpisodeArcMood(episode: EpisodeViewModel): EpisodeArcMoodVi
   }
 
   const cls = classifyDelta(delta);
-  const label = labelFor(cls);
+  const slope = computeSlope(values);
+  const direction = classifyDirection(slope);
+  const signChanges = countSignChanges(values);
+  const mixed = signChanges >= 2 && cls !== "calm"; // consider 2+ direction flips as mixed
+  const label = labelFor(cls, direction, mixed);
   const icon = iconFor(cls);
 
   // Summary: first top-level narrative block text if present, else fallback.
   // The intent is to provide a short human line to accompany the episode arc.
   const firstText = (episode?.story?.topLevelNarrative && episode.story.topLevelNarrative[0]?.text) || "";
-  const summaryLine = firstText.length > 0
-    ? firstText
-    : "Episode explores subtle shifts in behavior.";
+  let summaryLine: string;
+  if (firstText.length > 0) {
+    summaryLine = firstText;
+  } else if (cls === "calm" || direction === "flat") {
+    summaryLine = "Behavior remains relatively steady.";
+  } else if (mixed) {
+    summaryLine = "Tension fluctuates with no clear direction.";
+  } else if (direction === "up") {
+    summaryLine = "Tension builds across the episode.";
+  } else {
+    summaryLine = "Tension eases off over the episode.";
+  }
 
   return { label, icon, tensionClass: cls, summaryLine };
 }
