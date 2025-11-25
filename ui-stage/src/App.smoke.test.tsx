@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // ui-stage/src/App.smoke.test.tsx
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import * as api from "./api/episodes";
 
 // The App builds a VM from the API result. For this smoke test, we mock
@@ -41,9 +41,9 @@ describe("App smoke test with mocked API", () => {
 
     render(<LatestEpisodeView />);
 
-    // Should eventually show the episode id from the mocked VM
-    const epEl = await screen.findByText(/ep-smoke/);
-    expect(epEl).toBeTruthy();
+    // Should eventually show the episode id in the header (avoid duplicates elsewhere)
+    const header = await screen.findByLabelText("Episode header");
+    expect(within(header).getByText(/ep-smoke/)).toBeTruthy();
     expect(screen.getByText(/run-smoke/)).toBeTruthy();
     expect(screen.getByText(/Stage Version/)).toBeTruthy();
   });

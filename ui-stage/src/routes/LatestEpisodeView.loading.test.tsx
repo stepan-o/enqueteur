@@ -22,8 +22,9 @@ describe("LatestEpisodeView loading/empty-state regression guard", () => {
       isLoading: true,
     });
 
-    const { container } = render(<LatestEpisodeView />);
+    const { container, queryByTestId } = render(<LatestEpisodeView />);
     expect(within(container).getByText(/Loading latest StageEpisode…/)).toBeTruthy();
+    expect(queryByTestId("episode-navigator")).toBeNull();
   });
 
   it("shows empty state when not loading and no episode", async () => {
@@ -33,8 +34,9 @@ describe("LatestEpisodeView loading/empty-state regression guard", () => {
       isLoading: false,
     });
 
-    const { container } = render(<LatestEpisodeView />);
+    const { container, queryByTestId } = render(<LatestEpisodeView />);
     expect(within(container).getByText(/No episode available\./)).toBeTruthy();
+    expect(queryByTestId("episode-navigator")).toBeNull();
   });
 
   it("renders episode content when episode is present and loading is false", async () => {
@@ -71,8 +73,12 @@ describe("LatestEpisodeView loading/empty-state regression guard", () => {
     });
 
     const { container } = render(<LatestEpisodeView />);
-    expect(await within(container).findByText(/ep-ok/)).toBeTruthy();
+    // Verify header is rendered and contains the episode id
+    const header = within(container).getByLabelText("Episode header");
+    expect(within(header).getByText(/ep-ok/)).toBeTruthy();
     // Ensure the loading text is not present within this render's container
     expect(within(container).queryByText(/Loading latest StageEpisode…/)).toBeNull();
+    // Navigator should now be present
+    expect(await within(container).findByTestId("episode-navigator")).toBeTruthy();
   });
 });

@@ -15,7 +15,7 @@ describe("LatestEpisodeView — Episode Agents Overview integration", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders the Episode Agents Overview with an agent name", async () => {
+  it("renders the Episode Agents Overview with an agent name and shows EpisodeNavigator", async () => {
     const vm = {
       id: "ep-overview",
       runId: "run-overview",
@@ -68,5 +68,11 @@ describe("LatestEpisodeView — Episode Agents Overview integration", () => {
     // Agent name appears somewhere in the view
     const agent = await screen.findByText(/Ava/);
     expect(agent).toBeTruthy();
+
+    // EpisodeNavigator is present and shows the correct index
+    const nav = await screen.findByTestId("episode-navigator");
+    expect(nav).toBeTruthy();
+    const current = await screen.findByTestId("episode-nav-current");
+    expect(current.textContent || "").toMatch(/#0/);
   });
 });

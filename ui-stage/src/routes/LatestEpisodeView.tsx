@@ -5,6 +5,7 @@ import TimelineStrip from "../components/TimelineStrip";
 import DayDetailPanel from "../components/DayDetailPanel";
 import EpisodeAgentsPanel from "../components/EpisodeAgentsPanel";
 import EpisodeStoryPanel from "../components/EpisodeStoryPanel";
+import EpisodeNavigator from "../components/EpisodeNavigator";
 import { useEpisodeLoader } from "../hooks/useEpisodeLoader";
 
 export default function LatestEpisodeView() {
@@ -40,6 +41,11 @@ export default function LatestEpisodeView() {
   return (
     <div>
       <EpisodeHeader episode={episode} />
+
+      <EpisodeNavigator
+        currentEpisodeId={episode.id}
+        currentEpisodeIndex={episode.index}
+      />
 
       <h2>Timeline</h2>
       <TimelineStrip
