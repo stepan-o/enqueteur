@@ -29,7 +29,7 @@
 .medium { background: var(--lf-episode-mood-medium); }
 .spike { background: var(--lf-episode-mood-spike); }
 
-/* Direction modifiers: overlay subtleties so severity base stays intact */
+/* Direction modifiers */
 .directionUp::before,
 .directionDown::before,
 .directionMixed::before,
@@ -63,4 +63,20 @@
 /* Flat → minimal neutral veil */
 .directionFlat::before {
   background: linear-gradient(90deg, rgb(0 0 0 / 0.02), rgb(255 255 255 / 0));
+}
+
+/* v2.1 — Downward arcs should visibly soften/cool the main background */
+.directionDown.calm { background: var(--lf-episode-mood-calm); }
+.directionDown.minor,
+.directionDown.medium { background: var(--lf-episode-mood-release); }
+.directionDown.spike { background: var(--lf-episode-mood-unwind); }
+
+/* Optional: mixed arcs add a slight noisy pattern on top of base classes */
+.directionMixed.calm,
+.directionMixed.minor,
+.directionMixed.medium,
+.directionMixed.spike {
+  background-image:
+    repeating-linear-gradient(135deg, rgba(0,0,0,0.04), rgba(0,0,0,0.04) 4px, transparent 4px, transparent 8px),
+    var(--lf-episode-mood-medium);
 }

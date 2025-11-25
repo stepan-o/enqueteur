@@ -43,4 +43,8 @@
   --lf-episode-mood-minor: linear-gradient(90deg, #fff4e5, #fff9f0);
   --lf-episode-mood-medium: linear-gradient(90deg, #ffe9e9, #fff4f4);
   --lf-episode-mood-spike: linear-gradient(90deg, #ffe2e2, #ffd6d6);
+
+  /* v2.1 — Downward arc palettes (cooler, softer) */
+  --lf-episode-mood-release: linear-gradient(90deg, #e0f2ff, #d1fae5);
+  --lf-episode-mood-unwind: linear-gradient(90deg, #e0ecff, #fee2e2);
 }

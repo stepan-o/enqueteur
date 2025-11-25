@@ -33,7 +33,7 @@ describe("EpisodeMoodBannerV1", () => {
     const moodDown = {
       ...mood,
       label: "Softening Arc",
-      icon: "🔻",
+      icon: "📉",
       direction: "down" as const,
     };
     render(<EpisodeMoodBannerV1 mood={moodDown} />);
@@ -41,6 +41,6 @@ describe("EpisodeMoodBannerV1", () => {
     const banner = all[all.length - 1];
     expect((banner as HTMLElement).className).toMatch(/medium/);
     expect((banner as HTMLElement).className).toMatch(/directionDown/);
-    expect(screen.getByText("🔻")).toBeTruthy();
+    expect(screen.getByText("📉")).toBeTruthy();
   });
 });

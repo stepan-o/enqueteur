@@ -75,7 +75,7 @@ describe("episodeArcMoodVm", () => {
     const mood = buildEpisodeArcMood(makeEpisode([0.1, 0.25, 0.5])); // delta 0.4 → medium, slope up
     expect(mood.tensionClass).toBe("medium");
     expect(mood.label).toMatch(/Building Pressure/i);
-    expect(mood.icon).toBe("🔺");
+    expect(mood.icon).toBe("📈");
   });
 
   it("direction-aware: downward easing arc never says Building Pressure", () => {
@@ -83,7 +83,7 @@ describe("episodeArcMoodVm", () => {
     expect(mood.tensionClass).toBe("medium");
     expect(mood.label).toMatch(/Softening Arc/i);
     expect(mood.label).not.toMatch(/Building Pressure/i);
-    expect(mood.icon).toBe("🔻");
+    expect(mood.icon).toBe("📉");
   });
 
   it("flat low-delta → Steady State", () => {
@@ -92,12 +92,12 @@ describe("episodeArcMoodVm", () => {
     expect(mood.label).toMatch(/Steady State/i);
   });
 
-  it("mixed spiky arc → Volatile Arc", () => {
+  it("mixed spiky arc → Volatile Arc with wobble icon", () => {
     const mood = buildEpisodeArcMood(makeEpisode([0.2, 0.6, 0.25, 0.7])); // spike + mixed
     expect(mood.tensionClass).toBe("spike");
     expect(mood.label).toMatch(/Volatile Arc/i);
-    // spike keeps ⚡ glyph even when mixed; label/background convey volatility
-    expect(mood.icon).toBe("⚡");
+    // v2.1: mixed (any class) uses wobble icon
+    expect(mood.icon).toBe("🌀");
   });
 
   it("mixed medium arc uses wobble icon", () => {

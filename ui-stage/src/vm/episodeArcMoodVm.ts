@@ -102,20 +102,26 @@ function iconForWithDirection(
   direction: Direction,
   mixed: boolean
 ): string {
-  if (cls === "calm") return "🌿"; // steady regardless of direction
-  if (cls === "spike") return "⚡"; // spike: glyph remains ⚡ regardless of direction/mixed
-  if (mixed) return "🌀"; // signal wobble/instability for minor/medium
-  if (cls === "minor") {
-    if (direction === "down") return "🔽";
-    // flat or up → maintain gentle diamond for subtle movement
-    return "🔶";
+  // v2.1 direction-aware icon semantics
+  // - calm → soft neutral
+  // - mixed (any class) → wobble icon
+  // - up → build (📈) for minor/medium, ⚡ for spike
+  // - down → release/unwind (⬇️/📉)
+  // - flat (non-calm) → neutral dash
+  if (cls === "calm") return "🌿";
+  if (mixed) return "🌀";
+  if (direction === "up") {
+    if (cls === "spike") return "⚡";
+    // minor or medium upward → build chart
+    return "📈";
   }
-  if (cls === "medium") {
-    if (direction === "down") return "🔻";
-    // flat or up → up-triangle
-    return "🔺";
+  if (direction === "down") {
+    if (cls === "minor") return "⬇️";
+    // medium or spike downward → chart down (unwind)
+    return "📉";
   }
-  return "🔶"; // fallback shouldn't happen; keep safe glyph
+  // flat but non-calm
+  return "➖";
 }
 
 export function buildEpisodeArcMood(episode: EpisodeViewModel): EpisodeArcMoodViewModel {
