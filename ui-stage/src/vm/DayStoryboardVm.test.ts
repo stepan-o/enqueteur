@@ -1,0 +1,86 @@
+// @vitest-environment jsdom
+import { describe, it, expect } from "vitest";
+import type { EpisodeViewModel } from "./episodeVm";
+import { buildDayStoryboardItems } from "./dayStoryboardVm";
+
+function makeEpisodeVM(opts?: {
+  narrativeForDay0?: string | null;
+  narrativeForDay1?: string | null;
+}): EpisodeViewModel {
+  const narrative0 = opts?.narrativeForDay0;
+  const narrative1 = opts?.narrativeForDay1;
+  return {
+    id: "ep",
+    runId: "run",
+    index: 0,
+    stageVersion: 1,
+    days: [
+      { index: 0, tensionScore: 0.1, totalIncidents: 0, perceptionMode: "n", supervisorActivity: 0 },
+      { index: 1, tensionScore: 0.2, totalIncidents: 2, perceptionMode: "n", supervisorActivity: 0.5 },
+    ],
+    agents: [],
+    tensionTrend: [0.1, 0.2],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: "ep",
+      run_id: "run",
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [0.1, 0.2],
+      days: [
+        {
+          day_index: 0,
+          perception_mode: "n",
+          tension_score: 0.1,
+          total_incidents: 0,
+          supervisor_activity: 0,
+          agents: {},
+          narrative: narrative0 == null ? [] : [{ block_id: "b0", kind: "beat", text: narrative0, day_index: 0, agent_name: null, tags: [] }],
+        },
+        {
+          day_index: 1,
+          perception_mode: "n",
+          tension_score: 0.2,
+          total_incidents: 2,
+          supervisor_activity: 0.5,
+          agents: {},
+          narrative: narrative1 == null ? [] : [{ block_id: "b1", kind: "beat", text: narrative1, day_index: 1, agent_name: null, tags: [] }],
+        },
+      ],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null,
+    },
+  } as any;
+}
+
+describe("DayStoryboard VM", () => {
+  it("returns N items for N days in order", () => {
+    const vm = makeEpisodeVM({ narrativeForDay0: "Hello", narrativeForDay1: "World" });
+    const items = buildDayStoryboardItems(vm);
+    expect(items.length).toBe(2);
+    expect(items[0].dayIndex).toBe(0);
+    expect(items[1].dayIndex).toBe(1);
+  });
+
+  it("uses first narrative text as caption when present", () => {
+    const vm = makeEpisodeVM({ narrativeForDay0: "A crisis emerged.", narrativeForDay1: null });
+    const items = buildDayStoryboardItems(vm);
+    expect(items[0].caption).toMatch(/crisis/);
+  });
+
+  it("falls back to neutral caption when narrative missing", () => {
+    const vm = makeEpisodeVM({ narrativeForDay0: null, narrativeForDay1: null });
+    const items = buildDayStoryboardItems(vm);
+    expect(items[0].caption).toMatch(/No major events/);
+    expect(items[1].caption).toMatch(/No major events/);
+  });
+
+  it("is defensive against malformed episode input", () => {
+    // @ts-expect-error intentionally bad input
+    const items = buildDayStoryboardItems({} as any);
+    expect(items).toEqual([]);
+  });
+});

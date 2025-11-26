@@ -9,6 +9,9 @@ import EpisodeNavigator from "../components/EpisodeNavigator";
 import { useEpisodeLoader } from "../hooks/useEpisodeLoader";
 import { buildEpisodeArcMood } from "../vm/episodeArcMoodVm";
 import EpisodeMoodBannerV1 from "../components/EpisodeMoodBannerV1";
+import { buildDayStoryboardItems } from "../vm/dayStoryboardVm";
+import DayStoryboardList from "../components/DayStoryboard/DayStoryboardList";
+import { useRef } from "react";
 
 export default function LatestEpisodeView() {
   const { episode, error, isLoading } = useEpisodeLoader();
@@ -16,6 +19,7 @@ export default function LatestEpisodeView() {
   console.log("Render LatestEpisodeView", { episode, error, isLoading });
 
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
+  const dayDetailRef = useRef<HTMLDivElement | null>(null);
 
   // Preserve initial selection logic: set to first day index when episode arrives
   useEffect(() => {
@@ -57,6 +61,29 @@ export default function LatestEpisodeView() {
         currentEpisodeIndex={episode.index}
       />
 
+      {/* Day Storyboard */}
+      {(() => {
+        let items = [] as ReturnType<typeof buildDayStoryboardItems>;
+        try {
+          items = buildDayStoryboardItems(episode as any);
+        } catch {
+          items = [];
+        }
+        return (
+          <DayStoryboardList
+            items={items}
+            selectedDayIndex={selectedDayIndex}
+            onSelectDay={(idx) => {
+              setSelectedDayIndex(idx);
+              // bonus: gently scroll day detail into view
+              setTimeout(() => {
+                dayDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }, 0);
+            }}
+          />
+        );
+      })()}
+
       <h2>Timeline</h2>
       <TimelineStrip
         days={episode.days}
@@ -66,7 +93,9 @@ export default function LatestEpisodeView() {
       />
 
       <h2>Day Detail</h2>
-      <DayDetailPanel episode={episode} dayIndex={selectedDayIndex} />
+      <div ref={dayDetailRef} data-testid="day-detail-ref">
+        <DayDetailPanel episode={episode} dayIndex={selectedDayIndex} />
+      </div>
 
       <h2>Episode Agents Overview</h2>
       <EpisodeAgentsPanel episode={episode} />

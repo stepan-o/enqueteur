@@ -1,0 +1,40 @@
+.strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.selected {
+  background: #f3f4f6; /* subtle tint */
+  border-left: 3px solid #93c5fd; /* soft blue accent */
+}
+
+.pill {
+  font-size: 0.8rem;
+  color: #1f2937;
+  background: #e5e7eb;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+}
+
+.caption {
+  flex: 1;
+  color: #374151;
+  font-size: 0.9rem;
+  min-height: 1.25rem;
+}
+
+.sparklineBox {
+  width: 72px;
+  height: 20px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
