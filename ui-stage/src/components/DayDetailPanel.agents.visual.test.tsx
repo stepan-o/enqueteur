@@ -72,14 +72,11 @@ function cssColor(val: string): string {
 }
 
 describe("DayDetailPanel agents — visual language", () => {
-  it("renders avatar fallback letter and stress dot color per day agent", () => {
+  it("renders AgentAvatar and stress dot color per day agent", () => {
     const vm = makeVm();
     const { container } = render(<DayDetailPanel episode={vm} dayIndex={0} />);
 
-    const bobAvatar = within(container).getByLabelText("Avatar for Bob");
-    expect(bobAvatar.textContent).toBe("B");
-
-    // AgentAvatarV1 should be present
+    // AgentAvatar (v2) should be present via shared test id
     const avatarEl = within(container).getAllByTestId("agent-avatar-v1");
     expect(avatarEl.length).toBeGreaterThan(0);
 

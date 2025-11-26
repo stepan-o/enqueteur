@@ -46,7 +46,7 @@ function latestAttribution(raw: StageEpisode, agentName: string): string | null 
   return last;
 }
 
-// Avatar visuals handled by AgentAvatarV1
+// Avatar visuals handled by AgentAvatar (v2)
 
 function buildSparklinePoints(raw: StageEpisode, agentName: string, width = 60, height = 18): string {
   const days: StageDay[] = Array.isArray(raw.days) ? raw.days : [];

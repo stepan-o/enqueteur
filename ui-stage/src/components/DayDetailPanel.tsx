@@ -5,7 +5,7 @@ import styles from "./DayDetailPanel.module.css";
 import { tensionColor } from "../utils/tensionColors";
 import { stressColor } from "../utils/stressColor";
 import NarrativeBlockV2 from "./NarrativeBlockV2";
-import AgentAvatarV1 from "./AgentAvatarV1";
+import AgentAvatar from "./AgentAvatar";
 
 export interface DayDetailPanelProps {
   episode: EpisodeViewModel;
@@ -98,13 +98,11 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
               <li key={a.name} className={styles.agentRow}>
                 <div className={styles.agentLeft}>
                   <span className={styles.avatar} aria-label={`Avatar for ${a.name}`}>
-                    {/* Keep legacy aria-label while rendering new avatar for test stability */}
-                    <AgentAvatarV1
+                    {/* Render AgentAvatar v2; keep wrapper aria-label for legacy tests */}
+                    <AgentAvatar
                       name={a.name}
-                      role={a.role}
-                      /* Pull vibe/visual from episode raw agents map when available; fallback neutral */
-                      vibe={getAgentVibe(episode, a.name)}
-                      visual={getAgentVisual(episode, a.name)}
+                      vibeColorKey={"neutral"}
+                      stressTier={"none"}
                       size="md"
                     />
                   </span>

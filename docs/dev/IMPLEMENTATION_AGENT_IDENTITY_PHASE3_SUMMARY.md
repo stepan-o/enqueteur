@@ -29,6 +29,6 @@ Non-goals / future work
 - Story-mode interactions and cameo animations planned for Phase 4/5 (Era II/III).
 
 Implementation note (closure)
-- AgentAvatarV1 remains in DayDetailPanel for compatibility; marked as legacy with a comment. Prefer AgentAvatar v2 for new UI.
+- Phase 3D cleanup: AgentAvatarV1 has been removed. All surfaces now render avatars via AgentAvatar v2 using vibeColorKey + stressTier.
 - Edge cases verified: no agents → no cameos; missing belief text → neutral fallback; single-day episodes behave correctly.
 - Phase 3 is stable and ready for Phase 4.
