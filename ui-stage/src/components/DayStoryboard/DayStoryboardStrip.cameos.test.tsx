@@ -43,6 +43,9 @@ describe("DayStoryboardStrip — agent cameos", () => {
 
     // Buttons have correct aria-label and are clickable
     const btn = within(cameoCluster).getByRole("button", { name: /View Ava's view of Day 2/i });
+    // Tooltip/title should match belief-view phrasing and not be the generic day label
+    expect((btn as HTMLElement).getAttribute("title")).toBe("View Ava's view of Day 2");
+    expect((btn as HTMLElement).getAttribute("title")).not.toBe("Day 2");
     fireEvent.click(btn);
     expect(onClick).toHaveBeenCalledWith(2, "Ava");
     expect(onSelect).not.toHaveBeenCalled();

@@ -2,6 +2,377 @@
 > ui-stage@0.0.0 test
 > vitest run
  RUN  v2.1.9 /Users/stpn/Documents/repos/my_projects/loopforge/ui-stage
+stdout | src/routes/LatestEpisodeView.beliefPanel.test.tsx > LatestEpisodeView — AgentBeliefMiniPanel interaction > opens on cameo click without scrolling, toggles on second click, and clears on day change; strip click scrolls
+loader start { episode: null, error: null, isLoading: true }
+Render LatestEpisodeView { episode: null, error: null, isLoading: true }
+fetching…
+setting episode {
+  id: 'ep-belief',
+  runId: 'run-belief',
+  index: 0,
+  stageVersion: 1,
+  days: [
+    {
+      index: 0,
+      tensionScore: 0.2,
+      totalIncidents: 1,
+      perceptionMode: 'n',
+      supervisorActivity: 0
+    },
+    {
+      index: 1,
+      tensionScore: 0.4,
+      totalIncidents: 0,
+      perceptionMode: 'n',
+      supervisorActivity: 1
+    }
+  ],
+  agents: [],
+  tensionTrend: [ 0.2, 0.4 ],
+  story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+  _raw: {
+    episode_id: 'ep-belief',
+    run_id: 'run-belief',
+    episode_index: 0,
+    stage_version: 1,
+    tension_trend: [ 0.2, 0.4 ],
+    days: [ [Object], [Object] ],
+    agents: { Ava: [Object], Bob: [Object] },
+    story_arc: null,
+    narrative: [],
+    long_memory: null,
+    character_defs: null
+  }
+}
+finally: setting isLoading=false
+loader start {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stdout | src/routes/LatestEpisodeView.beliefPanel.test.tsx > LatestEpisodeView — AgentBeliefMiniPanel interaction > opens on cameo click without scrolling, toggles on second click, and clears on day change; strip click scrolls
+loader start {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stdout | src/routes/LatestEpisodeView.beliefPanel.test.tsx > LatestEpisodeView — AgentBeliefMiniPanel interaction > opens on cameo click without scrolling, toggles on second click, and clears on day change; strip click scrolls
+loader start {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stdout | src/routes/LatestEpisodeView.beliefPanel.test.tsx > LatestEpisodeView — AgentBeliefMiniPanel interaction > opens on cameo click without scrolling, toggles on second click, and clears on day change; strip click scrolls
+loader start {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+loader start {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stdout | src/routes/LatestEpisodeView.beliefPanel.test.tsx > LatestEpisodeView — AgentBeliefMiniPanel interaction > opens on cameo click without scrolling, toggles on second click, and clears on day change; strip click scrolls
+loader start {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-belief',
+    runId: 'run-belief',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    agents: [],
+    tensionTrend: [ 0.2, 0.4 ],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-belief',
+      run_id: 'run-belief',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: [Object],
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
 stdout | src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx > LatestEpisodeView — Timeline ↔ Storyboard scroll/selection sync > Scenario A: clicking storyboard Day 2 updates timeline and DayDetail
 loader start { episode: null, error: null, isLoading: true }
 Render LatestEpisodeView { episode: null, error: null, isLoading: true }
@@ -787,376 +1158,6 @@ Render LatestEpisodeView {
   error: null,
   isLoading: false
 }
-stdout | src/routes/LatestEpisodeView.beliefPanel.test.tsx > LatestEpisodeView — AgentBeliefMiniPanel interaction > opens on cameo click without scrolling, toggles on second click, and clears on day change; strip click scrolls
-loader start { episode: null, error: null, isLoading: true }
-Render LatestEpisodeView { episode: null, error: null, isLoading: true }
-fetching…
-setting episode {
-  id: 'ep-belief',
-  runId: 'run-belief',
-  index: 0,
-  stageVersion: 1,
-  days: [
-    {
-      index: 0,
-      tensionScore: 0.2,
-      totalIncidents: 1,
-      perceptionMode: 'n',
-      supervisorActivity: 0
-    },
-    {
-      index: 1,
-      tensionScore: 0.4,
-      totalIncidents: 0,
-      perceptionMode: 'n',
-      supervisorActivity: 1
-    }
-  ],
-  agents: [],
-  tensionTrend: [ 0.2, 0.4 ],
-  story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-  _raw: {
-    episode_id: 'ep-belief',
-    run_id: 'run-belief',
-    episode_index: 0,
-    stage_version: 1,
-    tension_trend: [ 0.2, 0.4 ],
-    days: [ [Object], [Object] ],
-    agents: { Ava: [Object], Bob: [Object] },
-    story_arc: null,
-    narrative: [],
-    long_memory: null,
-    character_defs: null
-  }
-}
-finally: setting isLoading=false
-loader start {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-Render LatestEpisodeView {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-stdout | src/routes/LatestEpisodeView.beliefPanel.test.tsx > LatestEpisodeView — AgentBeliefMiniPanel interaction > opens on cameo click without scrolling, toggles on second click, and clears on day change; strip click scrolls
-loader start {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-Render LatestEpisodeView {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-loader start {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-Render LatestEpisodeView {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-stdout | src/routes/LatestEpisodeView.beliefPanel.test.tsx > LatestEpisodeView — AgentBeliefMiniPanel interaction > opens on cameo click without scrolling, toggles on second click, and clears on day change; strip click scrolls
-loader start {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-Render LatestEpisodeView {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-loader start {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-Render LatestEpisodeView {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-stdout | src/routes/LatestEpisodeView.beliefPanel.test.tsx > LatestEpisodeView — AgentBeliefMiniPanel interaction > opens on cameo click without scrolling, toggles on second click, and clears on day change; strip click scrolls
-loader start {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-Render LatestEpisodeView {
-  episode: {
-    id: 'ep-belief',
-    runId: 'run-belief',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    agents: [],
-    tensionTrend: [ 0.2, 0.4 ],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
-    _raw: {
-      episode_id: 'ep-belief',
-      run_id: 'run-belief',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [Array],
-      agents: [Object],
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
 stdout | src/routes/LatestEpisodeView.moodBanner.test.tsx > LatestEpisodeView — EpisodeMoodBannerV1 > renders the mood banner above the episode header when mood is computable
 loader start { episode: null, error: null, isLoading: true }
 Render LatestEpisodeView { episode: null, error: null, isLoading: true }
@@ -1784,7 +1785,7 @@ Render LatestEpisodeView {
   error: null,
   isLoading: false
 }
-stdout | src/App.smoke.test.tsx
+stdout | src/App.smoke.test.tsx > App smoke test with mocked API > renders loading then populates with episode info
 loader start {
   episode: {
     id: 'ep-smoke',
@@ -1837,8 +1838,6 @@ stderr | src/components/NavRail.test.tsx > Nav rail navigation > clicking nav li
  ✓ src/types.smoke.test.ts (3)
  ✓ src/api/episodes.test.ts (4)
  ✓ src/hooks/useEpisodeLoader.test.tsx (2)
- ✓ src/utils/stressColor.test.ts (5)
- ✓ src/utils/tensionColors.test.ts (5)
  ✓ src/routes/EpisodesIndexView.test.tsx (5)
  ✓ src/routes/LatestEpisodeView.beliefPanel.test.tsx (1)
  ✓ src/routes/LatestEpisodeView.dayStoryboard.test.tsx (1)
@@ -1846,6 +1845,8 @@ stderr | src/components/NavRail.test.tsx > Nav rail navigation > clicking nav li
  ✓ src/routes/LatestEpisodeView.moodBanner.test.tsx (1)
  ✓ src/routes/LatestEpisodeView.test.tsx (2)
  ✓ src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx (2)
+ ✓ src/utils/stressColor.test.ts (5)
+ ✓ src/utils/tensionColors.test.ts (5)
  ✓ src/vm/DayStoryboardVm.test.ts (10)
  ✓ src/vm/EpisodeArcMoodVm.test.ts (11)
  ✓ src/vm/agentVm.test.ts (3)
@@ -1883,5 +1884,5 @@ stderr | src/components/NavRail.test.tsx > Nav rail navigation > clicking nav li
  ✓ src/components/DayStoryboard/DayStoryboardStrip.tension.test.tsx (2)
  Test Files  50 passed (50)
       Tests  156 passed (156)
-   Start at  09:43:31
-   Duration  34.94s (transform 380ms, setup 0ms, collect 3.03s, tests 1.82s, environment 8.82s, prepare 1.81s)
+   Start at  09:50:56
+   Duration  32.21s (transform 294ms, setup 0ms, collect 2.24s, tests 1.37s, environment 6.64s, prepare 1.28s)
