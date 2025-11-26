@@ -313,6 +313,180 @@ Render LatestEpisodeView {
   error: null,
   isLoading: false
 }
+stdout | src/routes/LatestEpisodeView.moodBanner.test.tsx > LatestEpisodeView — EpisodeMoodBannerV1 > renders the mood banner above the episode header when mood is computable
+loader start { episode: null, error: null, isLoading: true }
+Render LatestEpisodeView { episode: null, error: null, isLoading: true }
+fetching…
+setting episode {
+  id: 'ep-mood',
+  runId: 'run-mood',
+  index: 0,
+  stageVersion: 1,
+  days: [
+    {
+      index: 0,
+      tensionScore: 0.1,
+      totalIncidents: 0,
+      perceptionMode: 'n',
+      supervisorActivity: 0
+    },
+    {
+      index: 1,
+      tensionScore: 0.5,
+      totalIncidents: 0,
+      perceptionMode: 'n',
+      supervisorActivity: 0
+    }
+  ],
+  tensionTrend: [ 0.1, 0.5 ],
+  agents: [],
+  story: { storyArc: null, longMemory: null, topLevelNarrative: [ [Object] ] },
+  daySummaries: [
+    {
+      dayIndex: 0,
+      tensionDirection: 'unknown',
+      tensionChange: null,
+      primaryAgentName: null,
+      primaryAgentStress: null,
+      notableText: ''
+    },
+    {
+      dayIndex: 1,
+      tensionDirection: 'up',
+      tensionChange: 0.4,
+      primaryAgentName: 'Alpha',
+      primaryAgentStress: 0.8,
+      notableText: ''
+    }
+  ],
+  _raw: {
+    episode_id: 'ep-mood',
+    run_id: 'run-mood',
+    episode_index: 0,
+    stage_version: 1,
+    tension_trend: [ 0.1, 0.5 ],
+    days: [],
+    agents: {},
+    story_arc: null,
+    narrative: [],
+    long_memory: null,
+    character_defs: null
+  }
+}
+finally: setting isLoading=false
+loader start {
+  episode: {
+    id: 'ep-mood',
+    runId: 'run-mood',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.5 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
+    daySummaries: [ [Object], [Object] ],
+    _raw: {
+      episode_id: 'ep-mood',
+      run_id: 'run-mood',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-mood',
+    runId: 'run-mood',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.5 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
+    daySummaries: [ [Object], [Object] ],
+    _raw: {
+      episode_id: 'ep-mood',
+      run_id: 'run-mood',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stdout | src/routes/LatestEpisodeView.moodBanner.test.tsx > LatestEpisodeView — EpisodeMoodBannerV1 > renders the mood banner above the episode header when mood is computable
+loader start {
+  episode: {
+    id: 'ep-mood',
+    runId: 'run-mood',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.5 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
+    daySummaries: [ [Object], [Object] ],
+    _raw: {
+      episode_id: 'ep-mood',
+      run_id: 'run-mood',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-mood',
+    runId: 'run-mood',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.5 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
+    daySummaries: [ [Object], [Object] ],
+    _raw: {
+      episode_id: 'ep-mood',
+      run_id: 'run-mood',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
 stdout | src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx > LatestEpisodeView — Timeline ↔ Storyboard scroll/selection sync > Scenario A: clicking storyboard Day 2 updates timeline and DayDetail
 loader start { episode: null, error: null, isLoading: true }
 Render LatestEpisodeView { episode: null, error: null, isLoading: true }
@@ -788,180 +962,6 @@ Render LatestEpisodeView {
   error: null,
   isLoading: false
 }
-stdout | src/routes/LatestEpisodeView.moodBanner.test.tsx > LatestEpisodeView — EpisodeMoodBannerV1 > renders the mood banner above the episode header when mood is computable
-loader start { episode: null, error: null, isLoading: true }
-Render LatestEpisodeView { episode: null, error: null, isLoading: true }
-fetching…
-setting episode {
-  id: 'ep-mood',
-  runId: 'run-mood',
-  index: 0,
-  stageVersion: 1,
-  days: [
-    {
-      index: 0,
-      tensionScore: 0.1,
-      totalIncidents: 0,
-      perceptionMode: 'n',
-      supervisorActivity: 0
-    },
-    {
-      index: 1,
-      tensionScore: 0.5,
-      totalIncidents: 0,
-      perceptionMode: 'n',
-      supervisorActivity: 0
-    }
-  ],
-  tensionTrend: [ 0.1, 0.5 ],
-  agents: [],
-  story: { storyArc: null, longMemory: null, topLevelNarrative: [ [Object] ] },
-  daySummaries: [
-    {
-      dayIndex: 0,
-      tensionDirection: 'unknown',
-      tensionChange: null,
-      primaryAgentName: null,
-      primaryAgentStress: null,
-      notableText: ''
-    },
-    {
-      dayIndex: 1,
-      tensionDirection: 'up',
-      tensionChange: 0.4,
-      primaryAgentName: 'Alpha',
-      primaryAgentStress: 0.8,
-      notableText: ''
-    }
-  ],
-  _raw: {
-    episode_id: 'ep-mood',
-    run_id: 'run-mood',
-    episode_index: 0,
-    stage_version: 1,
-    tension_trend: [ 0.1, 0.5 ],
-    days: [],
-    agents: {},
-    story_arc: null,
-    narrative: [],
-    long_memory: null,
-    character_defs: null
-  }
-}
-finally: setting isLoading=false
-loader start {
-  episode: {
-    id: 'ep-mood',
-    runId: 'run-mood',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    tensionTrend: [ 0.1, 0.5 ],
-    agents: [],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
-    daySummaries: [ [Object], [Object] ],
-    _raw: {
-      episode_id: 'ep-mood',
-      run_id: 'run-mood',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [],
-      agents: {},
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-Render LatestEpisodeView {
-  episode: {
-    id: 'ep-mood',
-    runId: 'run-mood',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    tensionTrend: [ 0.1, 0.5 ],
-    agents: [],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
-    daySummaries: [ [Object], [Object] ],
-    _raw: {
-      episode_id: 'ep-mood',
-      run_id: 'run-mood',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [],
-      agents: {},
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-stdout | src/routes/LatestEpisodeView.moodBanner.test.tsx > LatestEpisodeView — EpisodeMoodBannerV1 > renders the mood banner above the episode header when mood is computable
-loader start {
-  episode: {
-    id: 'ep-mood',
-    runId: 'run-mood',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    tensionTrend: [ 0.1, 0.5 ],
-    agents: [],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
-    daySummaries: [ [Object], [Object] ],
-    _raw: {
-      episode_id: 'ep-mood',
-      run_id: 'run-mood',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [],
-      agents: {},
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-Render LatestEpisodeView {
-  episode: {
-    id: 'ep-mood',
-    runId: 'run-mood',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    tensionTrend: [ 0.1, 0.5 ],
-    agents: [],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
-    daySummaries: [ [Object], [Object] ],
-    _raw: {
-      episode_id: 'ep-mood',
-      run_id: 'run-mood',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [],
-      agents: {},
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
 stdout | src/routes/LatestEpisodeView.dayStoryboard.test.tsx > LatestEpisodeView — DayStoryboard integration > shows storyboard and syncs selection with DayDetail
 loader start { episode: null, error: null, isLoading: true }
 Render LatestEpisodeView { episode: null, error: null, isLoading: true }
@@ -1415,7 +1415,7 @@ Render LatestEpisodeView {
   error: null,
   isLoading: false
 }
-stdout | src/App.smoke.test.tsx
+stdout | src/App.smoke.test.tsx > App smoke test with mocked API > renders loading then populates with episode info
 loader start {
   episode: {
     id: 'ep-smoke',
@@ -1492,7 +1492,8 @@ stderr | src/components/NavRail.test.tsx > Nav rail navigation > clicking nav li
  ✓ src/routes/LatestEpisodeView.moodBanner.test.tsx (1)
  ✓ src/routes/LatestEpisodeView.test.tsx (2)
  ✓ src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx (2)
- ✓ src/hooks/useEpisodeLoader.test.tsx (2)
+ ✓ src/utils/stressColor.test.ts (5)
+ ✓ src/utils/tensionColors.test.ts (5)
  ✓ src/vm/DayStoryboardVm.test.ts (9)
  ✓ src/vm/EpisodeArcMoodVm.test.ts (11)
  ✓ src/vm/agentVm.test.ts (1)
@@ -1502,13 +1503,12 @@ stderr | src/components/NavRail.test.tsx > Nav rail navigation > clicking nav li
  ✓ src/vm/episodeVm.snapshot.test.ts (1)
  ✓ src/vm/episodeVm.test.ts (2)
  ✓ src/vm/storyVm.test.ts (3)
+ ✓ src/hooks/useEpisodeLoader.test.tsx (2)
  ✓ src/components/DayStoryboard/DayStoryboard.lane.test.tsx (2)
  ✓ src/components/DayStoryboard/DayStoryboardList.scrollSync.test.tsx (2)
  ✓ src/components/DayStoryboard/DayStoryboardList.test.tsx (4)
  ✓ src/components/DayStoryboard/DayStoryboardStrip.tension.test.tsx (2)
- ✓ src/utils/stressColor.test.ts (5)
- ✓ src/utils/tensionColors.test.ts (5)
  Test Files  46 passed (46)
       Tests  146 passed (146)
-   Start at  06:21:45
-   Duration  29.79s (transform 269ms, setup 0ms, collect 1.97s, tests 1.16s, environment 5.71s, prepare 1.20s)
+   Start at  06:44:10
+   Duration  29.96s (transform 283ms, setup 0ms, collect 2.06s, tests 1.21s, environment 5.92s, prepare 1.26s)
