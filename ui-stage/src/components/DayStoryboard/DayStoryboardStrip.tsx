@@ -48,6 +48,7 @@ export default function DayStoryboardStrip({ item, isSelected, onSelect, selecte
       data-selected={isSelected ? "true" : "false"}
       onClick={() => onSelect(item.dayIndex)}
       aria-pressed={isSelected}
+      aria-selected={isSelected}
       title={`${item.label}`}
     >
       <span className={styles.pill}>{item.label}</span>

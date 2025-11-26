@@ -21,6 +21,8 @@ export default function LatestEpisodeView() {
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
   const dayDetailRef = useRef<HTMLDivElement | null>(null);
   const [selectedNarrativeBlockId, setSelectedNarrativeBlockId] = useState<string | null>(null);
+  // Token to force storyboard to scroll the selected strip into view (used for timeline clicks)
+  const [scrollStoryboardToken, setScrollStoryboardToken] = useState<number>(0);
 
   // Preserve initial selection logic: set to first day index when episode arrives
   useEffect(() => {
@@ -74,6 +76,7 @@ export default function LatestEpisodeView() {
           <DayStoryboardList
             items={items}
             selectedDayIndex={selectedDayIndex}
+            scrollToSelectedDayToken={scrollStoryboardToken}
             onSelectDay={(idx) => {
               setSelectedDayIndex(idx);
               setSelectedNarrativeBlockId(null); // day-level selection clears specific narrative selection
@@ -104,6 +107,8 @@ export default function LatestEpisodeView() {
         onSelect={(idx) => {
           setSelectedDayIndex(idx);
           setSelectedNarrativeBlockId(null); // timeline click highlights day; clear specific narrative selection
+          // Nudge storyboard to scroll the selected strip even if idx didn't change
+          setScrollStoryboardToken((t) => t + 1);
         }}
         daySummaries={episode.daySummaries}
       />

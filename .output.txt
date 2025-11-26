@@ -2,180 +2,6 @@
 > ui-stage@0.0.0 test
 > vitest run
  RUN  v2.1.9 /Users/stpn/Documents/repos/my_projects/loopforge/ui-stage
-stdout | src/routes/LatestEpisodeView.moodBanner.test.tsx > LatestEpisodeView — EpisodeMoodBannerV1 > renders the mood banner above the episode header when mood is computable
-loader start { episode: null, error: null, isLoading: true }
-Render LatestEpisodeView { episode: null, error: null, isLoading: true }
-fetching…
-setting episode {
-  id: 'ep-mood',
-  runId: 'run-mood',
-  index: 0,
-  stageVersion: 1,
-  days: [
-    {
-      index: 0,
-      tensionScore: 0.1,
-      totalIncidents: 0,
-      perceptionMode: 'n',
-      supervisorActivity: 0
-    },
-    {
-      index: 1,
-      tensionScore: 0.5,
-      totalIncidents: 0,
-      perceptionMode: 'n',
-      supervisorActivity: 0
-    }
-  ],
-  tensionTrend: [ 0.1, 0.5 ],
-  agents: [],
-  story: { storyArc: null, longMemory: null, topLevelNarrative: [ [Object] ] },
-  daySummaries: [
-    {
-      dayIndex: 0,
-      tensionDirection: 'unknown',
-      tensionChange: null,
-      primaryAgentName: null,
-      primaryAgentStress: null,
-      notableText: ''
-    },
-    {
-      dayIndex: 1,
-      tensionDirection: 'up',
-      tensionChange: 0.4,
-      primaryAgentName: 'Alpha',
-      primaryAgentStress: 0.8,
-      notableText: ''
-    }
-  ],
-  _raw: {
-    episode_id: 'ep-mood',
-    run_id: 'run-mood',
-    episode_index: 0,
-    stage_version: 1,
-    tension_trend: [ 0.1, 0.5 ],
-    days: [],
-    agents: {},
-    story_arc: null,
-    narrative: [],
-    long_memory: null,
-    character_defs: null
-  }
-}
-finally: setting isLoading=false
-loader start {
-  episode: {
-    id: 'ep-mood',
-    runId: 'run-mood',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    tensionTrend: [ 0.1, 0.5 ],
-    agents: [],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
-    daySummaries: [ [Object], [Object] ],
-    _raw: {
-      episode_id: 'ep-mood',
-      run_id: 'run-mood',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [],
-      agents: {},
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-Render LatestEpisodeView {
-  episode: {
-    id: 'ep-mood',
-    runId: 'run-mood',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    tensionTrend: [ 0.1, 0.5 ],
-    agents: [],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
-    daySummaries: [ [Object], [Object] ],
-    _raw: {
-      episode_id: 'ep-mood',
-      run_id: 'run-mood',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [],
-      agents: {},
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-stdout | src/routes/LatestEpisodeView.moodBanner.test.tsx > LatestEpisodeView — EpisodeMoodBannerV1 > renders the mood banner above the episode header when mood is computable
-loader start {
-  episode: {
-    id: 'ep-mood',
-    runId: 'run-mood',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    tensionTrend: [ 0.1, 0.5 ],
-    agents: [],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
-    daySummaries: [ [Object], [Object] ],
-    _raw: {
-      episode_id: 'ep-mood',
-      run_id: 'run-mood',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [],
-      agents: {},
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
-Render LatestEpisodeView {
-  episode: {
-    id: 'ep-mood',
-    runId: 'run-mood',
-    index: 0,
-    stageVersion: 1,
-    days: [ [Object], [Object] ],
-    tensionTrend: [ 0.1, 0.5 ],
-    agents: [],
-    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
-    daySummaries: [ [Object], [Object] ],
-    _raw: {
-      episode_id: 'ep-mood',
-      run_id: 'run-mood',
-      episode_index: 0,
-      stage_version: 1,
-      tension_trend: [Array],
-      days: [],
-      agents: {},
-      story_arc: null,
-      narrative: [],
-      long_memory: null,
-      character_defs: null
-    }
-  },
-  error: null,
-  isLoading: false
-}
 stdout | src/routes/LatestEpisodeView.test.tsx > LatestEpisodeView — Episode Agents Overview integration > renders the Episode Agents Overview with an agent name and shows EpisodeNavigator
 loader start { episode: null, error: null, isLoading: true }
 Render LatestEpisodeView { episode: null, error: null, isLoading: true }
@@ -487,6 +313,655 @@ Render LatestEpisodeView {
   error: null,
   isLoading: false
 }
+stdout | src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx > LatestEpisodeView — Timeline ↔ Storyboard scroll/selection sync > Scenario A: clicking storyboard Day 2 updates timeline and DayDetail
+loader start { episode: null, error: null, isLoading: true }
+Render LatestEpisodeView { episode: null, error: null, isLoading: true }
+fetching…
+setting episode {
+  id: 'ep-sync',
+  runId: 'run-sync',
+  index: 0,
+  stageVersion: 1,
+  days: [
+    {
+      index: 0,
+      tensionScore: 0.1,
+      totalIncidents: 0,
+      perceptionMode: 'n',
+      supervisorActivity: 0
+    },
+    {
+      index: 1,
+      tensionScore: 0.4,
+      totalIncidents: 1,
+      perceptionMode: 'n',
+      supervisorActivity: 0.2
+    },
+    {
+      index: 2,
+      tensionScore: 0.7,
+      totalIncidents: 0,
+      perceptionMode: 'n',
+      supervisorActivity: 0.3
+    }
+  ],
+  tensionTrend: [ 0.1, 0.4, 0.7 ],
+  agents: [],
+  story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+  _raw: {
+    episode_id: 'ep-sync',
+    run_id: 'run-sync',
+    episode_index: 0,
+    stage_version: 1,
+    tension_trend: [ 0.1, 0.4, 0.7 ],
+    days: [ [Object], [Object], [Object] ],
+    agents: {},
+    story_arc: null,
+    narrative: [],
+    long_memory: null,
+    character_defs: null
+  }
+}
+finally: setting isLoading=false
+loader start {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stderr | src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx > LatestEpisodeView — Timeline ↔ Storyboard scroll/selection sync > Scenario A: clicking storyboard Day 2 updates timeline and DayDetail
+In HTML, <button> cannot be a descendant of <button>.
+This will cause a hydration error.
+  <LatestEpisodeView>
+    <div>
+      <EpisodeMoodBannerV1>
+      <EpisodeHeader>
+      <EpisodeNavigator>
+      <DayStoryboardList items={[...]} selectedDayIndex={0} scrollToSelectedDayToken={0} ...>
+        <section aria-label="Day storyb...">
+          <div>
+          <div className="_list_511ce9" ref={{current:null}} onScroll={function onScroll} data-testid="day-storyb..." ...>
+            <div data-day-index={0} ref={function ref} role="listitem">
+              <DayStoryboardStrip item={{dayIndex:0, ...}} isSelected={true} onSelect={function onSelectDay} ...>
+>               <button
+>                 type="button"
+>                 className="_strip_e1807b _tensionLow_e1807b _selected_e1807b"
+>                 data-testid="day-storyboard-strip-0"
+>                 data-band="tensionLow"
+>                 data-selected="true"
+>                 onClick={function onClick}
+>                 aria-pressed={true}
+>                 aria-selected={true}
+>                 title="Day 0"
+>               >
+                  <span>
+                  <span>
+                  <div className="_lanes_e1807b" aria-label="Storyboard...">
+                    <div className="_laneRow_e..." aria-label="Narrative ...">
+                      <div>
+                      <div className="_laneStrip..." role="list" aria-label="Day 0 narr...">
+>                       <button
+>                         type="button"
+>                         className="_laneItem_e1807b _laneItemSelected_e1807b"
+>                         role="listitem"
+>                         data-lane="narrative"
+>                         data-block-id="n0"
+>                         data-selected="true"
+>                         aria-label="Narrative: beat — D0"
+>                         title="D0"
+>                         onClick={function onClick}
+>                       >
+                  ...
+            ...
+      ...
+<button> cannot contain a nested <button>.
+See this log for the ancestor stack trace.
+stdout | src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx > LatestEpisodeView — Timeline ↔ Storyboard scroll/selection sync > Scenario A: clicking storyboard Day 2 updates timeline and DayDetail
+loader start {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stdout | src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx > LatestEpisodeView — Timeline ↔ Storyboard scroll/selection sync > Scenario A: clicking storyboard Day 2 updates timeline and DayDetail
+loader start {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stdout | src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx > LatestEpisodeView — Timeline ↔ Storyboard scroll/selection sync > Scenario B: clicking a timeline day scrolls storyboard strip into view and selects it
+loader start { episode: null, error: null, isLoading: true }
+Render LatestEpisodeView { episode: null, error: null, isLoading: true }
+fetching…
+setting episode {
+  id: 'ep-sync',
+  runId: 'run-sync',
+  index: 0,
+  stageVersion: 1,
+  days: [
+    {
+      index: 0,
+      tensionScore: 0.1,
+      totalIncidents: 0,
+      perceptionMode: 'n',
+      supervisorActivity: 0
+    },
+    {
+      index: 1,
+      tensionScore: 0.4,
+      totalIncidents: 1,
+      perceptionMode: 'n',
+      supervisorActivity: 0.2
+    },
+    {
+      index: 2,
+      tensionScore: 0.7,
+      totalIncidents: 0,
+      perceptionMode: 'n',
+      supervisorActivity: 0.3
+    }
+  ],
+  tensionTrend: [ 0.1, 0.4, 0.7 ],
+  agents: [],
+  story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+  _raw: {
+    episode_id: 'ep-sync',
+    run_id: 'run-sync',
+    episode_index: 0,
+    stage_version: 1,
+    tension_trend: [ 0.1, 0.4, 0.7 ],
+    days: [ [Object], [Object], [Object] ],
+    agents: {},
+    story_arc: null,
+    narrative: [],
+    long_memory: null,
+    character_defs: null
+  }
+}
+finally: setting isLoading=false
+loader start {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stdout | src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx > LatestEpisodeView — Timeline ↔ Storyboard scroll/selection sync > Scenario B: clicking a timeline day scrolls storyboard strip into view and selects it
+loader start {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stdout | src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx > LatestEpisodeView — Timeline ↔ Storyboard scroll/selection sync > Scenario B: clicking a timeline day scrolls storyboard strip into view and selects it
+loader start {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-sync',
+    runId: 'run-sync',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.4, 0.7 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+    _raw: {
+      episode_id: 'ep-sync',
+      run_id: 'run-sync',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [Array],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stdout | src/routes/LatestEpisodeView.moodBanner.test.tsx > LatestEpisodeView — EpisodeMoodBannerV1 > renders the mood banner above the episode header when mood is computable
+loader start { episode: null, error: null, isLoading: true }
+Render LatestEpisodeView { episode: null, error: null, isLoading: true }
+fetching…
+setting episode {
+  id: 'ep-mood',
+  runId: 'run-mood',
+  index: 0,
+  stageVersion: 1,
+  days: [
+    {
+      index: 0,
+      tensionScore: 0.1,
+      totalIncidents: 0,
+      perceptionMode: 'n',
+      supervisorActivity: 0
+    },
+    {
+      index: 1,
+      tensionScore: 0.5,
+      totalIncidents: 0,
+      perceptionMode: 'n',
+      supervisorActivity: 0
+    }
+  ],
+  tensionTrend: [ 0.1, 0.5 ],
+  agents: [],
+  story: { storyArc: null, longMemory: null, topLevelNarrative: [ [Object] ] },
+  daySummaries: [
+    {
+      dayIndex: 0,
+      tensionDirection: 'unknown',
+      tensionChange: null,
+      primaryAgentName: null,
+      primaryAgentStress: null,
+      notableText: ''
+    },
+    {
+      dayIndex: 1,
+      tensionDirection: 'up',
+      tensionChange: 0.4,
+      primaryAgentName: 'Alpha',
+      primaryAgentStress: 0.8,
+      notableText: ''
+    }
+  ],
+  _raw: {
+    episode_id: 'ep-mood',
+    run_id: 'run-mood',
+    episode_index: 0,
+    stage_version: 1,
+    tension_trend: [ 0.1, 0.5 ],
+    days: [],
+    agents: {},
+    story_arc: null,
+    narrative: [],
+    long_memory: null,
+    character_defs: null
+  }
+}
+finally: setting isLoading=false
+loader start {
+  episode: {
+    id: 'ep-mood',
+    runId: 'run-mood',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.5 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
+    daySummaries: [ [Object], [Object] ],
+    _raw: {
+      episode_id: 'ep-mood',
+      run_id: 'run-mood',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-mood',
+    runId: 'run-mood',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.5 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
+    daySummaries: [ [Object], [Object] ],
+    _raw: {
+      episode_id: 'ep-mood',
+      run_id: 'run-mood',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+stdout | src/routes/LatestEpisodeView.moodBanner.test.tsx > LatestEpisodeView — EpisodeMoodBannerV1 > renders the mood banner above the episode header when mood is computable
+loader start {
+  episode: {
+    id: 'ep-mood',
+    runId: 'run-mood',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.5 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
+    daySummaries: [ [Object], [Object] ],
+    _raw: {
+      episode_id: 'ep-mood',
+      run_id: 'run-mood',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
+Render LatestEpisodeView {
+  episode: {
+    id: 'ep-mood',
+    runId: 'run-mood',
+    index: 0,
+    stageVersion: 1,
+    days: [ [Object], [Object] ],
+    tensionTrend: [ 0.1, 0.5 ],
+    agents: [],
+    story: { storyArc: null, longMemory: null, topLevelNarrative: [Array] },
+    daySummaries: [ [Object], [Object] ],
+    _raw: {
+      episode_id: 'ep-mood',
+      run_id: 'run-mood',
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [Array],
+      days: [],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null
+    }
+  },
+  error: null,
+  isLoading: false
+}
 stdout | src/routes/LatestEpisodeView.dayStoryboard.test.tsx > LatestEpisodeView — DayStoryboard integration > shows storyboard and syncs selection with DayDetail
 loader start { episode: null, error: null, isLoading: true }
 Render LatestEpisodeView { episode: null, error: null, isLoading: true }
@@ -592,39 +1067,41 @@ This will cause a hydration error.
       <EpisodeMoodBannerV1>
       <EpisodeHeader>
       <EpisodeNavigator>
-      <DayStoryboardList items={[...]} selectedDayIndex={0} onSelectDay={function onSelectDay} ...>
+      <DayStoryboardList items={[...]} selectedDayIndex={0} scrollToSelectedDayToken={0} ...>
         <section aria-label="Day storyb...">
           <div>
-          <div className="_list_511ce9">
-            <DayStoryboardStrip item={{dayIndex:0, ...}} isSelected={true} onSelect={function onSelectDay} ...>
->             <button
->               type="button"
->               className="_strip_e1807b _tensionLow_e1807b _selected_e1807b"
->               data-testid="day-storyboard-strip-0"
->               data-band="tensionLow"
->               data-selected="true"
->               onClick={function onClick}
->               aria-pressed={true}
->               title="Day 0"
->             >
-                <span>
-                <span>
-                <div className="_lanes_e1807b" aria-label="Storyboard...">
-                  <div className="_laneRow_e..." aria-label="Narrative ...">
-                    <div>
-                    <div className="_laneStrip..." role="list" aria-label="Day 0 narr...">
->                     <button
->                       type="button"
->                       className="_laneItem_e1807b _laneItemSelected_e1807b"
->                       role="listitem"
->                       data-lane="narrative"
->                       data-block-id="n0"
->                       data-selected="true"
->                       aria-label="Narrative: beat — Day0 text"
->                       title="Day0 text"
->                       onClick={function onClick}
->                     >
-                ...
+          <div className="_list_511ce9" ref={{current:null}} onScroll={function onScroll} data-testid="day-storyb..." ...>
+            <div data-day-index={0} ref={function ref} role="listitem">
+              <DayStoryboardStrip item={{dayIndex:0, ...}} isSelected={true} onSelect={function onSelectDay} ...>
+>               <button
+>                 type="button"
+>                 className="_strip_e1807b _tensionLow_e1807b _selected_e1807b"
+>                 data-testid="day-storyboard-strip-0"
+>                 data-band="tensionLow"
+>                 data-selected="true"
+>                 onClick={function onClick}
+>                 aria-pressed={true}
+>                 aria-selected={true}
+>                 title="Day 0"
+>               >
+                  <span>
+                  <span>
+                  <div className="_lanes_e1807b" aria-label="Storyboard...">
+                    <div className="_laneRow_e..." aria-label="Narrative ...">
+                      <div>
+                      <div className="_laneStrip..." role="list" aria-label="Day 0 narr...">
+>                       <button
+>                         type="button"
+>                         className="_laneItem_e1807b _laneItemSelected_e1807b"
+>                         role="listitem"
+>                         data-lane="narrative"
+>                         data-block-id="n0"
+>                         data-selected="true"
+>                         aria-label="Narrative: beat — Day0 text"
+>                         title="Day0 text"
+>                         onClick={function onClick}
+>                       >
+                  ...
             ...
       ...
 <button> cannot contain a nested <button>.
@@ -859,37 +1336,39 @@ This will cause a hydration error.
   <DayStoryboardList items={[...]} selectedDayIndex={0} onSelectDay={function spy} selectedNarrativeBlockId="n1">
     <section aria-label="Day storyb...">
       <div>
-      <div className="_list_511ce9">
-        <DayStoryboardStrip item={{dayIndex:0, ...}} isSelected={true} onSelect={function spy} ...>
->         <button
->           type="button"
->           className="_strip_e1807b _selected_e1807b"
->           data-testid="day-storyboard-strip-0"
->           data-band={undefined}
->           data-selected="true"
->           onClick={function onClick}
->           aria-pressed={true}
->           title="Day 0"
->         >
-            <span>
-            <span>
-            <div className="_lanes_e1807b" aria-label="Storyboard...">
-              <div className="_laneRow_e..." aria-label="Narrative ...">
-                <div>
-                <div className="_laneStrip..." role="list" aria-label="Day 0 narr...">
->                 <button
->                   type="button"
->                   className="_laneItem_e1807b"
->                   role="listitem"
->                   data-lane="narrative"
->                   data-block-id="n0"
->                   data-selected="false"
->                   aria-label="Narrative: beat — A0"
->                   title="A0"
->                   onClick={function onClick}
->                 >
-                  ...
-            ...
+      <div className="_list_511ce9" ref={{current:null}} onScroll={function onScroll} data-testid="day-storyb..." ...>
+        <div data-day-index={0} ref={function ref} role="listitem">
+          <DayStoryboardStrip item={{dayIndex:0, ...}} isSelected={true} onSelect={function spy} ...>
+>           <button
+>             type="button"
+>             className="_strip_e1807b _selected_e1807b"
+>             data-testid="day-storyboard-strip-0"
+>             data-band={undefined}
+>             data-selected="true"
+>             onClick={function onClick}
+>             aria-pressed={true}
+>             aria-selected={true}
+>             title="Day 0"
+>           >
+              <span>
+              <span>
+              <div className="_lanes_e1807b" aria-label="Storyboard...">
+                <div className="_laneRow_e..." aria-label="Narrative ...">
+                  <div>
+                  <div className="_laneStrip..." role="list" aria-label="Day 0 narr...">
+>                   <button
+>                     type="button"
+>                     className="_laneItem_e1807b"
+>                     role="listitem"
+>                     data-lane="narrative"
+>                     data-block-id="n0"
+>                     data-selected="false"
+>                     aria-label="Narrative: beat — A0"
+>                     title="A0"
+>                     onClick={function onClick}
+>                   >
+                    ...
+              ...
         ...
 <button> cannot contain a nested <button>.
 See this log for the ancestor stack trace.
@@ -936,7 +1415,7 @@ Render LatestEpisodeView {
   error: null,
   isLoading: false
 }
-stdout | src/App.smoke.test.tsx > App smoke test with mocked API > renders loading then populates with episode info
+stdout | src/App.smoke.test.tsx
 loader start {
   episode: {
     id: 'ep-smoke',
@@ -1012,20 +1491,9 @@ stderr | src/components/NavRail.test.tsx > Nav rail navigation > clicking nav li
  ✓ src/routes/LatestEpisodeView.loading.test.tsx (3)
  ✓ src/routes/LatestEpisodeView.moodBanner.test.tsx (1)
  ✓ src/routes/LatestEpisodeView.test.tsx (2)
+ ✓ src/routes/LatestEpisodeView.timelineStoryboardSync.test.tsx (2)
  ✓ src/hooks/useEpisodeLoader.test.tsx (2)
- ✓ src/utils/stressColor.test.ts (5)
- ✓ src/utils/tensionColors.test.ts (5)
- ❯ src/vm/DayStoryboardVm.test.ts (9)
-   ❯ DayStoryboard VM (9)
-     ✓ returns N items for N days in order
-     ✓ uses first narrative text as caption when present
-     ✓ falls back to neutral caption when narrative missing
-     ✓ is defensive against malformed episode input
-     ✓ includes narrative lane items with correct order and type
-     × drops malformed narrative blocks
-     ✓ classifies tension band based on average tensionScore
-     ✓ builds normalized sparklinePoints from prev and current day tensions
-     ✓ returns empty sparklinePoints for missing or flat data
+ ✓ src/vm/DayStoryboardVm.test.ts (9)
  ✓ src/vm/EpisodeArcMoodVm.test.ts (11)
  ✓ src/vm/agentVm.test.ts (1)
  ✓ src/vm/dayDetailVm.test.ts (7)
@@ -1035,20 +1503,12 @@ stderr | src/components/NavRail.test.tsx > Nav rail navigation > clicking nav li
  ✓ src/vm/episodeVm.test.ts (2)
  ✓ src/vm/storyVm.test.ts (3)
  ✓ src/components/DayStoryboard/DayStoryboard.lane.test.tsx (2)
+ ✓ src/components/DayStoryboard/DayStoryboardList.scrollSync.test.tsx (2)
  ✓ src/components/DayStoryboard/DayStoryboardList.test.tsx (4)
  ✓ src/components/DayStoryboard/DayStoryboardStrip.tension.test.tsx (2)
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
- FAIL  src/vm/DayStoryboardVm.test.ts > DayStoryboard VM > drops malformed narrative blocks
-TypeError: Cannot read properties of undefined (reading 'narrativeLane')
- ❯ src/vm/DayStoryboardVm.test.ts:106:21
-    104|     ];
-    105|     const items = buildDayStoryboardItems(vm);
-    106|     expect(items[0].narrativeLane.length).toBe(1);
-       |                     ^
-    107|     expect(items[0].narrativeLane[0].blockId).toBe("keep0");
-    108|     expect(items[0].narrativeLane[0].tags).toEqual(["x", "y"]);
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
- Test Files  1 failed | 43 passed (44)
-      Tests  1 failed | 141 passed (142)
-   Start at  05:37:00
-   Duration  28.51s (transform 267ms, setup 0ms, collect 1.89s, tests 1.08s, environment 5.52s, prepare 1.19s)
+ ✓ src/utils/stressColor.test.ts (5)
+ ✓ src/utils/tensionColors.test.ts (5)
+ Test Files  46 passed (46)
+      Tests  146 passed (146)
+   Start at  06:21:45
+   Duration  29.79s (transform 269ms, setup 0ms, collect 1.97s, tests 1.16s, environment 5.71s, prepare 1.20s)
