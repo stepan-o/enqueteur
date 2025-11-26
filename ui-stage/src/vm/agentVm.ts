@@ -1,4 +1,5 @@
-import type { StageEpisode } from "../types/stage";
+import type { StageEpisode, StageDay } from "../types/stage";
+import type { EpisodeViewModel } from "./episodeVm";
 
 export interface AgentViewModel {
   name: string;
@@ -16,6 +17,10 @@ export interface AgentViewModel {
   stressTier?: "none" | "medium" | "high" | "cooldown";
   /** Safe, deterministic one-liner for AgentCard v2 */
   displayTagline?: string;
+  /** Phase 3B optional panel fields (computed defensively) */
+  avgStress?: number;
+  latestAttributionCause?: string | null;
+  sparkPoints?: string; // SVG polyline points for stress across days
 }
 
 export function buildAgentViews(ep: StageEpisode): AgentViewModel[] {
@@ -72,4 +77,70 @@ export function buildAgentViews(ep: StageEpisode): AgentViewModel[] {
   // Stable ordering for UI rendering
   list.sort((a, b) => a.name.localeCompare(b.name));
   return list;
+}
+
+/**
+ * Phase 3B — Build AgentViewModels enriched for the EpisodeAgentsPanel from an EpisodeViewModel.
+ * Adds avgStress, latestAttributionCause, and sparkPoints while preserving identity fields.
+ * Always sorts by agent name for UI stability.
+ */
+export function buildPanelAgents(vm: EpisodeViewModel): AgentViewModel[] {
+  const raw = vm?._raw as StageEpisode | undefined;
+  if (!raw) return [];
+  const base = buildAgentViews(raw);
+
+  // Pre-extract day agent stats for fast access
+  const days: StageDay[] = Array.isArray(raw.days) ? raw.days : [];
+
+  function computeAvg(name: string): number {
+    let sum = 0;
+    let count = 0;
+    for (const d of days) {
+      const a = d.agents?.[name as keyof typeof d.agents] as any;
+      const v = a && Number.isFinite(a.avg_stress) ? (a.avg_stress as number) : 0;
+      sum += v;
+      count += 1;
+    }
+    return count > 0 ? sum / count : 0;
+  }
+
+  function latestCause(name: string): string | null {
+    let last: string | null = null;
+    for (const d of days) {
+      const a = d.agents?.[name as keyof typeof d.agents] as any;
+      const cause = a && typeof a.attribution_cause === "string" ? a.attribution_cause : null;
+      if (cause) last = cause;
+    }
+    return last;
+  }
+
+  function buildSpark(name: string, width = 60, height = 18): string {
+    const values: number[] = days
+      .map((d) => d.agents?.[name as keyof typeof d.agents])
+      .map((a: any) => (a && Number.isFinite(a.avg_stress) ? (a.avg_stress as number) : 0)) as number[];
+    const pts = values.length === 1 ? [values[0], values[0]] : values;
+    const n = pts.length;
+    if (n === 0) return "";
+    const step = n > 1 ? width / (n - 1) : 0;
+    const toY = (v: number) => {
+      const clamped = Math.max(0, Math.min(1, v || 0));
+      return (1 - clamped) * height;
+    };
+    const coords: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const x = i * step;
+      const y = toY(pts[i]);
+      coords.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    }
+    return coords.join(" ");
+  }
+
+  const enriched = base.map((a) => ({
+    ...a,
+    avgStress: computeAvg(a.name),
+    latestAttributionCause: latestCause(a.name),
+    sparkPoints: buildSpark(a.name),
+  }));
+  enriched.sort((a, b) => a.name.localeCompare(b.name));
+  return enriched;
 }

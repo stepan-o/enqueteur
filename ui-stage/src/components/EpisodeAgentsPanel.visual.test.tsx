@@ -117,14 +117,14 @@ function cssColor(val: string): string {
 }
 
 describe("EpisodeAgentsPanel — visual language", () => {
-  it("renders avatar fallback letter when no visual and stress dot with correct color", () => {
+  it("renders AgentAvatar and stress dot with correct color", () => {
     const vm = makeVm();
     const { container } = render(<EpisodeAgentsPanel episode={vm} />);
 
-    // Avatar fallback for Bob (visual="") should be 'B'
+    // Avatar should be rendered via AgentAvatar (v2) with shared data-testid
     const bobRow = within(container).getByText(/Bob/).closest("li") as HTMLElement;
-    const bobAvatar = within(bobRow!).getByLabelText("Avatar for Bob");
-    expect(bobAvatar.textContent).toBe("B");
+    const avatars = within(bobRow!).getAllByTestId("agent-avatar-v1");
+    expect(avatars.length).toBeGreaterThan(0);
 
     // Stress dot color for Ava based on her avg across days (~0.36 → orange #FF9F1C)
     const avaDot = within(container).getByTestId("agent-stress-dot-Ava") as HTMLElement;

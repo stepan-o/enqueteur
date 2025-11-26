@@ -1,6 +1,7 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
-import { buildAgentViews, type AgentViewModel } from "./agentVm";
+import { buildAgentViews, buildPanelAgents, type AgentViewModel } from "./agentVm";
 import type { StageEpisode } from "../types/stage";
+import type { EpisodeViewModel } from "./episodeVm";
 
 describe("buildAgentViews", () => {
   const baseEpisode: StageEpisode = {
@@ -100,5 +101,76 @@ describe("buildAgentViews", () => {
     expect(byName["C"].displayTagline).toMatch(/observer/i);
     expect(byName["D"].displayTagline).toMatch(/support|coordinator/i);
     expect(byName["E"].displayTagline).toMatch(/System agent/i);
+  });
+
+  it("buildPanelAgents enriches AgentViewModels with avgStress, latestAttributionCause, and sparkPoints", () => {
+    const raw: StageEpisode = {
+      episode_id: "ep-p",
+      run_id: "run-p",
+      episode_index: 0,
+      stage_version: 1,
+      tension_trend: [],
+      days: [
+        {
+          day_index: 0,
+          perception_mode: "normal",
+          tension_score: 0,
+          total_incidents: 0,
+          supervisor_activity: 0,
+          narrative: [],
+          agents: {
+            Ava: { name: "Ava", role: "ops", avg_stress: 0.2, guardrail_count: 1, context_count: 2, emotional_read: null, attribution_cause: "system", narrative: [] },
+            Bob: { name: "Bob", role: "tech", avg_stress: 0.4, guardrail_count: 0, context_count: 1, emotional_read: null, attribution_cause: null, narrative: [] },
+          },
+        },
+        {
+          day_index: 1,
+          perception_mode: "normal",
+          tension_score: 0,
+          total_incidents: 0,
+          supervisor_activity: 0,
+          narrative: [],
+          agents: {
+            Ava: { name: "Ava", role: "ops", avg_stress: 0.3, guardrail_count: 0, context_count: 0, emotional_read: null, attribution_cause: null, narrative: [] },
+            Bob: { name: "Bob", role: "tech", avg_stress: 0.5, guardrail_count: 0, context_count: 0, emotional_read: null, attribution_cause: "network", narrative: [] },
+          },
+        },
+      ],
+      agents: {
+        Ava: { name: "Ava", role: "ops", guardrail_total: 1, context_total: 2, stress_start: 0.1, stress_end: 0.3, trait_snapshot: null, visual: "ava", vibe: "focused", tagline: "" },
+        Bob: { name: "Bob", role: "tech", guardrail_total: 0, context_total: 1, stress_start: 0.2, stress_end: 0.5, trait_snapshot: null, visual: "bob", vibe: "chill", tagline: "" },
+      },
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null,
+    };
+
+    const vm: EpisodeViewModel = {
+      id: raw.episode_id,
+      runId: raw.run_id,
+      index: raw.episode_index,
+      stageVersion: raw.stage_version,
+      days: [],
+      agents: [],
+      tensionTrend: raw.tension_trend,
+      story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+      _raw: raw,
+    } as unknown as EpisodeViewModel;
+
+    const list = buildPanelAgents(vm);
+    expect(list.map(a => a.name)).toEqual(["Ava", "Bob"]);
+    const ava = list[0];
+    const bob = list[1];
+
+    // avgStress: Ava (0.2 + 0.3)/2 = 0.25
+    expect(ava.avgStress).toBeCloseTo(0.25, 5);
+    // latest attribution uses last non-null seen over days: Ava -> "system", Bob -> "network"
+    expect(ava.latestAttributionCause).toBe("system");
+    expect(bob.latestAttributionCause).toBe("network");
+    // sparkPoints should be a non-empty string with commas for at least two points
+    expect(typeof ava.sparkPoints).toBe("string");
+    expect((ava.sparkPoints || "").length).toBeGreaterThan(0);
+    expect(ava.sparkPoints).toMatch(/,/);
   });
 });

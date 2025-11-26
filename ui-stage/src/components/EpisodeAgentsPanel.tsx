@@ -2,7 +2,8 @@ import type { EpisodeViewModel } from "../vm/episodeVm";
 import type { StageEpisode, StageDay } from "../types/stage";
 import styles from "./EpisodeAgentsPanel.module.css";
 import { stressColor } from "../utils/stressColor";
-import AgentAvatarV1 from "./AgentAvatarV1";
+import AgentAvatar from "./AgentAvatar";
+import { buildPanelAgents } from "../vm/agentVm";
 
 export interface EpisodeAgentsPanelProps {
   episode: EpisodeViewModel;
@@ -71,10 +72,9 @@ function buildSparklinePoints(raw: StageEpisode, agentName: string, width = 60, 
 
 export default function EpisodeAgentsPanel({ episode }: EpisodeAgentsPanelProps) {
   const raw = episode?._raw as StageEpisode | undefined;
-  const agentsMap = raw?.agents || {};
-  const names = Object.keys(agentsMap);
+  const panelAgents = buildPanelAgents(episode);
 
-  if (names.length === 0) {
+  if (panelAgents.length === 0) {
     return (
       <section className={styles.panel} aria-label="Episode agents">
         <div className={styles.empty}>No agents recorded for this episode.</div>
@@ -82,21 +82,26 @@ export default function EpisodeAgentsPanel({ episode }: EpisodeAgentsPanelProps)
     );
   }
 
-  const items = names
-    .map((name) => {
-      const s = agentsMap[name as keyof typeof agentsMap] as (typeof agentsMap)[string] | undefined;
-      const role: string = s?.role ?? "";
-      const guardrail: number = typeof s?.guardrail_total === "number" ? s.guardrail_total : 0;
-      const context: number = typeof s?.context_total === "number" ? s.context_total : 0;
-      const avg = raw ? computeAvgStress(raw, name) : 0;
-      const cause = raw ? latestAttribution(raw, name) : null;
-      const visual: string = typeof s?.visual === "string" ? s.visual : name;
-      const vibe: string = typeof s?.vibe === "string" ? s.vibe : "neutral";
-      const stress = stressColor(avg);
-      const spark = raw ? buildSparklinePoints(raw, name) : "";
-      return { name, role, guardrail, context, avg, cause, visual, vibe, stress, spark };
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const items = panelAgents.map((a) => {
+    const avg = a.avgStress ?? (raw ? computeAvgStress(raw, a.name) : 0);
+    const cause = a.latestAttributionCause ?? (raw ? latestAttribution(raw, a.name) : null);
+    const stress = stressColor(avg);
+    const spark = a.sparkPoints ?? (raw ? buildSparklinePoints(raw, a.name) : "");
+    return {
+      name: a.name,
+      role: a.role || "",
+      guardrail: a.guardrailTotal ?? 0,
+      context: a.contextTotal ?? 0,
+      avg,
+      cause,
+      stress,
+      spark,
+      vibeColorKey: a.vibeColorKey,
+      stressTier: a.stressTier,
+      displayTagline: a.displayTagline,
+      tagline: a.tagline,
+    };
+  });
 
   return (
     <section className={styles.panel} aria-label="Episode agents">
@@ -104,15 +109,21 @@ export default function EpisodeAgentsPanel({ episode }: EpisodeAgentsPanelProps)
         {items.map((a) => (
           <li key={a.name} className={styles.row}>
             <div className={styles.left}>
+              <span className={styles.avatarSlot} aria-label={`Avatar for ${a.name}`}>
+                <AgentAvatar name={a.name} vibeColorKey={a.vibeColorKey} stressTier={a.stressTier} size="md" />
+              </span>
               <div>
-                <span className={styles.name}>{a.name}</span>
-                <span className={styles.role}>— {a.role}</span>
-                <span
-                  className={styles.stressDot}
-                  title={`Stress ${formatNum(a.avg)}`}
-                  style={{ backgroundColor: a.stress }}
-                  data-testid={`agent-stress-dot-${a.name}`}
-                />
+                <div className={styles.titleRow}>
+                  <span className={styles.name}>{a.name}</span>
+                  <span className={styles.role}>— {a.role}</span>
+                  <span
+                    className={styles.stressDot}
+                    title={`Stress ${formatNum(a.avg)}`}
+                    style={{ backgroundColor: a.stress }}
+                    data-testid={`agent-stress-dot-${a.name}`}
+                  />
+                </div>
+                <div className={styles.tagline}>{a.displayTagline || a.tagline || "System agent"}</div>
                 <svg
                   className={styles.sparkline}
                   role="img"
@@ -131,9 +142,6 @@ export default function EpisodeAgentsPanel({ episode }: EpisodeAgentsPanelProps)
                   ) : null}
                 </svg>
               </div>
-              <span className={styles.avatar} aria-label={`Avatar for ${a.name}`}>
-                <AgentAvatarV1 name={a.name} role={a.role} vibe={a.vibe} visual={a.visual} size="md" />
-              </span>
             </div>
             <div className={styles.meta}>
               {/* Keep legacy textual line for backward-compatibility with existing tests */}
