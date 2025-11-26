@@ -1,6 +1,29 @@
 import type { StageEpisode, StageDay } from "../types/stage";
 import type { EpisodeViewModel } from "./episodeVm";
 
+/**
+ * Era II — Agent Identity Mapping (Phase 3)
+ *
+ * This VM supplies optional identity fields used by the AgentAvatar (v2) and
+ * identity-aware components:
+ *
+ * - vibeColorKey: one of "teal" | "indigo" | "green" | "amber" | "neutral"
+ *   Derived from agent.role via simple regex heuristics. Mapped in CSS to
+ *   .vibe-<key> classes which set:
+ *     --avatar-base  → blob fill (e.g., --lf-agent-vibe-<key>-base)
+ *     --avatar-ring  → circular frame stroke (e.g., --lf-agent-vibe-<key>-ring)
+ *
+ * - stressTier: one of "none" | "medium" | "high" | "cooldown"
+ *   Derived from stressEnd/end and stressDelta; used to set stress glow class:
+ *     .stress-none | .stress-medium | .stress-high | .stress-cooldown
+ *   which map to tokens in tokens.css:
+ *     --lf-agent-stressGlow-none|med|high|cooldown
+ *
+ * These fields are optional and purely presentational — they do not change
+ * backend schema or StageEpisode shapes. Missing/unknown values degrade to
+ * neutral visuals.
+ */
+
 export interface AgentViewModel {
   name: string;
   role: string;
@@ -39,7 +62,7 @@ export function buildAgentViews(ep: StageEpisode): AgentViewModel[] {
 
     // Stress tiering – defensive thresholds
     const stressTier: AgentViewModel["stressTier"] = ((): AgentViewModel["stressTier"] => {
-      if (delta < 0) return "cooldown"; // any easing counts as cooldown for v3A UX
+      if (delta < 0) return "cooldown"; // any easing counts as cooldown for v3 UX
       const endAbs = Math.max(0, Math.min(1, end));
       if (endAbs >= 0.66 || delta >= 0.4) return "high";
       if (endAbs >= 0.3 || delta >= 0.15) return "medium";

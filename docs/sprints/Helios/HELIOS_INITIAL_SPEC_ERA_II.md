@@ -1,37 +1,28 @@
-🌇 ERA II — BROAD SPRINT PLAN
-“From Functional Panels → Expressive Story Engine”
+# 🌇 ERA II — BROAD SPRINT PLAN
+_**“From Functional Panels → Expressive Story Engine”**_
 
-Era II is organized into four major arcs, each producing visible narrative gains.
+Era II is organized into **four major arcs**, each producing visible narrative gains.
 
-⭐️ PHASE 1 — Establish the Narrative Visual Language (Base Expressiveness)
+---
 
-Sprint Goal: Move from “boxes and lists” to an expressive 2D storytelling language.
+## ⭐️ PHASE 1 — Establish the Narrative Visual Language (Base Expressiveness)
 
-🔧 Technical Deliverables (Junie)
+**Sprint Goal:** Move from “boxes and lists” to an expressive 2D storytelling language.
 
-Introduce narrative visual tokens:
+### 🔧 Technical Deliverables (Junie)
+* Introduce **narrative visual tokens**:
+  * color palette for stress / tension / attribution
+  * subtle motion specs (hover, pulse, fade)
+  * whitespace + typography rhythm v1
 
-color palette for stress / tension / attribution
-
-subtle motion specs (hover, pulse, fade)
-
-whitespace + typography rhythm v1
-
-Implement NarrativeBlock 2.0:
-
-micro-panels
-
-icons based on kind (beat/recap/aside)
-
-soft mood shading
-
-Integrate new block style into:
-
-DayDetailPanel
-
-Top-level narrative (episode header)
-
-StoryArc placeholder
+* Implement NarrativeBlock 2.0:
+  * micro-panels
+  * icons based on kind (beat/recap/aside)
+  * soft mood shading
+* Integrate new block style into:
+  * DayDetailPanel
+  * Top-level narrative (episode header)
+  * StoryArc placeholder
 
 🎨 Founder tasks
 

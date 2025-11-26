@@ -30,6 +30,13 @@ export default function LatestEpisodeView() {
     agentName: string;
   } | null>(null);
 
+  // Phase 3C — Belief mini-panel state rules
+  // Interaction contract:
+  // 1) Clicking a storyboard strip selects that day and scrolls Day Detail; it also clears any open belief panel.
+  // 2) Clicking an agent cameo toggles the belief mini-panel for {dayIndex, agentName} without changing selection or scrolling.
+  // 3) Selecting a narrative item behaves like (1): selects the item's day/block and clears the belief panel.
+  // 4) Changing the selected day via the timeline also clears the belief panel and nudges storyboard scrolling.
+
   // Preserve initial selection logic: set to first day index when episode arrives
   useEffect(() => {
     if (episode) {

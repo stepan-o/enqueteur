@@ -1,6 +1,19 @@
 import styles from "./AgentAvatarV1.module.css";
 import { colorForVibe } from "../../style-maps/vibeColors";
 
+/**
+ * Legacy Avatar Component — AgentAvatarV1
+ *
+ * This component predates Era II Phase 3 identity work. It renders a simple
+ * letter-in-circle avatar with a background derived from legacy "vibe" colors.
+ *
+ * New UI should prefer AgentAvatar (v2) in ui-stage/src/components/AgentAvatar,
+ * which uses vibeColorKey + stressTier and Era II identity tokens for ring/glow.
+ *
+ * AgentAvatarV1 remains for compatibility in places like DayDetailPanel and
+ * associated tests. Please migrate callsites opportunistically in future work.
+ */
+
 export interface AgentAvatarV1Props {
   name: string;
   role: string;
