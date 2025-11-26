@@ -81,19 +81,15 @@ export default function LatestEpisodeView() {
           items = [];
         }
         const handleClickCameo = (dayIndex: number, agentName: string) => {
+          // Phase 3C follow-up: cameo click should NOT change selected day or scroll.
+          // It only toggles the belief mini-panel.
           setSelectedNarrativeBlockId(null);
-          setSelectedDayIndex(dayIndex);
           setSelectedBelief((prev) => {
             if (prev && prev.dayIndex === dayIndex && prev.agentName === agentName) {
               return null; // toggle off
             }
             return { dayIndex, agentName };
           });
-          // Scroll day detail into view
-          setTimeout(() => {
-            const el = dayDetailRef.current as any;
-            el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-          }, 0);
         };
 
         return (

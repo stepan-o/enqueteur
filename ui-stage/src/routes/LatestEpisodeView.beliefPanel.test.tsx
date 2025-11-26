@@ -73,13 +73,18 @@ describe("LatestEpisodeView — AgentBeliefMiniPanel interaction", () => {
     cleanup();
   });
 
-  it("opens on cameo click, toggles on second click, and clears on day change", async () => {
+  it("opens on cameo click without scrolling, toggles on second click, and clears on day change; strip click scrolls", async () => {
     vi.spyOn(api, "getLatestEpisode").mockResolvedValue(makeVm());
     render(<LatestEpisodeView />);
 
     // Wait for Day 0 strip
     const strip0 = await screen.findByTestId("day-storyboard-strip-0");
     expect(strip0).toBeTruthy();
+
+    // Polyfill and spy on scrollIntoView to detect (no) scrolling
+    const originalScroll = (Element.prototype as any).scrollIntoView;
+    const scrollSpy = vi.fn();
+    (Element.prototype as any).scrollIntoView = scrollSpy;
 
     // Find cameo button for Ava on Day 0
     const cameoCluster = await screen.findByLabelText(/Agent cameos for Day 0/i);
@@ -91,6 +96,9 @@ describe("LatestEpisodeView — AgentBeliefMiniPanel interaction", () => {
     expect(panel).toBeTruthy();
     expect(within(panel).getByText(/network outage/i)).toBeTruthy();
 
+    // Cameo click should NOT trigger scrolling
+    expect(scrollSpy).not.toHaveBeenCalled();
+
     // Second click toggles off
     fireEvent.click(btn);
     expect(screen.queryByTestId("agent-belief-mini-panel")).toBeNull();
@@ -100,5 +108,11 @@ describe("LatestEpisodeView — AgentBeliefMiniPanel interaction", () => {
     const strip1 = await screen.findByTestId("day-storyboard-strip-1");
     fireEvent.click(strip1);
     expect(screen.queryByTestId("agent-belief-mini-panel")).toBeNull();
+
+    // Strip click should trigger scrolling at least once
+    expect(scrollSpy).toHaveBeenCalled();
+
+    // restore original scrollIntoView if present
+    (Element.prototype as any).scrollIntoView = originalScroll;
   });
 });

@@ -26,11 +26,12 @@ function makeItem(): DayStoryboardItemViewModel {
 }
 
 describe("DayStoryboardStrip — agent cameos", () => {
-  it("renders up to 3 cameo avatars and an overflow pill with aria-labels", () => {
+  it("renders up to 3 cameo avatars and an overflow pill with aria-labels, and cameo click does not call onSelect", () => {
     const item = makeItem();
     const onClick = vi.fn();
+    const onSelect = vi.fn();
     const { container } = render(
-      <DayStoryboardStrip item={item} isSelected={false} onSelect={() => {}} onClickCameo={onClick} />
+      <DayStoryboardStrip item={item} isSelected={false} onSelect={onSelect} onClickCameo={onClick} />
     );
 
     const cameoCluster = within(container).getByLabelText(/Agent cameos for Day 2/i);
@@ -44,5 +45,6 @@ describe("DayStoryboardStrip — agent cameos", () => {
     const btn = within(cameoCluster).getByRole("button", { name: /View Ava's view of Day 2/i });
     fireEvent.click(btn);
     expect(onClick).toHaveBeenCalledWith(2, "Ava");
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });

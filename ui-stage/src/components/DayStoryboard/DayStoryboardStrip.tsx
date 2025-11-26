@@ -66,6 +66,7 @@ export default function DayStoryboardStrip({ item, isSelected, onSelect, selecte
               className={styles.cameoBtn}
               aria-label={`View ${c.name}'s view of ${item.label}`}
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 onClickCameo && onClickCameo(item.dayIndex, c.name);
               }}
