@@ -144,4 +144,30 @@ describe("DayStoryboard VM", () => {
     items = buildDayStoryboardItems(vm);
     expect(items[0].sparklinePoints).toEqual([]);
   });
+
+  it("adds up to 3 agentCameos per day sorted and sets overflow count", () => {
+    const vm = makeEpisodeVM({ narrativeForDay0: "A", narrativeForDay1: "B" });
+    // Inject agents at episode level and per-day agent stats
+    (vm as any)._raw.agents = {
+      Ava: { name: "Ava", role: "operator", guardrail_total: 0, context_total: 0, stress_start: 0.1, stress_end: 0.5, trait_snapshot: null, visual: "", vibe: "", tagline: "" },
+      Zed: { name: "Zed", role: "observer", guardrail_total: 0, context_total: 0, stress_start: 0.1, stress_end: 0.2, trait_snapshot: null, visual: "", vibe: "", tagline: "" },
+      Bob: { name: "Bob", role: "support", guardrail_total: 0, context_total: 0, stress_start: 0.2, stress_end: 0.3, trait_snapshot: null, visual: "", vibe: "", tagline: "" },
+      Nia: { name: "Nia", role: "supervisor", guardrail_total: 0, context_total: 0, stress_start: 0.1, stress_end: 0.4, trait_snapshot: null, visual: "", vibe: "", tagline: "" },
+    };
+    (vm as any)._raw.days[0].agents = {
+      Ava: { name: "Ava", role: "operator", avg_stress: 0.6, guardrail_count: 0, context_count: 0, emotional_read: null, attribution_cause: "system", narrative: [] },
+      Zed: { name: "Zed", role: "observer", avg_stress: 0.2, guardrail_count: 0, context_count: 0, emotional_read: null, attribution_cause: null, narrative: [] },
+      Bob: { name: "Bob", role: "support", avg_stress: 0.4, guardrail_count: 0, context_count: 0, emotional_read: null, attribution_cause: null, narrative: [] },
+      Nia: { name: "Nia", role: "supervisor", avg_stress: 0.5, guardrail_count: 0, context_count: 0, emotional_read: null, attribution_cause: null, narrative: [] },
+    };
+    const items = buildDayStoryboardItems(vm);
+    const cameos = items[0].agentCameos || [];
+    const overflow = items[0].agentCameoOverflowCount || 0;
+    expect(cameos.length).toBe(3);
+    // Sorted by avg_stress desc => Ava(0.6), Nia(0.5), Bob(0.4) shown
+    expect(cameos.map((c) => c.name)).toEqual(["Ava", "Nia", "Bob"]);
+    expect(overflow).toBe(1); // Zed overflow
+    // tier mapping: ensure values are among low/mid/high
+    cameos.forEach((c) => expect(["low", "mid", "high"]).toContain(c.stressTier));
+  });
 });

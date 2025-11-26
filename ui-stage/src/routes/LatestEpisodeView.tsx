@@ -11,6 +11,7 @@ import { buildEpisodeArcMood } from "../vm/episodeArcMoodVm";
 import EpisodeMoodBannerV1 from "../components/EpisodeMoodBannerV1";
 import { buildDayStoryboardItems, type StoryboardItem } from "../vm/dayStoryboardVm";
 import DayStoryboardList from "../components/DayStoryboard/DayStoryboardList";
+import AgentBeliefMiniPanel from "../components/AgentBeliefMiniPanel";
 import { useRef } from "react";
 
 export default function LatestEpisodeView() {
@@ -23,6 +24,11 @@ export default function LatestEpisodeView() {
   const [selectedNarrativeBlockId, setSelectedNarrativeBlockId] = useState<string | null>(null);
   // Token to force storyboard to scroll the selected strip into view (used for timeline clicks)
   const [scrollStoryboardToken, setScrollStoryboardToken] = useState<number>(0);
+  // Phase 3C: selected belief mini-panel state
+  const [selectedBelief, setSelectedBelief] = useState<{
+    dayIndex: number;
+    agentName: string;
+  } | null>(null);
 
   // Preserve initial selection logic: set to first day index when episode arrives
   useEffect(() => {
@@ -32,6 +38,8 @@ export default function LatestEpisodeView() {
       } else {
         setSelectedDayIndex(0);
       }
+      // Clear belief panel on new episode
+      setSelectedBelief(null);
     }
   }, [episode]);
 
@@ -72,6 +80,22 @@ export default function LatestEpisodeView() {
         } catch {
           items = [];
         }
+        const handleClickCameo = (dayIndex: number, agentName: string) => {
+          setSelectedNarrativeBlockId(null);
+          setSelectedDayIndex(dayIndex);
+          setSelectedBelief((prev) => {
+            if (prev && prev.dayIndex === dayIndex && prev.agentName === agentName) {
+              return null; // toggle off
+            }
+            return { dayIndex, agentName };
+          });
+          // Scroll day detail into view
+          setTimeout(() => {
+            const el = dayDetailRef.current as any;
+            el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+          }, 0);
+        };
+
         return (
           <DayStoryboardList
             items={items}
@@ -80,6 +104,7 @@ export default function LatestEpisodeView() {
             onSelectDay={(idx) => {
               setSelectedDayIndex(idx);
               setSelectedNarrativeBlockId(null); // day-level selection clears specific narrative selection
+              setSelectedBelief(null); // selecting a day clears belief panel
               // bonus: gently scroll day detail into view (guarded for jsdom/tests)
               setTimeout(() => {
                 const el = dayDetailRef.current as any;
@@ -91,11 +116,40 @@ export default function LatestEpisodeView() {
               // Selecting a narrative item selects its day and highlights that block
               setSelectedDayIndex(item.dayIndex);
               setSelectedNarrativeBlockId(item.blockId);
+              setSelectedBelief(null); // narrative selection clears belief panel
               setTimeout(() => {
                 const el = dayDetailRef.current as any;
                 el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
               }, 0);
             }}
+            onClickCameo={handleClickCameo}
+          />
+        );
+      })()}
+
+      {(() => {
+        if (!episode || !selectedBelief) return null;
+        // Compute belief text and factual summary from existing data
+        let beliefText: string | null = null;
+        try {
+          const raw: any = (episode as any)._raw;
+          const day = (Array.isArray(raw?.days) ? raw.days : []).find((d: any) => d?.day_index === selectedBelief.dayIndex);
+          const a = day?.agents?.[selectedBelief.agentName];
+          beliefText = typeof a?.attribution_cause === "string" ? a.attribution_cause : null;
+        } catch {
+          beliefText = null;
+        }
+        const dayVm = (episode.days || []).find((d) => d.index === selectedBelief.dayIndex) as any;
+        const t = typeof dayVm?.tensionScore === "number" ? dayVm.tensionScore : 0;
+        const inc = typeof dayVm?.totalIncidents === "number" ? dayVm.totalIncidents : 0;
+        const sup = typeof dayVm?.supervisorActivity === "number" ? dayVm.supervisorActivity : 0;
+        const what = `Tension ${t.toFixed(2)} • incidents ${inc} • supervisor ${sup.toFixed(0)}`;
+        return (
+          <AgentBeliefMiniPanel
+            dayIndex={selectedBelief.dayIndex}
+            agentName={selectedBelief.agentName}
+            beliefText={beliefText}
+            whatHappened={what}
           />
         );
       })()}
@@ -107,6 +161,7 @@ export default function LatestEpisodeView() {
         onSelect={(idx) => {
           setSelectedDayIndex(idx);
           setSelectedNarrativeBlockId(null); // timeline click highlights day; clear specific narrative selection
+          setSelectedBelief(null); // timeline selection clears belief panel
           // Nudge storyboard to scroll the selected strip even if idx didn't change
           setScrollStoryboardToken((t) => t + 1);
         }}

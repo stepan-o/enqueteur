@@ -36,6 +36,33 @@
   min-height: 1.25rem;
 }
 
+/* Cameo cluster */
+.cameos {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.cameoBtn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.overflowPill {
+  font-size: 0.75rem;
+  color: #374151;
+  background: #e5e7eb;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  padding: 0 6px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+}
+
 .sparklineBox {
   width: 80px;
   height: 22px;

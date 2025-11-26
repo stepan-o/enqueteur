@@ -1,5 +1,6 @@
 import styles from "./DayStoryboardStrip.module.css";
 import type { DayStoryboardItemViewModel, StoryboardItem } from "../../vm/dayStoryboardVm";
+import AgentAvatar from "../AgentAvatar";
 
 export interface DayStoryboardStripProps {
   item: DayStoryboardItemViewModel;
@@ -7,9 +8,10 @@ export interface DayStoryboardStripProps {
   onSelect: (dayIndex: number) => void;
   selectedNarrativeBlockId?: string | null;
   onSelectNarrativeItem?: (item: StoryboardItem) => void;
+  onClickCameo?: (dayIndex: number, agentName: string) => void;
 }
 
-export default function DayStoryboardStrip({ item, isSelected, onSelect, selectedNarrativeBlockId = null, onSelectNarrativeItem }: DayStoryboardStripProps) {
+export default function DayStoryboardStrip({ item, isSelected, onSelect, selectedNarrativeBlockId = null, onSelectNarrativeItem, onClickCameo }: DayStoryboardStripProps) {
   const band = (item as any).tensionBandClass as
     | "tensionLow"
     | "tensionMedium"
@@ -53,6 +55,38 @@ export default function DayStoryboardStrip({ item, isSelected, onSelect, selecte
     >
       <span className={styles.pill}>{item.label}</span>
       <span className={styles.caption}>{item.caption}</span>
+      {/* Agent cameos cluster (Phase 3C) */}
+      {Array.isArray((item as any).agentCameos) && (item as any).agentCameos!.length > 0 ? (
+        <span className={styles.cameos} aria-label={`Agent cameos for ${item.label}`}>
+          {(item.agentCameos || []).slice(0, 3).map((c) => (
+            <span
+              key={`${item.dayIndex}-${c.name}`}
+              role="button"
+              tabIndex={0}
+              className={styles.cameoBtn}
+              aria-label={`View ${c.name}'s view of ${item.label}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClickCameo && onClickCameo(item.dayIndex, c.name);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onClickCameo && onClickCameo(item.dayIndex, c.name);
+                }
+              }}
+            >
+              <AgentAvatar name={c.name} vibeColorKey={c.vibeColorKey as any} stressTier={c.stressTier === "high" ? "high" : c.stressTier === "mid" ? "medium" : "none"} size="sm" />
+            </span>
+          ))}
+          {((item as any).agentCameoOverflowCount || 0) > 0 ? (
+            <span className={styles.overflowPill} title={`${(item as any).agentCameoOverflowCount} more agents involved`}>
+              +{(item as any).agentCameoOverflowCount}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
       {/* Lanes container — starting with Narrative lane only */}
       <div className={styles.lanes} aria-label="Storyboard lanes">
         <div className={styles.laneRow} aria-label="Narrative lane">

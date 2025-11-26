@@ -12,9 +12,11 @@ export interface DayStoryboardListProps {
   onSelectNarrativeItem?: (item: StoryboardItem) => void;
   /** Optional token to force scroll into view even if selectedDayIndex doesn't change. */
   scrollToSelectedDayToken?: number;
+  /** Phase 3C: clicking a cameo opens belief mini-panel */
+  onClickCameo?: (dayIndex: number, agentName: string) => void;
 }
 
-export default function DayStoryboardList({ items, selectedDayIndex, onSelectDay, selectedNarrativeBlockId = null, onSelectNarrativeItem, scrollToSelectedDayToken }: DayStoryboardListProps) {
+export default function DayStoryboardList({ items, selectedDayIndex, onSelectDay, selectedNarrativeBlockId = null, onSelectNarrativeItem, scrollToSelectedDayToken, onClickCameo }: DayStoryboardListProps) {
   // Graceful null render
   if (!Array.isArray(items) || items.length === 0) {
     return null;
@@ -90,6 +92,7 @@ export default function DayStoryboardList({ items, selectedDayIndex, onSelectDay
               onSelect={onSelectDay}
               selectedNarrativeBlockId={selectedNarrativeBlockId}
               onSelectNarrativeItem={onSelectNarrativeItem}
+              onClickCameo={onClickCameo}
             />
           </div>
         ))}
