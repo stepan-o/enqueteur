@@ -1,14 +1,17 @@
 import styles from "./DayStoryboardList.module.css";
-import type { DayStoryboardItemViewModel } from "../../vm/dayStoryboardVm";
+import type { DayStoryboardItemViewModel, StoryboardItem } from "../../vm/dayStoryboardVm";
 import DayStoryboardStrip from "./DayStoryboardStrip";
 
 export interface DayStoryboardListProps {
   items: DayStoryboardItemViewModel[];
   selectedDayIndex: number;
   onSelectDay: (dayIndex: number) => void;
+  /** Optional selection state for a specific narrative item (lane="narrative"). */
+  selectedNarrativeBlockId?: string | null;
+  onSelectNarrativeItem?: (item: StoryboardItem) => void;
 }
 
-export default function DayStoryboardList({ items, selectedDayIndex, onSelectDay }: DayStoryboardListProps) {
+export default function DayStoryboardList({ items, selectedDayIndex, onSelectDay, selectedNarrativeBlockId = null, onSelectNarrativeItem }: DayStoryboardListProps) {
   if (!Array.isArray(items) || items.length === 0) {
     return null;
   }
@@ -22,6 +25,8 @@ export default function DayStoryboardList({ items, selectedDayIndex, onSelectDay
             item={it}
             isSelected={selectedDayIndex === it.dayIndex}
             onSelect={onSelectDay}
+            selectedNarrativeBlockId={selectedNarrativeBlockId}
+            onSelectNarrativeItem={onSelectNarrativeItem}
           />)
         )}
       </div>

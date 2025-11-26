@@ -83,4 +83,28 @@ describe("DayStoryboard VM", () => {
     const items = buildDayStoryboardItems({} as any);
     expect(items).toEqual([]);
   });
+
+  it("includes narrative lane items with correct order and type", () => {
+    const vm = makeEpisodeVM({ narrativeForDay0: "Alpha", narrativeForDay1: "Bravo" });
+    const items = buildDayStoryboardItems(vm);
+    expect(items[0].narrativeLane.length).toBe(1);
+    expect(items[0].narrativeLane[0].lane).toBe("narrative");
+    expect(items[0].narrativeLane[0].dayIndex).toBe(0);
+    expect(items[0].narrativeLane[0].text).toBe("Alpha");
+  });
+
+  it("drops malformed narrative blocks", () => {
+    const vm = makeEpisodeVM({ narrativeForDay0: "Keep", narrativeForDay1: "Ok" });
+    // Corrupt day 0 narrative array by injecting invalid entries
+    (vm as any)._raw.days[0].narrative = [
+      null,
+      42,
+      { block_id: "", kind: "beat", text: "bad", day_index: 0, agent_name: null, tags: [] },
+      { block_id: "keep0", kind: "beat", text: "Keep", day_index: 0, agent_name: null, tags: ["x", 5, "y"] },
+    ];
+    const items = buildDayStoryboardItems(vm);
+    expect(items[0].narrativeLane.length).toBe(1);
+    expect(items[0].narrativeLane[0].blockId).toBe("keep0");
+    expect(items[0].narrativeLane[0].tags).toEqual(["x", "y"]);
+  });
 });

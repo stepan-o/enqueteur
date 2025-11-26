@@ -38,3 +38,49 @@
   border: 1px solid #e5e7eb;
   border-radius: 6px;
 }
+
+/* Narrative lane scaffolding */
+.lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.laneRow {
+  display: grid;
+  grid-template-columns: 86px 1fr; /* label column + items */
+  align-items: start;
+  gap: 0.5rem;
+}
+
+.laneLabel {
+  font-size: 0.7rem;
+  color: #6b7280;
+  text-transform: uppercase;
+}
+
+.laneStrip {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
+.laneItem {
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0.25rem 0.45rem;
+  border-radius: 999px;
+  background: #eef2ff; /* light indigo */
+  color: #1f2937;
+  border: 1px solid #e5e7eb;
+}
+
+.laneItemSelected {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.35);
+}
