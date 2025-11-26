@@ -107,4 +107,41 @@ describe("DayStoryboard VM", () => {
     expect(items[0].narrativeLane[0].blockId).toBe("keep0");
     expect(items[0].narrativeLane[0].tags).toEqual(["x", "y"]);
   });
+
+  it("classifies tension band based on average tensionScore", () => {
+    const vm = makeEpisodeVM({ narrativeForDay0: "A", narrativeForDay1: "B" });
+    // Override day-level tension to hit thresholds
+    vm.days[0].tensionScore = 0.1; // Low
+    vm.days[1].tensionScore = 0.6; // High
+    const items = buildDayStoryboardItems(vm);
+    expect(items[0].tensionBandClass).toBe("tensionLow");
+    expect(items[1].tensionBandClass).toBe("tensionHigh");
+  });
+
+  it("builds normalized sparklinePoints from prev and current day tensions", () => {
+    const vm = makeEpisodeVM({ narrativeForDay0: "A", narrativeForDay1: "B" });
+    vm.days[0].tensionScore = 0.2;
+    vm.days[1].tensionScore = 0.5;
+    const items = buildDayStoryboardItems(vm);
+    const spark1 = items[1].sparklinePoints || [];
+    expect(spark1.length).toBe(2);
+    // Should normalize to [0,1]
+    const min = Math.min(...spark1);
+    const max = Math.max(...spark1);
+    expect(min).toBe(0);
+    expect(max).toBe(1);
+  });
+
+  it("returns empty sparklinePoints for missing or flat data", () => {
+    const vm = makeEpisodeVM({ narrativeForDay0: "A", narrativeForDay1: "B" });
+    // Make both equal -> flat
+    vm.days[0].tensionScore = 0.3;
+    vm.days[1].tensionScore = 0.3;
+    let items = buildDayStoryboardItems(vm);
+    expect(items[1].sparklinePoints).toEqual([]);
+
+    // Missing previous day (check first day)
+    items = buildDayStoryboardItems(vm);
+    expect(items[0].sparklinePoints).toEqual([]);
+  });
 });
