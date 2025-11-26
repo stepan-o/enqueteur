@@ -38,6 +38,50 @@
   --lf-vibe-chaotic: #ff6b6b;
   --lf-vibe-neutral: #d8d8d8;
 
+  /*
+    Era II — Phase 3A Agent Identity Tokens
+
+    VibeColor families are used by AgentAvatar and AgentCard v2.
+    Each family defines:
+      - base: inner blob fill
+      - ring: circular frame stroke
+      - muted: small text/icons related to the agent
+
+    Stress glow tokens are box-shadow snippets applied around the avatar.
+    They must stay soft and not overlap with critical error reds.
+  */
+
+  /* VibeColor — teal (primary/analytic actor) */
+  --lf-agent-vibe-teal-base: #88d1c5;
+  --lf-agent-vibe-teal-ring: #5db8aa;
+  --lf-agent-vibe-teal-muted: #3a6f67;
+
+  /* VibeColor — indigo (observer/reflective) */
+  --lf-agent-vibe-indigo-base: #b1b8ff;
+  --lf-agent-vibe-indigo-ring: #7a86e8;
+  --lf-agent-vibe-indigo-muted: #4a4f86;
+
+  /* VibeColor — green (support/coordinator) */
+  --lf-agent-vibe-green-base: #a8e3c2;
+  --lf-agent-vibe-green-ring: #6cc799;
+  --lf-agent-vibe-green-muted: #3e7a5d;
+
+  /* VibeColor — amber (supervisor/lead) */
+  --lf-agent-vibe-amber-base: #ffd89a;
+  --lf-agent-vibe-amber-ring: #f3b35a;
+  --lf-agent-vibe-amber-muted: #7a5d2b;
+
+  /* VibeColor — neutral (fallback blue-grey) */
+  --lf-agent-vibe-neutral-base: #c9d4de;
+  --lf-agent-vibe-neutral-ring: #9fb0be;
+  --lf-agent-vibe-neutral-muted: #5b6772;
+
+  /* Stress glows (use with box-shadow: var(--lf-agent-stressGlow-*) ) */
+  --lf-agent-stressGlow-none: 0 0 0 0 rgba(0,0,0,0);
+  --lf-agent-stressGlow-med: 0 0 0 2px rgba(243, 179, 90, 0.35), 0 6px 12px -2px rgba(28, 17, 0, 0.15);
+  --lf-agent-stressGlow-high: 0 0 0 3px rgba(198, 74, 58, 0.45), 0 8px 18px -2px rgba(28, 17, 0, 0.22);
+  --lf-agent-stressGlow-cooldown: 0 0 0 2px rgba(125, 196, 255, 0.35), 0 6px 12px -2px rgba(28, 17, 0, 0.12);
+
   /* Era II — Episode Mood Gradients */
   --lf-episode-mood-calm: linear-gradient(90deg, #e4f3eb, #f7faf8);
   --lf-episode-mood-minor: linear-gradient(90deg, #fff4e5, #fff9f0);

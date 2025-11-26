@@ -32,7 +32,7 @@ describe("EpisodeAgentsOverview", () => {
     },
   ];
 
-  it("renders all agents in alphabetical order with role and stress stats", () => {
+  it("renders AgentCards in alphabetical order with avatar, name, role, and tagline", () => {
     const { container, getByText } = render(
       <EpisodeAgentsOverview agents={agentsUnsorted} />
     );
@@ -43,19 +43,17 @@ describe("EpisodeAgentsOverview", () => {
     expect(list[0].textContent || "").toMatch(/^Ava/);
     expect(list[1].textContent || "").toMatch(/^Delta/);
 
-    // Role and stress delta formatting
-    expect(getByText(/role ops/)).toBeTruthy();
-    // Contains delta and start/end values
-    const text = container.textContent || "";
-    expect(text).toMatch(/Stress Δ: -0.33/);
-    expect(text).toMatch(/start 0.42/);
-    expect(text).toMatch(/end 0.09/);
+    // Role is visible (no specific prefix required now)
+    expect(getByText(/ops/i)).toBeTruthy();
 
-    // Avatars render with data-testid marker
+    // Avatars render with data-testid marker (kept same as v1 for stability)
     const avatars = within(container).getAllByTestId("agent-avatar-v1");
     expect(avatars.length).toBe(2);
     // sizing should be lg in overview
     expect(avatars[0].getAttribute("data-size")).toBe("lg");
+
+    // Tagline fallback should render even if empty provided
+    expect(within(list[0]).getByText(/System agent|tagline/i)).toBeTruthy();
   });
 
   it("handles empty list gracefully", () => {

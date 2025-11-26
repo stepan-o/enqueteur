@@ -1,6 +1,6 @@
 import type { AgentViewModel } from "../vm/agentVm";
 import styles from "./EpisodeAgentsOverview.module.css";
-import AgentAvatarV1 from "./AgentAvatarV1";
+import AgentAvatar from "./AgentAvatar";
 
 export interface EpisodeAgentsOverviewProps {
   agents: AgentViewModel[];
@@ -29,15 +29,16 @@ export default function EpisodeAgentsOverview({
     <div className={styles.container}>
       <ul className={styles.list}>
         {list.map((a) => (
-          <li key={a.name} className={styles.item}>
-            <div>
-              {/* Avatar first for scanability; suppress visible initial to keep textContent starting with name per tests */}
-              <AgentAvatarV1 name={a.name} role={a.role} vibe={a.vibe || "neutral"} visual={a.visual || a.name} size="lg" showInitial={false} />
-              <span className={styles.name}>{a.name}</span>
-              <span className={styles.role}>— role {a.role}</span>
-            </div>
-            <div className={styles.meta}>
-              Stress Δ: {formatNum(a.stressDelta)} (start {formatNum(a.stressStart)} → end {formatNum(a.stressEnd)})
+          <li key={a.name} className={styles.item} role="listitem">
+            <div className={styles.cardInner}>
+              <AgentAvatar name={a.name} vibeColorKey={a.vibeColorKey} stressTier={a.stressTier} size="lg" />
+              <div>
+                <div className={styles.titleRow}>
+                  <span className={styles.name}>{a.name}</span>
+                  <span className={styles.role}>{a.role}</span>
+                </div>
+                <div className={styles.tagline}>{a.displayTagline || a.tagline || "System agent"}</div>
+              </div>
             </div>
           </li>
         ))}
