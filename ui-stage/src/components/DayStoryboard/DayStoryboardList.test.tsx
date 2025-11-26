@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import DayStoryboardList from "./DayStoryboardList";
 
 const items = [
@@ -9,6 +9,11 @@ const items = [
 ];
 
 describe("DayStoryboardList", () => {
+  // Ensure the DOM is reset between tests to avoid duplicate nodes
+  afterEach(() => {
+    cleanup();
+  });
+
   it("renders one strip per item", () => {
     render(<DayStoryboardList items={items} selectedDayIndex={0} onSelectDay={vi.fn()} />);
     expect(screen.getByTestId("day-storyboard-strip-0")).toBeTruthy();

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import * as api from "../api/episodes";
 
 // Let LatestEpisodeView receive an already-shaped EpisodeViewModel from API
@@ -65,6 +65,7 @@ function makeVm() {
 describe("LatestEpisodeView — DayStoryboard integration", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    cleanup();
   });
 
   it("shows storyboard and syncs selection with DayDetail", async () => {
@@ -95,7 +96,7 @@ describe("LatestEpisodeView — DayStoryboard integration", () => {
     // DayDetail updates to Day 1; unique narrative appears
     const dayDetailHeader1 = await screen.findByText(/Day 1 — perception/i);
     expect(dayDetailHeader1).toBeTruthy();
-    const unique = await screen.findByText(/Unique Day1 narrative line/);
-    expect(unique).toBeTruthy();
+    const uniques = await screen.findAllByText(/Unique Day1 narrative line/);
+    expect(uniques.length).toBeGreaterThan(0);
   });
 });

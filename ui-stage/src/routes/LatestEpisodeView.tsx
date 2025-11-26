@@ -75,9 +75,12 @@ export default function LatestEpisodeView() {
             selectedDayIndex={selectedDayIndex}
             onSelectDay={(idx) => {
               setSelectedDayIndex(idx);
-              // bonus: gently scroll day detail into view
+              // bonus: gently scroll day detail into view (guarded for jsdom/tests)
               setTimeout(() => {
-                dayDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                const el = dayDetailRef.current as any;
+                if (el && typeof el.scrollIntoView === "function") {
+                  el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
               }, 0);
             }}
           />
