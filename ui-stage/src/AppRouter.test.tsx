@@ -92,6 +92,125 @@ describe("AppRouter routes", () => {
     expect(detailsLink.getAttribute("href")).toBe("/episodes/latest");
   });
 
+  function getNavTriplet() {
+    const navs = screen.getAllByRole("navigation");
+    const nav = navs[0];
+    const stageLink = within(nav).getByRole("link", { name: /Stage/i });
+    const detailsLink = within(nav).getByRole("link", { name: /Details/i });
+    const episodesLink = within(nav).getByRole("link", { name: /Episodes/i });
+    return { stageLink, detailsLink, episodesLink } as const;
+  }
+
+  it("nav highlighting — Stage active at root /", async () => {
+    const vm: any = {
+      id: "ep-root",
+      runId: "run-root",
+      index: 0,
+      stageVersion: 1,
+      days: [],
+      tensionTrend: [],
+      agents: [],
+      story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+      _raw: {
+        episode_id: "ep-root",
+        run_id: "run-root",
+        episode_index: 0,
+        stage_version: 1,
+        tension_trend: [],
+        days: [],
+        agents: {}, story_arc: null, narrative: [], long_memory: null, character_defs: null,
+      },
+    };
+    vi.spyOn(api, "getLatestEpisode").mockResolvedValue(vm);
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppRouter />
+      </MemoryRouter>
+    );
+    const { stageLink, detailsLink, episodesLink } = getNavTriplet();
+    expect(stageLink.getAttribute("aria-current")).toBe("page");
+    expect(detailsLink.getAttribute("aria-current")).toBeNull();
+    expect(episodesLink.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("nav highlighting — Stage active on /episodes/:id/stage", async () => {
+    const vm: any = {
+      id: "ep-123",
+      runId: "run-123",
+      index: 1,
+      stageVersion: 1,
+      days: [], tensionTrend: [], agents: [],
+      story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+      _raw: { episode_id: "ep-123", run_id: "run-123", episode_index: 1, stage_version: 1, tension_trend: [], days: [], agents: {}, story_arc: null, narrative: [], long_memory: null, character_defs: null },
+    };
+    vi.spyOn(api, "getLatestEpisode").mockResolvedValue(vm);
+    render(
+      <MemoryRouter initialEntries={["/episodes/ep-123/stage"]}>
+        <AppRouter />
+      </MemoryRouter>
+    );
+    const { stageLink, detailsLink, episodesLink } = getNavTriplet();
+    expect(stageLink.getAttribute("aria-current")).toBe("page");
+    expect(detailsLink.getAttribute("aria-current")).toBeNull();
+    expect(episodesLink.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("nav highlighting — Details active on /episodes/:id", async () => {
+    const vm: any = {
+      id: "ep-999",
+      runId: "run-999",
+      index: 5,
+      stageVersion: 1,
+      days: [], tensionTrend: [], agents: [],
+      story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+      _raw: { episode_id: "ep-999", run_id: "run-999", episode_index: 5, stage_version: 1, tension_trend: [], days: [], agents: {}, story_arc: null, narrative: [], long_memory: null, character_defs: null },
+    };
+    vi.spyOn(api, "getLatestEpisode").mockResolvedValue(vm);
+    render(
+      <MemoryRouter initialEntries={["/episodes/ep-999"]}>
+        <AppRouter />
+      </MemoryRouter>
+    );
+    const { stageLink, detailsLink, episodesLink } = getNavTriplet();
+    expect(detailsLink.getAttribute("aria-current")).toBe("page");
+    expect(stageLink.getAttribute("aria-current")).toBeNull();
+    expect(episodesLink.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("nav highlighting — Details active on /episodes/latest", async () => {
+    const vm: any = {
+      id: "ep-latest2",
+      runId: "run-latest2",
+      index: 10,
+      stageVersion: 1,
+      days: [], tensionTrend: [], agents: [],
+      story: { storyArc: null, longMemory: null, topLevelNarrative: [] },
+      _raw: { episode_id: "ep-latest2", run_id: "run-latest2", episode_index: 10, stage_version: 1, tension_trend: [], days: [], agents: {}, story_arc: null, narrative: [], long_memory: null, character_defs: null },
+    };
+    vi.spyOn(api, "getLatestEpisode").mockResolvedValue(vm);
+    render(
+      <MemoryRouter initialEntries={["/episodes/latest"]}>
+        <AppRouter />
+      </MemoryRouter>
+    );
+    const { stageLink, detailsLink, episodesLink } = getNavTriplet();
+    expect(detailsLink.getAttribute("aria-current")).toBe("page");
+    expect(stageLink.getAttribute("aria-current")).toBeNull();
+    expect(episodesLink.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("nav highlighting — Episodes active only on /episodes index", async () => {
+    render(
+      <MemoryRouter initialEntries={["/episodes"]}>
+        <AppRouter />
+      </MemoryRouter>
+    );
+    const { stageLink, detailsLink, episodesLink } = getNavTriplet();
+    expect(episodesLink.getAttribute("aria-current")).toBe("page");
+    expect(stageLink.getAttribute("aria-current")).toBeNull();
+    expect(detailsLink.getAttribute("aria-current")).toBeNull();
+  });
+
   it("renders StageView at root / with Stage map and details panel", async () => {
     const vm: any = {
       id: "ep-root",
