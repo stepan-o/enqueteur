@@ -102,11 +102,11 @@ export default function DayStoryboardStrip({ item, isSelected, onSelect, selecte
                 ? `${styles.laneItem} ${styles.laneItemSelected}`
                 : styles.laneItem;
               return (
-                <button
+                <span
                   key={n.blockId}
-                  type="button"
                   className={cls}
                   role="listitem"
+                  tabIndex={0}
                   data-lane="narrative"
                   data-block-id={n.blockId}
                   data-selected={isItemSelected ? "true" : "false"}
@@ -120,9 +120,20 @@ export default function DayStoryboardStrip({ item, isSelected, onSelect, selecte
                       onSelect(item.dayIndex);
                     }
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (onSelectNarrativeItem) {
+                        onSelectNarrativeItem(n);
+                      } else {
+                        onSelect(item.dayIndex);
+                      }
+                    }
+                  }}
                 >
                   {n.kind}
-                </button>
+                </span>
               );
             })}
           </div>

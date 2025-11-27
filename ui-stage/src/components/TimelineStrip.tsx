@@ -67,7 +67,7 @@ export default function TimelineStrip({
       aria-label="Episode timeline"
       data-scroll="x"
     >
-      {days.map((d) => {
+      {days.map((d, i) => {
         const isSelected = selectedIndex === d.index;
         const className = isSelected
           ? `${styles.day} ${styles.selected}`
@@ -99,7 +99,7 @@ export default function TimelineStrip({
         const title = directionLabel ? `${baseTitle} • ${directionLabel}` : baseTitle;
         return (
           <button
-            key={d.index}
+            key={Number.isFinite(d.index as any) ? (d.index as any) : i}
             type="button"
             className={className}
             data-testid={`timeline-day-${d.index}`}

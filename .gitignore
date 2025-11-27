@@ -40,6 +40,22 @@ Thumbs.db
 logs/
 *.log
 
+# Node / Frontend artifacts (repo root)
+node_modules/
+
+# Frontend/Vitest reports (if generated at repo root by CI)
+.vite/
+.vitest/
+coverage/
+coverage-*
+junit.xml
+test-results.xml
+test-results/
+.reports/
+
+# Transient local run artifacts
+.output.txt
+
 # Environment files
 .env
 .env.*
