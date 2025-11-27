@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useInRouterContext, useParams } from "react-router-dom";
 import { useEpisodeLoader } from "../hooks/useEpisodeLoader";
 import type { EpisodeViewModel } from "../vm/episodeVm";
 import EpisodeHeader from "../components/EpisodeHeader";
@@ -61,7 +61,17 @@ export default function StageView() {
       <div className={styles.topBar}>
         {episode ? <EpisodeHeader episode={episode} /> : <div>Loading…</div>}
         <div>
-          <a href={id ? `/episodes/${id}` : "/episodes"}>Open Details view</a>
+          {(() => {
+            const routeId = id;
+            const episodeId = episode?.id ?? routeId ?? null;
+            const detailsHref = episodeId ? `/episodes/${episodeId}` : "/episodes/latest";
+            const inRouter = useInRouterContext();
+            return inRouter ? (
+              <Link to={detailsHref}>Open Details view</Link>
+            ) : (
+              <a href={detailsHref}>Open Details view</a>
+            );
+          })()}
         </div>
         {episode ? (
           <div>

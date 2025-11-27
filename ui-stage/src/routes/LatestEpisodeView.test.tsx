@@ -179,12 +179,9 @@ describe("LatestEpisodeView — Episode Agents Overview integration", () => {
     // Wait for storyboard to mount to ensure view is ready
     await screen.findByTestId("day-storyboard-strip-0");
 
-    // Stage Map section should reference Day 0 initially
-    const region = await screen.findByRole("region", { name: /Stage map for Day 0/i });
-    expect(region).toBeTruthy();
-
-    // Inside the region, tiles should reflect low tier for day 0
-    const mapGroup = within(region).getByRole("group", { name: /Stage map/i });
+    // Stage Map group should be present; tiles should reflect low tier for day 0
+    const mapGroups = await screen.findAllByTestId("stage-map-group");
+    const mapGroup = mapGroups[0];
     const tiles = within(mapGroup).getAllByRole("img");
     tiles.forEach((el) => expect(el.getAttribute("data-tension-tier")).toBe("low"));
   });

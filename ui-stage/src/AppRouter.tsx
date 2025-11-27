@@ -12,6 +12,7 @@ export default function AppRouter() {
       <Route path="/" element={<AppShell />}> 
         <Route index element={<StageView />} />
         <Route path="episodes" element={<EpisodesIndexView />} />
+        <Route path="episodes/latest" element={<LatestEpisodeView />} />
         <Route path="episodes/:id" element={<LatestEpisodeView />} />
         <Route path="episodes/:id/stage" element={<StageView />} />
         <Route path="agents" element={<AgentsPlaceholder />} />

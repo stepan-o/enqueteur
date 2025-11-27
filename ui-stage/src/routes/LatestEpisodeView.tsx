@@ -13,6 +13,7 @@ import { buildDayStoryboardItems, type StoryboardItem } from "../vm/dayStoryboar
 import DayStoryboardList from "../components/DayStoryboard/DayStoryboardList";
 import AgentBeliefMiniPanel from "../components/AgentBeliefMiniPanel";
 import { useRef } from "react";
+import { Link, useInRouterContext } from "react-router-dom";
 import { buildStageMapView } from "../vm/stageMapVm";
 import StageMap from "../components/StageMap";
 import styles from "./LatestEpisodeView.module.css";
@@ -71,6 +72,7 @@ export default function LatestEpisodeView() {
   const stageMapAriaLabel = hasSelectedDay
     ? `Stage map for Day ${selectedDayIndex}`
     : "Stage map (no day selected)";
+  const inRouter = useInRouterContext();
 
   return (
     <div>
@@ -89,12 +91,17 @@ export default function LatestEpisodeView() {
         currentEpisodeIndex={episode.index}
       />
 
-      {/* Dev wiring: quick link to Stage View route */}
-      {episode.id ? (
-        <div style={{ margin: "8px 0" }}>
-          <a href={`/episodes/${episode.id}/stage`}>Open Stage View</a>
-        </div>
-      ) : null}
+      {/* Header link: open Stage view for this episode or root Stage as fallback */}
+      <div style={{ margin: "8px 0" }}>
+        {(() => {
+          const href = episode.id ? `/episodes/${episode.id}/stage` : "/";
+          return inRouter ? (
+            <Link to={href}>Open Stage view</Link>
+          ) : (
+            <a href={href}>Open Stage view</a>
+          );
+        })()}
+      </div>
 
       {/* Main Columns: Left (storyboard/detail) • Right (map/agents) */}
       <div className={styles.mainColumns}>

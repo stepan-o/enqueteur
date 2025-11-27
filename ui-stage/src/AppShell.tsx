@@ -20,6 +20,14 @@ export default function AppShell() {
             Stage
           </NavLink>
           <NavLink
+            to="/episodes/latest"
+            className={({ isActive }) =>
+              isActive ? `${styles.link} ${styles.active}` : styles.link
+            }
+          >
+            Details
+          </NavLink>
+          <NavLink
             to="/episodes"
             className={({ isActive }) =>
               isActive ? `${styles.link} ${styles.active}` : styles.link
