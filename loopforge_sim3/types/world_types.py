@@ -2,117 +2,95 @@
 Sim3 World Types (Era III)
 =========================
 
-This module defines the *full world model* used across Sim3, aligned with
-the Era III backend architecture and the StageEpisodeV2 spec.
+Defines the *full world model* for Sim3, aligned with the Era III backend
+architecture and StageEpisodeV2 spec.
 
-It is intentionally split into three layers:
+Three layers:
 
 1) Identity Layer (static)
    - WorldIdentity
    - RoomIdentity
    - BoardLayoutSpec
-   These define what a world *is* before simulation begins.
 
-2) Runtime Layer (mutable world state)
+2) Runtime Layer (mutable)
    - RoomState
    - WorldState
-   These track per-room tension and other evolving properties.
 
 3) Snapshot Layer (UI-facing)
    - RoomSnapshot
    - WorldSnapshot
-   These are produced by the WorldSnapshotBuilder and included in StageEpisodeV2.
 
-This file contains **data structures only**.
-No logic, no builders, no simulation code.
+All logic for generating snapshots is handled by:
+    world_snapshot_builder.py
+    episode_builder.py
 """
 
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 from typing import Literal
 
 
 # ---------------------------------------------------------------------------
-# Literal types
+# Literal Types
 # ---------------------------------------------------------------------------
 
 TensionTier = Literal["low", "medium", "high", "critical"]
 
 
-# ===========================================================================
+# ============================================================================
 # 1. IDENTITY LAYER (STATIC)
-# ===========================================================================
-# These structures define worlds BEFORE the simulation runs.
-# Loaded from config/world_registry.py.
-# ---------------------------------------------------------------------------
+# ============================================================================
 
 @dataclass(frozen=True)
 class RoomIdentity:
     """
-    Static definition of a room/zone inside a world.
-
-    No coordinates yet — those belong to BoardLayoutSpec or runtime builders.
+    Static definition of a room/zone before simulation begins.
     """
 
-    id: str                         # stable room id; ex: "control_room"
-    label: str                      # human-facing label; ex: "Control Room"
-    kind: str                       # semantic UI category ("control", "floor", "storage")
+    id: str
+    label: str
+    kind: str                    # "control", "floor", "storage", etc.
 
-    desc: str                       # textual description
-    baseTension: float              # 0–1 baseline tension
-    hazards: List[str]              # optional hazard tags (may be empty)
+    desc: str
+    baseTension: float           # 0–1
+    hazards: List[str]
     visualTags: Optional[List[str]] = None
 
 
 @dataclass(frozen=True)
 class BoardLayoutSpec:
     """
-    Optional static mapping that defines a canonical board layout for UI.
-
-    Rooms are mapped to coordinates (0–1 normalized or small integer grid).
-    Frontend uses this to render the Stage map consistently.
-
-    This is optional because the backend can still function without a visual layout.
+    Optional static board layout used for UI positioning (0–1 space or grid).
     """
 
-    id: str                                         # ex: "factory-board-v1"
-    coordinates: Dict[str, Dict[str, float]]        # room_id → {"x": float, "y": float}
-    sizes: Optional[Dict[str, Dict[str, float]]] = None  # room_id → {"w": float, "h": float}
+    id: str
+    coordinates: Dict[str, Dict[str, float]]         # room_id → {"x", "y"}
+    sizes: Optional[Dict[str, Dict[str, float]]] = None
     ui_hints: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
 class WorldIdentity:
     """
-    The complete static definition of a world.
-    Derived from registry data (world_registry.py).
-
-    Contains:
-    - identity metadata
-    - room definitions
-    - adjacency graph
-    - optional board layout spec
+    Full static definition of a world.
     """
 
-    id: str                                         # ex: "factory_floor_v1"
-    name: str                                       # display name
-    desc: str                                       # human-focused description
-    size: str                                       # "small" | "medium" | "large"
+    id: str
+    name: str
+    desc: str
+    size: str                         # "small" | "medium" | "large"
 
-    rooms: Dict[str, RoomIdentity]                  # room_id → RoomIdentity
-    adjacency: Dict[str, List[str]]                 # room_id → neighboring room_ids
+    rooms: Dict[str, RoomIdentity]    # room_id → RoomIdentity
+    adjacency: Dict[str, List[str]]   # room_id → list of neighbor rooms
 
-    worldTraits: Dict[str, Any]                     # noise, instability, etc.
-    layout: Optional[BoardLayoutSpec] = None        # optional canonical board layout
+    worldTraits: Dict[str, Any]       # baseline noise, instability, etc.
+    layout: Optional[BoardLayoutSpec] = None
 
 
-# ===========================================================================
-# 2. RUNTIME LAYER (MUTABLE DURING SIM)
-# ===========================================================================
-# These represent evolving world state during the simulation.
-# ---------------------------------------------------------------------------
+# ============================================================================
+# 2. RUNTIME LAYER (MUTABLE)
+# ============================================================================
 
 @dataclass
 class RoomState:
@@ -121,30 +99,62 @@ class RoomState:
     """
 
     id: str
-    currentTension: float            # 0–1
-    incidents: int = 0               # count of events in this room
+    currentTension: float             # 0–1
+    incidents: int = 0
     flags: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class WorldState:
     """
-    Mutable runtime world state.
-
-    Backed by:
-    - WorldIdentity (static)
-    - dynamic room states (mutable)
+    Mutable world-state during simulation.
     """
 
     identity: WorldIdentity
-    rooms: Dict[str, RoomState]      # room_id → RoomState
+    rooms: Dict[str, RoomState]       # room_id → RoomState
 
-    timeTick: int = 0                # global tick counter
+    timeTick: int = 0
 
 
-# ===========================================================================
+# ============================================================================
 # 3. SNAPSHOT LAYER (UI-FACING)
-# ===========================================================================
-# Produced by the EpisodeBuilder or WorldSnapshotBuilder.
-# These go directly into StageEpisodeV2.world.
-# -----------------------------------------------------------------
+# ============================================================================
+
+@dataclass(frozen=True)
+class RoomSnapshot:
+    """
+    UI-ready representation of a room for StageEpisodeV2.
+
+    Contains:
+        - position / size (computed by WorldSnapshotBuilder)
+        - adjacency (copied from WorldIdentity)
+        - current tension tier (derived from RoomState)
+        - baseline + visual tags (from identity)
+    """
+
+    id: str
+    label: str
+    kind: str
+
+    position: Dict[str, float]        # {"x": float, "y": float}
+    size: Optional[Dict[str, float]]  # {"w", "h"} or None
+
+    adjacency: List[str]
+
+    tensionTier: TensionTier          # computed from currentTension
+    baseTensionTier: TensionTier
+
+    visualTags: Optional[List[str]] = None
+
+
+@dataclass(frozen=True)
+class WorldSnapshot:
+    """
+    UI-ready snapshot of the full world used in StageEpisodeV2.
+    """
+
+    id: str
+    name: str
+    layoutKind: str                   # from BoardLayoutSpec.id
+
+    rooms: List[RoomSnapshot]
