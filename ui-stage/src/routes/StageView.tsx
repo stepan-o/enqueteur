@@ -91,22 +91,32 @@ export default function StageView() {
           />
         </section>
 
-        <aside className={styles.detailPanel} aria-label="Stage details panel">
-          <div className={styles.detailHeader}>Details</div>
-          {!episode || !hasSelectedDay ? (
-            <div className={styles.summaryText}>No days available for this episode.</div>
-          ) : selectedAgentName ? (
-            <AgentFocus agentName={selectedAgentName} agentVM={agentByName[selectedAgentName]} onClear={clearSelection} />
-          ) : (
-            <WorldSummary
-              dayIndex={effectiveDayIndex as number}
-              roomLabel={dayVM?.rooms[0]?.label || "Factory Floor"}
-              tensionTier={dayVM?.tensionTier || "low"}
-              incidents={dayVM?.rooms[0]?.incidentCount || 0}
-              agents={allPrimaryAgents}
-              onClear={clearSelection}
-            />
-          )}
+        <aside className={styles.detailPanel} aria-label="Stage details panel" role="complementary">
+          <div
+            className={`${styles.detailHeaderBand} ${selectedAgentName ? styles.detailHeaderAgent : styles.detailHeaderWorld}`}
+          >
+            {selectedAgentName ? "Agent focus" : "World view"}
+          </div>
+          <div className={styles.detailBody}>
+            {!episode || !hasSelectedDay ? (
+              <div className={styles.summaryText}>No days available for this episode.</div>
+            ) : selectedAgentName ? (
+              <AgentFocus
+                agentName={selectedAgentName}
+                agentVM={agentByName[selectedAgentName]}
+                onClear={clearSelection}
+              />
+            ) : (
+              <WorldSummary
+                dayIndex={effectiveDayIndex as number}
+                roomLabel={dayVM?.rooms[0]?.label || "Factory Floor"}
+                tensionTier={dayVM?.tensionTier || "low"}
+                incidents={dayVM?.rooms[0]?.incidentCount || 0}
+                agents={allPrimaryAgents}
+                onClear={clearSelection}
+              />
+            )}
+          </div>
         </aside>
       </div>
     </main>
@@ -131,7 +141,10 @@ function WorldSummary({
   return (
     <div>
       <div className={styles.summaryText}>
-        Tension is {tensionTier} for {roomLabel} on Day {dayIndex}; incidents {incidents}; agents: {agents.join(", ") || "none"}.
+        Tension is {tensionTier} for {roomLabel} on Day {dayIndex}.
+      </div>
+      <div className={styles.summaryText}>
+        Incidents {incidents} • agents: {agents.join(", ") || "none"}
       </div>
       <div className={styles.controls}>
         <button type="button" onClick={onClear}>Clear selection</button>
@@ -161,18 +174,18 @@ function AgentFocus({
   }
   return (
     <div data-testid="agent-focus-panel">
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className={styles.agentRow}>
         <AgentAvatar name={agentVM.name} vibeColorKey={agentVM.vibeColorKey} stressTier={agentVM.stressTier} size="md" />
         <div>
-          <div style={{ fontWeight: 600 }}>{agentVM.name}</div>
-          <div style={{ color: "#555" }}>{agentVM.role}</div>
+          <div className={styles.agentName}>{agentVM.name}</div>
+          <div className={styles.agentRole}>{agentVM.role}</div>
         </div>
       </div>
-      <div className={styles.summaryText} style={{ marginTop: 8 }}>
+      <div className={`${styles.summaryText} ${styles.agentStats}`}>
         avg stress {(agentVM.avgStress ?? 0).toFixed(2)} • guardrails {agentVM.guardrailTotal} • context {agentVM.contextTotal}
       </div>
       {agentVM.displayTagline ? (
-        <div style={{ marginTop: 4 }}>{agentVM.displayTagline}</div>
+        <div className={styles.agentTagline}>{agentVM.displayTagline}</div>
       ) : null}
       <div className={styles.controls}>
         <button type="button" onClick={onClear}>Clear selection</button>
