@@ -4,7 +4,8 @@ import { buildDaySummary } from "../vm/daySummaryVm";
 import styles from "./DayDetailPanel.module.css";
 import { tensionColor } from "../utils/tensionColors";
 import { stressColor } from "../utils/stressColor";
-import NarrativeBlock from "./NarrativeBlock";
+import NarrativeBlockV2 from "./NarrativeBlockV2";
+import AgentAvatar from "./AgentAvatar";
 
 export interface DayDetailPanelProps {
   episode: EpisodeViewModel;
@@ -81,7 +82,7 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
         {detail.narrative.length > 0 ? (
           <div>
             {detail.narrative.map((b) => (
-              <NarrativeBlock key={b.block_id ?? `${b.kind}-${b.text.slice(0, 12)}`} block={b} />
+              <NarrativeBlockV2 key={b.block_id ?? `${b.kind}-${b.text.slice(0, 12)}`} block={b} />
             ))}
           </div>
         ) : (
@@ -96,7 +97,15 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
             {detail.agents.map((a) => (
               <li key={a.name} className={styles.agentRow}>
                 <div className={styles.agentLeft}>
-                  <span className={styles.avatar} aria-label={`Avatar for ${a.name}`}>{getAvatarSymbol(a.name)}</span>
+                  <span className={styles.avatar} aria-label={`Avatar for ${a.name}`}>
+                    {/* Render AgentAvatar v2; keep wrapper aria-label for legacy tests */}
+                    <AgentAvatar
+                      name={a.name}
+                      vibeColorKey={"neutral"}
+                      stressTier={"none"}
+                      size="md"
+                    />
+                  </span>
                   <div>
                     <span className={styles.agentName}>{a.name}</span>
                     <span className={styles.agentMeta}>— {a.role}</span>
@@ -129,4 +138,18 @@ export default function DayDetailPanel({ episode, dayIndex }: DayDetailPanelProp
 function getAvatarSymbol(name: string): string {
   const ch = (name || "?").trim().charAt(0);
   return ch ? ch.toUpperCase() : "?";
+}
+
+function getAgentVibe(episode: EpisodeViewModel, name: string): string {
+  const raw: any = (episode as any)?._raw;
+  const summary = raw?.agents?.[name];
+  const v = typeof summary?.vibe === "string" ? summary.vibe : "neutral";
+  return v;
+}
+
+function getAgentVisual(episode: EpisodeViewModel, name: string): string {
+  const raw: any = (episode as any)?._raw;
+  const summary = raw?.agents?.[name];
+  const v = typeof summary?.visual === "string" ? summary.visual : name;
+  return v;
 }

@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 .vite/
+.vitest/
+coverage/
+coverage-*
+junit.xml
+test-results.xml
+test-results/
+.reports/
 .DS_Store
 .env*
 

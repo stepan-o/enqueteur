@@ -1,10 +1,18 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import styles from "./AppShell.module.css";
 
 export default function AppShell() {
-
-  console.log("Render AppShell");
-
+  const { pathname } = useLocation();
+  // Explicit active-state logic so only one of Stage/Details/Episodes is active at a time
+  const isStage = pathname === "/" || /^\/episodes\/[^/]+\/stage$/.test(pathname);
+  const isDetails = pathname === "/episodes/latest" || /^\/episodes\/[^/]+$/.test(pathname);
+  const isEpisodes = pathname === "/episodes"; // index only
+  // If regex overlap ever occurs, enforce single-active preference order: Details > Stage > Episodes
+  const active = {
+    stage: isStage && !isDetails && !isEpisodes,
+    details: isDetails && !isEpisodes,
+    episodes: isEpisodes,
+  };
   return (
     <div className={styles.shell}>
       <nav
@@ -13,39 +21,33 @@ export default function AppShell() {
         aria-label="Main navigation"
       >
         <div className={styles.navInner}>
-          <NavLink
+          <Link
             to="/"
-            end
-            className={({ isActive }) =>
-              isActive ? `${styles.link} ${styles.active}` : styles.link
-            }
+            className={active.stage ? `${styles.link} ${styles.active}` : styles.link}
+            aria-current={active.stage ? "page" : undefined}
           >
-            Latest
-          </NavLink>
-          <NavLink
+            Stage
+          </Link>
+          <Link
+            to="/episodes/latest"
+            className={active.details ? `${styles.link} ${styles.active}` : styles.link}
+            aria-current={active.details ? "page" : undefined}
+          >
+            Details
+          </Link>
+          <Link
             to="/episodes"
-            className={({ isActive }) =>
-              isActive ? `${styles.link} ${styles.active}` : styles.link
-            }
+            className={active.episodes ? `${styles.link} ${styles.active}` : styles.link}
+            aria-current={active.episodes ? "page" : undefined}
           >
             Episodes
-          </NavLink>
-          <NavLink
-            to="/agents"
-            className={({ isActive }) =>
-              isActive ? `${styles.link} ${styles.active}` : styles.link
-            }
-          >
+          </Link>
+          <Link to="/agents" className={styles.link}>
             Agents
-          </NavLink>
-          <NavLink
-            to="/settings"
-            className={({ isActive }) =>
-              isActive ? `${styles.link} ${styles.active}` : styles.link
-            }
-          >
+          </Link>
+          <Link to="/settings" className={styles.link}>
             Settings
-          </NavLink>
+          </Link>
         </div>
       </nav>
       <main className={styles.main}>

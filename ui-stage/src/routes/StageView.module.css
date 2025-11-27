@@ -1,0 +1,93 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+.topBar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mainGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .mainGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.stageMapPanel {
+  border: 1px solid var(--lf-border, #e2e2e2);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--lf-panel, #fff);
+}
+
+.detailPanel {
+  border: 1px solid var(--lf-border, #e2e2e2);
+  border-radius: 10px;
+  padding: 0; /* we'll use an inner body with a header band */
+  background: var(--lf-panel, #fff);
+}
+
+.detailHeaderBand {
+  border-bottom: 1px solid var(--lf-border, #e6e6e6);
+  padding: 10px 12px;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.detailHeaderWorld {
+  background: linear-gradient(0deg, rgba(240,248,255,0.6), rgba(240,248,255,0.6));
+}
+
+.detailHeaderAgent {
+  background: linear-gradient(0deg, rgba(245,243,255,0.6), rgba(245,243,255,0.6));
+}
+
+.detailBody {
+  padding: 12px;
+}
+
+.summaryText {
+  color: #333;
+}
+
+.controls {
+  margin-top: 8px;
+}
+
+/* Agent focus layout */
+.agentRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agentName {
+  font-weight: 600;
+}
+
+.agentRole {
+  color: #555;
+}
+
+.agentStats {
+  margin-top: 8px;
+}
+
+.agentTagline {
+  margin-top: 4px;
+  color: #555;
+  font-size: 0.95rem;
+}

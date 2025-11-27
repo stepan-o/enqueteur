@@ -132,6 +132,28 @@ describe("TimelineStrip", () => {
     expect(day1.textContent || "").toMatch(/▬/);
   });
 
+  it("includes direction phrase in title when summaries are provided", () => {
+    const summaries: DaySummaryViewModel[] = [
+      { dayIndex: 0, tensionDirection: "unknown", tensionChange: null, primaryAgentName: null, primaryAgentStress: null, notableText: "" },
+      { dayIndex: 1, tensionDirection: "up", tensionChange: 0.2, primaryAgentName: "Delta", primaryAgentStress: 0.84, notableText: "" },
+    ];
+    const { container } = render(
+      <TimelineStrip days={days} selectedIndex={0} onSelect={vi.fn()} daySummaries={summaries} />
+    );
+    const day1 = within(container).getByTestId("timeline-day-1");
+    const title = day1.getAttribute("title") || "";
+    expect(title).toMatch(/Tension rose vs previous day/);
+  });
+
+  it("omits direction phrase in title when summaries are absent", () => {
+    const { container } = render(
+      <TimelineStrip days={days} selectedIndex={0} onSelect={vi.fn()} />
+    );
+    const day1 = within(container).getByTestId("timeline-day-1");
+    const title = day1.getAttribute("title") || "";
+    expect(title).not.toMatch(/Tension (rose|fell|held steady) vs previous day/);
+  });
+
   it("handles missing summaries array or mismatched entries without crashing", () => {
     // No summaries prop at all
     const r1 = render(

@@ -1,8 +1,10 @@
+@import url("./styles/tokens.css");
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  background-color: #f3f4f6; /* light, neutral app background */
+  background-color: var(--lf-color-bg-panel, #f3f4f6); /* warm neutral app background */
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;

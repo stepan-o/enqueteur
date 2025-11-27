@@ -24,7 +24,8 @@ export interface DayDetailViewModel {
 
 function findStageDay(raw: StageEpisode | undefined, dayIndex: number): StageDay | undefined {
   if (!raw) return undefined;
-  return raw.days.find((d) => d.day_index === dayIndex);
+  const days: StageDay[] = Array.isArray((raw as any).days) ? ((raw as any).days as StageDay[]) : [];
+  return days.find((d) => d.day_index === dayIndex);
 }
 
 export function buildDayDetail(ep: EpisodeViewModel, dayIndex: number): DayDetailViewModel {

@@ -85,4 +85,38 @@ describe("buildEpisodeView", () => {
     // Tension trend passthrough
     expect(vm.tensionTrend).toEqual([0.1, 0.5]);
   });
+
+  it("computes optional daySummaries aligned with days and trend direction", () => {
+    const ep2: StageEpisode = {
+      episode_id: "ep-43",
+      run_id: "run-10",
+      episode_index: 1,
+      stage_version: 1,
+      // Trend: 0 → 0.2 (up), 0.2 → 0.2 (flat), 0.2 → 0.1 (down)
+      tension_trend: [0.0, 0.2, 0.2, 0.1],
+      days: [
+        { day_index: 0, perception_mode: "normal", tension_score: 0.0, agents: {}, total_incidents: 0, supervisor_activity: 0, narrative: [] },
+        { day_index: 1, perception_mode: "normal", tension_score: 0.2, agents: {}, total_incidents: 0, supervisor_activity: 0, narrative: [] },
+        { day_index: 2, perception_mode: "normal", tension_score: 0.2, agents: {}, total_incidents: 0, supervisor_activity: 0, narrative: [] },
+        { day_index: 3, perception_mode: "normal", tension_score: 0.1, agents: {}, total_incidents: 0, supervisor_activity: 0, narrative: [] },
+      ],
+      agents: {},
+      story_arc: null,
+      narrative: [],
+      long_memory: null,
+      character_defs: null,
+    };
+
+    const vm = buildEpisodeView(ep2);
+    expect(Array.isArray(vm.daySummaries)).toBe(true);
+    expect(vm.daySummaries!.length).toBe(vm.days.length);
+    // Indices should match 0..3
+    expect(vm.daySummaries!.map((s) => s.dayIndex)).toEqual([0, 1, 2, 3]);
+    // Direction logic vs previous day
+    const dirs = vm.daySummaries!.map((s) => s.tensionDirection);
+    expect(dirs[0]).toBe("unknown");
+    expect(dirs[1]).toBe("up");
+    expect(dirs[2]).toBe("flat");
+    expect(dirs[3]).toBe("down");
+  });
 });

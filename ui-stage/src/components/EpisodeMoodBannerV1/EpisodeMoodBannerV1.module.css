@@ -1,0 +1,82 @@
+.banner {
+  /* Episode Mood Banner (v0.5)
+     Episode-wide arc indicator using EpisodeArcMood classification derived from
+     global delta across the full tensionTrend. This complements Timeline/DayDetail
+     which focus on day-to-day direction. */
+  position: relative;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0 0.75rem;
+  box-shadow: 0 6px 14px rgb(var(--lf-color-shadow-warm, 28 17 0) / 0.12);
+  opacity: 0;
+  transform: translateY(8px);
+  animation: enter 200ms var(--lf-motion-fade-lift, cubic-bezier(0.2,0,0.2,1)) forwards;
+  overflow: hidden; /* allow direction overlays */
+}
+
+@keyframes enter {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.row { display: grid; grid-template-columns: auto 1fr; gap: 0.75rem; align-items: start; }
+.icon { font-size: 1.25rem; line-height: 1; filter: saturate(1.1); }
+.label { font-weight: 700; }
+.summary { color: #374151; font-size: 0.95rem; }
+
+/* Gradient mood variants */
+.calm { background: var(--lf-episode-mood-calm); }
+.minor { background: var(--lf-episode-mood-minor); }
+.medium { background: var(--lf-episode-mood-medium); }
+.spike { background: var(--lf-episode-mood-spike); }
+
+/* Direction modifiers */
+.directionUp::before,
+.directionDown::before,
+.directionMixed::before,
+.directionFlat::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Up → slightly stronger/saturated warm overlay */
+.directionUp::before {
+  background: linear-gradient(90deg, rgb(255 120 60 / 0.08), rgb(255 90 0 / 0.06));
+  mix-blend-mode: multiply;
+}
+
+/* Down → softened cool overlay hinting release */
+.directionDown::before {
+  background: linear-gradient(90deg, rgb(0 140 120 / 0.06), rgb(0 200 160 / 0.05));
+  mix-blend-mode: soft-light;
+}
+
+/* Mixed → subtle diagonal two-tone to suggest instability */
+.directionMixed::before {
+  background:
+    repeating-linear-gradient(135deg, rgb(0 0 0 / 0.045) 0 6px, rgb(0 0 0 / 0) 6px 12px),
+    linear-gradient(90deg, rgb(255 120 60 / 0.03), rgb(0 160 140 / 0.03));
+  mix-blend-mode: overlay;
+}
+
+/* Flat → minimal neutral veil */
+.directionFlat::before {
+  background: linear-gradient(90deg, rgb(0 0 0 / 0.02), rgb(255 255 255 / 0));
+}
+
+/* v2.1 — Downward arcs should visibly soften/cool the main background */
+.directionDown.calm { background: var(--lf-episode-mood-calm); }
+.directionDown.minor,
+.directionDown.medium { background: var(--lf-episode-mood-release); }
+.directionDown.spike { background: var(--lf-episode-mood-unwind); }
+
+/* Optional: mixed arcs add a slight noisy pattern on top of base classes */
+.directionMixed.calm,
+.directionMixed.minor,
+.directionMixed.medium,
+.directionMixed.spike {
+  background-image:
+    repeating-linear-gradient(135deg, rgba(0,0,0,0.04), rgba(0,0,0,0.04) 4px, transparent 4px, transparent 8px),
+    var(--lf-episode-mood-medium);
+}

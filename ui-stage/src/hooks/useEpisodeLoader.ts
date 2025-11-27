@@ -37,7 +37,11 @@ export function useEpisodeLoader(): UseEpisodeLoaderResult {
 
       try {
         const raw = await getLatestEpisode();
-        const vm = buildEpisodeView(raw as any);
+        // Some tests pass a pre-built EpisodeViewModel (already shaped with _raw).
+        // Detect and short-circuit to preserve behavior and avoid double-building.
+        const vm = (raw && typeof (raw as any)?._raw === "object")
+          ? (raw as unknown as EpisodeViewModel)
+          : buildEpisodeView(raw as any);
 
         if (ignoreRef.current) return;
 
