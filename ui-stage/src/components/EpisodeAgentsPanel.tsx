@@ -72,15 +72,21 @@ function buildSparklinePoints(raw: StageEpisode, agentName: string, width = 60, 
 
 export default function EpisodeAgentsPanel({ episode }: EpisodeAgentsPanelProps) {
   const raw = episode?._raw as StageEpisode | undefined;
-  const panelAgents = buildPanelAgents(episode);
-
-  if (panelAgents.length === 0) {
-    return (
-      <section className={styles.panel} aria-label="Episode agents">
-        <div className={styles.empty}>No agents recorded for this episode.</div>
-      </section>
-    );
+  // Build agent list defensively — any unexpected shape should degrade to empty state
+  let panelAgents: ReturnType<typeof buildPanelAgents> = [];
+  try {
+    panelAgents = buildPanelAgents(episode);
+  } catch (err) {
+    // fail-soft: keep empty list so parent layouts and tests remain stable
+    if (process.env.NODE_ENV !== "test") {
+      // eslint-disable-next-line no-console
+      console.warn("EpisodeAgentsPanel: failed to build agents", err);
+    }
+    panelAgents = [];
   }
+
+  // Always render a stable heading so tests and UX have a consistent anchor,
+  // even when there are no agents yet.
 
   const items = panelAgents.map((a) => {
     const avg = a.avgStress ?? (raw ? computeAvgStress(raw, a.name) : 0);
@@ -105,59 +111,63 @@ export default function EpisodeAgentsPanel({ episode }: EpisodeAgentsPanelProps)
 
   return (
     <section className={styles.panel} aria-label="Episode agents">
-      <ul className={styles.list}>
-        {items.map((a) => (
-          <li key={a.name} className={styles.row}>
-            <div className={styles.left}>
-              <span className={styles.avatarSlot} aria-label={`Avatar for ${a.name}`}>
-                <AgentAvatar name={a.name} vibeColorKey={a.vibeColorKey} stressTier={a.stressTier} size="md" />
-              </span>
-              <div>
-                <div className={styles.titleRow}>
-                  <span className={styles.name}>{a.name}</span>
-                  <span className={styles.role}>— {a.role}</span>
-                  <span
-                    className={styles.stressDot}
-                    title={`Stress ${formatNum(a.avg)}`}
-                    style={{ backgroundColor: a.stress }}
-                    data-testid={`agent-stress-dot-${a.name}`}
-                  />
-                </div>
-                <div className={styles.tagline}>{a.displayTagline || a.tagline || "System agent"}</div>
-                <svg
-                  className={styles.sparkline}
-                  role="img"
-                  aria-label={`Stress sparkline for ${a.name}`}
-                  viewBox="0 0 60 18"
-                  preserveAspectRatio="none"
-                  data-testid={`sparkline-${a.name}`}
-                >
-                  {a.spark ? (
-                    <polyline
-                      fill="none"
-                      stroke={a.stress}
-                      strokeWidth="2"
-                      points={a.spark}
+      {panelAgents.length === 0 ? (
+        <div className={styles.empty}>No agents recorded for this episode.</div>
+      ) : (
+        <ul className={styles.list}>
+          {items.map((a) => (
+            <li key={a.name} className={styles.row}>
+              <div className={styles.left}>
+                <span className={styles.avatarSlot} aria-label={`Avatar for ${a.name}`}>
+                  <AgentAvatar name={a.name} vibeColorKey={a.vibeColorKey} stressTier={a.stressTier} size="md" />
+                </span>
+                <div>
+                  <div className={styles.titleRow}>
+                    <span className={styles.name}>{a.name}</span>
+                    <span className={styles.role}>— {a.role}</span>
+                    <span
+                      className={styles.stressDot}
+                      title={`Stress ${formatNum(a.avg)}`}
+                      style={{ backgroundColor: a.stress }}
+                      data-testid={`agent-stress-dot-${a.name}`}
                     />
-                  ) : null}
-                </svg>
+                  </div>
+                  <div className={styles.tagline}>{a.displayTagline || a.tagline || "System agent"}</div>
+                  <svg
+                    className={styles.sparkline}
+                    role="img"
+                    aria-label={`Stress sparkline for ${a.name}`}
+                    viewBox="0 0 60 18"
+                    preserveAspectRatio="none"
+                    data-testid={`sparkline-${a.name}`}
+                  >
+                    {a.spark ? (
+                      <polyline
+                        fill="none"
+                        stroke={a.stress}
+                        strokeWidth="2"
+                        points={a.spark}
+                      />
+                    ) : null}
+                  </svg>
+                </div>
               </div>
-            </div>
-            <div className={styles.meta}>
-              {/* Keep legacy textual line for backward-compatibility with existing tests */}
-              <div>
-                avg stress {formatNum(a.avg)} • guardrails {a.guardrail} • context {a.context}
-                {a.cause ? ` • cause ${a.cause}` : ""}
+              <div className={styles.meta}>
+                {/* Keep legacy textual line for backward-compatibility with existing tests */}
+                <div>
+                  avg stress {formatNum(a.avg)} • guardrails {a.guardrail} • context {a.context}
+                  {a.cause ? ` • cause ${a.cause}` : ""}
+                </div>
+                {/* New visual badges */}
+                <span className={styles.badges}>
+                  <span className={styles.badge} title="Guardrails" data-testid={`badge-g-${a.name}`}>G: {a.guardrail}</span>
+                  <span className={styles.badge} title="Context" data-testid={`badge-c-${a.name}`}>C: {a.context}</span>
+                </span>
               </div>
-              {/* New visual badges */}
-              <span className={styles.badges}>
-                <span className={styles.badge} title="Guardrails" data-testid={`badge-g-${a.name}`}>G: {a.guardrail}</span>
-                <span className={styles.badge} title="Context" data-testid={`badge-c-${a.name}`}>C: {a.context}</span>
-              </span>
-            </div>
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

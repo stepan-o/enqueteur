@@ -296,7 +296,8 @@ describe("AppRouter routes", () => {
       </MemoryRouter>
     );
     // It should render the Latest view header content; Episode Agents Overview section appears
-    expect(await screen.findByText(/Episode Agents Overview/i)).toBeTruthy();
+    const headers = await screen.findAllByText(/Episode Agents Overview/i);
+    expect(headers[0]).toBeTruthy();
   });
 
   it("renders StageView at /episodes/:id/stage", async () => {

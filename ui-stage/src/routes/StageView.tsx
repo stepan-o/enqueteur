@@ -13,6 +13,8 @@ import styles from "./StageView.module.css";
 export default function StageView() {
   const { id } = useParams();
   const { episode, error, isLoading } = useEpisodeLoader();
+  // Hooks must be at top level — avoid calling inside IIFEs/render branches
+  const inRouter = useInRouterContext();
 
   // Selected indices/state
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
@@ -65,7 +67,6 @@ export default function StageView() {
             const routeId = id;
             const episodeId = episode?.id ?? routeId ?? null;
             const detailsHref = episodeId ? `/episodes/${episodeId}` : "/episodes/latest";
-            const inRouter = useInRouterContext();
             return inRouter ? (
               <Link to={detailsHref}>Open Details view</Link>
             ) : (

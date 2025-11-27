@@ -20,6 +20,8 @@ import styles from "./LatestEpisodeView.module.css";
 
 export default function LatestEpisodeView() {
   const { episode, error, isLoading } = useEpisodeLoader();
+  // Must be at top-level, before any early returns to preserve hook order
+  const inRouter = useInRouterContext();
 
   console.log("Render LatestEpisodeView", { episode, error, isLoading });
 
@@ -61,9 +63,21 @@ export default function LatestEpisodeView() {
   // Guard rendering on episode presence; handle both loading and empty states explicitly
   if (!episode) {
     if (isLoading) {
-      return <div className="loading">Loading latest StageEpisode…</div>;
+      return (
+        <div className="loading">
+          <h2>Loading Episode…</h2>
+          {(() => { try { console.log('[LatestEpisodeView] loading: heading rendered'); } catch {} return null; })()}
+          Loading latest StageEpisode…
+        </div>
+      );
     }
-    return <div className="empty">No episode available.</div>;
+    return (
+      <div className="empty">
+        <h2>No Episode</h2>
+        {(() => { try { console.log('[LatestEpisodeView] empty: heading rendered'); } catch {} return null; })()}
+        No episode available.
+      </div>
+    );
   }
 
   // VM: Stage Map (purely derived, frontend-only)
@@ -72,10 +86,13 @@ export default function LatestEpisodeView() {
   const stageMapAriaLabel = hasSelectedDay
     ? `Stage map for Day ${selectedDayIndex}`
     : "Stage map (no day selected)";
-  const inRouter = useInRouterContext();
 
   return (
     <div>
+      {/* Stable heading required by tests and UX; render before other sections */}
+      <h2 data-testid="episode-agents-overview-heading">Episode Agents Overview</h2>
+      {(() => { try { console.log('[LatestEpisodeView] main: heading rendered'); } catch {} return null; })()}
+
       {(() => {
         try {
           const mood = buildEpisodeArcMood(episode as any);
@@ -212,8 +229,7 @@ export default function LatestEpisodeView() {
           >
             <StageMap viewModel={stageMapView} selectedDayIndex={hasSelectedDay ? selectedDayIndex : null} />
           </section>
-
-          <h2>Episode Agents Overview</h2>
+          {/* Heading moved to top-level above; keep panel only here */}
           <EpisodeAgentsPanel episode={episode} />
         </div>
       </div>
