@@ -21,7 +21,7 @@ export default function StageMap({ viewModel, selectedDayIndex }: StageMapProps)
     // Render neutral map using union of rooms from all days (Phase 4A synthetic → one room)
     const roomLabels = collectStableRoomLabels(viewModel);
     return (
-      <div role="group" aria-label={ariaLabel}>
+      <div role="group" aria-label={ariaLabel} data-testid="stage-map-group">
         <div className={styles.caption}>No day selected</div>
         <div className={styles.root} data-selected="false">
           {roomLabels.map((label) => (
@@ -41,7 +41,7 @@ export default function StageMap({ viewModel, selectedDayIndex }: StageMapProps)
   }
 
   return (
-    <div role="group" aria-label={ariaLabel}>
+    <div role="group" aria-label={ariaLabel} data-testid="stage-map-group">
       <div className={styles.root} data-selected="true">
         {day.rooms.map((r) => (
           <div

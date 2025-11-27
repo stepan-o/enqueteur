@@ -13,6 +13,9 @@ import { buildDayStoryboardItems, type StoryboardItem } from "../vm/dayStoryboar
 import DayStoryboardList from "../components/DayStoryboard/DayStoryboardList";
 import AgentBeliefMiniPanel from "../components/AgentBeliefMiniPanel";
 import { useRef } from "react";
+import { buildStageMapView } from "../vm/stageMapVm";
+import StageMap from "../components/StageMap";
+import styles from "./LatestEpisodeView.module.css";
 
 export default function LatestEpisodeView() {
   const { episode, error, isLoading } = useEpisodeLoader();
@@ -62,6 +65,13 @@ export default function LatestEpisodeView() {
     return <div className="empty">No episode available.</div>;
   }
 
+  // VM: Stage Map (purely derived, frontend-only)
+  const stageMapView = buildStageMapView(episode as EpisodeViewModel);
+  const hasSelectedDay = stageMapView.days.some((d) => d.dayIndex === selectedDayIndex);
+  const stageMapAriaLabel = hasSelectedDay
+    ? `Stage map for Day ${selectedDayIndex}`
+    : "Stage map (no day selected)";
+
   return (
     <div>
       {(() => {
@@ -79,105 +89,120 @@ export default function LatestEpisodeView() {
         currentEpisodeIndex={episode.index}
       />
 
-      {/* Day Storyboard */}
-      {(() => {
-        let items = [] as ReturnType<typeof buildDayStoryboardItems>;
-        try {
-          items = buildDayStoryboardItems(episode as any);
-        } catch {
-          items = [];
-        }
-        const handleClickCameo = (dayIndex: number, agentName: string) => {
-          // Phase 3C follow-up: cameo click should NOT change selected day or scroll.
-          // It only toggles the belief mini-panel.
-          setSelectedNarrativeBlockId(null);
-          setSelectedBelief((prev) => {
-            if (prev && prev.dayIndex === dayIndex && prev.agentName === agentName) {
-              return null; // toggle off
+      {/* Main Columns: Left (storyboard/detail) • Right (map/agents) */}
+      <div className={styles.mainColumns}>
+        <div>
+          {/* Day Storyboard */}
+          {(() => {
+          let items = [] as ReturnType<typeof buildDayStoryboardItems>;
+          try {
+            items = buildDayStoryboardItems(episode as any);
+          } catch {
+            items = [];
+          }
+          const handleClickCameo = (dayIndex: number, agentName: string) => {
+            // Phase 3C follow-up: cameo click should NOT change selected day or scroll.
+            // It only toggles the belief mini-panel.
+            setSelectedNarrativeBlockId(null);
+            setSelectedBelief((prev) => {
+              if (prev && prev.dayIndex === dayIndex && prev.agentName === agentName) {
+                return null; // toggle off
+              }
+              return { dayIndex, agentName };
+            });
+          };
+          
+          return (
+            <DayStoryboardList
+              items={items}
+              selectedDayIndex={selectedDayIndex}
+              scrollToSelectedDayToken={scrollStoryboardToken}
+              onSelectDay={(idx) => {
+                setSelectedDayIndex(idx);
+                setSelectedNarrativeBlockId(null); // day-level selection clears specific narrative selection
+                setSelectedBelief(null); // selecting a day clears belief panel
+                // bonus: gently scroll day detail into view (guarded for jsdom/tests)
+                setTimeout(() => {
+                  const el = dayDetailRef.current as any;
+                  el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+                }, 0);
+              }}
+              selectedNarrativeBlockId={selectedNarrativeBlockId}
+              onSelectNarrativeItem={(item: StoryboardItem) => {
+                // Selecting a narrative item selects its day and highlights that block
+                setSelectedDayIndex(item.dayIndex);
+                setSelectedNarrativeBlockId(item.blockId);
+                setSelectedBelief(null); // narrative selection clears belief panel
+                setTimeout(() => {
+                  const el = dayDetailRef.current as any;
+                  el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+                }, 0);
+              }}
+              onClickCameo={handleClickCameo}
+            />
+          );
+        })()}
+
+          {(() => {
+            if (!episode || !selectedBelief) return null;
+            // Compute belief text and factual summary from existing data
+            let beliefText: string | null = null;
+            try {
+              const raw: any = (episode as any)._raw;
+              const day = (Array.isArray(raw?.days) ? raw.days : []).find((d: any) => d?.day_index === selectedBelief.dayIndex);
+              const a = day?.agents?.[selectedBelief.agentName];
+              beliefText = typeof a?.attribution_cause === "string" ? a.attribution_cause : null;
+            } catch {
+              beliefText = null;
             }
-            return { dayIndex, agentName };
-          });
-        };
+            const dayVm = (episode.days || []).find((d) => d.index === selectedBelief.dayIndex) as any;
+            const t = typeof dayVm?.tensionScore === "number" ? dayVm.tensionScore : 0;
+            const inc = typeof dayVm?.totalIncidents === "number" ? dayVm.totalIncidents : 0;
+            const sup = typeof dayVm?.supervisorActivity === "number" ? dayVm.supervisorActivity : 0;
+            const what = `Tension ${t.toFixed(2)} • incidents ${inc} • supervisor ${sup.toFixed(0)}`;
+            return (
+              <AgentBeliefMiniPanel
+                dayIndex={selectedBelief.dayIndex}
+                agentName={selectedBelief.agentName}
+                beliefText={beliefText}
+                whatHappened={what}
+              />
+            );
+          })()}
 
-        return (
-          <DayStoryboardList
-            items={items}
-            selectedDayIndex={selectedDayIndex}
-            scrollToSelectedDayToken={scrollStoryboardToken}
-            onSelectDay={(idx) => {
+          <h2>Timeline</h2>
+          <TimelineStrip
+            days={episode.days}
+            selectedIndex={selectedDayIndex}
+            onSelect={(idx) => {
               setSelectedDayIndex(idx);
-              setSelectedNarrativeBlockId(null); // day-level selection clears specific narrative selection
-              setSelectedBelief(null); // selecting a day clears belief panel
-              // bonus: gently scroll day detail into view (guarded for jsdom/tests)
-              setTimeout(() => {
-                const el = dayDetailRef.current as any;
-                el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-              }, 0);
+              setSelectedNarrativeBlockId(null); // timeline click highlights day; clear specific narrative selection
+              setSelectedBelief(null); // timeline selection clears belief panel
+              // Nudge storyboard to scroll the selected strip even if idx didn't change
+              setScrollStoryboardToken((t) => t + 1);
             }}
-            selectedNarrativeBlockId={selectedNarrativeBlockId}
-            onSelectNarrativeItem={(item: StoryboardItem) => {
-              // Selecting a narrative item selects its day and highlights that block
-              setSelectedDayIndex(item.dayIndex);
-              setSelectedNarrativeBlockId(item.blockId);
-              setSelectedBelief(null); // narrative selection clears belief panel
-              setTimeout(() => {
-                const el = dayDetailRef.current as any;
-                el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-              }, 0);
-            }}
-            onClickCameo={handleClickCameo}
+            daySummaries={episode.daySummaries}
           />
-        );
-      })()}
 
-      {(() => {
-        if (!episode || !selectedBelief) return null;
-        // Compute belief text and factual summary from existing data
-        let beliefText: string | null = null;
-        try {
-          const raw: any = (episode as any)._raw;
-          const day = (Array.isArray(raw?.days) ? raw.days : []).find((d: any) => d?.day_index === selectedBelief.dayIndex);
-          const a = day?.agents?.[selectedBelief.agentName];
-          beliefText = typeof a?.attribution_cause === "string" ? a.attribution_cause : null;
-        } catch {
-          beliefText = null;
-        }
-        const dayVm = (episode.days || []).find((d) => d.index === selectedBelief.dayIndex) as any;
-        const t = typeof dayVm?.tensionScore === "number" ? dayVm.tensionScore : 0;
-        const inc = typeof dayVm?.totalIncidents === "number" ? dayVm.totalIncidents : 0;
-        const sup = typeof dayVm?.supervisorActivity === "number" ? dayVm.supervisorActivity : 0;
-        const what = `Tension ${t.toFixed(2)} • incidents ${inc} • supervisor ${sup.toFixed(0)}`;
-        return (
-          <AgentBeliefMiniPanel
-            dayIndex={selectedBelief.dayIndex}
-            agentName={selectedBelief.agentName}
-            beliefText={beliefText}
-            whatHappened={what}
-          />
-        );
-      })()}
+          <h2>Day Detail</h2>
+          <div ref={dayDetailRef} data-testid="day-detail-ref">
+            <DayDetailPanel episode={episode} dayIndex={selectedDayIndex} />
+          </div>
+        </div>
 
-      <h2>Timeline</h2>
-      <TimelineStrip
-        days={episode.days}
-        selectedIndex={selectedDayIndex}
-        onSelect={(idx) => {
-          setSelectedDayIndex(idx);
-          setSelectedNarrativeBlockId(null); // timeline click highlights day; clear specific narrative selection
-          setSelectedBelief(null); // timeline selection clears belief panel
-          // Nudge storyboard to scroll the selected strip even if idx didn't change
-          setScrollStoryboardToken((t) => t + 1);
-        }}
-        daySummaries={episode.daySummaries}
-      />
+        <div>
+          <section
+            className={styles.stageMapPanel}
+            aria-label={stageMapAriaLabel}
+            role="region"
+          >
+            <StageMap viewModel={stageMapView} selectedDayIndex={hasSelectedDay ? selectedDayIndex : null} />
+          </section>
 
-      <h2>Day Detail</h2>
-      <div ref={dayDetailRef} data-testid="day-detail-ref">
-        <DayDetailPanel episode={episode} dayIndex={selectedDayIndex} />
+          <h2>Episode Agents Overview</h2>
+          <EpisodeAgentsPanel episode={episode} />
+        </div>
       </div>
-
-      <h2>Episode Agents Overview</h2>
-      <EpisodeAgentsPanel episode={episode} />
 
       <h2>Episode Story</h2>
       <EpisodeStoryPanel story={episode.story} />
