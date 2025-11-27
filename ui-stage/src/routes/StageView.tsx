@@ -61,7 +61,7 @@ export default function StageView() {
       <div className={styles.topBar}>
         {episode ? <EpisodeHeader episode={episode} /> : <div>Loading…</div>}
         <div>
-          <a href={id ? `/episodes/${id}` : "/"}>← Back to Latest View</a>
+          <a href={id ? `/episodes/${id}` : "/episodes"}>Open Details view</a>
         </div>
         {episode ? (
           <div>

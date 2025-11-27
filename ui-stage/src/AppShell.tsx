@@ -2,9 +2,6 @@ import { NavLink, Outlet } from "react-router-dom";
 import styles from "./AppShell.module.css";
 
 export default function AppShell() {
-
-  console.log("Render AppShell");
-
   return (
     <div className={styles.shell}>
       <nav
@@ -20,7 +17,7 @@ export default function AppShell() {
               isActive ? `${styles.link} ${styles.active}` : styles.link
             }
           >
-            Latest
+            Stage
           </NavLink>
           <NavLink
             to="/episodes"
