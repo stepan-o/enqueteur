@@ -1,139 +1,107 @@
 """
-Sim3 Runtime State Types (Era III)
-=================================
+Sim3 Runtime State Types (Era III — Clean Version)
+=================================================
 
-Defines the persistent, mutable state of a running simulation:
-- WorldState: dynamic room + world data
-- AgentState: dynamic per-agent state
-- SimState: canonical container for the whole simulation runtime
+This module defines ONLY:
+    - AgentState  (mutable per-agent state)
+    - SimState    (global runtime container)
 
-These are the *live evolving state* mutated by:
-    sim/controller.py
-    state/world_state.py
-    state/agent_state.py
+❗ World runtime state is NOT defined here.
+    The authoritative runtime world state is:
+        loopforge_sim3.types.world_types.WorldState
 
-And consumed by:
-    recorder/trace_recorder.py
-    episode/episode_builder.py
+This prevents duplication and keeps the world
+identity → runtime → snapshot layering intact.
 """
 
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from loopforge_sim3.types.identity_types import AgentIdentity
-from loopforge_sim3.types.world_types import WorldIdentity
+from loopforge_sim3.types.world_types import WorldState   # canonical runtime world state
 from loopforge_sim3.config.scenario_config import ScenarioConfig
 
 
-# ---------------------------------------------------------------------------
-# A. WorldState — dynamic & mutable
-# ---------------------------------------------------------------------------
-
-@dataclass
-class WorldState:
-    """
-    Dynamic world-layer state:
-
-    Includes:
-        - dynamic room tension
-        - hazards currently active
-        - occupancy (agent counts)
-        - global world modifiers (noise, instability)
-    """
-
-    # Room-level dynamic tension values, 0–1 range.
-    room_tension: Dict[str, float] = field(default_factory=dict)
-
-    # Hazards active in each room (e.g. ["overheat", "jam"]).
-    hazards: Dict[str, List[str]] = field(default_factory=dict)
-
-    # Room occupancy (agent-count by room).
-    occupancy: Dict[str, int] = field(default_factory=dict)
-
-    # World-level instability/noise dynamic parameters.
-    world_noise: float = 0.0
-    world_instability: float = 0.0
-
-    # Pointer to identity to compute defaults if needed.
-    world_identity: Optional[WorldIdentity] = None
-
-
-# ---------------------------------------------------------------------------
-# B. AgentState — everything mutable about one agent
-# ---------------------------------------------------------------------------
+# ============================================================================
+# A. AgentState — mutable per-agent runtime state
+# ============================================================================
 
 @dataclass
 class AgentState:
     """
-    Mutable runtime state for one agent.
+    Tracks the live state of an agent during simulation.
 
     Includes:
         - current room
-        - stress value
-        - status flags (fault, busy, idle, etc.)
-        - pending actions for next tick
-        - dynamic traits that may evolve over the episode
+        - stress
+        - status flags
+        - pending actions
+        - dynamic trait evolution
+        - pointer to static AgentIdentity
     """
 
-    id: str                                # stable agent id
+    id: str                     # stable agent id
+    room_id: str                # current room the agent occupies
 
-    # Live room location
-    room_id: str
-
-    # Stress level 0–1
-    stress: float = 0.0
-
-    # Status flags like ["fault", "arriving", "handoff"]
+    stress: float = 0.0         # runtime stress 0–1
     status_flags: List[str] = field(default_factory=list)
-
-    # Pending actions selected in the previous tick
     pending_actions: List[str] = field(default_factory=list)
-
-    # Dynamic trait space (any runtime-evolving values)
     dynamic_traits: Dict[str, float] = field(default_factory=dict)
 
-    # Immutable identity doc (shared)
+    # Immutable identity (type + role + presets merged)
     identity: Optional[AgentIdentity] = None
 
 
-# ---------------------------------------------------------------------------
-# C. SimState — complete runtime state container
-# ---------------------------------------------------------------------------
+# ============================================================================
+# B. SimState — whole-simulation runtime container
+# ============================================================================
 
 @dataclass
 class SimState:
     """
-    The complete, mutable representation of a running simulation.
+    Canonical representation of a running simulation.
 
     Contains:
-        - scenario identity + scenario parameters
-        - world identity + dynamic world state
-        - all agent identities + agent states
-        - tick counter
-        - current day index
-        - RNG seed (for reproducibility)
+        - scenario config + parameters
+        - world runtime state
+        - agent identities + agent runtime states
+        - time progression (ticks, days)
+        - RNG seed
+        - controller flags (debug, overrides)
+        - optional rich presence tracking
     """
 
-    # Scenario identity and configuration
+    # Scenario identity + parameters
     scenario: ScenarioConfig
     rng_seed: int = 0
 
-    # Time progression
+    # Time
     tick: int = 0
     day_index: int = 0
 
-    # World
-    world_identity: Optional[WorldIdentity] = None
+    # World state (imported from world_types runtime layer)
     world: Optional[WorldState] = None
 
     # Agents
     agent_identities: Dict[str, AgentIdentity] = field(default_factory=dict)
     agents: Dict[str, AgentState] = field(default_factory=dict)
 
-    # Arbitrary scenario-level parameters (difficulty, pacing, etc.)
+    # Additional scenario-level modifiers
     scenario_params: Dict[str, object] = field(default_factory=dict)
 
-    # For controller modules to store debug / control signals.
+    # Debug / control flags (for controllers & devtools)
     control_flags: Dict[str, object] = field(default_factory=dict)
+
+    # Optional richer tracking: agent → room per tick
+    agent_presence_history: Dict[int, Dict[str, str]] = field(default_factory=dict)
+
+    def record_presence(self):
+        """
+        Store each agent’s room location for the current tick.
+        Enables richer UI queries later (timeline overlays, transitions).
+        """
+        self.agent_presence_history[self.tick] = {
+            agent_id: state.room_id
+            for agent_id, state in self.agents.items()
+        }
