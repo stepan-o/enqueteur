@@ -1,10 +1,15 @@
-import React from "react";
 import styles from "./StageMap.module.css";
 import type { StageMapViewModel } from "../../vm/stageMapVm";
 
 export interface StageMapProps {
   viewModel: StageMapViewModel;
   selectedDayIndex: number | null;
+  /** Optional: highlight a room as selected (used by StageView); no-op visually unless styled by parent */
+  selectedRoomId?: string | null;
+  /** Optional: invoked when a room tile is clicked; keeps component read-only unless provided */
+  onRoomClick?: (roomId: string) => void;
+  /** Optional: invoked when an agent chip is clicked; keeps component read-only unless provided */
+  onAgentClick?: (agentName: string) => void;
 }
 
 function getDay(vm: StageMapViewModel, idx: number | null) {
@@ -13,7 +18,7 @@ function getDay(vm: StageMapViewModel, idx: number | null) {
   return day ?? null;
 }
 
-export default function StageMap({ viewModel, selectedDayIndex }: StageMapProps) {
+export default function StageMap({ viewModel, selectedDayIndex, selectedRoomId = null, onRoomClick, onAgentClick }: StageMapProps) {
   const day = getDay(viewModel, selectedDayIndex);
   const ariaLabel = "Stage map";
 
@@ -48,17 +53,41 @@ export default function StageMap({ viewModel, selectedDayIndex }: StageMapProps)
             key={r.id}
             className={styles.tile}
             data-tension-tier={day.tensionTier}
+            data-selected={selectedRoomId === r.id ? "true" : "false"}
             role="img"
             aria-label={`${r.label}, ${day.tensionTier} tension, ${agentSummary(r.primaryAgents)} on Day ${day.dayIndex}`}
+            onClick={() => {
+              if (onRoomClick) onRoomClick(r.id);
+            }}
           >
             <div className={styles.roomLabel}>{r.label}</div>
             {r.primaryAgents.length > 0 ? (
               <div className={styles.agents} aria-label="agents">
-                {r.primaryAgents.slice(0, 3).map((name) => (
-                  <span key={name} className={styles.chip} title={name}>
-                    {initials(name)}
-                  </span>
-                ))}
+                {r.primaryAgents.slice(0, 3).map((name) => {
+                  const content = initials(name);
+                  if (onAgentClick) {
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        className={styles.chip}
+                        aria-label={`Focus on agent ${name} for Day ${day.dayIndex}`}
+                        title={name}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAgentClick(name);
+                        }}
+                      >
+                        {content}
+                      </button>
+                    );
+                  }
+                  return (
+                    <span key={name} className={styles.chip} title={name}>
+                      {content}
+                    </span>
+                  );
+                })}
               </div>
             ) : null}
             <div className={styles.meta}>

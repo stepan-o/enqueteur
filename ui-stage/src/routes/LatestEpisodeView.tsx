@@ -89,6 +89,13 @@ export default function LatestEpisodeView() {
         currentEpisodeIndex={episode.index}
       />
 
+      {/* Dev wiring: quick link to Stage View route */}
+      {episode.id ? (
+        <div style={{ margin: "8px 0" }}>
+          <a href={`/episodes/${episode.id}/stage`}>Open Stage View</a>
+        </div>
+      ) : null}
+
       {/* Main Columns: Left (storyboard/detail) • Right (map/agents) */}
       <div className={styles.mainColumns}>
         <div>
