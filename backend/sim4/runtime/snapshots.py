@@ -1,9 +1,9 @@
-# sim4/runtime/snapshots.py
 from __future__ import annotations
 import json
 from dataclasses import asdict, is_dataclass
 
 from ..ecs.entity import EntityID
+from .narrative.narrative import NarrativeEngine  # Import NarrativeEngine class, not the function
 
 
 # ---------------------------------------------------------------------------
@@ -47,11 +47,11 @@ def encode_component(comp):
 
 def collect_entities(world):
     """
-    Convert ECS world → JSON-friendly entity payload.
+    Convert ECS world → JSON-friendly entity payload, including narrative data.
 
     Output shape:
     {
-        1: {"Transform": {...}, "EmotionalState": {...}},
+        1: {"Transform": {...}, "EmotionalState": {...}, "Narrative": "I feel conflicted..."},
         2: {...},
         ...
     }
@@ -67,9 +67,17 @@ def collect_entities(world):
             if eid not in out:
                 out[eid] = {}
 
+            # Collect the entity's components (e.g., Transform, EmotionalState)
             for ctype in comp_types:
                 comp_instance = arch.columns[ctype][idx]
                 out[eid][ctype.__name__] = encode_component(comp_instance)
+
+            # Add narrative (e.g., dialogue, emotional reflections) for each agent
+            if 'Agent' in arch.columns:
+                agent = arch.columns['Agent'][idx]  # Assuming we have an Agent component
+                narrative_engine = NarrativeEngine(agent)  # Instantiate NarrativeEngine
+                narrative = narrative_engine.generate_dialogue(agent.get_agent_state())  # Generate dialogue/reflection
+                out[eid]["Narrative"] = narrative  # Add narrative to the entity snapshot
 
     return out
 
@@ -80,12 +88,12 @@ def collect_entities(world):
 
 def build_snapshot(world, tick):
     """
-    Minimal Sim4 snapshot expected by diff engine & Godot:
+    Build a minimal Sim4 snapshot with narrative data for Godot.
 
     {
         "tick": 12,
         "entities": {
-            1: {"Transform": {...}, "EmotionalState": {...}},
+            1: {"Transform": {...}, "EmotionalState": {...}, "Narrative": "..."},
             2: {...}
         }
     }
@@ -202,4 +210,3 @@ def build_world_snapshot(world, tick):
         # --------------------------------------
         "entities": collect_entities(world),
     }
-
