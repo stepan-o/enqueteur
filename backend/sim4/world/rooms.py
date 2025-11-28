@@ -12,9 +12,9 @@ class RoomIdentity:
     """
     Immutable identity for a room.
 
-    - id: canonical identifier (used in graphs & snapshots)
-    - label: human readable name
-    - kind: semantic category (hallway, lab, default, etc.)
+    - id: canonical room ID (A, B, etc.)
+    - label: human-readable name
+    - kind: semantic classification (hallway, lab, default...)
     """
     id: str
     label: str
@@ -28,12 +28,15 @@ class RoomIdentity:
 @dataclass
 class Room:
     """
-    Runtime mutable room.
-    Holds:
-    - identity (static metadata)
-    - entities: List[EntityID]
+    Runtime room container.
+
+    Fields:
+    - room_id: canonical ID string (duplicated from identity.id for fast lookup)
+    - identity: immutable metadata
+    - entities: list of EntityID currently in room
     """
 
+    room_id: str
     identity: RoomIdentity
     entities: List[EntityID] = field(default_factory=list)
 
