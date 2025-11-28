@@ -2,16 +2,10 @@
 
 import time
 
-from .ecs.scheduler import World
-from .runtime.tick import SimulationClock
-from .runtime.snapshots import build_snapshot, snapshot_json
-from .runtime.diff import diff_snapshots
-from .runtime.logger import RuntimeLogger
-from .runtime.history import HistoryBuffer
+from .world.world import WorldContext
+from .world.spawn_initial_world.spawn_initial_robots import spawn_initial_robots
 
-from .world.bootstrap import spawn_initial_robots
-
-# Systems (Era IV/V implementations)
+# Systems
 from .ecs.systems.perception import perception_system
 from .ecs.systems.cognition import cognition_system
 from .ecs.systems.emotion import emotion_system
@@ -20,71 +14,75 @@ from .ecs.systems.action import action_system
 from .ecs.systems.movement import movement_system
 from .ecs.systems.resolution import resolution_system
 
+# Runtime
+from .runtime.tick import SimulationClock
+from .runtime.snapshots import build_snapshot, snapshot_json
+from .runtime.diff import diff_snapshots
+from .runtime.logger import RuntimeLogger
+from .runtime.history import HistoryBuffer
+
 
 def main():
     # ---------------------------------------------------------
-    # WORLD INITIALIZATION
+    # WORLD INITIALIZATION (Era V wrapper)
     # ---------------------------------------------------------
     logger = RuntimeLogger(enabled=True)
-    world = World(logger=logger)
+    ctx = WorldContext(logger=logger)
 
-    # Spawn robots with full component sets
-    spawn_initial_robots(world, count=5)
+    # spawn robots into ctx.ecs + into a room (A)
+    spawn_initial_robots(ctx, count=5)
 
     # ---------------------------------------------------------
-    # TIME + HISTORY LAYER
+    # TIME + HISTORY BUFFER
     # ---------------------------------------------------------
     clock = SimulationClock(dt=0.1)
-
-    # store last 2000 ticks + use diffs
     history = HistoryBuffer(use_diffs=True, limit=2000)
 
     # ---------------------------------------------------------
-    # REGISTER SYSTEMS
+    # REGISTER SYSTEMS (Era V phases)
     # ---------------------------------------------------------
-    world.add_system("perception", perception_system)
-    world.add_system("cognition", cognition_system)
-    world.add_system("emotion", emotion_system)
-    world.add_system("intention", intention_system)
-    world.add_system("action", action_system)
-    world.add_system("movement", movement_system)
-    world.add_system("resolution", resolution_system)
+    ecs = ctx.ecs
+    ecs.add_system("perception", perception_system)
+    ecs.add_system("cognition", cognition_system)
+    ecs.add_system("emotion", emotion_system)
+    ecs.add_system("intention", intention_system)
+    ecs.add_system("action", action_system)
+    ecs.add_system("movement", movement_system)
+    ecs.add_system("resolution", resolution_system)
 
-    print("Simulation started (Era IV/V). Ctrl+C to stop.")
+    print("Simulation started (Era V). Ctrl+C to stop.\n")
 
-    # ---------------------------------------------------------
-    # SNAPSHOT PIPELINE (full snapshot on tick 1)
-    # ---------------------------------------------------------
     prev_snapshot = None
 
     try:
         while True:
+            # ---- Tick ----
             dt = clock.step()
-            world.step(dt)
+            ctx.step(dt)
 
-            # Build new snapshot
-            curr_snapshot = build_snapshot(world, world.tick)
+            # ---- Build snapshot ----
+            curr_snapshot = build_snapshot(ctx, ctx.tick)
 
-            # Tick 1 → full snapshot
             if prev_snapshot is None:
+                # First tick = full snapshot
                 print(snapshot_json(curr_snapshot))
-                history.record_snapshot(world.tick, curr_snapshot)
+                history.record_snapshot(ctx.tick, curr_snapshot)
 
-            # All following ticks → diff patches
             else:
+                # Following ticks = patch/diff
                 patch = diff_snapshots(prev_snapshot, curr_snapshot)
                 print(snapshot_json(patch))
-                history.record_diff(world.tick, patch)
+                history.record_diff(ctx.tick, patch)
 
             prev_snapshot = curr_snapshot
 
             time.sleep(0.1)
 
     except KeyboardInterrupt:
-        print("\nStopped simulation.")
+        print("\nStopped simulation.\n")
 
         # -----------------------------------------------------
-        # Optional: Export the entire episode on shutdown
+        # Episode export
         # -----------------------------------------------------
         episode = history.export_episode()
         print("Episode exported with ticks:", episode["order"])
