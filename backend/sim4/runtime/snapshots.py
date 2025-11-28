@@ -107,3 +107,99 @@ def snapshot_json(snapshot):
     Pretty small, fast JSON output
     """
     return json.dumps(snapshot, separators=(",", ":"), ensure_ascii=False)
+
+
+def serialize_assets(world):
+    out = {}
+    for inst_id, inst in world.assets.items():
+        out[inst_id] = {
+            "asset_id": inst.asset_id,
+            "identity": {
+                "id": inst.identity.id,
+                "label": inst.identity.label,
+                "category": inst.identity.category,
+                "interactable": inst.identity.interactable,
+                "default_state": inst.identity.default_state,
+            },
+            "room": inst.room,
+            "state": inst.state,
+        }
+    return out
+
+
+# ---------------------------------------------------------------------------
+# ROOM SERIALIZATION
+# ---------------------------------------------------------------------------
+
+def serialize_rooms(world):
+    """
+    Returns:
+        {
+            "A": {
+                "label": "Lab Room",
+                "kind": "default",
+                "entities": [1, 2, ...]
+            },
+            "B": { ... }
+        }
+    """
+    payload = {}
+
+    for room_id, room in world.rooms.items():
+        payload[room_id] = {
+            "label": room.identity.label,
+            "kind": room.identity.kind,
+            "entities": [e.value for e in room.entities],
+        }
+
+    return payload
+
+
+# ---------------------------------------------------------------------------
+# FULL WORLD SNAPSHOT (Era V)
+# ---------------------------------------------------------------------------
+
+def build_world_snapshot(world, tick):
+    """
+    Unified snapshot of everything in the world.
+
+    Expected structure:
+
+    {
+        "tick": 12,
+        "identity": {
+            "world_name": "...",
+            "version": "..."
+        },
+        "rooms": {...},
+        "assets": {...},
+        "entities": {...}
+    }
+    """
+    return {
+        "tick": tick,
+
+        # --------------------------------------
+        # Static identity layer
+        # --------------------------------------
+        "identity": {
+            "world_name": world.identity.world_name,
+            "version": world.identity.version,
+        },
+
+        # --------------------------------------
+        # Room layer (mutable)
+        # --------------------------------------
+        "rooms": serialize_rooms(world),
+
+        # --------------------------------------
+        # Asset layer
+        # --------------------------------------
+        "assets": serialize_assets(world),
+
+        # --------------------------------------
+        # ECS entity layer
+        # --------------------------------------
+        "entities": collect_entities(world),
+    }
+

@@ -3,7 +3,7 @@
 import time
 
 from .world.world import WorldContext
-from .world.spawn_initial_world.spawn_initial_robots import spawn_initial_robots
+from .world.spawn_initial_world.spawn_initial_world import spawn_initial_world
 
 # Systems
 from .ecs.systems.perception import perception_system
@@ -16,7 +16,7 @@ from .ecs.systems.resolution import resolution_system
 
 # Runtime
 from .runtime.tick import SimulationClock
-from .runtime.snapshots import build_snapshot, snapshot_json
+from .runtime.snapshots import build_world_snapshot, snapshot_json
 from .runtime.diff import diff_snapshots
 from .runtime.logger import RuntimeLogger
 from .runtime.history import HistoryBuffer
@@ -29,8 +29,8 @@ def main():
     logger = RuntimeLogger(enabled=True)
     ctx = WorldContext(logger=logger)
 
-    # spawn robots into ctx.ecs + into a room (A)
-    spawn_initial_robots(ctx, count=5)
+    # Spawn rooms + robots + layout + assets
+    spawn_initial_world(ctx, count=5)
 
     # ---------------------------------------------------------
     # TIME + HISTORY BUFFER
@@ -39,7 +39,7 @@ def main():
     history = HistoryBuffer(use_diffs=True, limit=2000)
 
     # ---------------------------------------------------------
-    # REGISTER SYSTEMS (Era V phases)
+    # REGISTER SYSTEMS (run inside ctx.ecs.step)
     # ---------------------------------------------------------
     ecs = ctx.ecs
     ecs.add_system("perception", perception_system)
@@ -56,12 +56,16 @@ def main():
 
     try:
         while True:
-            # ---- Tick ----
+            # -------------------------------------------------
+            # TICK
+            # -------------------------------------------------
             dt = clock.step()
-            ctx.step(dt)
+            ctx.step(dt)                     # increments ctx.tick, runs ECS
 
-            # ---- Build snapshot ----
-            curr_snapshot = build_snapshot(ctx, ctx.tick)
+            # -------------------------------------------------
+            # SNAPSHOT
+            # -------------------------------------------------
+            curr_snapshot = build_world_snapshot(ctx, ctx.tick)
 
             if prev_snapshot is None:
                 # First tick = full snapshot
@@ -69,7 +73,7 @@ def main():
                 history.record_snapshot(ctx.tick, curr_snapshot)
 
             else:
-                # Following ticks = patch/diff
+                # Following ticks = diff patch
                 patch = diff_snapshots(prev_snapshot, curr_snapshot)
                 print(snapshot_json(patch))
                 history.record_diff(ctx.tick, patch)
@@ -82,7 +86,7 @@ def main():
         print("\nStopped simulation.\n")
 
         # -----------------------------------------------------
-        # Episode export
+        # EPISODE EXPORT
         # -----------------------------------------------------
         episode = history.export_episode()
         print("Episode exported with ticks:", episode["order"])
