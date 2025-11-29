@@ -13,7 +13,7 @@ WORKDIR /app
 # Copy project metadata first for better caching (including lockfile)
 COPY pyproject.toml README.md alembic.ini uv.lock /app/
 # Copy source code and alembic scripts
-COPY loopforge /app/loopforge
+COPY legacy/backend/loopforge_sim2 /app/loopforge
 COPY scripts /app/scripts
 COPY alembic /app/alembic
 

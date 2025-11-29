@@ -167,25 +167,41 @@ Everything else has been **deleted or moved.**
 These rules prevent deadlocks, ghost modules, and test failures.
 
 ### 3.1 Absolutely Forbidden
+
 ```python
-from loopforge import emotions            # ❌
-from loopforge import simulation          # ❌
-from loopforge import narrative           # ❌
-import loopforge.models                   # ❌
-import loopforge.llm_stub                 # ❌
+from loopforge import emotions  # ❌
+from loopforge import simulation  # ❌
+from legacy.backend.loopforge_sim2 import narrative
+import loopforge.models  # ❌
+import loopforge.llm_stub  # ❌
 ```
 
 These paths no longer exist.
 
 ### 3.2 Required Form
+
 ```python
-from loopforge.core.simulation import ...
-from loopforge.psych.emotions import ...
-from loopforge.narrative.episode_recaps import ...
-from loopforge.analytics.reporting import ...
-from loopforge.llm.llm_stub import ...
-from loopforge.db.models import ...
-from loopforge.schema.types import ...
+from loopforge.core.simulation import
+
+...
+from loopforge.psych.emotions import
+
+...
+from legacy.backend.loopforge_sim2 import
+
+...
+from loopforge.analytics.reporting import
+
+...
+from legacy.backend.loopforge_sim2 import
+
+...
+from loopforge.db.models import
+
+...
+from loopforge.schema.types import
+
+...
 ```
 
 ### 3.3 The Dependency Rules
