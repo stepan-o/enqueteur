@@ -115,3 +115,6 @@ class VisualProps:
 @dataclass
 class AgentTag:
     role: str = "robot"
+
+
+## (Era IV narrative/psych components were added during a previous pass but have been removed per Sub-Sprint 1 directive for a review-only sprint.)

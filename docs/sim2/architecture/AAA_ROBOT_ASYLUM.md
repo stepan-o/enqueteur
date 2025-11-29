@@ -683,3 +683,26 @@ hides the complex simulation from the game engine
 supports LLM integration beautifully
 
 This is the prototyping sweet spot.
+
+
+┌──────────────────────────────┐
+│        PYTHON BACKEND        │
+│        (Sim4 ECS Core)       │
+│                              │
+│  - ECS Systems               │
+│  - Entity storage (SoA)      │
+│  - Tick loop                 │
+│  - Snapshot builder (JSON)   │
+│  - WebSocket server <──────┐ │
+└─────────────────────────────┘ │
+│ real-time JSON snapshots
+│
+┌──────────────────────────────┐ │
+│         GODOT FRONTEND       │◀┘
+│                              │
+│  - WebSocketClient           │
+│  - Node2D robot sprites      │
+│  - Tween/Animations          │
+│  - Room layout               │
+│  - UI overlays & debug       │
+└──────────────────────────────┘

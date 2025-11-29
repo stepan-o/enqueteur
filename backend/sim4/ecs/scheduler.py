@@ -1,7 +1,7 @@
 # backend/sim4/ecs/scheduler.py (rename later to world.py maybe)
 
 from typing import Dict, Tuple
-from .entity import EntityAllocator, EntityID
+from .entity import EntityAllocator
 from .storage import ArchetypeStorage
 from .archetype import signature_of
 from .query import Query
@@ -28,7 +28,7 @@ class ECSWorld:
         return ent
 
 
-    def _insert(self, ent: EntityID, comp_dict: Dict):
+    def _insert(self, ent, comp_dict: Dict):
         comp_types = tuple(t for t in comp_dict.keys() if t != "_id")
         sig = signature_of(comp_types)
 
