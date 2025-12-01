@@ -34,6 +34,13 @@ from backend.sim4.ecs.world import ECSWorld
 from backend.sim4.world.context import WorldContext
 from backend.sim4.world.apply_world_commands import apply_world_commands as apply_world_cmds
 from backend.sim4.world.events import WorldEvent
+from backend.sim4.world.views import WorldViews
+from backend.sim4.ecs.commands import ECSCommand
+from backend.sim4.ecs.systems.base import (
+    SystemContext,
+    SimulationRNG,
+    ECSCommandBuffer,
+)
 
 
 @dataclass(frozen=True)
@@ -44,8 +51,9 @@ class TickResult:
     Fields:
     - tick_index: the simulation tick index for this tick (after start-of-tick advance).
     - dt: delta time used for this tick.
-    - world_events: WorldEvent list emitted by Phase F (currently empty list in skeleton).
+    - world_events: WorldEvent list emitted by Phase F (empty in current stub path).
     - notes: optional diagnostic placeholders for later phases.
+    - ecs_commands: list of ECSCommand aggregated from phases B–D (for Phase E in 6.4).
 
     This DTO may be extended or wrapped by SimulationEngine.step() per
     SOT-SIM4-ENGINE in later sub-sprints.
@@ -55,6 +63,7 @@ class TickResult:
     dt: float
     world_events: List[WorldEvent] = field(default_factory=list)
     notes: dict[str, Any] = field(default_factory=dict)
+    ecs_commands: List[ECSCommand] = field(default_factory=list)
 
 
 def tick(
@@ -109,11 +118,39 @@ def tick(
     # TODO[RT-A]: integrate sanitized external inputs
     _ = previous_events  # explicitly unused in skeleton
 
-    # Phase B, C, D — System phases (stubs, no execution yet)
-    # TODO[RT-BCD]: run ECS systems via system_scheduler and collect ECS commands
+    # Prepare per-tick read-only world views and base RNG seed
+    views = WorldViews(world_ctx)  # single per-tick instance reused across systems
+    base_seed = rng_seed * 1_000_003 + int(clock.tick_index)
+
+    # Phase B, C, D — System phases
+    aggregated_ecs_commands: List[ECSCommand] = []
+    # Deterministic per-system seeding: combine base_seed with an increasing index
+    local_index = 0
+    for phase in ("B", "C", "D"):
+        # system_scheduler is expected to expose iter_phase_systems(phase);
+        # tolerate None or missing attribute (legacy tests pass object()/None)
+        iter_phase = getattr(system_scheduler, "iter_phase_systems", None)
+        systems_for_phase = iter_phase(phase) if callable(iter_phase) else ()
+        for system_type in (systems_for_phase or ()):  # type: ignore[assignment]
+            system_seed = base_seed * 1_000_003 + local_index
+            local_index += 1
+            rng = SimulationRNG(system_seed)
+            cmd_buffer = ECSCommandBuffer()
+            ctx = SystemContext(
+                world=ecs_world,
+                dt=clock.dt,
+                rng=rng,
+                views=views,
+                commands=cmd_buffer,
+                tick_index=clock.tick_index,
+            )
+            system = system_type()
+            # Systems are expected to be deterministic and side-effect only via ctx.commands
+            system.run(ctx)
+            aggregated_ecs_commands.extend(cmd_buffer.commands)
 
     # Phase E — Apply ECS commands (placeholder: none yet)
-    ecs_world.apply_commands([])  # no-op apply
+    ecs_world.apply_commands([])  # no-op apply; TODO[RT-E]: feed aggregated_ecs_commands in 6.4
 
     # Phase F — Apply World commands (placeholder: none yet)
     world_events: List[WorldEvent] = apply_world_cmds(world_ctx, [])
@@ -130,4 +167,10 @@ def tick(
     # Phase 12 — Unlock WorldContext (conceptual; no-op for now)
     # TODO[RT-LOCK]: release world lock
 
-    return TickResult(tick_index=clock.tick_index, dt=clock.dt, world_events=world_events)
+    return TickResult(
+        tick_index=clock.tick_index,
+        dt=clock.dt,
+        world_events=world_events,
+        notes={},
+        ecs_commands=aggregated_ecs_commands,
+    )
