@@ -20,6 +20,16 @@ from .motive_plan import (
     PlanStepSubstrate,
     PlanLayerSubstrate,
 )
+from .intent_action import (
+    PrimitiveIntent,
+    SanitizedIntent,
+    MovementIntent,
+    InteractionIntent,
+    ActionState,
+)
+from .narrative_state import NarrativeState
+from .inventory import InventorySubstrate, ItemState
+from .meta import DebugFlags, SystemMarkers
 
 __all__ = [
     "AgentIdentity",
@@ -37,4 +47,14 @@ __all__ = [
     "MotiveSubstrate",
     "PlanStepSubstrate",
     "PlanLayerSubstrate",
+    "PrimitiveIntent",
+    "SanitizedIntent",
+    "MovementIntent",
+    "InteractionIntent",
+    "ActionState",
+    "NarrativeState",
+    "InventorySubstrate",
+    "ItemState",
+    "DebugFlags",
+    "SystemMarkers",
 ]
