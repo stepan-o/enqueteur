@@ -1,7 +1,7 @@
 Sim4 ECS Implementation Overview — Core, Components, Systems, and Connections
 
 Author: Junie (Sim4 implementation assistant)
-Date: 2025-12-01 10:22 (local)
+Date: 2025-12-01 11:33 (local)
 
 Purpose
 - Provide a clear, implementation-focused overview of the current ECS in Sim4:
@@ -22,12 +22,19 @@ Scope of Code Reviewed (selected, non-exhaustive)
 - Components:
   - backend/sim4/ecs/components/* (embodiment.py, perception.py, social.py, narrative_state.py, and others referenced by systems)
 
+Changelog (since previous version)
+- Sprint 4.5a: Introduced QuerySignature, RowView, QueryResult; all call sites migrated to the new API; deterministic ordering documented.
+- Sprint 4.5b: Aligned all system QuerySignature read/write sets with SOT-SIM4-ECS-SYSTEMS; systems remain no-op skeletons.
+- Sprint 4.5c: Implemented optional and without semantics in ECSWorld.query; added focused engine tests; preserved deterministic ordering.
+
 1) ECS Core Implementation
 
 1.1 ECSWorld (ecs/world.py)
 - Responsibilities:
   - Tracks entities and component instances via an archetype-like storage backend.
-  - Exposes deterministic query API: world.query((CompA, CompB, ...)) → QueryResult iterable yielding (entity_id, tuple_of_components) in stable order.
+  - Exposes deterministic query API: world.query(QuerySignature) → QueryResult (iterable of RowView), where each RowView provides:
+    - entity: EntityID
+    - components: positional tuple in canonical order: (read) + (write) + (optional). Optional component slots are None when absent.
   - Applies mutation commands with apply_commands(commands: Iterable[ECSCommand]) enforcing seq-based deterministic ordering.
 - Determinism:
   - apply_commands sorts incoming commands by cmd.seq before dispatch.
@@ -49,7 +56,15 @@ Scope of Code Reviewed (selected, non-exhaustive)
 - Archetype/Storage:
   - Columnar/SOA-like storage grouped by component-type signatures (ArchetypeSignature). Details are encapsulated within storage.py and archetype.py and surfaced via world.py.
 - Query Engine (ecs/query.py):
-  - Materializes deterministic iteration over entities matching a component signature; returns both entity IDs and component references to callers (systems).
+  - Canonical types introduced in Sprint 4.5a:
+    - QuerySignature(read: Tuple[type, ...], write: Tuple[type, ...], optional: Tuple[type, ...] = (), without: Tuple[type, ...] = ())
+    - RowView(entity: EntityID, components: Tuple[object, ...]) — components layout is (read) + (write) + (optional) in the order specified by the signature; optional component positions are None if the entity lacks that component.
+    - QueryResult — a deterministic iterable over RowView instances.
+  - Semantics (Sprint 4.5c):
+    - read/write: required; entities must have all listed types.
+    - without: exclusion; entities possessing any of these types are filtered out.
+    - optional: tolerated; rows include fixed-position slots (possibly None) for these types.
+  - Ordering: results are deterministically ordered (currently ascending EntityID).
 
 1.3 Commands (ecs/commands.py)
 - ECSCommandKind: stable string enum values for cross-language compatibility:
@@ -101,16 +116,16 @@ Scope of Code Reviewed (selected, non-exhaustive)
 
 3.2 Representative System Skeletons
 - PerceptionSystem (perception_system.py):
-  - Query: (Transform, RoomPresence, ProfileTraits, PerceptionSubstrate, AttentionSlots, SalienceState)
+  - Query: QuerySignature(read=(Transform, RoomPresence, ProfileTraits), write=(PerceptionSubstrate, AttentionSlots, SalienceState))
   - Behavior: iterate deterministically; no side effects yet.
 - CognitivePreprocessor (cognitive_preprocessor.py):
-  - Query: (BeliefGraphSubstrate, AgentInferenceState, PerceptionSubstrate, SalienceState)
+  - Query: QuerySignature(read=(BeliefGraphSubstrate, AgentInferenceState, PerceptionSubstrate, SalienceState), write=(BeliefGraphSubstrate, AgentInferenceState))
   - Behavior: iterate deterministically; no side effects yet.
 - ActionExecutionSystem (action_execution_system.py):
-  - Query: (MovementIntent, PathState, InteractionIntent, ActionState, Transform, RoomPresence, InventorySubstrate, ItemState)
+  - Query: QuerySignature(read=(MovementIntent, PathState, InteractionIntent, ActionState, Transform, RoomPresence, InventorySubstrate, ItemState), write=(Transform, RoomPresence, PathState, ActionState, InventorySubstrate, ItemState))
   - Behavior: iterate deterministically; placeholders for future ECS/world commands.
 - DriveUpdateSystem (drive_update_system.py):
-  - Query: (DriveState, EmotionFields, MotiveSubstrate)
+  - Query: QuerySignature(read=(DriveState, EmotionFields, MotiveSubstrate), write=(DriveState,))
   - Behavior: iterate deterministically; no side effects yet.
 
 3.3 Scheduler and Phase Context
@@ -119,7 +134,7 @@ Scope of Code Reviewed (selected, non-exhaustive)
 4) How Pieces Connect Inside ECS
 
 - Systems → ECSWorld:
-  - Systems call ctx.world.query(...) to obtain deterministic views (entity_id, component tuple) for entities matching required component signatures.
+  - Systems construct QuerySignature with SOT-aligned read/write sets and call ctx.world.query(signature) to obtain deterministic RowView results.
   - Systems must not mutate world directly; they enqueue ECSCommand instances into ctx.commands (ECSCommandBuffer).
 - ECSCommandBuffer → ECSCommand → ECSWorld.apply_commands:
   - Each buffer assigns a local, monotonically increasing seq to commands in the order they were enqueued.
@@ -146,7 +161,8 @@ Scope of Code Reviewed (selected, non-exhaustive)
 6) Determinism & Layer Purity
 
 - Determinism:
-  - Commands are sorted by seq before application; systems/queries iterate in a deterministic, stable order.
+  - Commands are sorted by seq before application; systems/queries iterate in a deterministic, stable order (query results currently ordered by ascending EntityID).
+  - Query RowView.components uses a canonical, deterministic layout: (read) + (write) + (optional); optional slots are None when absent.
   - RNG usage is explicit via SimulationRNG with externally provided seed.
 - Layer Purity:
   - ecs/ does not import runtime/, world/, snapshot/, narrative/, or integration/.
