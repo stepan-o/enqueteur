@@ -248,3 +248,11 @@ class WorldContext:
         """Apply commands via the module-level applier (convenience shim)."""
         from .apply_world_commands import apply_world_commands as _apply
         return _apply(self, commands)
+
+    def make_views(self):
+        """Construct a read-only WorldViews façade for this context.
+
+        Lazy import to avoid module import cycles at import time.
+        """
+        from .views import WorldViews  # local import to prevent circular import
+        return WorldViews(self)
