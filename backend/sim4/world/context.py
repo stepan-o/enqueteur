@@ -24,6 +24,7 @@ from typing import Dict, Set, Optional, FrozenSet
 RoomID = int
 AgentID = int  # typically ECS EntityID, but kept world-local here
 ItemID = int
+DoorID = int
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,8 @@ class WorldContext:
     room_agents: Dict[RoomID, Set[AgentID]] = field(default_factory=dict)
     items_by_id: Dict[ItemID, ItemRecord] = field(default_factory=dict)
     room_items: Dict[RoomID, Set[ItemID]] = field(default_factory=dict)
+    # Doors: minimal boolean state map. Absent key means door unknown.
+    door_open: Dict[DoorID, bool] = field(default_factory=dict)
 
     # ---- Room registry ----
     def register_room(self, room: RoomRecord) -> None:
@@ -208,3 +211,40 @@ class WorldContext:
         If the room has no items or is not yet in the index, returns an empty set.
         """
         return frozenset(self.room_items.get(room_id, set()))
+
+    # ---- Doors ----
+    def register_door(self, door_id: DoorID, is_open: bool = False) -> None:
+        """Register a door with an initial open/closed state.
+
+        Raises:
+            ValueError: if the door_id already exists.
+        """
+        if door_id in self.door_open:
+            raise ValueError(f"Door ID already exists: {door_id}")
+        self.door_open[door_id] = bool(is_open)
+
+    def set_door_open(self, door_id: DoorID, is_open: bool) -> None:
+        """Set door state to open/closed.
+
+        Raises:
+            KeyError: if door_id is unknown.
+        """
+        if door_id not in self.door_open:
+            raise KeyError(f"Unknown door_id: {door_id}")
+        self.door_open[door_id] = bool(is_open)
+
+    def is_door_open(self, door_id: DoorID) -> bool:
+        """Return True if the door is known and open; raises if unknown.
+
+        Raises:
+            KeyError: if door_id is unknown.
+        """
+        if door_id not in self.door_open:
+            raise KeyError(f"Unknown door_id: {door_id}")
+        return self.door_open[door_id]
+
+    # Optional thin shim to avoid import cycles for callers that prefer a method
+    def apply_world_commands(self, commands):
+        """Apply commands via the module-level applier (convenience shim)."""
+        from .apply_world_commands import apply_world_commands as _apply
+        return _apply(self, commands)
