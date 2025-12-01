@@ -103,6 +103,8 @@ EntityID = int  # or a small wrapper
 * No random or hash-based ID generation.
 * Allocation is purely numeric and trivially portable to Rust.
 
+In the Python Sim4 implementation, `EntityAllocator` additionally tracks a set of “alive” `EntityID`s (`is_alive`, `alive_ids`) and exposes a `reset()` helper and `mark_alive()` for tests/bootstraps. These are implementation conveniences and do not affect the core SOT guarantees (monotonic allocation, no reuse within an episode).
+
 ---
 
 ### 3.3 Tags & Utility
@@ -134,7 +136,7 @@ High-level methods (shape, not exact signatures):
 ```python
 class ECSWorld:
     # Entity lifecycle
-    def create_entity(self, archetype_code: int) -> EntityID: ...
+    def create_entity(self, initial_components: list[object] | None = None) -> EntityID: ...
     def destroy_entity(self, entity: EntityID) -> None: ...
 
     # Component management
@@ -204,6 +206,8 @@ Global determinism:
 * Archetype IDs and their internal order must be **stable** given the same creation sequence.
 * No reliance on Python dict/set iteration order.
 
+ArchetypeStorage may use swap-remove internally, so row ordering can change as entities are removed. The invariant is that, for a given sequence of operations, final row order is deterministic. Systems that need ordered views should rely on the query engine’s defined ordering (e.g., ascending `EntityID`), not on raw storage insertion order.
+
 ### 5.4 Rust Portability
 Storage structures must be mappable to:
 * `Vec<EntityId>`
@@ -238,18 +242,28 @@ Archetype **ID** is a deterministic mapping from `ArchetypeSignature` → `int`.
   * Sort by deterministic key (e.g., module + name) before building signature.
 * Adding/removing a component always results in moving entity to a **new archetype**.
 
+In the Python implementation, component “type codes” may be assigned per `ECSWorld` instance on first-use, as long as:
+* the assignment is deterministic for a given sequence of operations, and
+* signatures normalize by sorted type codes.
+
+A static module+name mapping is recommended for Rust, but not required for the Python prototype.
+
 ---
 
 ### 6.3 Archetype Registry
+
 `archetype.py` maintains a registry:
+
 ```python
 class ArchetypeRegistry:
-    def get_or_create(signature: ArchetypeSignature) -> ArchetypeStorage: ...
-    def get_for_entity(entity: EntityID) -> ArchetypeStorage: ...
+    def get_or_register(signature: ArchetypeSignature) -> int: ...
+    def get_signature(archetype_id: int) -> ArchetypeSignature: ...
+    def ensure_signature(type_codes: Iterable[int]) -> int: ...
 ```
 
-* Used internally by ECSWorld & storage.py.
-* Not visible to systems directly.
+* The registry maps `ArchetypeSignature ↔ small int archetype_id`.
+* It does not own storage. Creation and management of `ArchetypeStorage` instances are handled by `ECSWorld` / `storage.py`, which use the registry to obtain stable archetype IDs.
+* This shape is intentionally Rust-portable (mirrors an enum or index into a `Vec<ArchetypeSignature>`).
 
 ---
 
