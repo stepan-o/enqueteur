@@ -39,6 +39,36 @@ Snapshot or episode schemas (snapshot/ + episode SOT).
 
 This is the single source of truth for how the world layer behaves internally.
 
+---
+
+Sprint 5 Implementation Status (Sub‑Sprint 5.1–5.4)
+
+Implemented (✅):
+- WorldContext (backend/sim4/world/context.py):
+  - Room registry: rooms_by_id: dict[RoomID, RoomRecord]
+  - Agent ↔ Room indices: agent_room: dict[AgentID, RoomID], room_agents: dict[RoomID, set[AgentID]]
+  - Item registry: items_by_id: dict[ItemID, ItemRecord] and per‑room index room_items: dict[RoomID, set[ItemID]]
+  - Minimal door state: door_open: dict[DoorID, bool]
+  - Helper methods: register_room/get_room, register_agent/move_agent/get_agent_room/get_room_agents, register_item/move_item/get_room_items, register_door/set_door_open/is_door_open
+- World commands & events (backend/sim4/world/commands.py, backend/sim4/world/events.py):
+  - WorldCommandKind: set_agent_room, spawn_item, despawn_item, open_door, close_door
+  - WorldEventKind: agent_moved_room, item_spawned, item_despawned, door_opened, door_closed
+  - Dataclasses are frozen and Rust‑portable.
+- Canonical applier (backend/sim4/world/apply_world_commands.py):
+  - apply_world_commands(world_ctx, commands): stable seq sort, mutates via WorldContext helpers, emits WorldEvent list.
+  - Handles at minimum: SET_AGENT_ROOM, SPAWN_ITEM, OPEN_DOOR; optional: CLOSE_DOOR, DESPAWN_ITEM.
+- Read‑only views (backend/sim4/world/views.py):
+  - WorldViews façade and RoomView DTO, methods: get_agent_room, get_room_agents, get_room_items, is_door_open, get_room_view; iter_room_neighbors() is a stub that returns an empty tuple pending navgraph.
+
+Deferred / TODO (⚠️):
+- Runtime tick wiring (construction/injection of WorldViews, collection/dispatch of WorldCommands) — planned Sprint 6.
+- NavGraph/neighbor topology; iter_room_neighbors remains a safe stub (returns ()).
+- Snapshot/episode integration remains to be wired; events are generated but not yet persisted.
+
+Public API Surface (for runtime) (ℹ️):
+- from sim4.world import WorldContext, RoomRecord, ItemRecord, WorldCommand, WorldCommandKind, WorldEvent, WorldEventKind, apply_world_commands, WorldViews, RoomView
+- Layer purity: world/ has no imports from ecs/ or runtime/; runtime will adapt and inject views.
+
 1. Position in the 6-Layer DAG (SOP-100)
 
 DAG (already locked):

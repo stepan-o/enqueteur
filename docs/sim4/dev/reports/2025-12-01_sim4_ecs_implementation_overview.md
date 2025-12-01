@@ -228,3 +228,67 @@ Conclusion
 - Next focus (Sprint 5):
   - Implement the World Engine core (WorldContext), WorldCommand/WorldEvent, and basic WorldViewsHandle backed by WorldContext.
   - Wire ECS/world interactions per SOTs while preserving determinism and layer purity.
+
+---
+
+2) World Engine Implementation (Sprint 5)
+
+Overview
+- The world layer is now implemented as a deterministic, layer-pure substrate with:
+  - WorldContext: owns room/agent/item registries and minimal door state.
+  - WorldCommand/WorldEvent: canonical, frozen dataclasses with stable string enums.
+  - apply_world_commands: deterministic applier that sorts by seq and emits events.
+  - WorldViews: read-only façade over WorldContext returning immutable collections.
+
+Core Types & Registries
+- WorldContext (backend/sim4/world/context.py):
+  - rooms_by_id: dict[RoomID, RoomRecord]
+  - agent_room: dict[AgentID, RoomID]
+  - room_agents: dict[RoomID, set[AgentID]]
+  - items_by_id: dict[ItemID, ItemRecord]
+  - room_items: dict[RoomID, set[ItemID]]
+  - door_open: dict[DoorID, bool]
+  - Helpers enforce consistency and raise explicit errors on invalid ops.
+
+Commands & Events
+- WorldCommandKind: set_agent_room, spawn_item, despawn_item, open_door, close_door
+- WorldEventKind: agent_moved_room, item_spawned, item_despawned, door_opened, door_closed
+- WorldCommand fields: seq, kind, optional IDs (agent_id, room_id, item_id, door_id), reserved payloads (state_code, flag)
+- WorldEvent fields: kind, IDs and previous_room_id when applicable
+
+Applier Behavior
+- apply_world_commands(world_ctx, commands):
+  - Converts to list, sorts by seq (stable), applies via WorldContext helpers.
+  - Emits a WorldEvent per successful mutation; propagates errors; no partial events on failure.
+  - Implemented handlers: SET_AGENT_ROOM, SPAWN_ITEM, OPEN_DOOR; also CLOSE_DOOR, DESPAWN_ITEM.
+
+Read-only Views
+- WorldViews (backend/sim4/world/views.py):
+  - get_agent_room(agent_id) -> Optional[RoomID]
+  - get_room_agents(room_id) -> FrozenSet[AgentID]
+  - get_room_items(room_id) -> FrozenSet[ItemID]
+  - is_door_open(door_id) -> bool
+  - get_room_view(room_id) -> RoomView(room_id, agents, items)
+  - iter_room_neighbors(room_id) -> Iterable[RoomID] (currently returns () with TODO[NAVGRAPH])
+  - All return immutable containers; no mutation APIs are exposed.
+
+Spec Alignment Summary
+- SOT-SIM4-WORLD-ENGINE: layer purity (no ecs/runtime imports), deterministic data structures, clear ownership by WorldContext, and read-only views are satisfied.
+- SOT-SIM4-ECS-COMMANDS-AND-EVENTS: kinds and dataclass shapes match the documented strings and fields; seq ordering enforced by the applier.
+
+Known Gaps / TODO[WORLD]
+- Navigation/neighbor graph not implemented; iter_room_neighbors is a safe stub.
+- No snapshot/episode persistence of WorldEvents yet.
+- No runtime tick wiring; world is exercised via tests only (Sprint 6 will integrate).
+
+Ready for Sprint 6 (Runtime Tick)
+- Runtime can rely on:
+  - Stable world public API via from sim4.world import WorldContext, WorldCommand/WorldEvent (+ kinds), apply_world_commands, WorldViews, RoomView.
+  - Deterministic command application ordered by seq and corresponding events.
+  - Read-only views returning immutable collections.
+- Runtime must supply:
+  - Construction of WorldContext and WorldViews; injection of views into SystemContext.views (structural typing).
+  - Aggregation and sequencing of WorldCommand batches alongside ECSCommand batches per tick phases.
+  - Event routing to history/snapshot subsystems (once wired).
+- Not ready:
+  - NavGraph-based neighbor queries; treat iter_room_neighbors as an empty iterator until implemented.

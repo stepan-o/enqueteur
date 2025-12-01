@@ -53,6 +53,54 @@ SOT-SIM4-SNAPSHOT-AND-EPISODE (event-based summaries).
 
 This doc is the single source of truth for ECS + world command/event types and kind enums.
 
+---
+
+Sprint 5 Alignment — World Commands & Events (Types and Kinds)
+
+Canonical kinds (string values) implemented in world/ (Python prototype; Rust‑portable):
+
+- WorldCommandKind
+  - "set_agent_room"
+  - "spawn_item"
+  - "despawn_item"
+  - "open_door"
+  - "close_door"
+
+- WorldEventKind
+  - "agent_moved_room"
+  - "item_spawned"
+  - "item_despawned"
+  - "door_opened"
+  - "door_closed"
+
+Canonical shapes (dataclasses; all optional ID fields are ints; frozen for determinism):
+
+- WorldCommand
+  - seq: int  # tick‑local monotonic sequence (sorted ascending before apply)
+  - kind: WorldCommandKind
+  - agent_id: int | None
+  - room_id: int | None
+  - item_id: int | None
+  - door_id: int | None
+  - state_code: int | None  # reserved payload
+  - flag: int | None        # reserved payload
+
+- WorldEvent
+  - kind: WorldEventKind
+  - agent_id: int | None
+  - room_id: int | None
+  - previous_room_id: int | None
+  - item_id: int | None
+  - door_id: int | None
+
+Application semantics (summary):
+- World commands are applied by a canonical applier (world/apply_world_commands.py), which:
+  - converts input iterable to list and sorts by seq (stable ordering),
+  - mutates WorldContext via public helpers (no direct dict access),
+  - emits WorldEvent instances for successful mutations only,
+  - propagates errors and does not emit events for failed commands,
+  - raises NotImplementedError for unknown command kinds.
+
 1. Position in the 6-Layer DAG
 
 DAG reminder:
