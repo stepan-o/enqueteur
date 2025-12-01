@@ -1,0 +1,210 @@
+"""
+WorldContext — Sim4 world-layer runtime substrate (data-only, Sub‑Sprint 5.1).
+
+Scope (SOT-SIM4-WORLD-ENGINE, SOP-100/200):
+- Lives under world/ and owns environment state (rooms, agents-in-rooms, items).
+- Pure data holder with small registry helpers; NO ECS imports, NO commands/events yet.
+- Deterministic, Rust-portable shapes: ints, strings, lists/dicts/sets, dataclasses.
+
+This module defines a minimal WorldContext with:
+- Room registry (rooms_by_id)
+- Agent↔Room indices (agent_room, room_agents)
+- Item registry (items_by_id) and per-room index (room_items)
+
+Mutation via WorldCommands and event emission will be added in later sub-sprints.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, Set, Optional, FrozenSet
+
+
+# --- Local world-layer ID aliases (do not import from ecs.*) ---
+RoomID = int
+AgentID = int  # typically ECS EntityID, but kept world-local here
+ItemID = int
+
+
+@dataclass(frozen=True)
+class RoomRecord:
+    """
+    Lightweight, ID-centric room descriptor.
+
+    Notes:
+    - Keep minimal fields for Sub‑Sprint 5.1; richer metadata can be added later
+      per SOT-SIM4-WORLD-ENGINE (e.g., geometry refs, neighbor links).
+    """
+
+    id: RoomID
+    label: Optional[str] = None
+
+
+@dataclass
+class ItemRecord:
+    """
+    Minimal item record for world registry.
+
+    - id: stable ItemID
+    - room_id: optional RoomID where the item is placed; None means unplaced
+    """
+
+    id: ItemID
+    room_id: Optional[RoomID] = None
+
+
+@dataclass
+class WorldContext:
+    """
+    Mutable runtime context for the world layer (data-only skeleton).
+
+    Responsibilities (5.1):
+    - Own registries for rooms, agents, and items.
+    - Provide small helper methods to keep indices consistent.
+
+    Layer constraints:
+    - Must not import ecs/; runtime will later adapt between ECS and WorldContext.
+    - Deterministic operations; explicit errors for invalid inputs.
+    """
+
+    rooms_by_id: Dict[RoomID, RoomRecord] = field(default_factory=dict)
+    agent_room: Dict[AgentID, RoomID] = field(default_factory=dict)
+    room_agents: Dict[RoomID, Set[AgentID]] = field(default_factory=dict)
+    items_by_id: Dict[ItemID, ItemRecord] = field(default_factory=dict)
+    room_items: Dict[RoomID, Set[ItemID]] = field(default_factory=dict)
+
+    # ---- Room registry ----
+    def register_room(self, room: RoomRecord) -> None:
+        """
+        Register a new room by ID.
+
+        Raises:
+            ValueError: if a room with the same ID already exists.
+        """
+        if room.id in self.rooms_by_id:
+            raise ValueError(f"Room ID already exists: {room.id}")
+        self.rooms_by_id[room.id] = room
+        # Ensure indices exist lazily on first access; sets are created on demand.
+
+    def get_room(self, room_id: RoomID) -> Optional[RoomRecord]:
+        """Return the RoomRecord if present; otherwise None."""
+        return self.rooms_by_id.get(room_id)
+
+    # ---- Agent ↔ Room ----
+    def register_agent(self, agent_id: AgentID, room_id: RoomID) -> None:
+        """
+        Place a new agent into an existing room, initializing indices.
+
+        Raises:
+            KeyError: if room_id is unknown.
+            ValueError: if agent_id is already registered.
+        """
+        if room_id not in self.rooms_by_id:
+            raise KeyError(f"Unknown room_id: {room_id}")
+        if agent_id in self.agent_room:
+            raise ValueError(f"Agent already registered: {agent_id}")
+        self.agent_room[agent_id] = room_id
+        self.room_agents.setdefault(room_id, set()).add(agent_id)
+
+    def move_agent(self, agent_id: AgentID, new_room_id: RoomID) -> None:
+        """
+        Move an existing agent to a different room.
+
+        Updates both agent_room and room_agents indices.
+
+        Raises:
+            KeyError: if agent_id is unknown or new_room_id does not exist.
+        """
+        if agent_id not in self.agent_room:
+            raise KeyError(f"Unknown agent_id: {agent_id}")
+        if new_room_id not in self.rooms_by_id:
+            raise KeyError(f"Unknown room_id: {new_room_id}")
+
+        old_room_id = self.agent_room[agent_id]
+        if old_room_id == new_room_id:
+            # idempotent no-op: still ensure indices hold the agent once
+            return
+
+        # Remove from old room set
+        if old_room_id is not None:
+            ra = self.room_agents.get(old_room_id)
+            if ra is not None:
+                ra.discard(agent_id)
+
+        # Add to new room
+        self.agent_room[agent_id] = new_room_id
+        self.room_agents.setdefault(new_room_id, set()).add(agent_id)
+
+    def get_agent_room(self, agent_id: AgentID) -> Optional[RoomID]:
+        """
+        Return the current RoomID of the agent, or None if the agent is unknown.
+        """
+        return self.agent_room.get(agent_id)
+
+    def get_room_agents(self, room_id: RoomID) -> FrozenSet[AgentID]:
+        """
+        Return an immutable view (frozenset) of agents in the specified room.
+        If the room has no agents or is not yet in the index, returns an empty set.
+        """
+        return frozenset(self.room_agents.get(room_id, set()))
+
+    # ---- Items ----
+    def register_item(self, item: ItemRecord) -> None:
+        """
+        Register a new item and index it by room if placed.
+
+        Raises:
+            ValueError: if item.id already exists.
+            KeyError: if item.room_id is not None and the room does not exist.
+        """
+        if item.id in self.items_by_id:
+            raise ValueError(f"Item ID already exists: {item.id}")
+        if item.room_id is not None and item.room_id not in self.rooms_by_id:
+            raise KeyError(f"Unknown room_id for item placement: {item.room_id}")
+
+        self.items_by_id[item.id] = item
+        if item.room_id is not None:
+            self.room_items.setdefault(item.room_id, set()).add(item.id)
+
+    def move_item(self, item_id: ItemID, new_room_id: Optional[RoomID]) -> None:
+        """
+        Move an existing item to a different room or to None (unplaced).
+
+        Updates items_by_id[item_id].room_id and per-room indices.
+
+        Args:
+            item_id: Item to move.
+            new_room_id: Target room, or None to unplace the item.
+
+        Raises:
+            KeyError: if item_id is unknown, or if new_room_id is not None and unknown.
+        """
+        item = self.items_by_id.get(item_id)
+        if item is None:
+            raise KeyError(f"Unknown item_id: {item_id}")
+        if new_room_id is not None and new_room_id not in self.rooms_by_id:
+            raise KeyError(f"Unknown room_id: {new_room_id}")
+
+        old_room_id = item.room_id
+        if old_room_id == new_room_id:
+            return  # idempotent no-op
+
+        # Remove from old index
+        if old_room_id is not None:
+            ri = self.room_items.get(old_room_id)
+            if ri is not None:
+                ri.discard(item_id)
+
+        # Update item
+        item.room_id = new_room_id
+
+        # Add to new index
+        if new_room_id is not None:
+            self.room_items.setdefault(new_room_id, set()).add(item_id)
+
+    def get_room_items(self, room_id: RoomID) -> FrozenSet[ItemID]:
+        """
+        Return an immutable view (frozenset) of item IDs placed in the room.
+        If the room has no items or is not yet in the index, returns an empty set.
+        """
+        return frozenset(self.room_items.get(room_id, set()))
