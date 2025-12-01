@@ -202,7 +202,7 @@ class ECSWorld:
         code = self._get_type_code(component_type)
         return code in sig.component_type_codes
 
-    # Query facade (Sprint 4.5a)
+    # Query facade (Sprint 4.5a/4.5c)
     def query(self, signature: "QuerySignature") -> "QueryResult":
         """
         Execute an ECS query described by a QuerySignature.
@@ -212,6 +212,16 @@ class ECSWorld:
           which is relied upon by tests and SOT-SIM4-ECS-CORE. Later sprints
           may refine ordering to (archetype_id, entity_id) without breaking
           determinism.
+
+        Semantics (Sprint 4.5c):
+        - read: required components — entity must have all of them.
+        - write: required components — entity must have all of them.
+        - optional: optional components — entity may have these; if missing,
+          the corresponding slot in RowView.components is None.
+          Components tuple ordering is: (all read) + (all write) + (all optional)
+          and uses the same order as provided in the QuerySignature tuples.
+        - without: exclusion components — entities possessing any of these
+          component types are excluded from results.
         """
         # Local import to avoid circular imports at module level
         from .query import QuerySignature, QueryResult, RowView
@@ -219,11 +229,10 @@ class ECSWorld:
         if not isinstance(signature, QuerySignature):
             raise TypeError("ECSWorld.query expects a QuerySignature")
 
-        # For 4.5a, matching considers read + write sets only.
-        # optional/without are threaded structurally but not enforced yet.
         read_types = signature.read
         write_types = signature.write
         opt_types = signature.optional
+        without_types = signature.without
 
         all_fetch_types: Tuple[Type[object], ...] = tuple(read_types + write_types + opt_types)  # type: ignore[operator]
 
@@ -239,6 +248,15 @@ class ECSWorld:
                     missing = True
                     break
             if missing:
+                continue
+
+            # Exclude entities that have any of the `without` component types
+            excluded = False
+            for t in without_types:
+                if self.has_component(eid, t):
+                    excluded = True
+                    break
+            if excluded:
                 continue
 
             # Gather components in canonical order: read + write + optional

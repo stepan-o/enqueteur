@@ -8,6 +8,16 @@ from .entity import EntityID
 
 @dataclass(frozen=True)
 class QuerySignature:
+    """
+    Canonical query descriptor for ECSWorld.query.
+
+    - read: required component types; matched entities must have all.
+    - write: required component types; matched entities must have all.
+    - optional: optional component types; rows include a slot for each in
+      the components tuple, using None when the entity lacks that component.
+    - without: exclusion component types; entities possessing any of these
+      are excluded from the result.
+    """
     read: Tuple[type, ...]
     write: Tuple[type, ...]
     optional: Tuple[type, ...] = ()
@@ -21,7 +31,10 @@ class RowView:
 
     - entity: the EntityID.
     - components: positional tuple of component instances in a canonical order.
-      For now: (all read comps) + (all write comps) + (all optional comps).
+      Layout: (all read comps) + (all write comps) + (all optional comps).
+      For optional components, if the entity does not have the component,
+      the corresponding slot is None. The order within each group matches
+      the order in QuerySignature.
     """
     entity: EntityID
     components: Tuple[object, ...]
