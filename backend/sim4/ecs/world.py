@@ -220,16 +220,18 @@ class ECSWorld:
         """Return True if the entity_id exists in this world."""
         return entity_id in self._entities
 
-    # ---- Command application (S2.2 subset) ----
+    # ---- Command application (S2.2 + S2.3) ----
     def apply_commands(self, commands: Iterable[ECSCommand]) -> None:
         """
         Apply a batch of ECSCommands in a deterministic order.
 
-        For Sub-Sprint 2.2, this only supports:
+        Supported kinds after Sub-Sprint 2.3:
         - SET_COMPONENT
         - SET_FIELD
-
-        All other command kinds raise NotImplementedError for now.
+        - CREATE_ENTITY
+        - DESTROY_ENTITY
+        - ADD_COMPONENT
+        - REMOVE_COMPONENT
         """
         # 1) sort by seq for determinism
         sorted_cmds = sorted(commands, key=lambda c: c.seq)
@@ -240,9 +242,17 @@ class ECSWorld:
                 self._apply_set_component(cmd)
             elif cmd.kind is ECSCommandKind.SET_FIELD:
                 self._apply_set_field(cmd)
+            elif cmd.kind is ECSCommandKind.CREATE_ENTITY:
+                self._apply_create_entity(cmd)
+            elif cmd.kind is ECSCommandKind.DESTROY_ENTITY:
+                self._apply_destroy_entity(cmd)
+            elif cmd.kind is ECSCommandKind.ADD_COMPONENT:
+                self._apply_add_component(cmd)
+            elif cmd.kind is ECSCommandKind.REMOVE_COMPONENT:
+                self._apply_remove_component(cmd)
             else:
                 raise NotImplementedError(
-                    f"ECSWorld.apply_commands: command kind {cmd.kind} not implemented yet in Sub-Sprint 2.2"
+                    f"ECSWorld.apply_commands: command kind {cmd.kind} not supported"
                 )
 
     def _apply_set_component(self, cmd: ECSCommand) -> None:
@@ -295,3 +305,76 @@ class ECSWorld:
             )
 
         setattr(component, field_name, field_value)
+
+    # ---- New command helpers for S2.3 ----
+    def _apply_create_entity(self, cmd: ECSCommand) -> None:
+        """
+        CREATE_ENTITY semantics for S2.3:
+        - Ignore cmd.entity_id (IDs come from allocator).
+        - cmd.component_instance is treated as Optional[list[object]] payload.
+        - Components (if provided) are attached deterministically.
+
+        Note: Overloading of component_instance as a list payload is an
+        interim compromise for Sprint 2.
+        """
+        payload = cmd.component_instance
+        if payload is None:
+            components_list: List[object] = []
+        else:
+            if not isinstance(payload, list):
+                raise ValueError(
+                    "CREATE_ENTITY expects component_instance to be None or list[object]"
+                )
+            components_list = payload
+
+        # We could pass to create_entity directly; we keep explicit add for clarity
+        eid = self.create_entity()
+        for comp in components_list:
+            self.add_component(eid, comp)
+
+    def _apply_destroy_entity(self, cmd: ECSCommand) -> None:
+        if cmd.entity_id is None:
+            raise ValueError("DESTROY_ENTITY command requires entity_id")
+        eid = cmd.entity_id
+        if not self.has_entity(eid):
+            # Deterministic no-op
+            return
+        self.destroy_entity(eid)
+
+    def _apply_add_component(self, cmd: ECSCommand) -> None:
+        if cmd.entity_id is None or cmd.component_instance is None:
+            raise ValueError(
+                "ADD_COMPONENT command requires entity_id and component_instance"
+            )
+        eid = cmd.entity_id
+        comp = cmd.component_instance
+        if not self.has_entity(eid):
+            raise ValueError(f"ADD_COMPONENT: entity {eid} does not exist")
+        # Upsert semantics: replace if exists, else add
+        existing = self.get_component(eid, type(comp))
+        if existing is None:
+            self.add_component(eid, comp)
+        else:
+            # reuse same logic as set_component path
+            self.add_component(eid, comp)
+
+    def _apply_remove_component(self, cmd: ECSCommand) -> None:
+        if cmd.entity_id is None or cmd.component_type is None:
+            raise ValueError(
+                "REMOVE_COMPONENT command requires entity_id and component_type"
+            )
+        eid = cmd.entity_id
+        ctype = cmd.component_type
+        if not self.has_entity(eid):
+            raise ValueError(f"REMOVE_COMPONENT: entity {eid} does not exist")
+        if not self.has_component(eid, ctype):
+            # Deterministic no-op
+            return
+        self.remove_component(eid, ctype)
+
+    # ---- Small helper for tests/inspection ----
+    def iter_entity_ids(self) -> Iterable[EntityID]:
+        """Yield EntityIDs in ascending order (deterministic)."""
+        ids = list(self._entities.keys())
+        ids.sort()
+        return iter(ids)

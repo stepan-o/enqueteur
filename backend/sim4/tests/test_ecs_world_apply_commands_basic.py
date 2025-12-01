@@ -79,28 +79,3 @@ def test_apply_commands_respects_seq_ordering():
     assert comp is not None
     # seq=1 applied first (x=5), then seq=2 (x=10)
     assert comp.x == 10
-
-
-def test_apply_commands_unsupported_kinds_raise():
-    # Ensure non-implemented kinds raise NotImplementedError deterministically
-    from backend.sim4.ecs import (
-        cmd_add_component,
-        cmd_remove_component,
-        cmd_create_entity,
-        cmd_destroy_entity,
-    )
-
-    world = ECSWorld()
-    e = world.create_entity()
-
-    # add/remove
-    with pytest.raises(NotImplementedError):
-        world.apply_commands([cmd_add_component(1, e, DummyComponent(1))])
-    with pytest.raises(NotImplementedError):
-        world.apply_commands([cmd_remove_component(2, e, DummyComponent)])
-
-    # create/destroy
-    with pytest.raises(NotImplementedError):
-        world.apply_commands([cmd_create_entity(3, [])])
-    with pytest.raises(NotImplementedError):
-        world.apply_commands([cmd_destroy_entity(4, e)])
