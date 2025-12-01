@@ -13,13 +13,18 @@ from .identity import (
 )
 from .drives import DriveState
 from .emotion import EmotionFields
-from .embodiment import Transform
+from .embodiment import Transform, RoomPresence, PathState
 from .belief import BeliefGraphSubstrate, AgentInferenceState, SocialBeliefWeights
 from .social import SocialSubstrate, SocialImpressionState, FactionAffinityState
 from .motive_plan import (
     MotiveSubstrate,
     PlanStepSubstrate,
     PlanLayerSubstrate,
+)
+from .perception import (
+    PerceptionSubstrate,
+    AttentionSlots,
+    SalienceState,
 )
 from .intent_action import (
     PrimitiveIntent,
@@ -40,9 +45,14 @@ __all__ = [
     "DriveState",
     "EmotionFields",
     "Transform",
+    "RoomPresence",
+    "PathState",
     "BeliefGraphSubstrate",
     "AgentInferenceState",
     "SocialBeliefWeights",
+    "PerceptionSubstrate",
+    "AttentionSlots",
+    "SalienceState",
     "SocialSubstrate",
     "SocialImpressionState",
     "FactionAffinityState",
