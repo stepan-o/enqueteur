@@ -33,7 +33,11 @@ class MovementResolutionSystem:
                 ActionState,
                 ProfileTraits,
             ),
-            write=(),
+            write=(
+                MovementIntent,
+                PathState,
+                ActionState,
+            ),
         )
         result = ctx.world.query(signature)
 

@@ -31,9 +31,10 @@ class IntentResolverSystem:
                 DriveState,
                 Transform,
                 RoomPresence,
+            ),
+            write=(
                 SanitizedIntent,
             ),
-            write=(),
         )
         result = ctx.world.query(signature)
 

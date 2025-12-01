@@ -34,7 +34,14 @@ class ActionExecutionSystem:
                 InventorySubstrate,
                 ItemState,
             ),
-            write=(),
+            write=(
+                Transform,
+                RoomPresence,
+                PathState,
+                ActionState,
+                InventorySubstrate,
+                ItemState,
+            ),
         )
         result = ctx.world.query(signature)
 

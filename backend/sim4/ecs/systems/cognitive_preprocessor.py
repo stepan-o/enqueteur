@@ -28,7 +28,10 @@ class CognitivePreprocessor:
                 PerceptionSubstrate,
                 SalienceState,
             ),
-            write=(),
+            write=(
+                BeliefGraphSubstrate,
+                AgentInferenceState,
+            ),
         )
         result = ctx.world.query(signature)
 

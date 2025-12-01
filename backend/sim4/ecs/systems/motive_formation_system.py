@@ -34,9 +34,10 @@ class MotiveFormationSystem:
                 SocialBeliefWeights,
                 SelfModelSubstrate,
                 EmotionFields,
+            ),
+            write=(
                 MotiveSubstrate,
             ),
-            write=(),
         )
         result = ctx.world.query(signature)
         for row in result:

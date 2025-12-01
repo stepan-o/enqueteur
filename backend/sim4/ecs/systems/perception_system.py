@@ -38,11 +38,12 @@ class PerceptionSystem:
                 Transform,
                 RoomPresence,
                 ProfileTraits,
+            ),
+            write=(
                 PerceptionSubstrate,
                 AttentionSlots,
                 SalienceState,
             ),
-            write=(),
         )
         result = ctx.world.query(signature)
 

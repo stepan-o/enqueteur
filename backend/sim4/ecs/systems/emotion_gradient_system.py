@@ -21,7 +21,10 @@ class EmotionGradientSystem:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        signature = QuerySignature(read=(EmotionFields, DriveState), write=())
+        signature = QuerySignature(
+            read=(EmotionFields, DriveState),
+            write=(EmotionFields, DriveState),
+        )
         result = ctx.world.query(signature)
         for row in result:
             # TODO[SYS]: Implement gradient logic later.

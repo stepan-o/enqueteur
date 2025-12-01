@@ -22,7 +22,10 @@ class DriveUpdateSystem:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        signature = QuerySignature(read=(DriveState, EmotionFields, MotiveSubstrate), write=())
+        signature = QuerySignature(
+            read=(DriveState, EmotionFields, MotiveSubstrate),
+            write=(DriveState,),
+        )
         result = ctx.world.query(signature)
         for row in result:
             # TODO[SYS]: Implement drive update logic later.

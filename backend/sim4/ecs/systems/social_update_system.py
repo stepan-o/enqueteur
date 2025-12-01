@@ -36,7 +36,11 @@ class SocialUpdateSystem:
                 EmotionFields,
                 SocialBeliefWeights,
             ),
-            write=(),
+            write=(
+                SocialSubstrate,
+                SocialImpressionState,
+                FactionAffinityState,
+            ),
         )
         result = ctx.world.query(signature)
         for row in result:

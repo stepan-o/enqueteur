@@ -29,7 +29,10 @@ class InventorySystem:
                 InteractionIntent,
                 ActionState,
             ),
-            write=(),
+            write=(
+                InventorySubstrate,
+                ItemState,
+            ),
         )
         result = ctx.world.query(signature)
 

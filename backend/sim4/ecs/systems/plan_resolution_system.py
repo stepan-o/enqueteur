@@ -23,7 +23,7 @@ class PlanResolutionSystem:
     def run(self, ctx: SystemContext) -> None:
         signature = QuerySignature(
             read=(MotiveSubstrate, PlanLayerSubstrate, Transform, RoomPresence, PathState),
-            write=(),
+            write=(PlanLayerSubstrate, PathState),
         )
         result = ctx.world.query(signature)
         for row in result:

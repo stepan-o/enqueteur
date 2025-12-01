@@ -33,7 +33,10 @@ class InteractionResolutionSystem:
                 ActionState,
                 InteractionIntent,
             ),
-            write=(),
+            write=(
+                InteractionIntent,
+                ActionState,
+            ),
         )
         result = ctx.world.query(signature)
 
