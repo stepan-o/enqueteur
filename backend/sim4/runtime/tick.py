@@ -1,27 +1,35 @@
 """
-Tick pipeline skeleton (Sprint 6.2) — deterministic, phases A–I, no systems yet.
+Tick pipeline (Sprint 6) — deterministic A–I phases with systems, command application, and event consolidation.
 
-Scope:
-- Provide a minimal tick(clock, ecs_world, world_ctx, ...) entrypoint that wires
-  the canonical phases A–I as per SOT-SIM4-RUNTIME-TICK, but does not execute
-  real systems or collect commands yet.
-- Uses ECSWorld.apply_commands([]) and world.apply_world_commands([]) as
-  placeholders for Phases E and F.
-- Returns a lightweight TickResult DTO.
+Overview (SOT-SIM4-RUNTIME-TICK):
+- Phases A–I are wired in order and execute deterministically per tick.
+- Phases B–D: runtime schedules and runs ECS systems via
+  `system_scheduler.iter_phase_systems("B"/"C"/"D")`, injecting a per‑system
+  `SimulationRNG` seed derived from (rng_seed, tick_index, system_index) and a
+  per‑tick WorldViews façade (read‑only) over the world substrate.
+- Phase E: runtime uses `ECSCommandBatch` to globally sequence ECS commands
+  (seq 0..N-1 in aggregated order) and applies them with `ECSWorld.apply_commands(...)`.
+- Phase F: runtime uses `WorldCommandBatch` to globally sequence WorldCommands
+  and applies them with `apply_world_commands(...)` from world/, emitting
+  `WorldEvent` instances.
+- Phase G: runtime consolidates events via `runtime.events.consolidate_events(...)`
+  into a list of `RuntimeEvent` values (origin, seq, payload) for the tick.
+- Phases A, H, I are present as stubs: no real input bundle, diff/history, or
+  narrative trigger yet.
 
-SOT alignment (Sub‑Sprint 6.2a):
-- Advance the clock at the start of the tick (after conceptually locking
-  WorldContext) so that all phases A–I observe the current tick_index and dt.
-- Phase comments map 1:1 to SOT-SIM4-RUNTIME-TICK (A through I).
+Clock semantics:
+- The TickClock is advanced at the start of tick (after conceptual world lock),
+  so all phases observe the same tick_index and dt for this step.
 
-Layering (SOP-100): runtime orchestrates and may import ecs/ and world/.
-Determinism (SOP-200): no system time; RNG seed is accepted but not used yet.
+Layering (SOP-100) and determinism (SOP-200):
+- runtime orchestrates ECS and world; no wall‑clock or OS randomness is used.
+- Command/event ordering is explicitly defined and test‑covered.
 
 Note on WorldContext naming:
-- This tick currently takes the world-layer substrate WorldContext from
-  backend.sim4.world.context. Per SOT-SIM4-RUNTIME-WORLD-CONTEXT, a runtime‑level
-  WorldContext façade will be added later and this tick will depend on that
-  instead.  # TODO[RT-WORLD-CONTEXT]
+- This tick currently consumes the world‑layer substrate WorldContext from
+  backend.sim4.world.context. Per SOT‑SIM4‑RUNTIME‑WORLD‑CONTEXT, a runtime‑level
+  WorldContext façade will be introduced later; tick() will depend on that
+  façade instead.  # TODO[RT-WORLD-CONTEXT]
 """
 
 from __future__ import annotations
@@ -51,15 +59,16 @@ class TickResult:
     """
     Minimal runtime-facing outcome DTO for a single tick step (kernel result).
 
-    Fields:
-    - tick_index: the simulation tick index for this tick (after start-of-tick advance).
-    - dt: delta time used for this tick.
-    - world_events: WorldEvent list emitted by Phase F (in application order).
-    - ecs_commands: list of ECSCommand actually applied in Phase E (post global sequencing).
-    - runtime_events: consolidated RuntimeEvent list from Phase G (world/ecs/runtime flattened with per-tick seq).
-    - ecs_commands_applied: number of ECS commands applied in Phase E.
-    - world_commands_applied: number of WorldCommands applied in Phase F.
-    - notes: optional diagnostic placeholders for later phases.
+    Fields (Sprint 6):
+    - tick_index: simulation tick index for this tick (post start‑of‑tick advance).
+    - dt: delta time for this tick.
+    - world_events: WorldEvent list emitted by Phase F (application order).
+    - ecs_commands: ECSCommand list applied in Phase E (globally seq‑ordered).
+    - runtime_events: consolidated RuntimeEvent list from Phase G
+      (world → ecs → runtime, per‑tick seq 0..N-1).
+    - ecs_commands_applied: number applied in Phase E.
+    - world_commands_applied: number applied in Phase F.
+    - notes: diagnostic bag reserved for later phases.
 
     This DTO may be extended or wrapped by SimulationEngine.step() per
     SOT-SIM4-ENGINE in later sub-sprints.
@@ -132,7 +141,8 @@ def tick(
     views = WorldViews(world_ctx)  # single per-tick instance reused across systems
     base_seed = rng_seed * 1_000_003 + int(clock.tick_index)
 
-    # Phase B, C, D — System phases
+    # Phase B, C, D — System phases (generic today; specialization into
+    # Perception / Cognition / Intention is planned in later sprints per SOT)
     aggregated_ecs_commands: List[ECSCommand] = []
     # Deterministic per-system seeding: combine base_seed with an increasing index
     local_index = 0

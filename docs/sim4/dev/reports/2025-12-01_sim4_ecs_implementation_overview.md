@@ -292,3 +292,61 @@ Ready for Sprint 6 (Runtime Tick)
   - Event routing to history/snapshot subsystems (once wired).
 - Not ready:
   - NavGraph-based neighbor queries; treat iter_room_neighbors as an empty iterator until implemented.
+
+---
+
+## 4) Runtime Tick (Sprint 6 Overview)
+
+### 4.1 Goals
+
+- Provide a deterministic tick entrypoint (`backend.sim4.runtime.tick.tick(...)`) that:
+  - orchestrates ECS and world layers in SOP-100 order,
+  - confines mutation to Phases E (ECS) and F (world),
+  - surfaces a stable `TickResult` and consolidated events for later history/snapshot/narrative work.
+
+### 4.2 Phase Pipeline (As Implemented)
+
+- Tick begins by advancing `TickClock` so all phases see the current `tick_index` and `dt`.
+- Phases B–D:
+  - Use a `system_scheduler.iter_phase_systems(phase)` contract.
+  - Each system receives a `SystemContext` with: `ECSWorld`, `dt`, `SimulationRNG`, `WorldViews`, `tick_index`, and an `ECSCommandBuffer`.
+  - Systems are expected to be side‑effect‑free except for emitting ECS commands into the buffer.
+- Phase E:
+  - Aggregates commands across B/C/D.
+  - Wraps them in `ECSCommandBatch` to assign a global sequence (0..N‑1 in aggregated order).
+  - Applies via `ECSWorld.apply_commands(...)`.
+- Phase F:
+  - Accepts `world_commands_in` from the caller (tests/harness in Sprint 6).
+  - Normalizes via `WorldCommandBatch` and applies with `apply_world_commands(...)` in the world layer.
+  - Returns `WorldEvent` list representing applied commands.
+- Phase G:
+  - Calls `consolidate_events(...)` to wrap world (and future ECS/runtime) events into a flat `RuntimeEvent` list with per‑tick `seq`.
+
+### 4.3 Determinism Guarantees
+
+- No wall‑clock time or OS randomness inside runtime.
+- System RNG: `SimulationRNG` seeded from `(rng_seed, tick_index, system_index)`.
+- Command ordering:
+  - ECS: `ECSCommandBatch` ensures stable 0..N‑1 ordering following aggregation order.
+  - World: `WorldCommandBatch` ensures stable application order.
+- Event ordering:
+  - `consolidate_events` currently orders world → ECS → runtime in the order provided by the caller.
+
+### 4.4 Known Gaps & Next Sprints
+
+- No Phase A InputBundle yet.
+- No diff/history/replay modules: Phase H is a no‑op.
+- No narrative bridge or narrative call in Phase I.
+- No runtime‑level `WorldContext` façade; tick() currently consumes `backend.sim4.world.context.WorldContext` directly.
+
+These will be addressed in:
+- Sprint 7: snapshot layer (WorldSnapshot, AgentSnapshot, StageEpisodeV2).
+- Sprint 8: narrative bridge (`runtime/narrative_context.py` and narrative interface wiring).
+
+### 4.5 Tests Covering the Pipeline
+
+- `test_tick_skeleton.py`: tick entrypoint existence and clock advance semantics.
+- `test_tick_system_execution.py`: systems run in phases B–D, commands collected deterministically.
+- `test_command_bus_and_application.py`: Phase E and F application semantics (ECS create entity, world move agent).
+- `test_event_consolidation.py`: Phase G consolidation; command counts in `TickResult`.
+- `test_toy_simulation_tick.py`: end‑to‑end toy scenario (systems → command bus → Phase E/F → events → TickResult) with determinism checks.

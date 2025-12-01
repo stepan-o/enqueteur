@@ -564,3 +564,51 @@ RNG usage is centralized and logged.
 
 At that point, the runtime tick is SimX-safe:
 we can scale up worlds, agents, and narrative complexity without breaking determinism or Rust portability.
+## 10. Sprint 6 Implementation Status (Sim4 Runtime Tick)
+
+As of Sprint 6 (2025-12-01), the following runtime tick behavior is implemented in the Python prototype:
+
+- `tick(...)` in `backend/sim4/runtime/tick.py` implements phases A–I in order, with:
+  - Phase A: stub input processing (no real InputBundle yet).
+  - Phases B–D: generic system phases using a `system_scheduler.iter_phase_systems(phase)` contract, with deterministic `SimulationRNG` seeding per system based on `(rng_seed, tick_index, system_index)`.
+  - Phase E: ECS command application via `ECSCommandBatch` (global seq 0..N-1 in aggregated order) and `ECSWorld.apply_commands(...)`.
+  - Phase F: World command application via `WorldCommandBatch` (global seq 0..N-1) and `apply_world_commands(...)` from `backend.sim4.world.apply_world_commands`, emitting `WorldEvent` values.
+  - Phase G: Event consolidation into a flat `RuntimeEvent` list via `backend.sim4.runtime.events::consolidate_events(...)` (ordering policy: world → ecs → runtime, each in provided order).
+  - Phases H & I: present as stubs (no diff/history or narrative yet).
+
+Deviations from the long‑term design in this SOT (pragmatic for Sprint 6):
+
+- The runtime‑level `WorldContext` façade (defined by SOT‑SIM4‑RUNTIME‑WORLD‑CONTEXT) is not implemented yet:
+  - `tick(...)` currently consumes `backend.sim4.world.context.WorldContext` directly.
+- Phases B/C/D are not yet specialized/renamed as Perception/Cognition/Intention:
+  - The scheduler simply executes configured system types for phases "B", "C", and "D".
+- History/diff/replay modules:
+  - No `runtime/diff.py`, `runtime/history.py`, or `runtime/replay.py` exist yet; Phase H is a placeholder.
+- Narrative integration:
+  - Phase I does not yet call any narrative bridge; it is reserved for later Sprints (see SOT‑SIM4‑RUNTIME‑NARRATIVE‑CONTEXT).
+
+Determinism & layer boundaries satisfied in Sprint 6:
+
+- SOP‑200 determinism:
+  - All state mutations are confined to Phases E (ECS) and F (world).
+  - RNG usage is deterministic and injected into systems via `SimulationRNG` using explicit seeding.
+  - Command and event ordering is stable (policy is documented and covered by tests).
+- SOP‑100 layer boundaries:
+  - runtime orchestrates ECS + world and does not store component data.
+  - world does not import ecs or runtime; systems access world only via read‑only views.
+
+### Sprint 6 Readiness for Sprint 7/8
+
+The current runtime tick implementation is considered:
+
+> ✅ Ready for Sprint 7 (snapshot layer) and Sprint 8 (narrative bridge)
+
+in the sense that:
+
+- A deterministic per‑tick `TickResult` is available, containing:
+  - `tick_index`, `dt`
+  - the ECS commands applied during Phase E
+  - the world outcomes of Phase F via `WorldEvent` list
+  - consolidated runtime events (`List[RuntimeEvent]`) suitable for history/snapshot/narrative.
+- Future snapshot builders can safely read ECS and world state after Phase F, using the same tick’s `tick_index`.
+- Narrative can be wired as a Phase‑I sidecar once snapshot builders are in place.

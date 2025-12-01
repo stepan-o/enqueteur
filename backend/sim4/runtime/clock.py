@@ -7,11 +7,13 @@ Scope & constraints (SOT-SIM4-RUNTIME-TICK):
 - No reliance on system time or randomness. No hidden globals.
 - Rust-portable shapes only: ints, floats, and simple dataclasses.
 
-Notes on dt:
-- Per SOT guidance, dt may be fixed for a given simulation run (commonly 1/60).
-- We support supplying a custom dt at construction time; TickClock.advance()
+Notes:
+- dt: Per SOT guidance, dt may be fixed for a given simulation run (commonly 1/60).
+  We support supplying a custom dt at construction time; TickClock.advance()
   does not change dt — it remains stable unless the caller constructs a new
   clock with a different dt.
+- Tick semantics: runtime.tick() advances the clock at the start of each tick,
+  so TickResult.tick_index is the post-advance value observed by all phases.
 """
 
 from __future__ import annotations

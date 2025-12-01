@@ -7,6 +7,11 @@ Scope:
   seq = 0..N-1 in the order provided.
 - No randomness, no time; behavior is fully deterministic.
 
+SOT alignment:
+- SOT-SIM4-RUNTIME-TICK §4.5 (Phase E) and §4.6 (Phase F): runtime must apply
+  commands in a stable, deterministic global order within a tick. These helpers
+  implement the minimal sequencing policy used by runtime.tick.
+
 Layering:
 - This lives in runtime/ and may import ecs.* and world.* (SOP-100 compliant).
   Neither ecs/ nor world/ import runtime/.

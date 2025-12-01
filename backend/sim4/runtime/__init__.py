@@ -1,17 +1,21 @@
-"""Sim4 runtime package public API (Sprint 6 minimal export).
+"""Sim4 runtime package public API (Sprint 6).
 
-Exposes clock primitives and the minimal tick pipeline skeleton.
-Additional runtime modules (engine, scheduler, etc.) will be added in later
-sub-sprints.
+Stable, minimal surface for upper layers (engine, snapshot, narrative):
+
+from backend.sim4.runtime import tick, TickClock, TickResult, RuntimeEvent
+
+Notes:
+- Do not expand this surface without a SOT-backed decision; keep imports minimal
+  and layer-pure (SOP-100).
 """
 
-from .clock import TickClock, TickIndex, DeltaTime
+from .clock import TickClock
 from .tick import tick, TickResult
+from .events import RuntimeEvent
 
 __all__ = [
     "TickClock",
-    "TickIndex",
-    "DeltaTime",
     "tick",
     "TickResult",
+    "RuntimeEvent",
 ]
