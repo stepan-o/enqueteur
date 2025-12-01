@@ -202,18 +202,53 @@ class ECSWorld:
         code = self._get_type_code(component_type)
         return code in sig.component_type_codes
 
-    # Query facade
-    def query(self, component_types: Tuple[Type[object], ...]) -> "QueryResult":
-        # Local import to avoid circular import at module level
-        from .query import QuerySignature, QueryResult
+    # Query facade (Sprint 4.5a)
+    def query(self, signature: "QuerySignature") -> "QueryResult":
+        """
+        Execute an ECS query described by a QuerySignature.
 
-        # Normalize order by component type code
-        codes_with_types = [(self._get_type_code(t), t) for t in component_types]
-        codes_with_types.sort(key=lambda x: x[0])
-        norm_types = tuple(t for _c, t in codes_with_types)
-        norm_codes = tuple(c for c, _t in codes_with_types)
-        qsig = QuerySignature(component_types=norm_types, component_type_codes=norm_codes)
-        return QueryResult(world=self, signature=qsig)
+        - Only QuerySignature is accepted (no legacy tuple API).
+        - Result ordering is deterministic (ascending by EntityID for now),
+          which is relied upon by tests and SOT-SIM4-ECS-CORE. Later sprints
+          may refine ordering to (archetype_id, entity_id) without breaking
+          determinism.
+        """
+        # Local import to avoid circular imports at module level
+        from .query import QuerySignature, QueryResult, RowView
+
+        if not isinstance(signature, QuerySignature):
+            raise TypeError("ECSWorld.query expects a QuerySignature")
+
+        # For 4.5a, matching considers read + write sets only.
+        # optional/without are threaded structurally but not enforced yet.
+        read_types = signature.read
+        write_types = signature.write
+        opt_types = signature.optional
+
+        all_fetch_types: Tuple[Type[object], ...] = tuple(read_types + write_types + opt_types)  # type: ignore[operator]
+
+        # Deterministic iteration over entity IDs.
+        ids = sorted(self._entities.keys())
+
+        rows: list[RowView] = []
+        for eid in ids:
+            # Must have all read + write component types
+            missing = False
+            for t in read_types + write_types:  # type: ignore[operator]
+                if not self.has_component(eid, t):
+                    missing = True
+                    break
+            if missing:
+                continue
+
+            # Gather components in canonical order: read + write + optional
+            comps: list[object] = []
+            for t in all_fetch_types:
+                comp = self.get_component(eid, t)
+                comps.append(comp)
+            rows.append(RowView(entity=eid, components=tuple(comps)))
+
+        return QueryResult(rows)
 
     # ---- Existence helper ----
     def has_entity(self, entity_id: EntityID) -> bool:

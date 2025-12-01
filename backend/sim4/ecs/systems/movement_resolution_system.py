@@ -9,6 +9,7 @@ mutating ECS state.
 """
 
 from .base import SystemContext
+from ..query import QuerySignature
 from ..components.intent_action import SanitizedIntent, MovementIntent, ActionState
 from ..components.embodiment import Transform, RoomPresence, PathState
 from ..components.identity import ProfileTraits
@@ -22,8 +23,8 @@ class MovementResolutionSystem:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        result = ctx.world.query(
-            (
+        signature = QuerySignature(
+            read=(
                 SanitizedIntent,
                 Transform,
                 RoomPresence,
@@ -31,9 +32,11 @@ class MovementResolutionSystem:
                 MovementIntent,
                 ActionState,
                 ProfileTraits,
-            )
+            ),
+            write=(),
         )
+        result = ctx.world.query(signature)
 
-        for eid, _comps in result:
+        for row in result:
             # TODO[SYS]: implement movement resolution logic later.
-            _ = eid
+            _ = row.entity

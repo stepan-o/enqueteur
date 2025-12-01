@@ -8,6 +8,7 @@ without mutating ECS state.
 """
 
 from .base import SystemContext
+from ..query import QuerySignature
 from ..components.belief import BeliefGraphSubstrate, AgentInferenceState
 from ..components.perception import PerceptionSubstrate, SalienceState
 
@@ -20,15 +21,17 @@ class CognitivePreprocessor:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        result = ctx.world.query(
-            (
+        signature = QuerySignature(
+            read=(
                 BeliefGraphSubstrate,
                 AgentInferenceState,
                 PerceptionSubstrate,
                 SalienceState,
-            )
+            ),
+            write=(),
         )
+        result = ctx.world.query(signature)
 
-        for eid, _comps in result:
+        for row in result:
             # TODO[SYS]: Implement belief update logic later.
-            _ = eid
+            _ = row.entity

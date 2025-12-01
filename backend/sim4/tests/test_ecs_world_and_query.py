@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from backend.sim4.ecs import ECSWorld
+from backend.sim4.ecs.query import QuerySignature
 
 
 @dataclass
@@ -70,18 +71,24 @@ def test_queries_and_deterministic_ordering():
     e3 = w1.create_entity([Velocity(0, 1)])
 
     # Basic queries
-    q_pos = w1.query((Position,))
-    results_pos = q_pos.to_list()
+    sig_pos = QuerySignature(read=(Position,), write=())
+    q_pos = w1.query(sig_pos)
+    results_pos = list(q_pos)
     # Must be ordered by ascending EntityID
-    assert [eid for eid, _ in results_pos] == sorted([e1, e2])
+    assert [row.entity for row in results_pos] == sorted([e1, e2])
     # Ensure each has Position and tuple order matches query
-    for eid, (p,) in results_pos:
+    for row in results_pos:
+        (p,) = row.components
         assert isinstance(p, Position)
 
-    q_both = w1.query((Position, Velocity))
+    sig_both = QuerySignature(read=(Position, Velocity), write=())
+    q_both = w1.query(sig_both)
     results_both = list(q_both)
     # Only entities with both
-    assert results_both == [(e2, (w1.get_component(e2, Position), w1.get_component(e2, Velocity)))]
+    assert [row.entity for row in results_both] == [e2]
+    (p2, v2) = results_both[0].components
+    assert p2 == w1.get_component(e2, Position)
+    assert v2 == w1.get_component(e2, Velocity)
 
     # Determinism: replay same sequence in a new world and compare
     w2 = ECSWorld()
@@ -92,6 +99,14 @@ def test_queries_and_deterministic_ordering():
     assert (e1, e2, e3) == (1, 2, 3)
     assert (e1b, e2b, e3b) == (1, 2, 3)
 
-    # Same queries yield identical lists
-    assert w2.query((Position,)).to_list() == results_pos
-    assert list(w2.query((Position, Velocity))) == results_both
+    # Same queries yield identical entity ordering and component types
+    results_pos2 = list(w2.query(sig_pos))
+    assert [row.entity for row in results_pos2] == [row.entity for row in results_pos]
+    for row in results_pos2:
+        (p,) = row.components
+        assert isinstance(p, Position)
+
+    results_both2 = list(w2.query(sig_both))
+    assert [row.entity for row in results_both2] == [row.entity for row in results_both]
+    (p2b, v2b) = results_both2[0].components
+    assert isinstance(p2b, Position) and isinstance(v2b, Velocity)

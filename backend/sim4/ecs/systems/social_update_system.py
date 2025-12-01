@@ -8,6 +8,7 @@ drive/emotion and social belief weights. No ECS mutations are made.
 """
 
 from .base import SystemContext
+from ..query import QuerySignature
 from ..components.social import (
     SocialSubstrate,
     SocialImpressionState,
@@ -26,16 +27,18 @@ class SocialUpdateSystem:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        result = ctx.world.query(
-            (
+        signature = QuerySignature(
+            read=(
                 SocialSubstrate,
                 SocialImpressionState,
                 FactionAffinityState,
                 DriveState,
                 EmotionFields,
                 SocialBeliefWeights,
-            )
+            ),
+            write=(),
         )
-        for eid, _comps in result:
+        result = ctx.world.query(signature)
+        for row in result:
             # TODO[SYS]: Implement social update logic later.
-            _ = eid
+            _ = row.entity

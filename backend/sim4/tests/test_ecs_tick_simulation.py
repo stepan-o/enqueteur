@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from backend.sim4.ecs import ECSWorld
+from backend.sim4.ecs.query import QuerySignature
 from backend.sim4.ecs.systems.base import ECSCommandBuffer
 
 
@@ -39,11 +40,12 @@ def test_spawn_and_modify_entities_via_commands():
     world.apply_commands(buf.commands)
 
     # Discover entities with Health using the query API
-    results = world.query((Health,)).to_list()
+    signature = QuerySignature(read=(Health,), write=())
+    results = list(world.query(signature))
     # Expect exactly two entities
     assert len(results) == 2
     # Collect in ascending entity id order
-    entity_ids = [eid for eid, (_h,) in results]
+    entity_ids = [row.entity for row in results]
 
     # Second tick: update their health values deterministically
     buf = ECSCommandBuffer()
@@ -53,11 +55,14 @@ def test_spawn_and_modify_entities_via_commands():
     world.apply_commands(buf.commands)
 
     # Re-query and assert final values
-    results2 = world.query((Health,)).to_list()
+    signature = QuerySignature(read=(Health,), write=())
+    results2 = list(world.query(signature))
     assert len(results2) == 2
     # Results are ordered by entity ID deterministically
-    (e0, (h0,)), (e1, (h1,)) = results2
-    assert e0 == entity_ids[0] and e1 == entity_ids[1]
+    row0, row1 = results2
+    assert row0.entity == entity_ids[0] and row1.entity == entity_ids[1]
+    (h0,) = row0.components
+    (h1,) = row1.components
     assert isinstance(h0, Health) and isinstance(h1, Health)
     assert {h0.value, h1.value} == {2, 20}
 
@@ -85,8 +90,10 @@ def _run_tick_scenario_snapshot() -> list[tuple[int, int]]:
 
     # Build snapshot via query
     snapshot: list[tuple[int, int]] = []
-    for eid, (h,) in world.query((Health,)):
-        snapshot.append((int(eid), h.value))
+    signature = QuerySignature(read=(Health,), write=())
+    for row in world.query(signature):
+        (h,) = row.components
+        snapshot.append((int(row.entity), h.value))
     snapshot.sort(key=lambda p: p[0])
     return snapshot
 

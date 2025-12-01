@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from backend.sim4.ecs import ECSWorld
+from backend.sim4.ecs.query import QuerySignature
 from backend.sim4.ecs.systems.base import ECSCommandBuffer
 from backend.sim4.ecs.components import (
     AgentIdentity,
@@ -40,10 +41,13 @@ def test_single_entity_identity_transform_emotion_bundle():
         ]
     )
 
-    result = world.query((AgentIdentity, Transform, EmotionFields)).to_list()
+    signature = QuerySignature(read=(AgentIdentity, Transform, EmotionFields), write=())
+    rows = list(world.query(signature))
 
-    assert len(result) == 1
-    (eid, (identity, transform, emotion)) = result[0]
+    assert len(rows) == 1
+    row0 = rows[0]
+    eid = row0.entity
+    (identity, transform, emotion) = row0.components
 
     assert eid == e
     assert isinstance(identity, AgentIdentity)
@@ -101,14 +105,17 @@ def test_query_returns_only_entities_with_drive_state():
         ]
     )
 
-    rows = world.query((DriveState,)).to_list()
+    signature = QuerySignature(read=(DriveState,), write=())
+    rows = list(world.query(signature))
 
-    entity_ids = [eid for eid, (_drive,) in rows]
+    entity_ids = [row.entity for row in rows]
     assert e0 not in entity_ids
     assert e1 in entity_ids
     assert e2 in entity_ids
 
-    for eid, (drive,) in rows:
+    for row in rows:
+        eid = row.entity
+        (drive,) = row.components
         assert isinstance(drive, DriveState)
         # Spot check one value deterministically
         if eid == e1:
@@ -146,8 +153,11 @@ def test_commands_can_modify_substrate_components():
     assert drive is not None
     assert drive.curiosity == 0.9
 
-    rows = world.query((DriveState,)).to_list()
+    signature = QuerySignature(read=(DriveState,), write=())
+    rows = list(world.query(signature))
     assert len(rows) == 1
-    (eid, (drive2,)) = rows[0]
+    row0 = rows[0]
+    eid = row0.entity
+    (drive2,) = row0.components
     assert eid == e
     assert drive2.curiosity == 0.9

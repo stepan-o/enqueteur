@@ -9,6 +9,7 @@ mutating ECS state or emitting commands.
 """
 
 from .base import SystemContext
+from ..query import QuerySignature
 from ..components.intent_action import MovementIntent, InteractionIntent, ActionState
 from ..components.embodiment import Transform, RoomPresence, PathState
 from ..components.inventory import InventorySubstrate, ItemState
@@ -22,8 +23,8 @@ class ActionExecutionSystem:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        result = ctx.world.query(
-            (
+        signature = QuerySignature(
+            read=(
                 MovementIntent,
                 PathState,
                 InteractionIntent,
@@ -32,9 +33,11 @@ class ActionExecutionSystem:
                 RoomPresence,
                 InventorySubstrate,
                 ItemState,
-            )
+            ),
+            write=(),
         )
+        result = ctx.world.query(signature)
 
-        for eid, _comps in result:
+        for row in result:
             # TODO[SYS]: populate ECS/world commands in a later sprint.
-            _ = eid
+            _ = row.entity

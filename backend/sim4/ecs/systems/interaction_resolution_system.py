@@ -9,6 +9,7 @@ mutating ECS state.
 """
 
 from .base import SystemContext
+from ..query import QuerySignature
 from ..components.intent_action import InteractionIntent, SanitizedIntent, ActionState
 from ..components.embodiment import Transform, RoomPresence
 from ..components.inventory import InventorySubstrate, ItemState
@@ -22,8 +23,8 @@ class InteractionResolutionSystem:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        result = ctx.world.query(
-            (
+        signature = QuerySignature(
+            read=(
                 SanitizedIntent,
                 Transform,
                 RoomPresence,
@@ -31,9 +32,11 @@ class InteractionResolutionSystem:
                 ItemState,
                 ActionState,
                 InteractionIntent,
-            )
+            ),
+            write=(),
         )
+        result = ctx.world.query(signature)
 
-        for eid, _comps in result:
+        for row in result:
             # TODO[SYS]: implement interaction resolution logic later.
-            _ = eid
+            _ = row.entity

@@ -8,6 +8,7 @@ iterates deterministically without mutating ECS state.
 """
 
 from .base import SystemContext
+from ..query import QuerySignature
 from ..components.emotion import EmotionFields
 from ..components.drives import DriveState
 
@@ -20,7 +21,8 @@ class EmotionGradientSystem:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        result = ctx.world.query((EmotionFields, DriveState))
-        for eid, _comps in result:
+        signature = QuerySignature(read=(EmotionFields, DriveState), write=())
+        result = ctx.world.query(signature)
+        for row in result:
             # TODO[SYS]: Implement gradient logic later.
-            _ = eid
+            _ = row.entity

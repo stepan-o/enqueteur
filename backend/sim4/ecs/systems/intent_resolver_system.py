@@ -8,6 +8,7 @@ relevant substrates and iterates without mutating ECS state.
 """
 
 from .base import SystemContext
+from ..query import QuerySignature
 from ..components.intent_action import PrimitiveIntent, SanitizedIntent
 from ..components.motive_plan import MotiveSubstrate, PlanLayerSubstrate
 from ..components.drives import DriveState
@@ -22,8 +23,8 @@ class IntentResolverSystem:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        result = ctx.world.query(
-            (
+        signature = QuerySignature(
+            read=(
                 PrimitiveIntent,
                 MotiveSubstrate,
                 PlanLayerSubstrate,
@@ -31,9 +32,11 @@ class IntentResolverSystem:
                 Transform,
                 RoomPresence,
                 SanitizedIntent,
-            )
+            ),
+            write=(),
         )
+        result = ctx.world.query(signature)
 
-        for eid, _comps in result:
+        for row in result:
             # TODO[SYS]: implement intent gating/resolution later.
-            _ = eid
+            _ = row.entity

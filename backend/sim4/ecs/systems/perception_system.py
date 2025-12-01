@@ -12,6 +12,7 @@ wire the query and no-op over results.
 """
 
 from .base import SystemContext
+from ..query import QuerySignature
 from ..components.embodiment import Transform, RoomPresence
 from ..components.identity import ProfileTraits
 from ..components.perception import (
@@ -32,17 +33,19 @@ class PerceptionSystem:
         # Query for entities that have the expected input/output substrates.
         # Our query API accepts a tuple of component types and yields
         # (entity_id, (components...)) in deterministic order.
-        result = ctx.world.query(
-            (
+        signature = QuerySignature(
+            read=(
                 Transform,
                 RoomPresence,
                 ProfileTraits,
                 PerceptionSubstrate,
                 AttentionSlots,
                 SalienceState,
-            )
+            ),
+            write=(),
         )
+        result = ctx.world.query(signature)
 
-        for eid, _comps in result:
+        for row in result:
             # TODO[SYS]: Implement perception logic in later sprint.
-            _ = eid
+            _ = row.entity

@@ -9,6 +9,7 @@ ECS state.
 """
 
 from .base import SystemContext
+from ..query import QuerySignature
 from ..components.inventory import InventorySubstrate, ItemState
 from ..components.intent_action import InteractionIntent, ActionState
 
@@ -21,15 +22,17 @@ class InventorySystem:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        result = ctx.world.query(
-            (
+        signature = QuerySignature(
+            read=(
                 InventorySubstrate,
                 ItemState,
                 InteractionIntent,
                 ActionState,
-            )
+            ),
+            write=(),
         )
+        result = ctx.world.query(signature)
 
-        for eid, _comps in result:
+        for row in result:
             # TODO[SYS]: implement inventory update logic later.
-            _ = eid
+            _ = row.entity

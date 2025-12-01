@@ -8,6 +8,7 @@ DriveState, EmotionFields, and MotiveSubstrate. No mutations are made.
 """
 
 from .base import SystemContext
+from ..query import QuerySignature
 from ..components.drives import DriveState
 from ..components.emotion import EmotionFields
 from ..components.motive_plan import MotiveSubstrate
@@ -21,7 +22,8 @@ class DriveUpdateSystem:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        result = ctx.world.query((DriveState, EmotionFields, MotiveSubstrate))
-        for eid, _comps in result:
+        signature = QuerySignature(read=(DriveState, EmotionFields, MotiveSubstrate), write=())
+        result = ctx.world.query(signature)
+        for row in result:
             # TODO[SYS]: Implement drive update logic later.
-            _ = eid
+            _ = row.entity

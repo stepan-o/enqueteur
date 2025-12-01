@@ -8,6 +8,7 @@ plus embodiment/path state. No ECS mutations are made.
 """
 
 from .base import SystemContext
+from ..query import QuerySignature
 from ..components.motive_plan import MotiveSubstrate, PlanLayerSubstrate
 from ..components.embodiment import Transform, RoomPresence, PathState
 
@@ -20,9 +21,11 @@ class PlanResolutionSystem:
     """
 
     def run(self, ctx: SystemContext) -> None:
-        result = ctx.world.query(
-            (MotiveSubstrate, PlanLayerSubstrate, Transform, RoomPresence, PathState)
+        signature = QuerySignature(
+            read=(MotiveSubstrate, PlanLayerSubstrate, Transform, RoomPresence, PathState),
+            write=(),
         )
-        for eid, _comps in result:
+        result = ctx.world.query(signature)
+        for row in result:
             # TODO[SYS]: Implement plan resolution logic later.
-            _ = eid
+            _ = row.entity
