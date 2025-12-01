@@ -6,6 +6,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Tuple, Type
 from .entity import EntityAllocator, EntityID
 from .archetype import ArchetypeRegistry, ArchetypeSignature
 from .storage import ArchetypeStorage
+from .commands import ECSCommand, ECSCommandKind
 
 
 @dataclass
@@ -213,3 +214,84 @@ class ECSWorld:
         norm_codes = tuple(c for c, _t in codes_with_types)
         qsig = QuerySignature(component_types=norm_types, component_type_codes=norm_codes)
         return QueryResult(world=self, signature=qsig)
+
+    # ---- Existence helper ----
+    def has_entity(self, entity_id: EntityID) -> bool:
+        """Return True if the entity_id exists in this world."""
+        return entity_id in self._entities
+
+    # ---- Command application (S2.2 subset) ----
+    def apply_commands(self, commands: Iterable[ECSCommand]) -> None:
+        """
+        Apply a batch of ECSCommands in a deterministic order.
+
+        For Sub-Sprint 2.2, this only supports:
+        - SET_COMPONENT
+        - SET_FIELD
+
+        All other command kinds raise NotImplementedError for now.
+        """
+        # 1) sort by seq for determinism
+        sorted_cmds = sorted(commands, key=lambda c: c.seq)
+
+        # 2) dispatch per kind
+        for cmd in sorted_cmds:
+            if cmd.kind is ECSCommandKind.SET_COMPONENT:
+                self._apply_set_component(cmd)
+            elif cmd.kind is ECSCommandKind.SET_FIELD:
+                self._apply_set_field(cmd)
+            else:
+                raise NotImplementedError(
+                    f"ECSWorld.apply_commands: command kind {cmd.kind} not implemented yet in Sub-Sprint 2.2"
+                )
+
+    def _apply_set_component(self, cmd: ECSCommand) -> None:
+        # Validate required fields
+        if cmd.entity_id is None or cmd.component_instance is None:
+            raise ValueError(
+                "SET_COMPONENT command requires entity_id and component_instance"
+            )
+
+        entity_id = cmd.entity_id
+        component_instance = cmd.component_instance
+        comp_type = type(component_instance)
+
+        # Strict check: entity must exist
+        if not self.has_entity(entity_id):
+            raise ValueError(f"SET_COMPONENT: entity {entity_id} does not exist")
+
+        # Semantics: if entity already has the type, replace it; otherwise add it.
+        # Our add_component already overwrites in-place when component exists.
+        self.add_component(entity_id, component_instance)
+
+    def _apply_set_field(self, cmd: ECSCommand) -> None:
+        if (
+            cmd.entity_id is None
+            or cmd.component_type is None
+            or cmd.field_name is None
+        ):
+            raise ValueError(
+                "SET_FIELD command requires entity_id, component_type, and field_name"
+            )
+
+        entity_id = cmd.entity_id
+        component_type = cmd.component_type
+        field_name = cmd.field_name
+        field_value = cmd.field_value
+
+        # Strict checks for determinism / early bug surfacing
+        if not self.has_entity(entity_id):
+            raise ValueError(f"SET_FIELD: entity {entity_id} does not exist")
+
+        component = self.get_component(entity_id, component_type)
+        if component is None:
+            raise ValueError(
+                f"SET_FIELD: entity {entity_id} does not have component {component_type}"
+            )
+
+        if not hasattr(component, field_name):
+            raise AttributeError(
+                f"SET_FIELD: component {component_type} has no field '{field_name}'"
+            )
+
+        setattr(component, field_name, field_value)
