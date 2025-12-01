@@ -20,7 +20,7 @@ Sim4 is a **dual-engine architecture**:
 * `narrative/`
 * nondeterministic LLM meaning-making
 * reads snapshots / views of kernel state
-* writes only semantic narrative state + suggestions (intent/goal hints), which are sanitized before next tick
+* produces semantic narrative state + intent/goal suggestions, which are materialized as ECS substrate components (e.g. `PrimitiveIntent`, updates to `NarrativeState`) via a runtime bridge and sanitized before the next tick 
 3. Presentation & IO Layers
 * `snapshot/`, `integration/`
 * read-only views, Godot/Web APIs, no simulation logic
@@ -28,8 +28,9 @@ Sim4 is a **dual-engine architecture**:
 The **six-layer DAG** of SOP-100 is preserved:
 ```text
 runtime   →   ecs   →   world   →   snapshot   →   integration
-                 ↑
-             narrative (sidecar, reads via adapters, writes only Narrative/semantic)
+   ↑
+   └── narrative (sidecar; reads via adapters, writes ECS substrate
+       via PrimitiveIntent / NarrativeState, never raw commands)
 ```
 
 And the **7-layer agent mind** from SOP-300 + Free Agent Spec is realized as:
