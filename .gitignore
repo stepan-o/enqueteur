@@ -1,5 +1,5 @@
 # Architect chat histories
-/docs/sim2/architecture/architect_chat_history/
+/docs/legacy/sim2/architecture/architect_chat_history/
 
 # Python
 __pycache__/
@@ -78,4 +78,4 @@ scratch.py
 
 
 # Analysis exports
-episode_export.json
+episode_export.json!/docs/legacy/sim2/architecture/architect_chat_history/
