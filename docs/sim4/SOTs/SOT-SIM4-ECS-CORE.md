@@ -337,37 +337,93 @@ No dynamic introspection or reflection-based queries.
 While the **command buffer** API is detailed in SOT-ECS-SYSTEMS, the **core behavior** lives here.
 
 ### 8.1 ECSCommand
-Conceptual shape:
+Canonical shape (as implemented in Sim4 / Sprint 2):
 ```python
+from enum import Enum
+from dataclasses import dataclass
+
+class ECSCommandKind(str, Enum):
+    SET_FIELD = "set_field"
+    SET_COMPONENT = "set_component"
+    ADD_COMPONENT = "add_component"
+    REMOVE_COMPONENT = "remove_component"
+    CREATE_ENTITY = "create_entity"
+    DESTROY_ENTITY = "destroy_entity"
+
+
 @dataclass(frozen=True)
 class ECSCommand:
-    kind: str     # "set_field", "add_component", "remove_component", ...
-    entity: EntityID | None
-    component_type: type | None
-    field_name: str | None
-    value: Any
-    # optional: archetype hints, metadata
+    """
+    Canonical ECS mutation command for Sim4.
+
+    - seq: global, monotonic sequence number within a tick.
+    - kind: what this command does (see ECSCommandKind).
+    - entity_id: target entity, if applicable.
+    - component_type: type of component being referenced, if applicable.
+    - component_instance: full component instance (for add/set), if applicable.
+    - field_name: component field name (for SET_FIELD).
+    - field_value: new field value (for SET_FIELD).
+    """
+
+    seq: int
+    kind: ECSCommandKind
+
+    entity_id: EntityID | None = None
+    component_type: type | None = None
+    component_instance: object | None = None
+    field_name: str | None = None
+    field_value: object | None = None
 ```
+
+Notes:
+- `seq` is tick‑local and defines deterministic ordering inside `apply_commands()`.
+- `ECSCommandKind` inherits from `str, Enum`; its string values are part of the cross‑language contract (Python ↔ Rust).
+- For Sim4 / Sprint 2, `CREATE_ENTITY` uses `component_instance` to carry an optional `list[object]` payload (see below).
+
+Sprint‑2 CREATE_ENTITY payload compromise:
+```python
+# CREATE_ENTITY example (Sim4 / Sprint 2)
+ECSCommand(
+    seq=0,
+    kind=ECSCommandKind.CREATE_ENTITY,
+    entity_id=None,
+    component_instance=[Transform(...), Health(...)]  # optional list
+)
+```
+This interim shape may be replaced by a dedicated payload field in a later SOT revision / Rust port.
 
 Systems (and any runtime adapters operating in Phase A) build commands; **only** `ECSWorld.apply_commands()` executes them.
 
 ### 8.2 `ECSWorld.apply_commands(commands)`
 Responsibilities:
-* Process all commands for the tick **in deterministic order**:
-  * Commands are pre-ordered by runtime (e.g., by issue sequence).
-* Apply:
-  * component updates
-  * add/remove component changes ⇒ archetype moves
-  * entity create/destroy
-* Maintain all invariants:
-  * no dangling references
-  * consistent archetype storage
-  * stable iteration ordering rules
+* Sorts all commands by `seq` before applying them to guarantee deterministic order.
+* Applies the following kinds with these semantics (as implemented):
+  * SET_COMPONENT — requires `entity_id` and `component_instance`.
+    * Fail‑fast if the entity does not exist.
+    * If component type already present, replace; otherwise add (may move archetype).
+  * SET_FIELD — requires `entity_id`, `component_type`, `field_name`.
+    * Fail‑fast if entity or component is missing, or field does not exist.
+    * Performs a Python‑level `setattr` on the component instance (Rust equivalent: struct field write).
+  * CREATE_ENTITY — ignores `entity_id` (allocator decides).
+    * Expects `component_instance` to be `None` or `list[object]`; attaches listed components deterministically.
+    * Raises a deterministic error if payload is not `None | list`.
+  * DESTROY_ENTITY — requires `entity_id`.
+    * Deterministic no‑op if entity is already gone.
+  * ADD_COMPONENT — requires `entity_id` and `component_instance`.
+    * Fail‑fast if entity does not exist.
+    * Upsert semantics: replace if present, else add (archetype move as needed).
+  * REMOVE_COMPONENT — requires `entity_id` and `component_type`.
+    * Fail‑fast if entity does not exist.
+    * Deterministic no‑op if the entity lacks that component.
 
 Constraints:
-* `apply_commands() is the only place where ECS state is mutated.
+* `apply_commands()` is the only place where ECS state is mutated during the tick.
 * It must not call systems, narrative, or world.
-* It must be a pure data mutation function, easily portable to Rust.
+* Uses only primitives (ints, tuples, lists, dicts, dataclasses) for Rust‑portability.
+
+Mutation rule (runtime): In the production tick pipeline, all ECS mutations originate from commands and are applied via `ECSWorld.apply_commands()` in Phase E. Direct methods like `create_entity`, `destroy_entity`, `add_component`, `remove_component` are available for initialization, scenario loading, and tests, but not for production tick logic.
+
+Implementation note (archetype inference): In Sim4, `ECSWorld.create_entity(initial_components=...)` and `ECSWorld.add_component(...)` infer archetype signatures from the set of component types; no `archetype_code` is exposed to systems.
 
 ---
 

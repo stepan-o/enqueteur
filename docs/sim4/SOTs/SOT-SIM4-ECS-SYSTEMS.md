@@ -235,21 +235,49 @@ Systems never hold references to world objects, only view data.
 
 3.3 ECSCommandBuffer
 
-Deterministic mutation requests:
+Deterministic mutation requests (Sim4 / Sprint 2 shape, aligned with implementation):
 
+```python
+@dataclass
 class ECSCommandBuffer:
-def set_component(self, entity, component_instance): ...
-def set_field(self, entity, component_type, field_name, value): ...
-def add_component(self, entity, component_instance): ...
-def remove_component(self, entity, component_type): ...
-def create_entity(self, archetype_code, components): ...
-def destroy_entity(self, entity): ...
-def emit_world_command(self, command): ...
+    """
+    Deterministic command buffer for ECS systems.
 
+    - Assigns a monotonically increasing sequence number (seq), starting at 0.
+    - Provides convenience methods to enqueue canonical ECSCommand instances.
+    - Exposes a defensive copy of the queued commands via the `commands` property.
+    """
 
-Commands are stored with a stable sequence index.
+    _next_seq: int = 0
+    _commands: list[ECSCommand] = field(default_factory=list)
 
-Runtime applies them in Phase E in a deterministic order.
+    @property
+    def commands(self) -> list[ECSCommand]:
+        # Defensive copy; mutating the result does not affect internal state.
+        return list(self._commands)
+
+    def set_component(self, entity_id, component_instance) -> None: ...
+    def set_field(self, entity_id, component_type, field_name: str, value) -> None: ...
+    def add_component(self, entity_id, component_instance) -> None: ...
+    def remove_component(self, entity_id, component_type) -> None: ...
+    def create_entity(self, components: list[object] | None = None) -> None: ...
+    def destroy_entity(self, entity_id) -> None: ...
+```
+
+Notes:
+- `archetype_code` is not part of the buffer API in Sim4; archetypes are inferred by `ECSWorld` from component sets.
+- Monotonicity invariant: within a buffer instance, commands receive seq values `0, 1, 2, ...` in the order enqueued — no gaps or duplicates.
+- The runtime later calls `ECSWorld.apply_commands(buffer.commands)` in Phase E, which sorts by `seq` for global determinism.
+
+Future extension (not implemented in Sprint 2):
+
+```python
+def emit_world_command(self, command): ...  # reserved for future world-layer commands
+```
+
+This hook is reserved for phases where ECS systems also emit world‑layer commands; it is intentionally out of scope for the Sim4 Sprint 2 prototype and is not present in the current code.
+
+Pipeline rule reaffirmed: Systems enqueue ECSCommands into an `ECSCommandBuffer` during Phases B–D; the runtime passes `buffer.commands` to `ECSWorld.apply_commands()` in Phase E, which applies all ECS mutations in a deterministic, seq‑sorted order. Systems do not call `ECSWorld` mutators directly during the tick.
 
 4. Tick Phases & System Assignment
 
