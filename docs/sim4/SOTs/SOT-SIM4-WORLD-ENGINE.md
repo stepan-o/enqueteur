@@ -72,11 +72,11 @@ Public API Surface (for runtime) (ℹ️):
 1. Position in the 6-Layer DAG (SOP-100)
 
 DAG (already locked):
-
+```text
 runtime   →   ecs   →   world   →   snapshot   →   integration
-↑
-narrative (sidecar)
-
+                ↑
+           narrative (sidecar)
+```
 
 Within this DAG:
 
