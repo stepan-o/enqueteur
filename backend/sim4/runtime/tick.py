@@ -41,6 +41,8 @@ from backend.sim4.ecs.systems.base import (
     SimulationRNG,
     ECSCommandBuffer,
 )
+from backend.sim4.runtime.command_bus import ECSCommandBatch, WorldCommandBatch
+from backend.sim4.world.commands import WorldCommand
 
 
 @dataclass(frozen=True)
@@ -51,9 +53,9 @@ class TickResult:
     Fields:
     - tick_index: the simulation tick index for this tick (after start-of-tick advance).
     - dt: delta time used for this tick.
-    - world_events: WorldEvent list emitted by Phase F (empty in current stub path).
+    - world_events: WorldEvent list emitted by Phase F.
     - notes: optional diagnostic placeholders for later phases.
-    - ecs_commands: list of ECSCommand aggregated from phases B–D (for Phase E in 6.4).
+    - ecs_commands: list of ECSCommand actually applied in Phase E (post global sequencing).
 
     This DTO may be extended or wrapped by SimulationEngine.step() per
     SOT-SIM4-ENGINE in later sub-sprints.
@@ -74,6 +76,7 @@ def tick(
     rng_seed: int,
     system_scheduler: Any,
     previous_events: Optional[list[Any]] = None,
+    world_commands_in: Optional[Iterable[WorldCommand]] = None,
 ) -> TickResult:
     """
     Execute a minimal deterministic tick skeleton with phases A–I wired.
@@ -149,11 +152,19 @@ def tick(
             system.run(ctx)
             aggregated_ecs_commands.extend(cmd_buffer.commands)
 
-    # Phase E — Apply ECS commands (placeholder: none yet)
-    ecs_world.apply_commands([])  # no-op apply; TODO[RT-E]: feed aggregated_ecs_commands in 6.4
+    # Phase E — Apply ECS commands using the command bus (global sequencing)
+    ecs_batch = ECSCommandBatch(aggregated_ecs_commands)
+    final_ecs_commands = ecs_batch.to_global_sequence()
+    ecs_world.apply_commands(final_ecs_commands)
 
-    # Phase F — Apply World commands (placeholder: none yet)
-    world_events: List[WorldEvent] = apply_world_cmds(world_ctx, [])
+    # Phase F — Apply World commands via command bus and emit world events
+    raw_world_commands = list(world_commands_in or [])
+    if raw_world_commands:
+        world_batch = WorldCommandBatch(raw_world_commands)
+        final_world_commands = world_batch.to_global_sequence()
+        world_events: List[WorldEvent] = apply_world_cmds(world_ctx, final_world_commands)
+    else:
+        world_events = apply_world_cmds(world_ctx, [])
 
     # Phase G — Event consolidation (stub)
     # TODO[RT-G]: consolidate ECS + World + runtime events into a tick event stream
@@ -172,5 +183,5 @@ def tick(
         dt=clock.dt,
         world_events=world_events,
         notes={},
-        ecs_commands=aggregated_ecs_commands,
+        ecs_commands=final_ecs_commands,
     )
