@@ -13,6 +13,7 @@ from .identity import (
 )
 from .drives import DriveState
 from .emotion import EmotionFields
+from .embodiment import Transform
 from .belief import BeliefGraphSubstrate, AgentInferenceState, SocialBeliefWeights
 from .social import SocialSubstrate, SocialImpressionState, FactionAffinityState
 from .motive_plan import (
@@ -38,6 +39,7 @@ __all__ = [
     "PersonaSubstrate",
     "DriveState",
     "EmotionFields",
+    "Transform",
     "BeliefGraphSubstrate",
     "AgentInferenceState",
     "SocialBeliefWeights",
