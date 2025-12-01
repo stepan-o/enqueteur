@@ -43,6 +43,7 @@ from backend.sim4.ecs.systems.base import (
 )
 from backend.sim4.runtime.command_bus import ECSCommandBatch, WorldCommandBatch
 from backend.sim4.world.commands import WorldCommand
+from backend.sim4.runtime.events import RuntimeEvent, consolidate_events
 
 
 @dataclass(frozen=True)
@@ -53,9 +54,12 @@ class TickResult:
     Fields:
     - tick_index: the simulation tick index for this tick (after start-of-tick advance).
     - dt: delta time used for this tick.
-    - world_events: WorldEvent list emitted by Phase F.
-    - notes: optional diagnostic placeholders for later phases.
+    - world_events: WorldEvent list emitted by Phase F (in application order).
     - ecs_commands: list of ECSCommand actually applied in Phase E (post global sequencing).
+    - runtime_events: consolidated RuntimeEvent list from Phase G (world/ecs/runtime flattened with per-tick seq).
+    - ecs_commands_applied: number of ECS commands applied in Phase E.
+    - world_commands_applied: number of WorldCommands applied in Phase F.
+    - notes: optional diagnostic placeholders for later phases.
 
     This DTO may be extended or wrapped by SimulationEngine.step() per
     SOT-SIM4-ENGINE in later sub-sprints.
@@ -64,8 +68,11 @@ class TickResult:
     tick_index: int
     dt: float
     world_events: List[WorldEvent] = field(default_factory=list)
-    notes: dict[str, Any] = field(default_factory=dict)
     ecs_commands: List[ECSCommand] = field(default_factory=list)
+    runtime_events: List[RuntimeEvent] = field(default_factory=list)
+    ecs_commands_applied: int = 0
+    world_commands_applied: int = 0
+    notes: dict[str, Any] = field(default_factory=dict)
 
 
 def tick(
@@ -156,18 +163,28 @@ def tick(
     ecs_batch = ECSCommandBatch(aggregated_ecs_commands)
     final_ecs_commands = ecs_batch.to_global_sequence()
     ecs_world.apply_commands(final_ecs_commands)
+    ecs_commands_applied = len(final_ecs_commands)
 
     # Phase F — Apply World commands via command bus and emit world events
     raw_world_commands = list(world_commands_in or [])
+    world_commands_applied = 0
     if raw_world_commands:
         world_batch = WorldCommandBatch(raw_world_commands)
         final_world_commands = world_batch.to_global_sequence()
+        world_commands_applied = len(final_world_commands)
         world_events: List[WorldEvent] = apply_world_cmds(world_ctx, final_world_commands)
     else:
         world_events = apply_world_cmds(world_ctx, [])
+        world_commands_applied = 0
 
-    # Phase G — Event consolidation (stub)
-    # TODO[RT-G]: consolidate ECS + World + runtime events into a tick event stream
+    # Phase G — Event consolidation
+    runtime_events = consolidate_events(
+        tick_index=clock.tick_index,
+        dt=clock.dt,
+        world_events=world_events,
+        ecs_events=(),        # TODO[RT-G]: wire ECS-origin events when available
+        runtime_events=(),    # TODO[RT-G]: internal runtime events when available
+    )
 
     # Phase H — History/diff hook (stub)
     # TODO[RT-H]: build and store diffs/history for replay
@@ -182,6 +199,9 @@ def tick(
         tick_index=clock.tick_index,
         dt=clock.dt,
         world_events=world_events,
-        notes={},
         ecs_commands=final_ecs_commands,
+        runtime_events=runtime_events,
+        ecs_commands_applied=ecs_commands_applied,
+        world_commands_applied=world_commands_applied,
+        notes={},
     )
