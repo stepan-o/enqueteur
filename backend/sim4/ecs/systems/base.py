@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Protocol, Any, Iterable
 
+import random
+
+from ..world import ECSWorld
 from ..commands import (
     ECSCommand,
     ECSCommandKind,
@@ -13,6 +16,64 @@ from ..commands import (
     cmd_create_entity,
     cmd_destroy_entity,
 )
+
+
+class SimulationRNG:
+    """
+    Deterministic RNG wrapper for systems.
+
+    - Wraps a local random.Random instance.
+    - All methods must be pure and seedable for replay.
+    """
+
+    def __init__(self, seed: int) -> None:
+        self._rng = random.Random(seed)
+
+    def random(self) -> float:
+        """Return a float in [0.0, 1.0)."""
+        return self._rng.random()
+
+    def uniform(self, a: float, b: float) -> float:
+        """Return a float in [a, b]."""
+        return self._rng.uniform(a, b)
+
+    # Optional future helpers (randint, choice, etc.) can be added later.
+
+
+class WorldViewsHandle(Protocol):
+    """
+    Read-only world views used by systems.
+
+    This sprint defines only the interface placeholders. Concrete implementations
+    live in the world/runtime layer. Tests can satisfy this Protocol with simple
+    dummy classes.
+    """
+
+    # Example placeholders for future expansion:
+    # def agents_in_room(self, room_id: int) -> Iterable[int]: ...
+    # def room_neighbors(self, room_id: int) -> Iterable[int]: ...
+    ...
+
+
+@dataclass
+class SystemContext:
+    """
+    Context passed into each ECS system's run() method.
+
+    - world: ECSWorld, treated as read-only by systems.
+    - dt: delta time for this tick.
+    - rng: deterministic RNG handle for this system/tick.
+    - views: read-only world views.
+    - commands: ECSCommandBuffer where systems enqueue ECS mutations.
+    - tick_index: current tick index (int).
+    """
+
+    world: ECSWorld
+    dt: float
+    rng: SimulationRNG
+    views: WorldViewsHandle
+    commands: "ECSCommandBuffer"
+    tick_index: int
 
 
 @dataclass

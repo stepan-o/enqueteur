@@ -1,40 +1,30 @@
-📘 SOT-SIM4-ECS-SYSTEMS
-Canonical deterministic systems for agent substrate evolution
-Draft 1.0 — Architect-Level, Rust-Aligned, SOP-100/200/300 Compliant
+# 📘 SOT-SIM4-ECS-SYSTEMS
+_**Canonical deterministic systems for agent substrate evolution**_
+**Draft 1.0 — Architect-Level, Rust-Aligned, SOP-100/200/300 Compliant**
 
-0. Scope & Purpose
+---
 
-This SOT defines the ECS systems that operate over the substrate components defined in SOT-SIM4-ECS-SUBSTRATE-COMPONENTS, within the constraints of SOT-SIM4-ECS-CORE and the tick pipeline in SOT-SIM4-RUNTIME-TICK.
+## 0. Scope & Purpose
+
+This SOT defines the **ECS systems** that operate over the substrate components defined in `SOT-SIM4-ECS-SUBSTRATE-COMPONENTS`, within the constraints of `SOT-SIM4-ECS-CORE` and the tick pipeline in `SOT-SIM4-RUNTIME-TICK`.
 
 It answers:
+* Which systems live under ecs/systems/.
+* Which tick phase (SOP-200) each system belongs to.
+* Which components and world views each system reads.
+* What commands / mutations each system produces.
+* How systems map to:
+  * the **7-layer agent mind** (SOP-300),
+  * the **Free Agent Spec** (SelfModel, DriveState, MotiveSystem, SocialMind, etc.).
+* How ECS systems maintain:
+  * determinism and replayability,
+  * layer purity (no world/narrative imports),
+  * Rust-portable logic.
 
-Which systems live under ecs/systems/.
-
-Which tick phase (SOP-200) each system belongs to.
-
-Which components and world views each system reads.
-
-What commands / mutations each system produces.
-
-How systems map to:
-
-the 7-layer agent mind (SOP-300),
-
-the Free Agent Spec (SelfModel, DriveState, MotiveSystem, SocialMind, etc.).
-
-How ECS systems maintain:
-
-determinism and replayability,
-
-layer purity (no world/narrative imports),
-
-Rust-portable logic.
-
-This doc is the single source of truth for ECS system behavior and ordering.
+This doc is the single source of truth for ECS system behavior and ordering.  
 Any new or changed system must be added here and to ecs/systems/scheduler_order.py.
 
-1. Global Design Rules for ECS Systems
-
+## 1. Global Design Rules for ECS Systems
 All systems are constrained by the locked SOPs and SOTs.
 
 1.1 Pure, Deterministic Logic
