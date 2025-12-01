@@ -286,23 +286,27 @@ class QuerySignature:
 
 ---
 
-### 7.2 QueryResult
-The query engine returns a **deterministic iterable** of views.
-Conceptual:
+### 7.2 QueryResult & RowView layout (Sim4 Python prototype)
+The query engine returns a **deterministic iterable** of row views.
+
+RowView.components layout is canonical and fixed-length:
+
 ```python
-@dataclass
+@dataclass(frozen=True)
 class RowView:
     entity: EntityID
-    # references or copies to component instances;
-    # concrete semantics defined in SOT-ECS-SYSTEMS
+    # Tuple length = len(read) + len(write) + len(optional)
+    # Order is: (read components...) + (write components...) + (optional components...)
+    # For optional components that are absent on an entity, the corresponding slot is None.
+    components: tuple[object, ...]
 
 class QueryResult:
     def __iter__(self) -> Iterable[RowView]: ...
+    def __len__(self) -> int: ...
 ```
 
-Requirements:
-* Iteration order is deterministic:
-  * e.g. sorted by (`archetype_id`, `entity_id`).
+Determinism requirements:
+* Iteration order is deterministic. In the Sim4 Python prototype, results are ordered by ascending EntityID. A Rust/SimX implementation may realize this via stable sorting after archetype iteration.
 * All entities matching the signature appear exactly once.
 
 ---
@@ -323,21 +327,24 @@ In all cases, the **SOT contract** is:
 
 ---
 
-### 7.4 Query Implementation
-The engine:
-* Resolves `QuerySignature` to the set of archetypes that have all read + write components and lack `without`.
-* Iterates those archetypes in deterministic order.
-* Yields `RowViews` built from each entity’s component columns.
+### 7.4 Query Semantics & Implementation
+Semantics (Sim4 Sprint 4.5c):
+* read + write: the entity must have all of these component types.
+* without: the entity must have none of these component types; archetypes/entities possessing any are excluded.
+* optional: the entity may or may not have these component types; RowView.components always reserves a slot for each optional type, using None when absent.
 
-No dynamic introspection or reflection-based queries.
+Implementation sketch:
+* Resolve `QuerySignature` to candidate archetypes using read + write and without filters.
+* Iterate deterministically and collect component instances into the RowView.components tuple in the canonical order described above.
+* No dynamic introspection or reflection-based queries.
 
 ---
 
 ## 8. Command Application & Mutation Semantics
 While the **command buffer** API is detailed in SOT-ECS-SYSTEMS, the **core behavior** lives here.
 
-### 8.1 ECSCommand
-Canonical shape (as implemented in Sim4 / Sprint 2):
+### 8.1 ECSCommand (Sprint 4 wrap‑up schema)
+Canonical shape aligned with Sim4 implementation and SimX/Rust readiness:
 ```python
 from enum import Enum
 from dataclasses import dataclass
@@ -353,46 +360,37 @@ class ECSCommandKind(str, Enum):
 
 @dataclass(frozen=True)
 class ECSCommand:
-    """
-    Canonical ECS mutation command for Sim4.
-
-    - seq: global, monotonic sequence number within a tick.
-    - kind: what this command does (see ECSCommandKind).
-    - entity_id: target entity, if applicable.
-    - component_type: type of component being referenced, if applicable.
-    - component_instance: full component instance (for add/set), if applicable.
-    - field_name: component field name (for SET_FIELD).
-    - field_value: new field value (for SET_FIELD).
-    """
-
     seq: int
     kind: ECSCommandKind
 
-    entity_id: EntityID | None = None
+    # Entity target
+    entity_id: int | None = None  # EntityID in code
+
+    # Component targeting
     component_type: type | None = None
+    component_type_code: int | None = None  # reserved for SimX/Rust
+
+    # Component payloads
     component_instance: object | None = None
     field_name: str | None = None
-    field_value: object | None = None
+    value: object | None = None  # replaces field_value
+
+    # Entity creation / archetype hints
+    archetype_code: int | None = None  # reserved for SimX/Rust
+    initial_components: list[object] | None = None  # canonical list payload for CREATE_ENTITY
 ```
 
-Notes:
-- `seq` is tick‑local and defines deterministic ordering inside `apply_commands()`.
-- `ECSCommandKind` inherits from `str, Enum`; its string values are part of the cross‑language contract (Python ↔ Rust).
-- For Sim4 / Sprint 2, `CREATE_ENTITY` uses `component_instance` to carry an optional `list[object]` payload (see below).
+Per‑kind field usage (Python prototype):
+* SET_COMPONENT: entity_id, component_instance
+* SET_FIELD: entity_id, component_type, field_name, value
+* ADD_COMPONENT: entity_id, component_instance
+* REMOVE_COMPONENT: entity_id, component_type
+* CREATE_ENTITY: initial_components (None | list[object])
+* DESTROY_ENTITY: entity_id
 
-Sprint‑2 CREATE_ENTITY payload compromise:
-```python
-# CREATE_ENTITY example (Sim4 / Sprint 2)
-ECSCommand(
-    seq=0,
-    kind=ECSCommandKind.CREATE_ENTITY,
-    entity_id=None,
-    component_instance=[Transform(...), Health(...)]  # optional list
-)
-```
-This interim shape may be replaced by a dedicated payload field in a later SOT revision / Rust port.
-
-Systems (and any runtime adapters operating in Phase A) build commands; **only** `ECSWorld.apply_commands()` executes them.
+Implementation status (Sim4 Sprint 4):
+* `component_type_code` and `archetype_code` are present on ECSCommand but unused in the Python prototype; they are reserved for SimX/Rust where numeric codes will be canonical.
+* In the Python prototype, `CREATE_ENTITY` uses `initial_components` as the canonical payload and `SET_FIELD` uses `value` for the new field value.
 
 ### 8.2 `ECSWorld.apply_commands(commands)`
 Responsibilities:

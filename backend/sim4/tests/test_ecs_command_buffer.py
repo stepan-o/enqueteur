@@ -39,7 +39,7 @@ def test_set_field_creates_proper_command():
     assert cmd.entity_id == 42
     assert cmd.component_type is CompA
     assert cmd.field_name == "x"
-    assert cmd.field_value == 99
+    assert cmd.value == 99
 
 
 def test_add_component_creates_proper_command():
@@ -61,11 +61,11 @@ def test_create_entity_with_and_without_components():
 
     cmds = buf.commands
     assert cmds[0].kind is ECSCommandKind.CREATE_ENTITY
-    assert cmds[0].component_instance is None
+    assert cmds[0].initial_components is None
 
     assert cmds[1].kind is ECSCommandKind.CREATE_ENTITY
-    assert isinstance(cmds[1].component_instance, list)
-    assert len(cmds[1].component_instance) == 2
+    assert isinstance(cmds[1].initial_components, list)
+    assert len(cmds[1].initial_components) == 2
 
 
 def test_destroy_entity_command():

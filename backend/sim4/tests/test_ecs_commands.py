@@ -44,7 +44,7 @@ def test_cmd_set_field_basic():
     assert cmd.entity_id == 123
     assert cmd.component_type is Dummy
     assert cmd.field_name == "x"
-    assert cmd.field_value == 42
+    assert cmd.value == 42
     # Irrelevant fields remain None
     assert cmd.component_instance is None
 
@@ -57,7 +57,7 @@ def test_cmd_set_component_basic():
     assert cmd.entity_id == 9
     assert cmd.component_type is Dummy
     assert cmd.component_instance is comp
-    assert cmd.field_name is None and cmd.field_value is None
+    assert cmd.field_name is None and cmd.value is None
 
 
 def test_cmd_add_component_basic():
@@ -68,7 +68,7 @@ def test_cmd_add_component_basic():
     assert cmd.entity_id == 11
     assert cmd.component_type is Dummy
     assert cmd.component_instance is comp
-    assert cmd.field_name is None and cmd.field_value is None
+    assert cmd.field_name is None and cmd.value is None
 
 
 def test_cmd_remove_component_basic():
@@ -78,7 +78,7 @@ def test_cmd_remove_component_basic():
     assert cmd.entity_id == 15
     assert cmd.component_type is Dummy
     assert cmd.component_instance is None
-    assert cmd.field_name is None and cmd.field_value is None
+    assert cmd.field_name is None and cmd.value is None
 
 
 def test_cmd_create_entity_basic():
@@ -87,10 +87,10 @@ def test_cmd_create_entity_basic():
     assert cmd.seq == 7
     assert cmd.kind is ECSCommandKind.CREATE_ENTITY
     assert cmd.entity_id is None
-    # We store the components list in component_instance as payload for now (types-only sprint)
-    assert cmd.component_instance == comps
+    # Components list is stored in initial_components (canonical payload)
+    assert cmd.initial_components == comps
     assert cmd.component_type is None
-    assert cmd.field_name is None and cmd.field_value is None
+    assert cmd.field_name is None and cmd.value is None
 
 
 def test_cmd_destroy_entity_basic():
@@ -100,7 +100,7 @@ def test_cmd_destroy_entity_basic():
     assert cmd.entity_id == 321
     assert cmd.component_type is None
     assert cmd.component_instance is None
-    assert cmd.field_name is None and cmd.field_value is None
+    assert cmd.field_name is None and cmd.value is None
 
 
 def test_seq_ordering_and_comparability():

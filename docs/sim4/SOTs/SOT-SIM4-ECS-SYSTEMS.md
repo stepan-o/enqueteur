@@ -24,6 +24,21 @@ It answers:
 This doc is the single source of truth for ECS system behavior and ordering.  
 Any new or changed system must be added here and to ecs/systems/scheduler_order.py.
 
+---
+
+## 0.A Implementation Note — Sim4 Sprint 4 (Python Prototype)
+
+For the Sim4 Python prototype at the end of Sprint 4:
+
+- Systems under ecs/systems/ are implemented as skeletons that:
+  - Define QuerySignature read/write sets aligned with this SOT.
+  - Use SystemContext (world, rng, views, commands, dt, tick_index).
+  - Iterate deterministically over queries (no side effects during iteration).
+  - Do not implement full behavioral logic yet; they enqueue no ECS/world commands beyond scaffolding.
+- The emphasis for Sprint 4 is interface correctness and SOT-aligned system signatures. Behavioral logic (perception, drive updates, social updates, intent resolution, action execution, etc.) will be added in subsequent sprints.
+
+This note clarifies that the current lack of complex behavior is intentional and compliant with the milestone scope.
+
 ## 1. Global Design Rules for ECS Systems
 All systems are constrained by the locked SOPs and SOTs.
 

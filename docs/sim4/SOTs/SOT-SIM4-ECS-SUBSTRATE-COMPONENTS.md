@@ -710,3 +710,12 @@ support Sim4’s systems and SimX’s long-arc agent evolution without schema co
 
 Once those conditions hold, the ECS substrate layer is locked:
 a clean, deterministic numeric mind on which Loopforge’s semantic narrative can safely dance.
+---
+
+## 13. Narrative Substrate Clarification (Sim4 Sprint 4)
+
+Implementation note (Python prototype):
+
+- The NarrativeState component exists as a normal ECS component under ecs/components/narrative_state.py with numeric/ID fields only (Rust‑portable).
+- ECS systems treat NarrativeState as read‑only by convention. Only the narrative layer and runtime adapters may mutate it, via dedicated pathways outside of ecs/systems logic.
+- This respects the L6/L7 separation of concerns while keeping the substrate schema simple and portable.

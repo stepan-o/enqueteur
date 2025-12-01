@@ -278,13 +278,25 @@ class ECSWorld:
         """
         Apply a batch of ECSCommands in a deterministic order.
 
-        Supported kinds after Sub-Sprint 2.3:
+        Supported kinds:
         - SET_COMPONENT
         - SET_FIELD
         - CREATE_ENTITY
         - DESTROY_ENTITY
         - ADD_COMPONENT
         - REMOVE_COMPONENT
+
+        Field requirements (Python prototype):
+        - SET_COMPONENT: entity_id, component_instance
+        - SET_FIELD: entity_id, component_type, field_name, value
+        - CREATE_ENTITY: initial_components (None | list[object])
+        - DESTROY_ENTITY: entity_id
+        - ADD_COMPONENT: entity_id, component_instance
+        - REMOVE_COMPONENT: entity_id, component_type
+
+        Notes:
+        - component_type_code and archetype_code exist on ECSCommand for SimX/Rust
+          but are not used by the Python prototype yet.
         """
         # 1) sort by seq for determinism
         sorted_cmds = sorted(commands, key=lambda c: c.seq)
@@ -340,7 +352,7 @@ class ECSWorld:
         entity_id = cmd.entity_id
         component_type = cmd.component_type
         field_name = cmd.field_name
-        field_value = cmd.field_value
+        field_value = cmd.value
 
         # Strict checks for determinism / early bug surfacing
         if not self.has_entity(entity_id):
@@ -362,21 +374,19 @@ class ECSWorld:
     # ---- New command helpers for S2.3 ----
     def _apply_create_entity(self, cmd: ECSCommand) -> None:
         """
-        CREATE_ENTITY semantics for S2.3:
+        CREATE_ENTITY semantics (Sprint 4 wrap-up):
         - Ignore cmd.entity_id (IDs come from allocator).
-        - cmd.component_instance is treated as Optional[list[object]] payload.
+        - cmd.initial_components is the canonical Optional[list[object]] payload.
         - Components (if provided) are attached deterministically.
-
-        Note: Overloading of component_instance as a list payload is an
-        interim compromise for Sprint 2.
+        - archetype_code is reserved for SimX/Rust and unused here.
         """
-        payload = cmd.component_instance
+        payload = cmd.initial_components
         if payload is None:
             components_list: List[object] = []
         else:
             if not isinstance(payload, list):
                 raise ValueError(
-                    "CREATE_ENTITY expects component_instance to be None or list[object]"
+                    "CREATE_ENTITY expects initial_components to be None or list[object]"
                 )
             components_list = payload
 

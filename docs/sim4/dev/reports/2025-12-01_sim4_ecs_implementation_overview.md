@@ -26,6 +26,19 @@ Changelog (since previous version)
 - Sprint 4.5a: Introduced QuerySignature, RowView, QueryResult; all call sites migrated to the new API; deterministic ordering documented.
 - Sprint 4.5b: Aligned all system QuerySignature read/write sets with SOT-SIM4-ECS-SYSTEMS; systems remain no-op skeletons.
 - Sprint 4.5c: Implemented optional and without semantics in ECSWorld.query; added focused engine tests; preserved deterministic ordering.
+- Sprint 4 Wrap-Up: Refactored ECSCommand schema to the richer SOT-aligned shape (value, initial_components, reserved codes); updated helpers, ECSWorld.apply_commands, and tests; synchronized SOT docs and enriched this report.
+
+Spec Alignment Summary (Sprint 4 Wrap-Up)
+- ECS-CORE
+  - Implemented: ECSWorld entity allocator, archetype/storage orchestration, deterministic query engine with optional/without semantics, apply_commands pass sorted by seq.
+  - Query semantics: RowView.components layout is (read) + (write) + (optional), with None placeholders for missing optional components; QueryResult ordered by ascending EntityID.
+  - Command semantics: value is canonical for SET_FIELD; initial_components is canonical for CREATE_ENTITY.
+- ECS-SUBSTRATE-COMPONENTS
+  - All components are numeric/ID-only and Rust-portable; NarrativeState exists but is treated read-only by ECS systems per convention.
+- ECS-SYSTEMS
+  - All systems are skeletons with SOT-aligned QuerySignature read/write sets; they iterate deterministically and emit no mutations yet (behavior to be added later).
+- ECS-COMMANDS-AND-EVENTS
+  - ECSCommand now includes reserved fields component_type_code and archetype_code (unused in Python, SimX/Rust-ready). WorldCommand/WorldEvent remain scheduled for Sprint 5 (world engine).
 
 1) ECS Core Implementation
 
@@ -69,11 +82,19 @@ Changelog (since previous version)
 1.3 Commands (ecs/commands.py)
 - ECSCommandKind: stable string enum values for cross-language compatibility:
   - set_field, set_component, add_component, remove_component, create_entity, destroy_entity
-- ECSCommand (frozen dataclass):
-  - Fields: seq (int), kind (ECSCommandKind), and optional entity_id, component_type, component_instance, field_name, field_value.
+- ECSCommand (frozen dataclass; Sprint 4 wrap-up schema):
+  - Core fields: seq (int), kind (ECSCommandKind)
+  - Targeting: entity_id | None, component_type | None, component_type_code | None (reserved)
+  - Payloads: component_instance | None, field_name | None, value | None
+  - Creation hints: archetype_code | None (reserved), initial_components | None (list[object])
 - Helper constructors:
-  - cmd_set_field, cmd_set_component, cmd_add_component, cmd_remove_component, cmd_create_entity, cmd_destroy_entity
-  - Note: cmd_create_entity places the components list payload in component_instance; ECSWorld consumes it in _apply_create_entity.
+  - cmd_set_field(seq, entity_id, component_type, field_name, value)
+  - cmd_set_component(seq, entity_id, component_instance)
+  - cmd_add_component(seq, entity_id, component_instance)
+  - cmd_remove_component(seq, entity_id, component_type)
+  - cmd_create_entity(seq, components: list[object] | None) → sets initial_components
+  - cmd_destroy_entity(seq, entity_id)
+  - Notes: component_type_code/archetype_code are carried but unused by Python; they are reserved for SimX/Rust numeric contracts.
 
 2) Components (ecs/components/*)
 
@@ -164,6 +185,8 @@ Changelog (since previous version)
   - Commands are sorted by seq before application; systems/queries iterate in a deterministic, stable order (query results currently ordered by ascending EntityID).
   - Query RowView.components uses a canonical, deterministic layout: (read) + (write) + (optional); optional slots are None when absent.
   - RNG usage is explicit via SimulationRNG with externally provided seed.
+- Command field determinism:
+  - SET_FIELD uses value consistently; CREATE_ENTITY uses initial_components; both are documented in SOTs and enforced by tests.
 - Layer Purity:
   - ecs/ does not import runtime/, world/, snapshot/, narrative/, or integration/.
   - Systems import only ecs.world and ecs.components.* plus ecs.systems.base.
@@ -171,14 +194,15 @@ Changelog (since previous version)
 
 7) Known Gaps / TODO[ARCH]
 
-- Cross-buffer global sequencing:
-  - Runtime must define and enforce how multiple ECSCommandBuffer instances are merged into a single globally ordered stream prior to applying to ECSWorld. Current ecs implementation assumes sorted by seq.
-- WorldViewsHandle methods:
-  - Protocol is a placeholder; need to define initial minimal read-only methods (e.g., agents_in_room(room_id), room_neighbors(room_id)) and implement in runtime/world.
-- CREATE_ENTITY payload field:
-  - Interim use of component_instance to carry a list payload; consider adding a dedicated payload field in a future SOT-aligned refactor.
-- Read-only enforcement:
-  - Python cannot enforce read-only access to ctx.world; rely on conventions, tests, or dev-time wrappers provided by runtime for guardrails.
+Out of scope for Sprint 4 (planned next):
+- World engine wiring: WorldContext, WorldCommand, WorldEvent, and WorldViewsHandle concrete implementation (Sprint 5).
+- Runtime cross-buffer sequencing: define/implement global ordering policy when merging multiple ECSCommandBuffer instances.
+- System behavioral logic: implement actual updates for perception/cognition/intent/movement, still using commands.
+
+Potential future refinements:
+- Storage-level tests: expand coverage for archetype migration edge cases and query performance/ordering guarantees.
+- Read-only wrappers: provide dev-time wrappers or linting to discourage direct world mutation from systems.
+- Numeric code registries: activate component_type_code/archetype_code in Python once SimX/Rust integration starts.
 
 Appendix — Quick Reference
 
@@ -196,4 +220,11 @@ Appendix — Quick Reference
   - x = r.uniform(a, b)
 
 Conclusion
-- The current ECS implementation is structured and wired according to the SOTs: a deterministic, Rust-portable numeric substrate with clean layer boundaries. Systems currently expose skeleton behavior with deterministic queries and a command buffer for future mutations. External connections are intentionally mediated through runtime/world adapters and DTOs, preserving the 6-layer DAG purity.
+- Sprint 4 deliverables achieved:
+  - SOT-aligned ECS core (world, storage, archetypes, query, commands) with deterministic behavior.
+  - Canonical query semantics (read/write/optional/without) and deterministic ordering.
+  - System signatures aligned with SOT; skeleton behavior maintained.
+  - Richer ECSCommand schema implemented (value, initial_components, reserved numeric codes) with updated helpers, world application, and tests.
+- Next focus (Sprint 5):
+  - Implement the World Engine core (WorldContext), WorldCommand/WorldEvent, and basic WorldViewsHandle backed by WorldContext.
+  - Wire ECS/world interactions per SOTs while preserving determinism and layer purity.

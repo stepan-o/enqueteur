@@ -123,6 +123,67 @@ world/commands.py and world/events.py belong to the world layer.
 Runtime uses these types but does not redefine them.
 
 3. ECSCommand Schema
+
+Canonical schema (Sprint 4 wrap‑up; Sim4 Python prototype, SimX/Rust‑ready):
+
+```python
+from enum import Enum
+from dataclasses import dataclass
+
+class ECSCommandKind(str, Enum):
+    SET_FIELD = "set_field"
+    SET_COMPONENT = "set_component"
+    ADD_COMPONENT = "add_component"
+    REMOVE_COMPONENT = "remove_component"
+    CREATE_ENTITY = "create_entity"
+    DESTROY_ENTITY = "destroy_entity"
+
+
+@dataclass(frozen=True)
+class ECSCommand:
+    seq: int                          # global sequence index within a tick
+    kind: ECSCommandKind              # stable string enum, cross‑lang contract
+
+    # Entity target
+    entity_id: int | None = None      # EntityID in code
+
+    # Component targeting
+    component_type: type | None = None
+    component_type_code: int | None = None  # reserved for SimX/Rust
+
+    # Component payloads
+    component_instance: object | None = None  # SET_COMPONENT / ADD_COMPONENT
+    field_name: str | None = None            # SET_FIELD
+    value: object | None = None              # SET_FIELD (replaces field_value)
+
+    # Entity creation / archetype hints
+    archetype_code: int | None = None        # reserved for SimX/Rust
+    initial_components: list[object] | None = None  # CREATE_ENTITY canonical payload
+```
+
+Per‑kind field usage (Python prototype):
+
+- SET_COMPONENT → entity_id, component_instance
+- ADD_COMPONENT → entity_id, component_instance
+- REMOVE_COMPONENT → entity_id, component_type
+- SET_FIELD → entity_id, component_type, field_name, value
+- CREATE_ENTITY → initial_components (None | list[object])
+- DESTROY_ENTITY → entity_id
+
+Notes:
+- component_type_code and archetype_code are present on ECSCommand but not yet used by the Python prototype; they are reserved for SimX/Rust where numeric codes will be canonical identifiers.
+- Historical references to field_value and the temporary practice of putting the CREATE_ENTITY component list into component_instance are removed from the canonical SOT. The Python prototype now uses value and initial_components as the canonical fields.
+
+3.1 Command Application Mapping (ECSWorld)
+
+ECSWorld.apply_commands() sorts by seq and applies each command per kind. In the Python prototype:
+
+- SET_COMPONENT/ADD_COMPONENT upsert the given component instance on the target entity (fail fast if the entity does not exist).
+- REMOVE_COMPONENT removes the specified component type if present; missing component is a deterministic no‑op.
+- SET_FIELD validates entity + component existence and attribute before setting the new value.
+- CREATE_ENTITY allocates a new EntityID and, if initial_components is provided, attaches them in deterministic order.
+
+Error semantics: missing required fields are a ValueError; missing attributes on SET_FIELD raise AttributeError. This is by design to surface bugs early and preserve determinism.
    3.1 Core Type
 
 Shape-level dataclass (Python):
