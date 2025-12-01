@@ -1,13 +1,13 @@
 """Project placeholder.
 
-This file is not used by Loopforge City. To run the simulation, use:
+Main development now lives under backend/sim4.
 
-  uv run loopforge-sim --steps 10
+There is no top-level CLI entrypoint in this repo for Sim4 yet.
+Run tests to exercise the current functionality:
 
-or
+  uv run -m pytest
 
-  uv run python -m loopforge.cli.sim_cli --steps 10
 """
 
 if __name__ == "__main__":
-    print("This placeholder is not used. Use: python -m loopforge.cli.sim_cli")
+    print("Sim4 is under backend/sim4. Run: uv run -m pytest")
