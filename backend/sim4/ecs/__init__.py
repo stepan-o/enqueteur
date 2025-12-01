@@ -14,6 +14,16 @@ from .archetype import ArchetypeSignature, ArchetypeRegistry
 from .storage import ArchetypeStorage
 from .world import ECSWorld
 from .query import QuerySignature, QueryResult
+from .commands import (
+    ECSCommandKind,
+    ECSCommand,
+    cmd_set_field,
+    cmd_set_component,
+    cmd_add_component,
+    cmd_remove_component,
+    cmd_create_entity,
+    cmd_destroy_entity,
+)
 
 __all__ = [
     "EntityID",
@@ -24,4 +34,12 @@ __all__ = [
     "ECSWorld",
     "QuerySignature",
     "QueryResult",
+    "ECSCommandKind",
+    "ECSCommand",
+    "cmd_set_field",
+    "cmd_set_component",
+    "cmd_add_component",
+    "cmd_remove_component",
+    "cmd_create_entity",
+    "cmd_destroy_entity",
 ]
