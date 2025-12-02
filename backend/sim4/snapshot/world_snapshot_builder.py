@@ -1,0 +1,176 @@
+from __future__ import annotations
+
+"""
+WorldSnapshot builder (Sub‑Sprint 7.3).
+
+Deterministically constructs a WorldSnapshot from:
+- WorldContext (rooms, items, indices)
+- ECSWorld (agents/components)
+
+Rules (per SOT-SIM4-SNAPSHOT-AND-EPISODE §6.1):
+- Read-only; no mutations; no I/O; no RNG or wall clock.
+- All collections explicitly sorted; never rely on dict/set iteration order.
+- Minimal viable fields for agents/items; many fields are stubbed with
+  empty values by design in this sub-sprint.
+"""
+
+from dataclasses import dataclass
+from typing import Dict, List, Tuple
+
+from backend.sim4.snapshot.world_snapshot import (
+    WorldSnapshot,
+    RoomSnapshot,
+    AgentSnapshot,
+    ItemSnapshot,
+    TransformSnapshot,
+)
+from backend.sim4.world.context import WorldContext
+from backend.sim4.world.views import WorldViews
+from backend.sim4.ecs.world import ECSWorld
+from backend.sim4.ecs.components.embodiment import Transform, RoomPresence
+from backend.sim4.ecs.components.intent_action import ActionState
+from backend.sim4.ecs.components.narrative_state import NarrativeState
+
+
+def _build_rooms(world_ctx: WorldContext) -> List[RoomSnapshot]:
+    views = WorldViews(world_ctx)
+    room_ids = list(world_ctx.rooms_by_id.keys())
+    room_ids.sort()
+    rooms: List[RoomSnapshot] = []
+    for rid in room_ids:
+        rec = world_ctx.rooms_by_id[rid]
+        # Occupants/items via views for read-only containers
+        occupants = sorted(list(views.get_room_agents(rid)))
+        items = sorted(list(views.get_room_items(rid)))
+        neighbors = sorted(list(views.iter_room_neighbors(rid)))
+        rooms.append(
+            RoomSnapshot(
+                room_id=rid,
+                label=rec.label or "",
+                kind_code=0,
+                occupants=occupants,
+                items=items,
+                neighbors=neighbors,
+                tension_tier="low",
+                highlight=False,
+            )
+        )
+    return rooms
+
+
+def _build_agents(ecs_world: ECSWorld) -> List[AgentSnapshot]:
+    agent_ids = list(ecs_world.iter_entity_ids())
+    # iter_entity_ids already returns a sorted iterator; still make a list to be explicit
+    agents: List[AgentSnapshot] = []
+    for aid in agent_ids:
+        # Required embodiment
+        t: Transform | None = ecs_world.get_component(aid, Transform)  # type: ignore[name-defined]
+        rp: RoomPresence | None = ecs_world.get_component(aid, RoomPresence)  # type: ignore[name-defined]
+        if t is None or rp is None:
+            # Skip entities that are not agents (must have Transform + RoomPresence)
+            continue
+
+        act: ActionState | None = ecs_world.get_component(aid, ActionState)  # type: ignore[name-defined]
+        narr: NarrativeState | None = ecs_world.get_component(aid, NarrativeState)  # type: ignore[name-defined]
+
+        transform = TransformSnapshot(room_id=rp.room_id if rp else None, x=t.x, y=t.y)
+        action_state_code = act.mode_code if act is not None else 0
+        narrative_state_ref = narr.narrative_id if narr is not None else None
+        cached_summary_ref = narr.cached_summary_ref if narr is not None else None
+
+        agents.append(
+            AgentSnapshot(
+                agent_id=aid,
+                room_id=rp.room_id if rp is not None else None,
+                # Identity & Persona (stubs)
+                role_code=0,
+                generation=0,
+                profile_traits={},
+                identity_vector=[],
+                persona_style_vector=None,
+                # Drives & Emotion (stubs)
+                drives={},
+                emotions={},
+                # Social / Intent & Planning (stubs)
+                key_relationships=[],
+                active_motives=[],
+                plan=None,
+                # Action & Embodiment
+                transform=transform,
+                action_state_code=action_state_code,
+                # Narrative Overlay
+                narrative_state_ref=narrative_state_ref,
+                cached_summary_ref=cached_summary_ref,
+            )
+        )
+
+    # Ensure deterministic ascending by agent_id
+    agents.sort(key=lambda a: a.agent_id)
+    return agents
+
+
+def _build_items(world_ctx: WorldContext) -> List[ItemSnapshot]:
+    items: List[ItemSnapshot] = []
+    item_ids = list(world_ctx.items_by_id.keys())
+    item_ids.sort()
+    for iid in item_ids:
+        item = world_ctx.items_by_id[iid]
+        items.append(
+            ItemSnapshot(
+                item_id=iid,
+                room_id=item.room_id,
+                owner_agent_id=None,
+                status_code=0,
+                label="",
+            )
+        )
+    return items
+
+
+def build_world_snapshot(
+    tick_index: int,
+    episode_id: int,
+    world_ctx: WorldContext,
+    ecs_world: ECSWorld,
+) -> WorldSnapshot:
+    """Build a deterministic WorldSnapshot from WorldContext + ECSWorld.
+
+    Notes:
+    - world_id and time_seconds may not yet exist on WorldContext; use fallbacks.
+    - This function performs no mutation and relies only on read-only accessors.
+    """
+
+    rooms = _build_rooms(world_ctx)
+    agents = _build_agents(ecs_world)
+    items = _build_items(world_ctx)
+
+    # Indices mapping IDs to positional indices in the lists
+    room_index: Dict[int, int] = {r.room_id: idx for idx, r in enumerate(rooms)}
+    agent_index: Dict[int, int] = {a.agent_id: idx for idx, a in enumerate(agents)}
+
+    # Fallbacks for world identity / time (not yet present in WorldContext)
+    world_id = 0
+    time_seconds = 0.0
+    # If the context is extended in future, use those values deterministically
+    if hasattr(world_ctx, "identity") and getattr(world_ctx.identity, "world_id", None) is not None:
+        try:
+            world_id = int(world_ctx.identity.world_id)  # type: ignore[attr-defined]
+        except Exception:
+            world_id = 0
+    if hasattr(world_ctx, "time_seconds") and isinstance(world_ctx.time_seconds, (int, float)):
+        time_seconds = float(world_ctx.time_seconds)  # type: ignore[attr-defined]
+
+    return WorldSnapshot(
+        world_id=world_id,
+        tick_index=tick_index,
+        episode_id=episode_id,
+        time_seconds=time_seconds,
+        rooms=rooms,
+        agents=agents,
+        items=items,
+        room_index=room_index,
+        agent_index=agent_index,
+    )
+
+
+__all__ = ["build_world_snapshot"]
