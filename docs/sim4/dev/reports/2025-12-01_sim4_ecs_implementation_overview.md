@@ -350,3 +350,69 @@ These will be addressed in:
 - `test_command_bus_and_application.py`: Phase E and F application semantics (ECS create entity, world move agent).
 - `test_event_consolidation.py`: Phase G consolidation; command counts in `TickResult`.
 - `test_toy_simulation_tick.py`: end‑to‑end toy scenario (systems → command bus → Phase E/F → events → TickResult) with determinism checks.
+
+---
+
+## 5) Snapshot & Episode Layer (Sprint 7)
+
+Scope
+- Establish a read‑only, deterministic snapshot/episode layer that narrative and UI can consume without touching kernel state.
+- Deliver minimal builders and a diff facility to answer “what changed since last tick?”
+
+DTOs Implemented (snapshot/world)
+- world_snapshot.py:
+  - WorldSnapshot, RoomSnapshot, AgentSnapshot, ItemSnapshot, TransformSnapshot
+  - All frozen dataclasses, primitives‑only, Rust‑portable
+
+DTOs Implemented (snapshot/episode)
+- episode_types.py:
+  - EpisodeMeta, EpisodeMood, TensionSample, SceneSnapshot, DayWithScenes, EpisodeNarrativeFragment, StageEpisodeV2
+  - Frozen dataclasses, forward refs to WorldSnapshot where needed
+
+Builders
+- world_snapshot_builder.build_world_snapshot(tick_index, episode_id, world_ctx, ecs_world) -> WorldSnapshot
+  - Pure, deterministic; reads WorldContext + ECSWorld only
+  - No mutations, no RNG/clock; stable ordering for rooms/agents/items
+  - Populates minimal agent fields (Transform/RoomPresence required; ActionState/NarrativeState optional)
+
+- episode_builder.start_new_episode / append_tick_to_episode / finalize_episode
+  - start_new_episode: seeds meta/mood/days and key_world_snapshots with the first snapshot
+  - append_tick_to_episode: appends snapshots, extends narrative_fragments, updates tick_end and simple duration (tick_end - tick_start)
+  - finalize_episode: no‑op in Sprint 7 (lifecycle hook only)
+
+Diff Layer
+- diff_types.py:
+  - SnapshotDiff, AgentDiff, RoomOccupancyDiff, ItemDiff (frozen, primitives‑only)
+- snapshot_diff.py:
+  - compute_snapshot_diff(prev: WorldSnapshot, curr: WorldSnapshot) -> SnapshotDiff
+    - Detects agent room changes and position changes, room entries/exits, item spawn/despawn/moves
+    - Pure transformation over snapshots; explicit sorting for determinism
+  - summarize_diff_for_narrative(diff: SnapshotDiff) -> dict
+    - Produces compact JSON‑like dict: moved_agents, room_entries, room_exits, spawned_items, despawned_items
+    - Intended for NarrativeTickContext.diff_summary
+
+How Runtime/Narrative Will Use This (expected in Sprint 8)
+- Phase H / history:
+  - Build WorldSnapshot each tick and optionally compute/store SnapshotDiffs
+- Phase I / narrative:
+  - Provide to NarrativeEngineInterface:
+    - world_snapshot (latest), agents (flattened AgentSnapshot list),
+    - diff_summary derived via summarize_diff_for_narrative(compute_snapshot_diff(prev, curr))
+  - Episode‑level summaries will later use StageEpisodeV2
+
+Layering & Determinism Guarantees
+- Snapshot/episode/diff layer is read‑only and layer‑pure (no imports from runtime/narrative)
+- Builders use explicit sorting; no RNG/time; never mutate ECS/world
+
+Deferred to Sprint 8+
+- Episode mood aggregation, scene segmentation, tension curves
+- Rich agent identity/drives/emotion population in snapshots
+- Runtime wiring for history/diff persistence and NarrativeTickContext construction
+
+Package Surface (for consumers)
+- from backend.sim4.snapshot import (
+    WorldSnapshot, StageEpisodeV2,
+    build_world_snapshot,
+    start_new_episode, append_tick_to_episode, finalize_episode,
+    compute_snapshot_diff, summarize_diff_for_narrative,
+  )
