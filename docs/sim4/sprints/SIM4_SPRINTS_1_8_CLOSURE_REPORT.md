@@ -376,8 +376,6 @@ The **viewer must not break determinism** or reach into internals; it should con
     - `NullNarrativeEngine`:
         - Stub implementation with deterministic, trivial outputs (non-empty text to keep tests happy).
         - **No network / LLM / I/O / RNG**.
-          markdown
-          Copy code
 - **NarrativeRuntimeContext (`runtime/narrative_context.py`)**
     - Bridge between runtime tick and narrative engine:
         - `build_tick_context(tick_index, dt, episode_id, world_ctx, ecs_world, history) -> NarrativeTickContext`
