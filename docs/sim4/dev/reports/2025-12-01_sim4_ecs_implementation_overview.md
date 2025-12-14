@@ -416,3 +416,59 @@ Package Surface (for consumers)
     start_new_episode, append_tick_to_episode, finalize_episode,
     compute_snapshot_diff, summarize_diff_for_narrative,
   )
+
+---
+
+## 6) Narrative Runtime Bridge (Sprint 8)
+
+### Scope
+
+- Establish a deterministic, layer‑pure bridge between the runtime kernel and the narrative sidecar without introducing any LLM or semantic logic.
+- Provide runtime‑owned DTOs for narrative I/O, a narrative engine interface with a stub implementation, and an inert Phase I hook in the tick pipeline.
+
+### DTOs Implemented (runtime/narrative context)
+
+- NarrativeBudget, NarrativeTickContext, NarrativeTickOutput
+- SubstrateSuggestion, StoryFragment, MemoryUpdate
+- NarrativeEpisodeContext, NarrativeEpisodeOutput
+- NarrativeUICallContext, NarrativeUIText
+
+All are plain dataclasses with Rust‑portable shapes (ints/floats/bools/strings/lists/dicts and snapshot DTO references). No engine handles exposed.
+
+### Narrative Interface
+
+- backend/sim4/narrative/interface.py:
+  - NarrativeEngineInterface facade with methods:
+    - run_tick_jobs(ctx: NarrativeTickContext) -> NarrativeTickOutput
+    - summarize_episode(ctx: NarrativeEpisodeContext) -> NarrativeEpisodeOutput
+    - describe_scene(ctx: NarrativeUICallContext) -> NarrativeUIText
+  - NullNarrativeEngine stub: returns empty outputs or placeholder text; no I/O, network, or RNG.
+
+### Runtime Bridge
+
+- backend/sim4/runtime/narrative_context.py:
+  - NarrativeRuntimeContext builds NarrativeTickContext via snapshot.build_world_snapshot and a history‑provided diff_summary (derived from SnapshotDiff and summarize_diff_for_narrative).
+  - Applies stride/enable gating via NarrativeBudgetConfig; calls engine.run_tick_jobs(...); logs outputs to history. No ECS/world mutation paths here.
+
+### Tick Wiring (Phase I)
+
+- backend/sim4/runtime/tick.py:
+  - tick(..., episode_id: int = 0, narrative_ctx: NarrativeRuntimeContext | None = None)
+  - After Phase H, Phase I invokes narrative_ctx.run_tick_narrative(...) once per tick when provided.
+  - Call is wrapped defensively; narrative failures never impact the deterministic kernel.
+
+### Guarantees
+
+- Determinism & Layer Purity (SOP‑200/SOP‑100):
+  - No LLMs, I/O, or randomness in runtime/narrative bridge.
+  - Narrative consumes read‑only DTOs; cannot mutate ECS/world directly.
+- Diff summary contract:
+  - diff_summary in NarrativeTickContext is produced by runtime/history from SnapshotDiff(prev,curr) via snapshot.summarize_diff_for_narrative; narrative does not recompute diffs.
+
+### Deferred (Future Sprints)
+
+- Real narrative behaviors (Story/Coach/Archivist roles) and policies.
+- Mapping SubstrateSuggestion → ECS commands (e.g., PrimitiveIntent, NarrativeState updates) applied in next tick’s Phase A.
+- Episode‑level summary flows and UI describe‑scene pipelines using StageEpisodeV2.
+
+This completes Sprint 8 with an inert, testable narrative hook ready for semantic implementations.
