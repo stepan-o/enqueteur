@@ -34,6 +34,27 @@ This document is the **single source of truth** for the snapshot layer and episo
 
 ---
 
+## Sprint 7 — Status (Implemented)
+
+As of Sprint 7 completion:
+
+- Snapshot DTOs implemented:
+  - WorldSnapshot, RoomSnapshot, AgentSnapshot, ItemSnapshot, TransformSnapshot.
+- Episode DTOs implemented:
+  - EpisodeMeta, EpisodeMood, TensionSample, SceneSnapshot, DayWithScenes, EpisodeNarrativeFragment, StageEpisodeV2.
+- Builders implemented (minimal, deterministic, read-only):
+  - world_snapshot_builder.build_world_snapshot(WorldContext, ECSWorld → WorldSnapshot).
+  - episode_builder.start_new_episode / append_tick_to_episode / finalize_episode (bookkeeping only; no narrative logic).
+- Diff layer implemented (minimal, narrative/UI-friendly):
+  - SnapshotDiff, AgentDiff, RoomOccupancyDiff, ItemDiff DTOs.
+  - compute_snapshot_diff(prev, curr) and summarize_diff_for_narrative(diff) helpers.
+- Package surface: backend.sim4.snapshot exports DTOs, builders, and diff helpers for runtime and narrative consumption.
+
+Deferred to Sprint 8+:
+- Episode mood aggregation, scene segmentation, tension curves.
+- Advanced agent identity/persona/drive population in snapshots.
+- Runtime wiring for history/diff and NarrativeTickContext invocation.
+
 ## 1. Position in the 6-Layer DAG
 
 DAG reminder:
@@ -416,6 +437,18 @@ Constraints:
 * No ECS/world mutations.
 * No calls to narrative.
 * No I/O.
+
+### 6.1.1 Snapshot Diffs (Implemented in Sprint 7)
+
+The snapshot layer includes a minimal, deterministic diff facility for narrative/UI hooks:
+
+- Types: `SnapshotDiff`, `AgentDiff`, `RoomOccupancyDiff`, `ItemDiff` (frozen, primitives-only DTOs).
+- Builder: `compute_snapshot_diff(prev: WorldSnapshot, curr: WorldSnapshot) -> SnapshotDiff`.
+  - Detects agent room changes and position changes, room entries/exits, and item spawn/despawn/moves.
+  - Pure transformation over snapshots; no imports from ECS/world/runtime/narrative; explicit sorting for determinism.
+- Summarization: `summarize_diff_for_narrative(diff: SnapshotDiff) -> dict`.
+  - Produces a compact JSON-like dict for `NarrativeTickContext.diff_summary`.
+  - Keys: `moved_agents`, `room_entries`, `room_exits`, `spawned_items`, `despawned_items`.
 
 ---
 
