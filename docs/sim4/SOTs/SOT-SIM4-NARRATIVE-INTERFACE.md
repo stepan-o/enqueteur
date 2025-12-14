@@ -164,6 +164,11 @@ Instead:
 
 Narrative thus influences **future ticks only**, never retroactively.
 
+Implementation note (Sprint 7 closure):
+- Runtime constructs `NarrativeTickContext.diff_summary` by computing a `SnapshotDiff` between the last two `WorldSnapshot`s and compressing it via the snapshot layer’s fixed helper.
+  - Concretely: snapshot.compute_snapshot_diff(prev, curr) → snapshot.summarize_diff_for_narrative(diff) → dict.
+  - This remains a pure, read-only transformation; no narrative calls participate in building `diff_summary`.
+
 ---
 
 ## 4.2 Episodic / Scene-Level Calls
@@ -214,10 +219,11 @@ class NarrativeTickContext:
     recent_events: list["WorldEvent"]         # from world/events.py
     diff_summary: dict
     """
-    Compact, lossy summary of last-tick changes derived from SnapshotDiff
-    (snapshot/diff_types.py). Shape is intentionally simple and JSON-like
-    for Rust/LLM portability. Narrative never sees raw SnapshotDiff, only
-    this summarized view.
+    Compact, JSON-like dict derived from SnapshotDiff summarizing per-tick
+    movement and spawn/despawn changes for agents and items.
+    Built by runtime/history via snapshot helpers:
+      compute_snapshot_diff(prev, curr) → summarize_diff_for_narrative(diff).
+    Narrative never sees raw SnapshotDiff, only this summarized view.
     """
     narrative_budget: "NarrativeBudget"       # tokens/time limits for this call
 ```
@@ -226,7 +232,7 @@ Notes:
 * `AgentSnapshot` is a numeric view derived from ECS components (L1–L5 + NarrativeState references), not raw ECS.
 * No ECS write handles are exposed; this is **read-only** from narrative’s perspective.
 
-`diff_summary` is derived from `SnapshotDiff` (see SOT-SIM4-SNAPSHOT-AND-EPISODE §X.Y) by runtime/history.
+`diff_summary` is derived from `SnapshotDiff` (see SOT-SIM4-SNAPSHOT-AND-EPISODE §6.1.1) by runtime/history using the snapshot layer’s summarization helper.
 Narrative sees only this compact summary, never the raw per-entity diff structures.  
 This keeps narrative **decoupled from snapshot internals** while still acknowledging that the diff layer exists and feeds it.
 
