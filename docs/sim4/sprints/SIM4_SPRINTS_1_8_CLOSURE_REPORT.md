@@ -271,19 +271,19 @@ The **viewer must not break determinism** or reach into internals; it should con
 
 **Goal:** DTOs and builders for world snapshots and episodes; define the canonical “timeline” representation.
 
-### What exists conceptually (per plan, assumed implemented)
+### What exists (implemented)
 
 - **Snapshot DTOs (`world_snapshot.py`)**
     - `WorldSnapshot`:
         - Per-tick snapshot of:
             - Rooms (from WorldContext)
             - Agents (from ECSWorld)
-            - Items, doors
-            - Key components (e.g., Transform, RoomPresence, ActionState, NarrativeState).
+            - Items (world-side)
+            - Key components (e.g., Transform, RoomPresence; ActionState/NarrativeState references if present).
         - Deterministic ordering: rooms and agents sorted by ID.
-        - Lookup maps: `room_index`, `agent_index`.
+        - Lookup maps: `room_index`, `agent_index` (dicts mapping ID → index).
 
-    - Nested DTOs (shape defined even if builder is initially minimal):
+    - Nested DTOs (frozen, primitives-only):
         - `RoomSnapshot`
         - `AgentSnapshot` (+ sub-DTOs):
             - `TransformSnapshot`
@@ -305,32 +305,36 @@ The **viewer must not break determinism** or reach into internals; it should con
 
 - **WorldSnapshot builder (`world_snapshot_builder.py`)**
     - `build_world_snapshot(tick_index, episode_id, world_ctx, ecs_world) -> WorldSnapshot`
-    - Minimal implemented behavior:
-        - 1 room, 1 agent scenario fully supported.
-        - Deterministic structural snapshot.
+    - Minimal implemented behavior (deterministic, read-only):
+        - Builds rooms (occupants/items/neighbors), agents, and items from engine state.
+        - Explicit sorting for determinism; no RNG/time; no mutations.
+        - Requires `Transform` + `RoomPresence` for agents; treats `ActionState` / `NarrativeState` as optional.
 
 - **Episode builder (`episode_builder.py`)**
     - Functions:
         - `start_new_episode(...) -> StageEpisodeV2`
         - `append_tick_to_episode(episode, world_snapshot, ...)`
         - `finalize_episode(episode)`
-    - Initial behavior:
-        - Single day & single scene.
-        - Appends `key_world_snapshots` per tick.
-        - Fills `EpisodeMeta` (start/end tick, etc.).
-        - No tension/mood logic yet.
+    - Implemented behavior (bookkeeping only):
+        - `start_new_episode`: seeds `EpisodeMeta` (empty title/synopsis), sets `tick_start = tick_end = initial`, `duration_seconds = 0.0`; `days=[]`; `key_world_snapshots=[initial_snapshot]`.
+        - `append_tick_to_episode`: appends `world_snapshot`, extends `narrative_fragments`, updates `meta.tick_end`, and sets `duration_seconds = tick_end - tick_start`.
+        - `finalize_episode`: no-op for Sprint 7.
+        - No tension/mood aggregation; no scene/day segmentation in Sprint 7 (days remain empty).
 
 - **Snapshot diff (`diff_types.py`, `snapshot_diff.py`)**
-    - `SnapshotDiff`, `EntityDiff`, `RoomDiff`:
-        - Compare two `WorldSnapshot`s.
-        - Detect basic changes: room movement, missing entities, position deltas.
+    - DTOs: `SnapshotDiff`, `AgentDiff`, `RoomOccupancyDiff`, `ItemDiff` (frozen, primitives-only).
+    - Builder: `compute_snapshot_diff(prev, curr) -> SnapshotDiff`
+        - Detects agent room changes and position changes, room entries/exits, and item spawn/despawn/moves.
+    - Summarizer: `summarize_diff_for_narrative(diff) -> dict`
+        - Produces compact JSON-like dict: `moved_agents`, `room_entries`, `room_exits`, `spawned_items`, `despawned_items`.
     - Used by Sprint 8 narrative to summarize changes.
 
 - **Snapshot API surface**
     - `sim4.snapshot` exports:
         - `build_world_snapshot`
         - `start_new_episode`, `append_tick_to_episode`, `finalize_episode`
-        - `WorldSnapshot`, `StageEpisodeV2`, `SnapshotDiff`, etc.
+        - `WorldSnapshot`, `StageEpisodeV2`, `SnapshotDiff`,
+        - `compute_snapshot_diff`, `summarize_diff_for_narrative`, and related diff DTOs.
 
 ### Why it matters for the viewer
 
