@@ -12,10 +12,12 @@ Notes:
 from .clock import TickClock
 from .tick import tick, TickResult
 from .events import RuntimeEvent
+from .narrative_context import NarrativeTickContext
 
 __all__ = [
     "TickClock",
     "tick",
     "TickResult",
     "RuntimeEvent",
+    "NarrativeTickContext",
 ]
