@@ -202,6 +202,14 @@ WorldSnapshot, AgentSnapshot, WorldEvent are defined in snapshot/world SOTs and 
 
 Contains no ECSWorld or WorldContext handles.
 
+diff_summary
+
+• Definition: compact, JSON‑like dict derived from the snapshot diff layer. Runtime (via history/Phase H) computes a SnapshotDiff between the last two WorldSnapshots and compresses it using a fixed helper in the snapshot package (e.g., summarize_diff_for_narrative).
+
+• Purpose: encode per‑tick changes relevant to narrative/UI — agent room changes, position changes, and item spawn/despawn/moves — in a small, stable structure suitable for LLM consumption and Rust interop.
+
+• Contract: read‑only input for narrative. Narrative never mutates or re‑computes diffs; it only consumes diff_summary. All write‑backs still occur exclusively via SubstrateSuggestion / StoryFragment / MemoryUpdate.
+
 4.3 NarrativeTickOutput (Output ← Narrative)
 
 Per SOT-SIM4-NARRATIVE-INTERFACE:
@@ -347,7 +355,7 @@ identity, drives, emotions, social, motives, plan, intent, action, narrative_sta
 
 No ECS handles; just numeric/state views.
 
-Fetch recent events and diff_summary from history/WorldContext (Phase G/H outputs).
+Fetch recent events and diff_summary from history/WorldContext (Phase G/H outputs). diff_summary is produced earlier in the tick by computing a SnapshotDiff between the last two WorldSnapshots in the snapshot layer and compressing it via a fixed helper (e.g., summarize_diff_for_narrative). narrative_context.py consumes this summary and does not recompute diffs itself.
 
 Determine NarrativeBudget for this tick based on:
 
