@@ -88,7 +88,7 @@ tick(dt):
     4. Phase B: Perception
     5. Phase C: Cognition (non-LLM)
     6. Phase D: Intention → ECS Commands
-    7. Phase E: ECS Command Application
+    7. Phase E: ECS Structural Commit & Command Application
     8. Phase F: World Updates
     9. Phase G: Event Consolidation
     10. Phase H: Diff Recording + History Append
@@ -96,9 +96,10 @@ tick(dt):
     12. Unlock WorldContext
 ```
 
-**Mutations per SOP-200:**
-* ECS mutations: **Phase E** (via ECS systems & command buffers)
-* World mutations: **Phase F** (via WorldContext + world subsystems)
+**Mutations per SOP-200 (Option A alignment):**
+* ECS component writes: Phases **B–E** (deterministic ECS systems)
+* Phase **E**: structural commit + buffered command-batch application (entity create/delete, component add/remove, global ECSCommandBatch)
+* World mutations: **Phase F** (via WorldContext.apply_commands(...))
 * History/diff: **Phase H** (recording only, no sim-state mutation)
 * Narrative: **Phase I** (semantic only, no kernel mutation)
 
@@ -131,7 +132,7 @@ Sources include:
   * scenario triggers/flags for this tick in runtime
 
 Constraints:
-* No ECS or world mutation in Phase A.
+* No **ECS storage** or **world state** mutation in Phase A (only input normalization + command buffering).
 * All ordering is **stable** (e.g., by agent ID, then source priority).
 * RNG calls (if any) go through `util/random.py` and are logged.
 
@@ -145,13 +146,8 @@ Update **perception substrate** (L1/L2) in ECS using **read-only** world views.
   * occlusion, distance, line-of-sight
 * `PhaseScheduler` calls `PerceptionSystem` (and any other Phase-B systems):
 
-```python
-    perception_system.run(
-    ecs_world,
-    world_views.perception_view,
-    dt,
-    rng
-)
+```text
+perception_system.run(ecs_world, world_views.perception_view, dt, rng)
 ```
 
 Allowed:
@@ -225,14 +221,14 @@ Steps:
      * buffered **WorldCommands** (e.g., `OpenDoor`, `ToggleMachine`) into a **world command buffer** owned by runtime
 
 **Note:**
-No actual ECS or world mutation yet — this is preparation.
+No world mutation yet. ECS systems may write intent/movement/interaction substrates deterministically in Phase D; structural ECS commits (entity lifecycle, component add/remove, global command application) remain reserved for Phase E.
 
 ---
 
-### 4.5 Phase E — ECS Command Application
+### 4.5 Phase E — ECS Structural Commit & Command Application
 
 **Responsibility:**
-Apply **all ECS-side mutations** for this tick.
+Finalize ECS-side mutations for this tick by applying buffered command batches and performing structural commits.
 
 Here, systems that **actually write to ECS storage** run, using command buffers and substrate updates prepared in previous phases.
 
@@ -248,8 +244,8 @@ Key actors:
 (e.g. inventory state changes that are purely agent-side).
 
 **Rules:**
-* All ECS mutations for this tick must be completed by the end of Phase E.
-* No world mutation here; only command buffers for world.
+* All ECS structural commits and command-batch applications must be completed by the end of Phase E.
+* No world mutation here; only emission of world commands (to be applied in Phase F).
 
 ---
 
@@ -557,7 +553,10 @@ All ECS systems are assigned to B–E via PhaseScheduler with explicit order.
 
 WorldContext processes world commands only in Phase F.
 
-No state mutation occurs outside Phases E/F.
+No kernel state mutation occurs outside:
+* ECS component writes in **Phases B–E**
+* ECS structural commits + command-batch application in **Phase E**
+* World mutations in **Phase F**
 
 Narrative is triggered only after Phase H.
 
@@ -593,7 +592,7 @@ Deviations from the long‑term design in this SOT (pragmatic for Sprint 6):
 Determinism & layer boundaries satisfied in Sprint 6:
 
 - SOP‑200 determinism:
-  - All state mutations are confined to Phases E (ECS) and F (world).
+  - ECS component writes occur in Phases B–E (systems), with structural commits and command-batch application confined to Phase E; world mutations are confined to Phase F.
   - RNG usage is deterministic and injected into systems via `SimulationRNG` using explicit seeding.
   - Command and event ordering is stable (policy is documented and covered by tests).
 - SOP‑100 layer boundaries:

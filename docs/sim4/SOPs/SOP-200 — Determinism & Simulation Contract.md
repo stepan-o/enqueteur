@@ -68,7 +68,7 @@ tick(dt):
     4. Phase B: Perception (ECS systems, read-only world views)
     5. Phase C: Cognition (ECS substrate updates: beliefs, drives, motives, plans, social)
     6. Phase D: Intent Resolution (ECS: PrimitiveIntent → SanitizedIntent, Movement/Interaction substrate)
-    7. Phase E: ECS State Application (mutations of ECS components occur here only)
+    7. Phase E: ECS Structural Commit & Command Application
     8. Phase F: World Updates (rooms, assets) via world commands emitted by ECS
     9. Phase G: Event Consolidation (from ECS + world changes)
     10. Phase H: Diff Recording + History Append (no further state mutation)
@@ -77,6 +77,8 @@ tick(dt):
 ```
 
 **ECS systems** may run only inside **Phases B–E.**
+
+Clarification (Option A alignment): ECS systems may write component values in Phases B–E; structural changes (entity create/delete, component add/remove) and buffered command-batch application occur in Phase E.
 
 **World mutation** happens only in **Phase F**.
 
@@ -88,14 +90,19 @@ Narrative runs **outside** the deterministic kernel:
 
 ## 4. Allowed Mutation Points
 
-Mutation of **kernel state** (ECS + world) may occur **ONLY during**:
+Mutation of **kernel state** (ECS + world) may occur **ONLY during** the following phases:
 
-### ✔ Phase E (ECS Mutation)
-Through:
-* command buffers
-* deterministic entity creation/deletion
-* deterministic component writes
-* deterministic component updates
+### ✔ Phases B–E (ECS Component Writes)
+Allowed:
+* Deterministic ECS component writes by systems running in Phases B–E.
+* Writes must follow stable iteration/order and use only seeded RNG when necessary.
+
+### ✔ Phase E (ECS Structural Commit & Command-Batch Application)
+Reserved for:
+* Structural commits:
+  * entity create/delete
+  * component add/remove
+* Application of buffered command batches (e.g., global ECSCommandBatch) in a stable, deterministic order.
 
 ### ✔ Phase F (World Layer Updates)
 * room entry/exit
@@ -115,13 +122,10 @@ World updates must be:
 
 ### ❌ Forbidden (kernel perspective):
 
-Mutation in any other phase of ECS or world state.
-
-Mutation inside perception or cognition phases (B–C) beyond controlled writes scheduled for Phase E.
-
-Mutation inside snapshot building.
-
-Direct kernel mutation from narrative.
+* Any world mutation outside Phase **F**.
+* Any structural ECS commit (entity lifecycle, component add/remove, global command-batch application) outside Phase **E**.
+* Mutation inside snapshot building.
+* Direct kernel mutation from narrative.
 
 ### Narrative State Exception
 **Narrative (Phase I)** is allowed to **mutate its own narrative-local state**:
@@ -306,7 +310,7 @@ If Stepan proposes something ambiguous:
 
 A subsystem or SOT is compliant when:
 * deterministic execution is guaranteed
-* all kernel mutation points follow Phase E/F only
+* ECS component writes occur only in Phases **B–E**; structural commits and command-batch application occur in **Phase E**; world mutations occur only in **Phase F**
 * narrative is post-tick only and kernel-read-only
 * RNG is centralized and seeded
 * replay produces identical kernel behavior
