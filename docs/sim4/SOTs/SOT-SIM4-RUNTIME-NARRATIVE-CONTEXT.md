@@ -53,6 +53,30 @@ World/episode type definitions — those belong to snapshot/world SOTs.
 
 This doc is the single source of truth for how runtime packages data for narrative and applies narrative outputs back into the simulation.
 
+---
+
+## Status — Sprint 8 (Runtime ↔ Narrative Bridge)
+
+Implemented in Sim4:
+
+- Runtime-owned DTOs (per §4):
+  - NarrativeBudget, NarrativeTickContext, NarrativeTickOutput,
+  - SubstrateSuggestion, StoryFragment, MemoryUpdate,
+  - NarrativeEpisodeContext, NarrativeEpisodeOutput,
+  - NarrativeUICallContext, NarrativeUIText.
+- NarrativeRuntimeContext bridge with:
+  - build_tick_context(...): constructs WorldSnapshot and agent_snapshots via snapshot builder and consumes diff_summary from history (derived from SnapshotDiff via snapshot.summarize_diff_for_narrative). No recomputation of diffs here.
+  - run_tick_narrative(...): applies budget/stride gating, calls NarrativeEngineInterface.run_tick_jobs(...), and logs outputs to history. No ECS/world mutations; suggestions are not yet converted to ECS commands in Sprint 8.
+- Phase I narrative trigger in runtime.tick(...): when a NarrativeRuntimeContext is provided, tick() calls NarrativeRuntimeContext.run_tick_narrative(...) exactly once per tick after Phase H (history/diff). The call is wrapped defensively so narrative failures never affect the deterministic kernel.
+
+Out of scope / deferred:
+
+- Real narrative logic (LLM calls, semantic reasoning) — currently using NullNarrativeEngine stub.
+- Application of SubstrateSuggestion into ECS commands (e.g., PrimitiveIntent, NarrativeState updates) — to be implemented in a later sprint.
+- Episode-level and UI-level narrative wiring beyond DTO definitions (NarrativeEpisodeContext/NarrativeUICallContext lifecycles).
+
+These items are documented here as planned interfaces; their behavior will be delivered in subsequent sprints without changing the contracts established in this SOT.
+
 1. Position in the 6-Layer DAG
 
 DAG reminder:
@@ -209,6 +233,8 @@ diff_summary
 • Purpose: encode per‑tick changes relevant to narrative/UI — agent room changes, position changes, and item spawn/despawn/moves — in a small, stable structure suitable for LLM consumption and Rust interop.
 
 • Contract: read‑only input for narrative. Narrative never mutates or re‑computes diffs; it only consumes diff_summary. All write‑backs still occur exclusively via SubstrateSuggestion / StoryFragment / MemoryUpdate.
+
+Implementation note (Sprint 8): The tick pipeline’s Phase I is wired to NarrativeRuntimeContext.run_tick_narrative(...). A stub engine (NullNarrativeEngine) may be provided by composition to keep the sidecar inert by default.
 
 4.3 NarrativeTickOutput (Output ← Narrative)
 
@@ -395,6 +421,8 @@ _apply_story_fragments(output.story_fragments, tick_index, episode_id)
 _apply_memory_updates(output.memory_updates)
 
 No ECS/world mutations happen inside this method; mutations are scheduled as commands via external_command_sink for next tick’s input phase.
+
+Implementation note (Sprint 8): In Sim4, Phase I is integrated into runtime.tick(...) to call NarrativeRuntimeContext.run_tick_narrative(...) once per tick when a narrative context is provided. The default engine may be a stub (NullNarrativeEngine), and exceptions are contained to preserve deterministic kernel execution.
 
 6. Mapping SubstrateSuggestion → ECS Commands
    6.1 ExternalCommandSink
