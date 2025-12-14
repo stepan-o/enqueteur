@@ -38,11 +38,14 @@ world/events.py
 1. Position in the 6-Layer DAG
 
 Per SOP-100 the DAG is:
-
-runtime   →   ecs   →   world   →   snapshot   →   integration
-↑
-narrative (sidecar)
-
+```text
+Kernel:   runtime → ecs → world
+                \         \
+                 \         → snapshot → integration
+                  \
+                   → (read-only views) → narrative
+narrative → (suggestion queues) → runtime (Phase A integration ONLY)
+```
 
 WorldContext is part of runtime/.
 

@@ -34,10 +34,13 @@ This is the **most important structural SOP** after SOP-000.
 
 ## 1. The Six-Layer DAG (Directed Acyclic Graph)
 All dependencies must follow this exact DAG:
-```
-runtime   →   ecs   →   world   →   snapshot   →   integration
-                 ↑
-           narrative (sidecar, no upstream calls)
+```text
+Kernel:   runtime → ecs → world
+                \         \
+                 \         → snapshot → integration
+                  \
+                   → (read-only views) → narrative
+narrative → (suggestion queues) → runtime (Phase A integration ONLY)
 ```
 
 ### ✔ Valid arrows

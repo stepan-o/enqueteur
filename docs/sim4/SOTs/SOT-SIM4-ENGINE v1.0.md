@@ -27,11 +27,14 @@ Sim4 is a **dual-engine architecture**:
 
 The **six-layer DAG** of SOP-100 is preserved:
 ```text
-runtime   →   ecs   →   world   →   snapshot   →   integration
-   ↑
-   └── narrative (sidecar; reads via adapters, writes ECS substrate
-       via PrimitiveIntent / NarrativeState, never raw commands)
+Kernel:   runtime → ecs → world
+                \         \
+                 \         → snapshot → integration
+                  \
+                   → (read-only views) → narrative
+narrative → (suggestion queues) → runtime (Phase A integration ONLY)
 ```
+
 
 And the **7-layer agent mind** from SOP-300 + Free Agent Spec is realized as:
 * Substrate in ECS: L1–L5 + numeric L7

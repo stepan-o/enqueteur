@@ -39,9 +39,12 @@ This is the **single source of truth** for the _interface_ between narrative and
 ## 1. Position in the 6-Layer DAG & Boundaries
 DAG (already locked):
 ```text
-runtime   →   ecs   →   world   →   snapshot   →   integration
-                ↑
-              narrative (sidecar)
+Kernel:   runtime → ecs → world
+                \         \
+                 \         → snapshot → integration
+                  \
+                   → (read-only views) → narrative
+narrative → (suggestion queues) → runtime (Phase A integration ONLY)
 ```
 
 Within this DAG:

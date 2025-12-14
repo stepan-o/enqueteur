@@ -25,9 +25,12 @@ It is the canonical spec for:
 ## 1. Runtime’s Role in the 6-Layer DAG
 Per **SOP-100**, the engine DAG is:
 ```text
-runtime   →   ecs   →   world   →   snapshot   →   integration
-                ↑
-              narrative (sidecar, no upstream calls)
+Kernel:   runtime → ecs → world
+                \         \
+                 \         → snapshot → integration
+                  \
+                   → (read-only views) → narrative
+narrative → (suggestion queues) → runtime (Phase A integration ONLY)
 ```
 
 In this DAG:

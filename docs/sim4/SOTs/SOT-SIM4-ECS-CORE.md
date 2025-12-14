@@ -33,9 +33,12 @@ This SOT is the **single source of truth** for the Sim4 ECS substrate core.
 
 Per SOP-100, the engine DAG is:
 ```text
-runtime   →   ecs   →   world   →   snapshot   →   integration
-                ↑
-              narrative (sidecar)
+Kernel:   runtime → ecs → world
+                \         \
+                 \         → snapshot → integration
+                  \
+                   → (read-only views) → narrative
+narrative → (suggestion queues) → runtime (Phase A integration ONLY)
 ```
 
 Within this DAG:

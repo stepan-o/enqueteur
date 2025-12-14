@@ -56,12 +56,14 @@ Deferred to Sprint 8+:
 - Runtime wiring for history/diff and NarrativeTickContext invocation.
 
 ## 1. Position in the 6-Layer DAG
-
 DAG reminder:
 ```text
-runtime   →   ecs   →   world   →   snapshot   →   integration
-               ↑
-            narrative (sidecar)
+Kernel:   runtime → ecs → world
+                \         \
+                 \         → snapshot → integration
+                  \
+                   → (read-only views) → narrative
+narrative → (suggestion queues) → runtime (Phase A integration ONLY)
 ```
 
 Within this DAG:

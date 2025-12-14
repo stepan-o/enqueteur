@@ -79,12 +79,14 @@ These items are documented here as planned interfaces; their behavior will be de
 
 1. Position in the 6-Layer DAG
 
-DAG reminder:
-
-runtime   →   ecs   →   world   →   snapshot   →   integration
-↑
-narrative (sidecar)
-
+```text
+Kernel:   runtime → ecs → world
+                \         \
+                 \         → snapshot → integration
+                  \
+                   → (read-only views) → narrative
+narrative → (suggestion queues) → runtime (Phase A integration ONLY)
+```
 
 Within this DAG:
 

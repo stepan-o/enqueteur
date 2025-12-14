@@ -1,12 +1,9 @@
-📘 SOT-SIM4-ECS-COMMANDS-AND-EVENTS
+# 📘 SOT-SIM4-ECS-COMMANDS-AND-EVENTS
+_**ECSCommand, WorldCommand, WorldEvent**_
+**Draft 1.0 — Architect-Level, Rust-Aligned, SOP-100/200/300 Compliant**
 
-ECSCommand, WorldCommand, WorldEvent
-Draft 1.0 — Architect-Level, Rust-Aligned, SOP-100/200/300 Compliant
-
-0. Scope & Purpose
-
+## 0. Scope & Purpose
 This SOT unifies and locks the Sim4 command/event vocabulary used by:
-
 ECS (substrate + systems),
 
 World Engine / WorldContext,
@@ -104,11 +101,14 @@ Application semantics (summary):
 1. Position in the 6-Layer DAG
 
 DAG reminder:
-
-runtime   →   ecs   →   world   →   snapshot   →   integration
-↑
-narrative (sidecar)
-
+```text
+Kernel:   runtime → ecs → world
+                \         \
+                 \         → snapshot → integration
+                  \
+                   → (read-only views) → narrative
+narrative → (suggestion queues) → runtime (Phase A integration ONLY)
+```
 
 Commands & events sit on the edges:
 

@@ -70,12 +70,14 @@ Public API Surface (for runtime) (ℹ️):
 - Layer purity: world/ has no imports from ecs/ or runtime/; runtime will adapt and inject views.
 
 1. Position in the 6-Layer DAG (SOP-100)
-
 DAG (already locked):
 ```text
-runtime   →   ecs   →   world   →   snapshot   →   integration
-                ↑
-           narrative (sidecar)
+Kernel:   runtime → ecs → world
+                \         \
+                 \         → snapshot → integration
+                  \
+                   → (read-only views) → narrative
+narrative → (suggestion queues) → runtime (Phase A integration ONLY)
 ```
 
 Within this DAG:
