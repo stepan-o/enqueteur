@@ -93,6 +93,8 @@ def tick(
     system_scheduler: Any,
     previous_events: Optional[list[Any]] = None,
     world_commands_in: Optional[Iterable[WorldCommand]] = None,
+    episode_id: int = 0,
+    narrative_ctx: "NarrativeRuntimeContext | None" = None,
 ) -> TickResult:
     """
     Execute a minimal deterministic tick skeleton with phases A–I wired.
@@ -108,7 +110,7 @@ def tick(
     F) Apply World Commands
     G) Event Consolidation
     H) History/Diff Hook
-    I) Narrative Trigger     # TODO[RT-I]
+    I) Narrative Trigger     # optional; wired in Sub‑sprint 8.3
     12) Unlock WorldContext  # TODO[RT-LOCK]
 
     This function currently does not run any systems or collect/apply real
@@ -199,8 +201,19 @@ def tick(
     # Phase H — History/diff hook (stub)
     # TODO[RT-H]: build and store diffs/history for replay
 
-    # Phase I — Narrative trigger (stub)
-    # TODO[RT-I]: call narrative sidecar after deterministic phases (sidecar)
+    # Phase I — Narrative trigger (optional)
+    if narrative_ctx is not None:
+        try:
+            narrative_ctx.run_tick_narrative(
+                tick_index=clock.tick_index,
+                dt=clock.dt,
+                episode_id=episode_id,
+                world_ctx=world_ctx,
+                ecs_world=ecs_world,
+            )
+        except Exception:
+            # Narrative sidecar must never break deterministic kernel tick
+            pass
 
     # Phase 12 — Unlock WorldContext (conceptual; no-op for now)
     # TODO[RT-LOCK]: release world lock
