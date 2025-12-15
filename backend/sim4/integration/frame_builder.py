@@ -13,6 +13,7 @@ from .schema import (
 )
 from .util.quantize import qf
 from .util.stable_hash import stable_hash
+from .types import WorldSnapshotLike
 
 if TYPE_CHECKING:
     from backend.sim4.snapshot.world_snapshot import WorldSnapshot
@@ -41,7 +42,7 @@ def _event_sort_key(e: EventFrame) -> tuple:
     return (int(e.tick_index), str(e.kind), stable_hash(e.payload))
 
 
-def _build_rooms(snapshot: "WorldSnapshot") -> list[RoomFrame]:
+def _build_rooms(snapshot: WorldSnapshotLike) -> list[RoomFrame]:
     rooms = getattr(snapshot, "rooms", []) or []
     out: list[RoomFrame] = []
     for r in rooms:
@@ -55,7 +56,7 @@ def _build_rooms(snapshot: "WorldSnapshot") -> list[RoomFrame]:
     return out
 
 
-def _build_agents(snapshot: "WorldSnapshot") -> list[AgentFrame]:
+def _build_agents(snapshot: WorldSnapshotLike) -> list[AgentFrame]:
     agents = getattr(snapshot, "agents", []) or []
     out: list[AgentFrame] = []
     for a in agents:
@@ -78,7 +79,7 @@ def _build_agents(snapshot: "WorldSnapshot") -> list[AgentFrame]:
     return out
 
 
-def _build_items(snapshot: "WorldSnapshot") -> list[ItemFrame]:
+def _build_items(snapshot: WorldSnapshotLike) -> list[ItemFrame]:
     items = getattr(snapshot, "items", []) or []
     out: list[ItemFrame] = []
     for it in items:
@@ -147,7 +148,7 @@ def _normalize_events(
 
 
 def build_tick_frame(
-    world_snapshot: "WorldSnapshot",
+    world_snapshot: WorldSnapshotLike,
     events: Sequence[Any],
     narrative_fragments: Sequence[Any] | None = None,
     *,

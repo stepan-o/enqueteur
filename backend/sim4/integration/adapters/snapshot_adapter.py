@@ -5,13 +5,14 @@ from typing import TYPE_CHECKING, Any, Sequence
 from ..schema import TickFrame
 from ..schema.version import IntegrationSchemaVersion
 from ..frame_builder import build_tick_frame as _build_canonical
+from ..types import WorldSnapshotLike
 
 if TYPE_CHECKING:
     from backend.sim4.snapshot.world_snapshot import WorldSnapshot
 
 
 def build_tick_frame(
-    world_snapshot: "WorldSnapshot",
+    world_snapshot: WorldSnapshotLike,
     recent_events: Sequence[Any],
     narrative_fragments: Sequence[Any] | None = None,
     *,

@@ -4,12 +4,15 @@ from copy import deepcopy
 
 def make_snapshot(tick_index=10, time_seconds=5.0, episode_id=123):
     class DummySnapshot:
-        __slots__ = ("tick_index", "time_seconds", "episode_id")
+        __slots__ = ("tick_index", "time_seconds", "episode_id", "rooms", "agents", "items")
 
         def __init__(self):
             self.tick_index = tick_index
             self.time_seconds = time_seconds
             self.episode_id = episode_id
+            self.rooms = []
+            self.agents = []
+            self.items = []
 
     return DummySnapshot()
 
