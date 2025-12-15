@@ -52,6 +52,8 @@ from backend.sim4.ecs.systems.base import (
 from backend.sim4.runtime.command_bus import ECSCommandBatch, WorldCommandBatch
 from backend.sim4.world.commands import WorldCommand
 from backend.sim4.runtime.events import RuntimeEvent, consolidate_events
+from backend.sim4.snapshot.world_snapshot_builder import build_world_snapshot
+from backend.sim4.integration.adapters import build_tick_frame
 
 
 @dataclass(frozen=True)
@@ -82,6 +84,8 @@ class TickResult:
     ecs_commands_applied: int = 0
     world_commands_applied: int = 0
     notes: dict[str, Any] = field(default_factory=dict)
+    # Phase H export (viewer-facing frame). Use Any to avoid coupling to integration schema.
+    tick_frame: Any | None = field(default=None)
 
 
 def tick(
@@ -95,6 +99,8 @@ def tick(
     world_commands_in: Optional[Iterable[WorldCommand]] = None,
     episode_id: int = 0,
     narrative_ctx: "NarrativeRuntimeContext | None" = None,
+    tick_frame_sink: Any | None = None,
+    run_id: int | None = None,
 ) -> TickResult:
     """
     Execute a minimal deterministic tick skeleton with phases A–I wired.
@@ -198,8 +204,32 @@ def tick(
         runtime_events=(),    # TODO[RT-G]: internal runtime events when available
     )
 
-    # Phase H — History/diff hook (stub)
-    # TODO[RT-H]: build and store diffs/history for replay
+    # Phase H — History/diff hook (viewer frame emission in 9.3; no persistence yet)
+    tick_frame = None
+    try:
+        world_snapshot = build_world_snapshot(
+            tick_index=clock.tick_index,
+            episode_id=episode_id,
+            world_ctx=world_ctx,
+            ecs_world=ecs_world,
+        )
+
+        tick_frame = build_tick_frame(
+            world_snapshot=world_snapshot,
+            recent_events=runtime_events,
+            narrative_fragments=(),
+            run_id=run_id,
+        )
+
+        if tick_frame_sink is not None:
+            try:
+                tick_frame_sink(tick_frame)
+            except Exception:
+                # Sink must never break deterministic kernel tick
+                pass
+    except Exception:
+        # Phase H must not break deterministic kernel; swallow adapter/snapshot errors
+        tick_frame = None
 
     # Phase I — Narrative trigger (optional)
     if narrative_ctx is not None:
@@ -227,4 +257,5 @@ def tick(
         ecs_commands_applied=ecs_commands_applied,
         world_commands_applied=world_commands_applied,
         notes={},
+        tick_frame=tick_frame,
     )
