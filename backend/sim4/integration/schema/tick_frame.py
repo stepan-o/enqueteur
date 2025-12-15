@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from .version import IntegrationSchemaVersion
+
 # Type-only imports to avoid runtime coupling
 if TYPE_CHECKING:
     from backend.sim4.snapshot.world_snapshot import WorldSnapshot
@@ -11,15 +13,21 @@ if TYPE_CHECKING:
 class TickFrame:
     """Viewer-facing atomic unit for deterministic replay.
 
-    No logic, no mutation. Contains summarized diff and optional psycho metrics.
+    Pure DTO, stable ordering, Rust-portable fields only.
     """
 
+    # Schema + run context
+    schema_version: IntegrationSchemaVersion
+    run_id: int | None
+    episode_id: int | None
+
+    # Timebase
     tick_index: int
     time_seconds: float
 
+    # Snapshot embedding (DTO type from engine; safe under TYPE_CHECKING import)
     world_snapshot: "WorldSnapshot"
-    snapshot_diff: dict | None
 
-    narrative_fragments: list["EpisodeNarrativeFragment"]
-
-    psycho_metrics: dict | None
+    # Event and narrative payloads normalized to plain dicts
+    events: list[dict]
+    narrative_fragments: list[dict]
