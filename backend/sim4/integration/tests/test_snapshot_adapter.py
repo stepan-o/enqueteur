@@ -2,9 +2,6 @@ import sys
 import types
 from copy import deepcopy
 
-import pytest
-
-
 def make_snapshot(tick_index=10, time_seconds=5.0, episode_id=123):
     class DummySnapshot:
         __slots__ = ("tick_index", "time_seconds", "episode_id")
@@ -51,7 +48,7 @@ def test_build_tick_frame_deterministic_and_sorted():
     # Deterministic contents
     # Events should be sorted by (event_tick, kind/type/name, stable_payload_hash)
     # Check non-decreasing tick order first
-    event_ticks = [e.get("tick", e.get("tick_index")) for e in frame_a.events]
+    event_ticks = [e.tick_index for e in frame_a.events]
     assert event_ticks == sorted(event_ticks)
 
     # Narrative fragments sorted by (tick, importance DESC, agent_id, room_id)
@@ -93,3 +90,9 @@ def test_integration_import_does_not_pull_engine_modules():
     # After import, engine modules should still not be imported implicitly
     for m in engine_modules:
         assert m not in sys.modules, f"Module {m} was imported implicitly by integration"
+
+    # Also ensure importing frame_builder and schema modules doesn't pull engine modules
+    importlib.import_module("backend.sim4.integration.frame_builder")
+    importlib.import_module("backend.sim4.integration.schema")
+    for m in engine_modules:
+        assert m not in sys.modules, f"Module {m} was imported implicitly by frame_builder/schema"

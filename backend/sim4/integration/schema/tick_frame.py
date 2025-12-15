@@ -1,19 +1,19 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from .version import IntegrationSchemaVersion
-
-# Type-only imports to avoid runtime coupling
-if TYPE_CHECKING:
-    from backend.sim4.snapshot.world_snapshot import WorldSnapshot
-    from backend.sim4.snapshot.episode_types import EpisodeNarrativeFragment
+from .room_frame import RoomFrame
+from .agent_frame import AgentFrame
+from .item_frame import ItemFrame
+from .event_frame import EventFrame
 
 
 @dataclass(frozen=True)
 class TickFrame:
-    """Viewer-facing atomic unit for deterministic replay.
+    """Viewer-facing atomic unit for deterministic replay (primitives-only).
 
-    Pure DTO, stable ordering, Rust-portable fields only.
+    No engine DTOs embedded. All collections are pre-sorted deterministically.
     """
 
     # Schema + run context
@@ -21,13 +21,15 @@ class TickFrame:
     run_id: int | None
     episode_id: int | None
 
-    # Timebase
+    # Timebase (quantized)
     tick_index: int
     time_seconds: float
 
-    # Snapshot embedding (DTO type from engine; safe under TYPE_CHECKING import)
-    world_snapshot: "WorldSnapshot"
+    # Fully materialized primitives-only entities
+    rooms: list[RoomFrame]
+    agents: list[AgentFrame]
+    items: list[ItemFrame]
 
-    # Event and narrative payloads normalized to plain dicts
-    events: list[dict]
+    # Events and narrative
+    events: list[EventFrame]
     narrative_fragments: list[dict]
