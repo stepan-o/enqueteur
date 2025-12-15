@@ -105,6 +105,8 @@ tick(dt):
 
 All other phases are **pure** (read-only or buffering only).
 
+Note (Phase H): Phase H may emit a viewer-facing TickFrame (snapshot + events + narrative fragments) for deterministic replay/viewer tooling. This is recording/view-shaping only and does not mutate kernel state.
+
 ---
 
 ## 4. Phase-by-Phase Specification
@@ -326,10 +328,25 @@ pushes them into the EventBus and interim structures for history/diff/snapshot
 
 No simulation state mutation occurs here — events are just records.
 
-4.8 Phase H — Diff Recording & History Append
+4.8 Phase H — Diff/History hooks + Viewer Frame Emission (read-only)
 
 Responsibility:
-Compute diffs and append to history.
+Compute diffs and append to history. Additionally, Phase H may build and emit a viewer-facing TickFrame for deterministic replay/viewer tooling. This remains strictly a recording/view‑shaping action (no simulation).
+
+Viewer Frame Emission (9.3 readiness):
+
+Runtime performs the following read-only steps in Phase H:
+
+1. Build a WorldSnapshot via the snapshot builder (read-only over ECS/world; no RNG, no I/O).
+2. Build a TickFrame via the integration adapter (pure transformation of snapshot + consolidated events + optional narrative fragments).
+3. Optionally invoke a TickFrame sink (viewer streaming hook). The sink is best-effort; any exception is swallowed so tick determinism is never compromised.
+
+Constraints for viewer frame emission:
+
+* No kernel mutation (runtime/ecs/world state).
+* No I/O.
+* No clocks/RNG usage.
+* No runtime coupling to integration types: runtime may treat TickFrame as Any/opaque DTO; the integration adapter remains the boundary.
 
 runtime/diff.py:
 
@@ -576,7 +593,8 @@ As of Sprint 6 (2025-12-01), the following runtime tick behavior is implemented 
   - Phase E: ECS command application via `ECSCommandBatch` (global seq 0..N-1 in aggregated order) and `ECSWorld.apply_commands(...)`.
   - Phase F: World command application via `WorldCommandBatch` (global seq 0..N-1) and `apply_world_commands(...)` from `backend.sim4.world.apply_world_commands`, emitting `WorldEvent` values.
   - Phase G: Event consolidation into a flat `RuntimeEvent` list via `backend.sim4.runtime.events::consolidate_events(...)` (ordering policy: world → ecs → runtime, each in provided order).
-  - Phases H & I: present as stubs (no diff/history or narrative yet).
+  - Phase H: builds a WorldSnapshot and emits a viewer-facing TickFrame via the integration adapter (optional sink, best-effort; no diff/history persistence yet).
+  - Phase I: present as a stub (no narrative bridge wired yet).
 
 Deviations from the long‑term design in this SOT (pragmatic for Sprint 6):
 
@@ -585,7 +603,7 @@ Deviations from the long‑term design in this SOT (pragmatic for Sprint 6):
 - Phases B/C/D are not yet specialized/renamed as Perception/Cognition/Intention:
   - The scheduler simply executes configured system types for phases "B", "C", and "D".
 - History/diff/replay modules:
-  - No `runtime/diff.py`, `runtime/history.py`, or `runtime/replay.py` exist yet; Phase H is a placeholder.
+  - No `runtime/diff.py`, `runtime/history.py`, or `runtime/replay.py` exist yet; Phase H currently performs snapshot + TickFrame emission only (viewer readiness). Persistent diff/history/replay remain pending.
 - Narrative integration:
   - Phase I does not yet call any narrative bridge; it is reserved for later Sprints (see SOT‑SIM4‑RUNTIME‑NARRATIVE‑CONTEXT).
 
