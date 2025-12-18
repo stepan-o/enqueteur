@@ -1,6 +1,6 @@
 # SIM4 SPRINTS 9-14 PLAN: “Viewer Readiness”
 
-Goal: by end, we can **export a run**, **load it in a Godot-like viewer**, **scrub time (rewind/zoom)**, render **2.5D/isometric placeholders**, show **bubbles**, and overlay **psycho topology** — without violating SOP-100/200.
+Goal: by the end, we can **export a run**, **load it in a Godot-like viewer**, **scrub time (rewind/zoom)**, render **2.5D/isometric placeholders**, show **bubbles**, and overlay **psycho topology** — without violating SOP-100/200.
 
 ---
 
@@ -36,7 +36,7 @@ Goal: by end, we can **export a run**, **load it in a Godot-like viewer**, **scr
 - clear directory layout spec
 
 **Acceptance**
-- Running a short sim produces an export folder with correct structure
+- Running a short sim produces an export folder with the correct structure
 - Export is deterministic (byte-identical or logically identical with stable ordering)
 
 ---
@@ -66,7 +66,7 @@ Goal: by end, we can **export a run**, **load it in a Godot-like viewer**, **scr
     - diff per tick between keyframes
 
 **Acceptance**
-- Can load keyframe at tick T0 and apply diffs to reconstruct T1..Tn
+- Can load a keyframe at tick T0 and apply diffs to reconstruct T1..Tn
 - Index supports O(1) seek to nearest keyframe
 
 ---
@@ -122,7 +122,7 @@ Goal: by end, we can **export a run**, **load it in a Godot-like viewer**, **scr
 
 **Acceptance**
 - Export includes `ui_events.jsonl` with bubble events
-- Replay shows same bubbles at same ticks when using logged narrative outputs
+- Replay shows the same bubbles at the same ticks when using logged narrative outputs
 ## Sprint 12 — 2.5D Isometric “Room Map” (Render Specs)
 
 ### S12.1 — RoomRenderSpec + AgentRenderSpec + asset refs
@@ -141,11 +141,11 @@ Goal: by end, we can **export a run**, **load it in a Godot-like viewer**, **scr
 ### S12.2 — Deterministic layout algorithm (placeholder city map)
 **Deliverables**
 - `integration/layout_algos.py`:
-    - if navgraph exists: place rooms using graph layout **deterministically**
-    - if navgraph stub: place rooms in sorted order grid (guaranteed stable)
+    - if the navgraph exists: place rooms using graph layout **deterministically**
+    - if navgraph stub: place rooms in a sorted order grid (guaranteed stable)
 
 **Acceptance**
-- Same world layout every run given same identities
+- Same world layout every run given the same identities
 - No floating nondeterminism surprises (quantize coordinates)
 ## Sprint 13 — Psycho Topology Overlay (City-level Visualization)
 
@@ -179,7 +179,7 @@ Goal: by end, we can **export a run**, **load it in a Godot-like viewer**, **scr
 **Deliverables**
 - In a `viewer_ref/` folder (or separate repo):
     - load `manifest.json`, `index.json`, keyframe/diff chunks
-    - scrub slider: seek to tick, apply diffs forward/back via nearest keyframe
+    - scrub slider: seek to tick, apply diffs forward/back via the nearest keyframe
 
 **Acceptance**
 - Can jump to any tick quickly

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .version import IntegrationSchemaVersion
 from .room_frame import RoomFrame
 from .agent_frame import AgentFrame
 from .item_frame import ItemFrame
 from .event_frame import EventFrame
+from ..render_specs import RoomRenderSpec, AgentRenderSpec
 
 
 @dataclass(frozen=True)
@@ -31,5 +32,10 @@ class TickFrame:
     items: list[ItemFrame]
 
     # Events and narrative
-    events: list[EventFrame]
-    narrative_fragments: list[dict]
+    events: list[EventFrame] = field(default_factory=list)
+    narrative_fragments: list[dict] = field(default_factory=list)
+
+    # Viewer-facing render contracts (placeholders allowed; deterministic)
+    # Sorted by (room_id) and (agent_id), respectively.
+    room_render_specs: list[RoomRenderSpec] = field(default_factory=list)
+    agent_render_specs: list[AgentRenderSpec] = field(default_factory=list)

@@ -14,6 +14,11 @@ from .schema import (
 from .util.quantize import qf
 from .util.stable_hash import stable_hash
 from .types import WorldSnapshotLike
+from .render_specs import (
+    RoomRenderSpec,
+    AgentRenderSpec,
+    DEFAULT_ASSETS,
+)
 
 if TYPE_CHECKING:
     from backend.sim4.snapshot.world_snapshot import WorldSnapshot
@@ -193,6 +198,45 @@ def build_tick_frame(
         )
     )
 
+    # Build deterministic, placeholder render specs (no layout yet; S12.2)
+    room_specs: list[RoomRenderSpec] = []
+    for rf in rooms:
+        room_specs.append(
+            RoomRenderSpec(
+                room_id=rf.room_id,
+                world_x=0.0,
+                world_y=0.0,
+                width=1.0,
+                height=1.0,
+                z_layer=0,
+                art_ref=DEFAULT_ASSETS.default_room_art_ref,
+            )
+        )
+    # Sort by numeric room_id if possible, else by string
+    def _room_key(rs: RoomRenderSpec):
+        try:
+            return (0, int(rs.room_id))
+        except Exception:
+            return (1, str(rs.room_id))
+    room_specs.sort(key=_room_key)
+
+    agent_specs: list[AgentRenderSpec] = []
+    for af in agents:
+        agent_specs.append(
+            AgentRenderSpec(
+                agent_id=af.agent_id,
+                sprite_ref=DEFAULT_ASSETS.default_agent_sprite_ref,
+                bubble_anchor_dx=DEFAULT_ASSETS.default_bubble_anchor_dx,
+                bubble_anchor_dy=DEFAULT_ASSETS.default_bubble_anchor_dy,
+            )
+        )
+    def _agent_key(aspec: AgentRenderSpec):
+        try:
+            return (0, int(aspec.agent_id))
+        except Exception:
+            return (1, str(aspec.agent_id))
+    agent_specs.sort(key=_agent_key)
+
     return TickFrame(
         schema_version=schema_version,
         run_id=run_id,
@@ -204,6 +248,8 @@ def build_tick_frame(
         items=items,
         events=event_frames,
         narrative_fragments=narr_list,
+        room_render_specs=room_specs,
+        agent_render_specs=agent_specs,
     )
 
 
