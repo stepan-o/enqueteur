@@ -44,8 +44,22 @@ export class PixiScene {
     // Optional: basic background
     private bg?: PIXI.Graphics;
 
+    // Pixi v8 init is async; gate rendering & input until ready.
+    private ready = false;
+
+    // Optional: stash latest state so we can render immediately after init completes.
+    private pendingState?: WorldState;
+
     constructor(mountEl: HTMLElement) {
-        this.app = new PIXI.Application({
+        this.app = new PIXI.Application();
+
+        // Pixi v8: Application.init() is async. Constructors cannot be async.
+        // We kick it off and gate render/input via `this.ready`.
+        void this.init(mountEl);
+    }
+
+    private async init(mountEl: HTMLElement): Promise<void> {
+        await this.app.init({
             resizeTo: mountEl,
             antialias: true,
             backgroundAlpha: 1,
@@ -59,12 +73,7 @@ export class PixiScene {
 
         // Simple background (keeps contrast predictable)
         this.bg = new PIXI.Graphics();
-        this.bg.rect(0, 0, 10, 10);
-        this.bg.fill({ color: 0x0b0b0b, alpha: 1 });
         this.app.stage.addChildAt(this.bg, 0);
-
-        // Default camera
-        this.setCamera({ x: 400, y: 240, zoom: 1 });
 
         // Keep background covering canvas
         this.app.ticker.add(() => {
@@ -74,9 +83,42 @@ export class PixiScene {
             this.bg.fill({ color: 0x0b0b0b, alpha: 1 });
         });
 
-        // Basic wheel zoom (Phase 2 polish later)
+        // --- DEBUG: origin marker so we *always* see something if root is visible
+        const origin = new PIXI.Graphics();
+        origin.circle(0, 0, 6);
+        origin.fill({ color: 0xff3366, alpha: 0.9 });
+        origin.name = "__origin__";
+        this.root.addChild(origin);
+
+        const cross = new PIXI.Graphics();
+        cross.moveTo(-20, 0).lineTo(20, 0).stroke({ width: 2, color: 0xffffff, alpha: 0.25 });
+        cross.moveTo(0, -20).lineTo(0, 20).stroke({ width: 2, color: 0xffffff, alpha: 0.25 });
+        cross.name = "__cross__";
+        this.root.addChild(cross);
+
+        // Recenter camera relative to canvas size (more robust than a hardcoded offset)
+        const recenter = () => {
+            this.setCamera({
+                x: Math.floor(this.app.renderer.width * 0.5),
+                y: Math.floor(this.app.renderer.height * 0.5), // was 0.35; 0.5 is safer for iso
+                zoom: this.camZoom,
+            });
+        };
+        recenter();
+        this.app.renderer.on("resize", recenter);
+
+        // Basic wheel zoom (Phase 2 polish later) — only after canvas exists.
         this.enableWheelZoom();
         this.enableDragPan();
+
+        this.ready = true;
+
+        // If state arrived before init completed, render once now.
+        if (this.pendingState) {
+            const s = this.pendingState;
+            this.pendingState = undefined;
+            this.renderFromState(s);
+        }
     }
 
     /** Hook: used by boot.ts to wire the desync banner click. */
@@ -86,6 +128,15 @@ export class PixiScene {
 
     /** Main render entry (called from WorldStore subscription). */
     renderFromState(s: WorldState): void {
+        if (!this.ready) {
+            // Store latest; render after init completes.
+            this.pendingState = s;
+            return;
+        }
+
+        // --- DEBUG: one-line visibility check
+        // console.debug("[pixi] render", { rooms: s.rooms.size, agents: s.agents.size, narrative: s.narrative.size });
+
         if (s.desynced) {
             this.showDesyncBanner(s.desyncReason ?? "Desync detected");
             return;
@@ -129,9 +180,6 @@ export class PixiScene {
     private drawRoom(g: PIXI.Graphics, r: RoomSnapshot): void {
         g.clear();
 
-        // Placeholder geometry:
-        // - If bounds exist, draw iso-projected rectangle outline
-        // - Else, draw a small marker at (0,0)
         const b = r.bounds;
 
         if (!b) {
@@ -145,29 +193,22 @@ export class PixiScene {
         const p2 = isoProject({ x: b.x + b.w, y: b.y + b.h });
         const p3 = isoProject({ x: b.x, y: b.y + b.h });
 
-        // Outline
-        g.moveTo(p0.x, p0.y);
-        g.lineTo(p1.x, p1.y);
-        g.lineTo(p2.x, p2.y);
-        g.lineTo(p3.x, p3.y);
-        g.lineTo(p0.x, p0.y);
-        g.stroke({ width: 1, color: 0xffffff, alpha: 0.18 });
+        // Pixi v8-safe poly drawing (more reliable than moveTo/lineTo path reuse)
+        const pts = [p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y];
 
         // Optional: encode tension as fill alpha (still neutral)
-        // Keeping it subtle: no strong colors yet.
         const t = clamp01((r.tension ?? 0) / 100);
         if (t > 0) {
-            g.moveTo(p0.x, p0.y);
-            g.lineTo(p1.x, p1.y);
-            g.lineTo(p2.x, p2.y);
-            g.lineTo(p3.x, p3.y);
-            g.closePath();
+            g.poly(pts, true);
             g.fill({ color: 0xffffff, alpha: 0.03 + t * 0.06 });
         }
 
+        // Outline
+        g.poly(pts, true);
+        g.stroke({ width: 1, color: 0xffffff, alpha: 0.18 });
+
         // Room label (minimal, optional)
         if (r.name) {
-            // Create or update label child
             let label = g.getChildByName("label") as PIXI.Text | null;
             if (!label) {
                 label = new PIXI.Text({
@@ -257,11 +298,7 @@ export class PixiScene {
      * ------------------------------------------------------------------------ */
 
     private renderNarrative(s: WorldState): void {
-        // Assumption for v0.1: entity_id maps to agent_id for agent-attached narrative
-        // (Later: entity types + stable fragment IDs.)
         const frags = Array.from(s.narrative.values());
-
-        // First: mark all existing bubbles as unseen
         const seen = new Set<string>();
 
         for (const n of frags) {
@@ -284,11 +321,9 @@ export class PixiScene {
                 bubble.y = p.y - 48;
                 bubble.alpha = 0.95;
             } else {
-                // No anchor, park it offscreen (or fade)
                 bubble.alpha = 0;
             }
 
-            // Update text
             const text = bubble.getChildByName("text") as PIXI.Text | null;
             if (text) text.text = n.text;
         }
@@ -321,9 +356,7 @@ export class PixiScene {
         t.y = 8;
         c.addChild(t);
 
-        // Tag nondeterministic narrative visually (subtle)
         if (n.nondeterministic) c.alpha = 0.9;
-
         return c;
     }
 
@@ -342,8 +375,8 @@ export class PixiScene {
     }
 
     private enableWheelZoom(): void {
-        // Wheel zoom on canvas only
         const canvas = this.app.canvas;
+
         canvas.addEventListener(
             "wheel",
             (e) => {
