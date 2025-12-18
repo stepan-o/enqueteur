@@ -53,12 +53,7 @@ Within this DAG:
   * suggesting **high-level intents** and reflection updates back into the substrate,
   * staying within safety and budget limits.
 * `narrative/`:
-  * **never imports:**
-    * `ecs/`
-    * `world/`
-    * `runtime/`
-    * `snapshot/`
-    * `integration/`
+  * **must not import engine internals** (`ecs/`, `world/`, `runtime` _implementation_ modules), **except** for importing **runtime-owned DTO contracts** (or a dedicated `contracts/` facade) that are explicitly intended for narrative I/O.
   * interacts only through **plain data contracts** defined in this SOT and in:
     * `runtime/narrative_context.py` (or equivalent adapter),
     * snapshot/episode types (for read-only inputs).
@@ -171,6 +166,10 @@ Implementation note (Sprint 7 closure):
 - Runtime constructs `NarrativeTickContext.diff_summary` by computing a `SnapshotDiff` between the last two `WorldSnapshot`s and compressing it via the snapshot layer’s fixed helper.
   - Concretely: snapshot.compute_snapshot_diff(prev, curr) → snapshot.summarize_diff_for_narrative(diff) → dict.
   - This remains a pure, read-only transformation; no narrative calls participate in building `diff_summary`.
+
+Implementation note (Sprint 11 closure):
+- runtime logs `SubstrateSuggestion` now
+- substrate application is **planned** and will be introduced later with an explicit command-sink contract.
 
 ---
 
@@ -299,12 +298,22 @@ class StoryFragment:
     agent_id: int | None
     room_id: int | None
     text: str           # full natural language
-    importance: float   # 0–1 scoring for UI prioritization
+    importance: float   # 0–1 scoring for UI prioritization, runtime will convert it for BubbleEvents (round+clamp to [-100, 100]), and viewers resolve ties deterministically
 ```
 
 Use:
 * Stored by runtime or snapshot layer for UI log / overlays.
 * Has **no mechanical effect** on substrate.
+
+
+**BubbleEvents are not produced by narrative.**
+
+Runtime converts `StoryFragment → BubbleEvent` using a deterministic policy  
+(scope/kind/anchors/importance conversion) and exports `ui_events.jsonl`.
+
+Sprint 11 closure implementation note:
+* Until `StoryFragment` includes an explicit marker (future schema bump), **agent scope maps to DIALOGUE** for bubbles.
+* Future extension could add `voice: "DIALOGUE"|"THOUGHT"` or similar (breaking change → requires schema bump).
 
 #### 5.2.3 MemoryUpdate
 Semantic memory operations for the **Archivist** role:
@@ -496,3 +505,7 @@ At that point, the **Narrative Interface** is:
 * **Sim4-correct** as a safe, sidecar semantic layer,
 * fully compatible with the numeric substrate & Free Agent Spec,
 * and ready for Junie-style implementation sprints without ambiguity about responsibilities or boundaries.
+
+Implementation note (Sprint 11 closure):
+- runtime logs `SubstrateSuggestion` now
+- substrate application is **planned** and will be introduced later with an explicit command-sink contract.

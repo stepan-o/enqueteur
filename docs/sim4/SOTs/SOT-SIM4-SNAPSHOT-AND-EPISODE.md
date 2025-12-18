@@ -55,6 +55,8 @@ Deferred to Sprint 8+:
 - Advanced agent identity/persona/drive population in snapshots.
 - Runtime wiring for history/diff and NarrativeTickContext invocation.
 
+Sprint 8/11 status: diff_summary is wired; narrative Phase I exists; bubble export exists.
+
 ## 1. Position in the 6-Layer DAG
 DAG reminder:
 ```text
@@ -322,6 +324,13 @@ class EpisodeMeta:
     created_at_ms: int          # optional, for UI; not used for determinism
 ```
 
+Sprint 11 implementation note:
+- Recommended SOT tweak:
+  - Explicitly require `created_at_ms` to be either:
+    - **omitted**, or
+    - **derived deterministically** (e.g., from tick_start * dt, or set to 0), or
+    - stored **outside** deterministic artifacts (only in external run metadata).
+
 ---
 
 ### 5.2 EpisodeMood
@@ -403,6 +412,8 @@ class EpisodeNarrativeFragment:
 Notes:
 * `key_world_snapshots` can be a sparse selection of snapshots (e.g., one per scene or per key moment), not every tick.
 * `key_agent_timelines` is optional and may be omitted or minimal for Sim4; SOT sets the shape.
+* **StageEpisodeV2 narrative_fragments is optional / may remain empty in Sim4**
+* **UI-facing narrative bubbles are exported via integration (ui_events.jsonl)**, derived deterministically from StoryFragments at the runtime→integration boundary.
 
 ---
 
@@ -451,6 +462,7 @@ The snapshot layer includes a minimal, deterministic diff facility for narrative
 - Summarization: `summarize_diff_for_narrative(diff: SnapshotDiff) -> dict`.
   - Produces a compact JSON-like dict for `NarrativeTickContext.diff_summary`.
   - Keys: `moved_agents`, `room_entries`, `room_exits`, `spawned_items`, `despawned_items`.
+  - `summarize_diff_for_narrative(diff)` is the _only_ supported summarization for narrative inputs (helps enforce a single contract).
 
 ---
 
@@ -521,6 +533,10 @@ Constraints:
 episode_builder may be called by runtime after tick F/G/H.
 
 It may read narrative outputs from history, but never invoke narrative directly.
+
+StageEpisodeV2 narrative_fragments is optional / may remain empty in Sim4.
+
+UI-facing narrative bubbles are exported via integration (ui_events.jsonl), derived deterministically from StoryFragments at the runtime→integration boundary.
 
 7. Integration Points
    7.1 Runtime Tick & History

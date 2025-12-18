@@ -7,25 +7,30 @@ Aligned with:
 * **SOP-100** Layer Boundary Protection
 * **SOP-200** Determinism & Simulation Contract
 * **SOP-300** ECS Specification & Agent Substrate Architecture
-
 ---
 
 ## 0. High-Level Design
+
 Sim4 is a **dual-engine architecture**:
+
 **1. Deterministic Kernel (Simulation Core)**
 * `runtime/`, `ecs/`, `world/`
 * deterministic, Rust-portable, replayable
-* holds **substrates** for the 7-layer agent mind (L1–L5, plus L7 numeric vectors)
+* holds **substrates** for the 7-layer agent mind (L1 – L5, plus L7 numeric vectors)
+
 **2. Narrative Mind Engine (Sidecar)**
 * `narrative/`
-* nondeterministic LLM meaning-making
-* reads snapshots / views of kernel state
-* produces semantic narrative state + intent/goal suggestions, which are materialized as ECS substrate components (e.g. `PrimitiveIntent`, updates to `NarrativeState`) via a runtime bridge and sanitized before the next tick 
-3. Presentation & IO Layers
+* nondeterministic meaning-making (LLM-side), but **contracted outputs**
+* reads snapshots / diffs / curated runtime context
+* produces semantic narrative state + intent/goal suggestions, materialized only via **Phase A integration** and sanitized before the next tick
+
+**3. Presentation & IO Layers**
 * `snapshot/`, `integration/`
-* read-only views, Godot/Web APIs, no simulation logic
+* read-only views + export schemas for viewers (Godot/Web/etc.)
+* no simulation logic; no kernel mutation
 
 The **six-layer DAG** of SOP-100 is preserved:
+
 ```text
 Kernel:   runtime → ecs → world
                 \         \
@@ -35,14 +40,385 @@ Kernel:   runtime → ecs → world
 narrative → (suggestion queues) → runtime (Phase A integration ONLY)
 ```
 
-
 And the **7-layer agent mind** from SOP-300 + Free Agent Spec is realized as:
 * Substrate in ECS: L1–L5 + numeric L7
 * Semantic in Narrative: L3–L7
 
+
 ---
 
-## 1. Final Folder Structure (v1.0)
+## 1. Final Folder Structure (v1.0 — Implemented Reality)
+
+This section is the **canonical structure** as it exists under `backend/sim4/` today.
+
+```text
+backend/sim4/
+   ├── runtime/                          # SOP-200 tick pipeline + orchestration glue (kernel)
+   │   ├── tick.py                       # canonical tick() implementation (phases A–I)
+   │   ├── scheduler.py                  # PhaseScheduler (SOP-200 phases + system execution)
+   │   ├── clock.py                      # TickClock / DeltaTime utilities
+   │   ├── command_bus.py                # command routing + application coordination
+   │   ├── events.py                     # runtime-level events + consolidation helpers
+   │   ├── narrative_context.py          # builds NarrativeContext from snapshots/diffs/events
+   │   └── bubble_bridge.py              # narrative bubbles → integration ui_events
+   │
+   ├── ecs/                              # ECS core (Rust-portable deterministic substrate)
+   │   ├── world.py                      # ECSWorld — storage + apply_commands
+   │   ├── entity.py                     # EntityID allocation + registry helpers
+   │   ├── storage.py                    # SOA/archetype-like storage backend
+   │   ├── archetype.py                  # archetype definitions & layout rules
+   │   ├── query.py                      # ECS query engine (read/write views)
+   │   ├── commands.py                   # ECSCommand + command buffer primitives
+   │   ├── components/                   # Agent + world-substrate components
+   │   │   ├── identity.py               # SelfModelSubstrate / identity vectors
+   │   │   ├── embodiment.py             # Transform / Velocity / RoomPresence / PathState
+   │   │   ├── perception.py             # PerceptionSubstrate (visibility/salience/attention)
+   │   │   ├── belief.py                 # BeliefGraphSubstrate / inference weights
+   │   │   ├── drives.py                 # DriveState (curiosity/safety/attachment/etc.)
+   │   │   ├── emotion.py                # EmotionFields (tension/mood drift/charge/etc.)
+   │   │   ├── social.py                 # SocialSubstrate (trust/relationship/factions/etc.)
+   │   │   ├── motive_plan.py            # MotiveSubstrate + PlanLayerSubstrate
+   │   │   ├── intent_action.py          # PrimitiveIntent / SanitizedIntent / ActionState
+   │   │   ├── inventory.py              # InventorySubstrate (IDs only)
+   │   │   ├── narrative_state.py        # NarrativeState (semantic refs only; LLM-owned)
+   │   │   └── meta.py                   # Debug flags, system markers, tags
+   │   └── systems/                      # Deterministic systems (SOP-300 §7)
+   │       ├── base.py
+   │       ├── scheduler_order.py        # explicit mapping: systems → SOP-200 phases
+   │       ├── perception_system.py
+   │       ├── cognitive_preprocessor.py
+   │       ├── emotion_gradient_system.py
+   │       ├── drive_update_system.py
+   │       ├── motive_formation_system.py
+   │       ├── plan_resolution_system.py
+   │       ├── intent_resolver_system.py
+   │       ├── movement_resolution_system.py
+   │       ├── interaction_resolution_system.py
+   │       ├── social_update_system.py
+   │       ├── action_execution_system.py
+   │       └── inventory_system.py
+   │
+   ├── world/                            # Deterministic world engine (SOP-100/200)
+   │   ├── context.py                    # WorldContext (world façade; no ECS imports)
+   │   ├── views.py                      # WorldViews (read-only projections for ECS/snapshot)
+   │   ├── commands.py                   # WorldCommand types
+   │   ├── events.py                     # WorldEvent types
+   │   └── apply_world_commands.py       # deterministic command application (Phase F)
+   │
+   ├── snapshot/                         # Deterministic snapshots + diffs + episode assembly
+   │   ├── world_snapshot.py             # WorldSnapshot / AgentSnapshot / RoomSnapshot / ItemSnapshot DTOs
+   │   ├── world_snapshot_builder.py     # builds snapshots from ECS + world (Phase H)
+   │   ├── snapshot_diff.py              # snapshot diff computation
+   │   ├── diff_types.py                 # diff DTOs and stable structures
+   │   ├── episode_types.py              # Episode DTOs (semantic-safe containers)
+   │   └── episode_builder.py            # Episode builder (snapshot stream → episode)
+   │
+   ├── narrative/                        # Narrative sidecar contract surface (minimal by design)
+   │   └── interface.py                  # DTOs + interface contract for narrative engine integration
+   │
+   ├── integration/                      # IO/export schemas + deterministic serialization
+   │   ├── schema/                       # canonical frame schemas + versioning
+   │   │   ├── version.py
+   │   │   ├── run_manifest.py
+   │   │   ├── tick_frame.py
+   │   │   ├── room_frame.py
+   │   │   ├── agent_frame.py
+   │   │   ├── item_frame.py
+   │   │   └── event_frame.py
+   │   ├── adapters/
+   │   │   └── snapshot_adapter.py       # snapshot → integration frames
+   │   ├── frame_builder.py              # builds TickFrame from snapshots/events
+   │   ├── frame_diff.py                 # deterministic diffs for client streaming
+   │   ├── ui_events.py                  # UI event schema (bubble events, etc.)
+   │   ├── exporter.py                   # writes runs: manifest + frames + ui events
+   │   ├── types.py
+   │   ├── util/
+   │   │   ├── stable_json.py            # stable JSON serialization
+   │   │   ├── stable_hash.py            # stable hashing primitives
+   │   │   └── quantize.py               # quantization helpers for stable numeric export
+   │   └── tests/                        # integration export correctness + replay tests
+   │
+   └── tests/                            # end-to-end and unit tests across layers
+       ├── ecs/...
+       ├── world/...
+       ├── snapshot/...
+       ├── runtime/...
+       └── narrative/...
+```
+
+**Key structural corrections vs the old v1.0 spec**
+- `runtime/engine.py`, `runtime/diff.py`, `runtime/history.py`, `runtime/replay.py`, `runtime/world_context.py`, `runtime/episode.py` do not exist in this repo layout.
+  - The real orchestrator is `runtime/tick.py` + `runtime/scheduler.py` + `runtime/command_bus.py`.
+- `snapshot/` is not `builder.py/schema.py/serializer.py/diff_adapter.py`; it is:
+  - `world_snapshot.py`, `world_snapshot_builder.py`, plus **diff** + **episode** modules.
+- `narrative/` is **not** the big generator/pipeline/memory stack here.
+  - It is currently a **contract-first interface** module: `narrative/interface.py`.
+- `world/` is **flattened** into `context/views/commands/events/apply_world_commands` (no identity/graph/layout subfolders in this snapshot).
+- `integration/` is **schema** + **exporter** + **frame builders** + **diffs** + **ui events** + **stable util**, with strong test coverage.
+
+---
+
+## 2. Mapping to the 7-Layer Agent Mind
+
+From SOP-300 + Free Agent Spec:
+
+```text
+L1 — Embodied & Raw Perception Layer
+L2 — Perception & Attention Layer
+L3 — Belief, Concept & Self-Model Layer
+L4 — Drives & Emotion Fields Layer
+L5 — Motives & Planning Layer
+L6 — Reflection Layer
+L7 — Narrative & Persona/Aesthetic Mind
+```
+
+---
+
+### 2.1 Substrate Components in ECS (Implemented)
+#### L1 — Embodied & Raw Perception
+- `ecs/components/embodiment.py`
+  - `Transform`
+  - `Velocity`
+  - `RoomPresence`
+  - `PathState`
+- `ecs/components/perception.py`
+  - raw sensory lists / perceived entities
+  - attention hooks
+
+#### L2 — Perception & Attention
+- `ecs/components/perception.py`
+  - salience scores
+  - attention slots
+  - perceptual flags
+
+#### L3 — Belief, Concept & Self-Model
+- `ecs/components/identity.py`
+  - `SelfModelSubstrate`
+- `ecs/components/belief.py`
+  - `BeliefGraphSubstrate`
+  - inference state / weights
+
+#### L4 — Drives & Emotion Fields
+- `ecs/components/drives.py` — DriveState
+- `ecs/components/emotion.py` — EmotionFields
+
+#### L5 — Motives & Planning
+- `ecs/components/motive_plan.py`
+  - `MotiveSubstrate`
+  - `PlanLayerSubstrate`
+- `ecs/components/intent_action.py`
+  - `PrimitiveIntent`
+  - `SanitizedIntent`
+  - `ActionState`
+
+#### L6 — Reflection (Semantic Only)
+- Lives in the narrative sidecar domain.
+- In this repo, the boundary is expressed via **DTOs/contracts** in  
+`narrative/interface.py` and contexts built in `runtime/narrative_context.py`.
+
+#### L7 — Narrative & Persona/Aesthetic
+- Numeric substrate (optional / evolving) can live in `identity.py` or future dedicated components.
+- Semantic narrative artifacts are exported as **ui_events** via:
+  - `runtime/bubble_bridge.py` → `integration/ui_events.py`
+
+---
+
+## 3. Tick & Determinism (SOP-200 Alignment)
+
+### 3.1 Canonical Tick (Implemented in `runtime/tick.py`)
+The canonical SOP-200 phase model is implemented as a tick pipeline, with these phases remaining the “contract shape”:
+
+```text
+tick(dt):
+    Phase A: Input Processing & Adapters (incl narrative suggestion integration)
+    Phase B: Perception systems
+    Phase C: Deterministic cognition/drive/emotion/social systems
+    Phase D: Intent resolution → command emission (sanitize)
+    Phase E: ECS apply_commands (ECS-only mutation)
+    Phase F: World apply_world_commands (world-only mutation)
+    Phase G: Event consolidation (runtime)
+    Phase H: Snapshot build + diff + episode hooks + export
+    Phase I: Narrative trigger (sidecar; no kernel mutation)
+```
+
+**Where it lives now**
+- Phase scheduling / system execution: `runtime/scheduler.py` + `ecs/systems/scheduler_order.py`
+- Command routing/application: `runtime/command_bus.py` + `ecs/commands.py` + `world/apply_world_commands.py`
+- Runtime event consolidation: `runtime/events.py` (plus world events)
+- Snapshot build + diff + episode: `snapshot/world_snapshot_builder.py`, `snapshot/snapshot_diff.py`, `snapshot/episode_builder.py`
+- Narrative context + integration to UI events: `runtime/narrative_context.py` + `runtime/bubble_bridge.py`
+
+---
+
+### 3.2 Determinism Rules
+- Kernel mutation happens **only** in:
+  - Phase E: ECS `apply_commands` (inside `ecs/world.py` / command buffer logic)
+  - Phase F: World `apply_world_commands` (`world/apply_world_commands.py`)
+- Phase ordering is explicit and stable; system order is pinned in `ecs/systems/scheduler_order.py`.
+- Any export output uses deterministic encoders:
+  - `integration/util/stable_json.py`
+  - stable hashing `stable_hash.py`
+  - numeric export stability `quantize.py`
+
+---
+
+## 4. ECS Systems (Concrete Mapping to SOP-300)
+
+Systems present in `ecs/systems/` (as implemented) and their intended phase mapping:
+
+1. **PerceptionSystem** (`perception_system.py`) — Phase B  
+2. **CognitivePreprocessor** (`cognitive_preprocessor.py`) — Phase C  
+3. **EmotionGradientSystem** (`emotion_gradient_system.py`) — Phase C  
+4. **DriveUpdateSystem** (`drive_update_system.py`) — Phase C  
+5. **MotiveFormationSystem** (`motive_formation_system.py`) — Phase C  
+6. **PlanResolutionSystem** (`plan_resolution_system.py`) — Phase C  
+7. **IntentResolverSystem** (`intent_resolver_system.py`) — Phase D  
+8. **MovementResolutionSystem** (`movement_resolution_system.py`) — Phase D  
+9. **InteractionResolutionSystem** (`interaction_resolution_system.py`) — Phase D  
+10. **SocialUpdateSystem** (`social_update_system.py`) — Phase C  
+11. **ActionExecutionSystem** (`action_execution_system.py`) — Phase E  
+12. **InventorySystem** (`inventory_system.py`) — Phase E (optional substrate)
+
+**Hard rule preserved:** ECS systems do **not** import `world/` directly. World information arrives via runtime-provided views (`world/views.py`) or adapters in the execution harness.
+
+---
+
+## 5. World Layer (SOP-100 & SOP-200)
+
+`world/` is the deterministic environment core:
+
+* `world/context.py` — authoritative world façade (no ECS imports)
+* `world/views.py` — read-only projections for ECS/snapshot/integration
+* `world/commands.py` — structured world commands
+* `world/events.py` — structured world events
+* `world/apply_world_commands.py` — deterministic applier (Phase F)
+
+World mutations happen **only** in Phase F via world commands.
+
+---
+
+## 6. Narrative Layer (Sidecar, SOP-100/SOP-300)
+
+In this repo, narrative is intentionally **contract-first**:
+
+* `narrative/interface.py` defines:
+  * DTOs for narrative inputs/outputs (what runtime may send; what narrative may return)
+  * the allowed “surface area” of narrative influence (suggestions only)
+
+Runtime prepares narrative inputs via:
+* `runtime/narrative_context.py`
+
+Runtime converts narrative outputs to presentation artifacts via:
+* `runtime/bubble_bridge.py` → integration `ui_events.py`
+
+Narrative may **not**:
+* mutate ECS/world directly
+* bypass Phase A integration/sanitization
+* affect tick timing
+
+---
+
+## 7. Snapshot & Integration
+
+### 7.1 Snapshot (Deterministic Views)
+`snapshot/` is the canonical view + episode assembly layer:
+* `world_snapshot.py` + `world_snapshot_builder.py`
+* diffs: `snapshot_diff.py` + `diff_types.py`
+* episodes: `episode_types.py` + `episode_builder.py`
+
+Snapshots and diffs are deterministic outputs of the kernel state.
+
+### 7.2 Integration (IO / Export)
+`integration/` is stable export + schemas + tooling:
+* frame schemas: `integration/schema/*`
+* build frames: `frame_builder.py` + adapter `adapters/snapshot_adapter.py`
+* diffs: `frame_diff.py`
+* UI events: `ui_events.py`
+* exporter: `exporter.py`
+* determinism helpers: `util/stable_json.py`, `util/stable_hash.py`, `util/quantize.py`
+
+Integration is IO-only: no simulation mutations.
+
+---
+
+## 8. SOP & SOT Library (SOPs + Free Agent Spec)
+
+### SOPs (Behavior / Rules)
+**1. SOP-000 — Architect Operating Contract (AOC)**
+* Defines how Architect-GPT behaves.
+* Guards long-arc coherence, anti-drift, version stability.
+**2. SOP-100 — Layer Boundary Protection**
+* Six-layer DAG (runtime/ecs/world/snapshot/integration + narrative sidecar).
+* Defines allowed/forbidden dependencies and mutation layers.
+**3. SOP-200 — Determinism & Simulation Contract**
+* Tick phases, RNG rules, ordering, diff & replay.
+**4. SOP-300 — ECS Specification & Agent Substrate Architecture**
+* 7-layer mind mapping to ECS substrate.
+* Canonical components, systems, and substrate vs semantic split.
+* Movement & interaction pipeline.
+
+### SOTs (Architecture / Specs)
+* **SimX Vision** — long-arc design target (emergent narrative city).
+* **Free Agent Spec** — defines agent mind entities:
+  * `SelfModel`, `ConceptGraph`, `BeliefState`, `DriveState`,  
+  `MotiveSystem`, `PlanLayer`, `ReflectionState`, `SocialMind`, `AestheticMind`.
+* **SOT-SIM4-ENGINE** (this doc) — folder structure, layer responsibilities, system mapping.
+* Future SOTs can specialize (e.g. `SOT-WORLD-IDENTITY`, `SOT-EPISODE-OUTPUT`), but must obey the SOPs.
+* Current SOTs:
+  * Sim4 engine overview:
+      * SOT-SIM4-ENGINE v1.0
+  * ECS:
+    * SOT-SIM4-ECS-COMMANDS-AND-EVENTS
+      SOT-SIM4-ECS-CORE
+      SOT-SIM4-ECS-SUBSTRATE-COMPONENTS-DETAILS
+      SOT-SIM4-ECS-SUBSTRATE-COMPONENTS
+      SOT-SIM4-ECS-SYSTEMS
+  * Runtime:
+    * SOT-SIM4-RUNTIME-NARRATIVE-CONTEXT
+    * SOT-SIM4-RUNTIME-TICK
+    * SOT-SIM4-RUNTIME-WORLDCONTEXT
+  * World:
+    * SOT-SIM4-WORLD-ENGINE
+  * Narrative:
+    * docs/sim4/SOTs/SOT-SIM4-NARRATIVE-INTERFACE
+  * Snapshots & Diffs:
+    * docs/sim4/SOTs/SOT-SIM4-SNAPSHOT-AND-EPISODE
+
+### Short Table
+| Type | 	Name                   | 	Role                                  |
+|------|-------------------------|----------------------------------------|
+| SOP  | 	SOP-000                | 	Architect behavior, anti-drift        |
+| SOP  | 	SOP-100                | 	Layer boundaries, DAG, mutation rules |
+| SOP  | 	SOP-200                | 	Determinism, tick, RNG, replay        |
+| SOP  | 	SOP-300                | 	ECS substrate & 7-layer mind mapping  |
+| SOT  | 	SimX Vision            | 	Long-arc target                       |
+| SOT  | 	Free Agent Spec        | 	Agent mind definition                 |
+| SOT  | 	SOT-SIM4-ENGINE (this) | 	Concrete Sim4 engine architecture     |
+
+## 9. Completion Condition for Sim4 Engine Spec (Updated)
+
+This SOT-SIM4-ENGINE is **aligned and locked** when:
+
+* Folder structure matches §1 (modulo minor naming refinements), and especially:
+  * runtime tick pipeline lives in `runtime/tick.py` + `runtime/scheduler.py`
+  * snapshots/diffs/episodes live in `snapshot/*`
+  * narrative is contract-first in `narrative/interface.py`
+  * integration exports stable artifacts via `integration/*`
+* All modules respect:
+  * **SOP-100** DAG & mutation rules
+  * **SOP-200** tick + determinism rules
+  * **SOP-300** substrate/semantic split and 7-layer mapping
+* ECS components correspond to Free Agent Spec substrates.
+* ECS systems implement the pipelines defined in SOP-300 (§7) and are ordered by `ecs/systems/scheduler_order.py`.
+* Narrative influence is only via Phase A integration and `NarrativeState`/contract DTOs, never direct kernel mutation.
+* Export artifacts remain deterministic and replayable (validated by existing test suites in `backend/sim4/*/tests`).
+
+## Appendix A: initial engine spec (pre-implementation)
+
+> `NOTE:` **THIS IS NOT THE REFLECTION OF CURRENT IMPLEMENTATION.** The current implementation is described in the main sections of this document.
+
+This is provided as extra context and to identify any gaps vs the original plan.
+
 ```text
 sim4/
    ├── runtime/                  # tick, engine, scheduler, diff, replay
@@ -143,275 +519,3 @@ sim4/
    ├── logging.py            # Structured logging
    └── profiler.py           # Tick-by-tick profiling, debug hooks
 ```
-
-Key structural changes vs old v0.1:
-* `world_context.py` moved to `runtime/`, so:
-  * `runtime` orchestrates ECS + world in line with SOP-100.
-  * `world/` no longer owns `ECSWorld` directly (keeps layer purity).
-* ECS components and systems renamed / structured to match **Free Agent Spec** + SOP-300 (**substrate layers**, **movement/interaction pipeline**).
-* Removed old “cognition/emotion/intent” generic names in favor of **Belief/Drives/EmotionFields/MotivePlan/IntentAction** etc.
-
----
-
-## 2. Mapping to the 7-Layer Agent Mind
-From SOP-300 + Free Agent Spec, the agent mind layers:
-```text
-L1 — Embodied & Raw Perception Layer
-L2 — Perception & Attention Layer
-L3 — Belief, Concept & Self-Model Layer
-L4 — Drives & Emotion Fields Layer
-L5 — Motives & Planning Layer
-L6 — Reflection Layer
-L7 — Narrative & Persona/Aesthetic Mind
-```
-
-### 2.1 Substrate Components in ECS
-#### L1 — Embodied & Raw Perception
-* `embodiment.py`
-  * `Transform` (x,y / room)
-  * `Velocity`
-  * `RoomPresence`
-  * `PathState`
-* `perception.py`
-  * raw sensory lists (visible agents, objects)
-  * basic attention hooks (which slot is focused)
-
-#### L2 — Perception & Attention
-* `perception.py`
-  * salience scores
-  * attention slots
-  * perceptual flags
-
-#### L3 — Belief, Concept & Self-Model
-* `identity.py`
-  * `SelfModelSubstrate` (identity vector, consistency pressure, drift/contradiction counters)
-* `belief.py`
-  * `BeliefGraphSubstrate`
-  * `AgentInferenceState`
-  * `SocialBeliefWeights`
-
-#### L4 — Drives & Emotion Fields
-* `drives.py`
-  * `DriveState` (`curiosity`, `safety_drive`, `attachment_drive`, etc.)
-* `emotion.py`
-  * `EmotionFields` (tension, mood drift, affective charge, stress, excitement)
-
-#### L5 — Motives & Planning
-* `motive_plan.py`
-  * `MotiveSubstrate` (motive activation scores)
-  * `PlanLayerSubstrate` (plan steps, plan confidence, revision flags)
-
-#### L6 — Reflection (Semantic Only)
-* Lives in `narrative/reflection.py` and related narrative modules.
-* No ECS component; only semantic, post-tick.
-
-#### L7 — Narrative & Persona/Aesthetic
-* Numeric substrate in ECS:
-  * e.g., persona / aesthetic preference vectors stored in `identity.py` or dedicated `persona_substrate` (could be added later as we refine).
-* Semantic narrative in `narrative/`:
-  * dialog, style, voice, inner monologue.
-
----
-
-## 3. Tick & Determinism (SOP-200 Alignment)
-`runtime/engine.py` implements the canonical tick:
-```text
-tick(dt):
-    1. Lock WorldContext
-    2. Update Clock
-    3. Phase A: Input Processing & Adapters
-    4. Phase B: Perception (ECS systems, read-only world views)
-    5. Phase C: Cognition (ECS non-LLM)
-    6. Phase D: Intention → ECS Commands (sanitize suggestions)
-    7. Phase E: ECS Command Application (mutations in ECS)
-    8. Phase F: World Updates (world subsystems)
-    9. Phase G: Event Consolidation
-    10. Phase H: Diff Recording + History Append
-    11. Phase I: Narrative Trigger (post-tick sidecar)
-    12. Unlock WorldContext
-```
-
-* **Determinism:**
-  * All ECS + world mutations happen only in **Phase E/F**.
-  * Narrative runs only in **Phase I**, never mutating kernel state directly.
-  * RNG usage is centralized in `util/random.py` with seed from scenario.
-  * Iteration order is stable (EntityID ascending, registered system order).
-
-`runtime/scheduler.py` and `ecs/systems/scheduler_order.py` define:
-* Which system runs in which SOP-200 phase.
-* System order within phases.
-
----
-
-## 4. ECS Systems (Concrete Mapping to SOP-300)
-Systems in `ecs/systems/`:
-1. **PerceptionSystem** (`perception_system.py`)
-* Phase B
-* Reads: `Transform`, `RoomPresence`, world geometry via `world/adapters.WorldViews`
-* Writes: `PerceptionSubstrate` (visibility, salience, attention slots)
-2. **CognitivePreprocessor** (`cognitive_preprocessor.py`)
-* Phase C
-* Reads: events, BeliefGraphSubstrate
-* Writes: updated belief confidences, decay, propagation
-* No natural language, no semantic interpretation.
-3. **EmotionGradientSystem** (`emotion_gradient_system.py`)
-* Phase C
-* Reads: DriveState, EmotionFields, events
-* Writes: updated EmotionFields (diffusion, drift)
-4. **DriveUpdateSystem** (`drive_update_system.py`)
-* Phase C
-* Reads: events, EmotionFields
-* Writes: DriveState (curiosity, safety, etc.)
-5. **MotiveFormationSystem** (`motive_formation_system.py`)
-* Phase C
-* Reads: DriveState, BeliefGraphSubstrate, SocialSubstrate
-* Writes: MotiveSubstrate (numeric motive activation)
-6. **PlanResolutionSystem** (`plan_resolution_system.py`)
-* Phase C
-* Reads: MotiveSubstrate, PlanLayerSubstrate
-* Writes: PlanLayerSubstrate (plan steps, revision flags)
-7. **IntentResolverSystem** (`intent_resolver_system.py`)
-* Phase D
-* Reads: `PrimitiveIntent` (from adapters & last narrative suggestions), PlanLayerSubstrate, DriveState
-* Writes: `SanitizedIntent` (physics-safe, permission-safe)
-8. **MovementResolutionSystem** (`movement_resolution_system.py`)
-* Phase D
-* Reads: `SanitizedIntent`, `Transform`, `RoomPresence`, world nav views
-* Writes: `MovementIntent`, `PathState`, `ActionState` (movement modes or `Stuck/Waiting`)
-9. **InteractionResolutionSystem** (`interaction_resolution_system.py`)
-* Phase D
-* Reads: `SanitizedIntent`, target info via world views
-* Writes: `InteractionIntent`, `ActionState` and **world update commands** (but not world state directly)
-10. **SocialUpdateSystem** (`social_update_system.py`)
-* Phase C
-* Reads: SocialSubstrate, interaction outcomes
-* Writes: updated relationship weights, trust vectors, tension
-11. **ActionExecutionSystem** (action_execution_system.py)
-* Phase E
-* Reads: `MovementIntent`, `InteractionIntent`, `ActionState`
-* Writes:
-  * ECS-side: `Transform`, `RoomPresence`, `PathState`, interaction memory counters
-  * Emits **world commands** to `runtime/world_context.py` for Phase F
-  (e.g. `OpenDoor(door_id)`, `MoveItem(item_id, from, to)`)
-12. **InventorySystem** (`inventory_system.py`) (optional)
-* Phase E
-* Handles internal inventory updates after world confirms.
-
-All systems obey:
-* No imports of `world/` **directly from ECS**.  
-World data arrives via adapters/views injected by runtime (SOP-300 “world inputs as read-only views”).
-
----
-
-## 5. World Layer (SOP-100 & SOP-200)
-`world/` is pure environment:
-* Owns **room**, **asset**, **graph**, **layout** state.
-* Exposes **read-only views** (e.g., NavigationView, VisibilityView) via `world/adapters.py`.
-* Mutations happen via **commands** from `runtime/world_context.py`:
-
-Examples of world commands (structured types):
-* `MoveAgent(agent_id, from_room, to_room)`
-* `OpenDoor(door_id)`
-* `ToggleMachine(machine_id, state)`
-* `SpawnItem(item_id, room_id)`
-* `DespawnItem(item_id)`
-
-These are applied **only in Phase F** (SOP-200).
-
-`world_context.py` (in runtime) owns:
-* `WorldState` instance
-* applies world commands deterministically
-* provides world views to ECS systems via scheduler
-
----
-
-## 6. Narrative Layer (Sidecar, SOP-100/SOP-300)
-
-`narrative/` is a **post-tick semantic sidecar**:
-* Triggered in **Phase I** (SOP-200) by `runtime/engine.py`.
-* Reads:
-  * stable snapshot via snapshot/builder.py or
-  * special read-only views passed from runtime (AgentView, WorldView, BeliefView).
-* Writes:
-  * narrative-local memory (`memory.py`)
-  * semantic reflection, inner monologue, dialog
-  * semantic beliefs/goals (outside ECS numeric substrate)
-  * `IntentSuggestions` & `GoalSuggestions` via `narrative/adapters.py`
-
-**Narrative may NOT:**
-* mutate ECS components directly (except `NarrativeState` fields that are defined as semantic containers).
-* mutate world state.
-* affect tick timing.
-
-**How it influences agents:**
-1. Narrative outputs `IntentSuggestions`, `GoalSuggestions` for next tick.
-2. `runtime/engine.py` feeds them into **Phase A** (input processing).
-3. Adapters map them into `PrimitiveIntent`, plan hints, or belief hints.
-4. ECS systems deterministically gate/sanitize them.
-
-This matches SOP-300 §9 and SOP-000 §9 (Narrative Obedience).
-
----
-
-## 7. Snapshot & Integration
-* `snapshot/`:
-  * builds immutable `WorldSnapshot` / `AgentSnapshot` structures
-  * includes ECS (substrates), world state, and optionally high-level narrative annotations
-  * no mutation; pure views.
-* `integration/`:
-  * WebSockets / REST for Godot or other tools
-  * cannot call ECS systems or world subsystems directly
-  * cannot mutate state; purely IO.
-
-This satisfies SOP-100 contracts for snapshot/integration.
-
----
-
-## 8. SOP & SOT Library (SOPs + Free Agent Spec)
-For Sim4, the **canonical governance set** is now:
-
-### SOPs (Behavior / Rules)
-**1. SOP-000 — Architect Operating Contract (AOC)**
-* Defines how Architect-GPT behaves.
-* Guards long-arc coherence, anti-drift, version stability.
-**2. SOP-100 — Layer Boundary Protection**
-* Six-layer DAG (runtime/ecs/world/snapshot/integration + narrative sidecar).
-* Defines allowed/forbidden dependencies and mutation layers.
-**3. SOP-200 — Determinism & Simulation Contract**
-* Tick phases, RNG rules, ordering, diff & replay.
-**4. SOP-300 — ECS Specification & Agent Substrate Architecture**
-* 7-layer mind mapping to ECS substrate.
-* Canonical components, systems, and substrate vs semantic split.
-* Movement & interaction pipeline.
-
-### SOTs (Architecture / Specs)
-* **SimX Vision** — long-arc design target (emergent narrative city).
-* **Free Agent Spec** — defines agent mind entities:
-  * `SelfModel`, `ConceptGraph`, `BeliefState`, `DriveState`,  
-  `MotiveSystem`, `PlanLayer`, `ReflectionState`, `SocialMind`, `AestheticMind`.
-* **SOT-SIM4-ENGINE** (this doc) — folder structure, layer responsibilities, system mapping.
-* Future SOTs can specialize (e.g. `SOT-WORLD-IDENTITY`, `SOT-EPISODE-OUTPUT`), but must obey the SOPs.
-
-### Short Table
-| Type | 	Name                   | 	Role                                  |
-|------|-------------------------|----------------------------------------|
-| SOP  | 	SOP-000                | 	Architect behavior, anti-drift        |
-| SOP  | 	SOP-100                | 	Layer boundaries, DAG, mutation rules |
-| SOP  | 	SOP-200                | 	Determinism, tick, RNG, replay        |
-| SOP  | 	SOP-300                | 	ECS substrate & 7-layer mind mapping  |
-| SOT  | 	SimX Vision            | 	Long-arc target                       |
-| SOT  | 	Free Agent Spec        | 	Agent mind definition                 |
-| SOT  | 	SOT-SIM4-ENGINE (this) | 	Concrete Sim4 engine architecture     |
-
----
-
-## 9. Completion Condition for Sim4 Engine Spec
-This SOT-SIM4-ENGINE is considered **aligned and locked** when:
-* Folder structure matches this spec (modulo minor naming refinements).
-* All new/modified modules respect:
-  * **SOP-100** DAG & mutation rules.
-  * **SOP-200** tick & RNG contract.
-  * **SOP-300** substrate/semantic split and 7-layer mapping.
-* ECS components correspond to Free Agent Spec substrates.
-* ECS systems implement the pipelines defined in SOP-300 (§7).
-* Narrative sidecar operates only via `IntentSuggestions` / `GoalSuggestions` and `NarrativeState`, never mutating kernel directly.
