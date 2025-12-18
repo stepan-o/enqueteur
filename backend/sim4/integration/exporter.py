@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict, is_dataclass
 from pathlib import Path
-from typing import Iterable, Any
+from typing import Iterable, Any, Iterator
 
 from .schema import RunManifest, TickFrame, EventFrame, IntegrationSchemaVersion
 from .util.stable_json import write_json, write_jsonl
+from .frame_diff import compute_frame_diff
 
 
 @dataclass(frozen=True)
@@ -111,4 +112,149 @@ def export_run(
     return finalized
 
 
-__all__ = ["ExportConfig", "export_run"]
+def _schema_version_str(v: IntegrationSchemaVersion | None) -> str:
+    if isinstance(v, IntegrationSchemaVersion):
+        return f"{int(v.major)}.{int(v.minor)}.{int(v.patch)}"
+    # Fallback to 1.0.0 if absent
+    return "1.0.0"
+
+
+def export_replay(
+    out_dir: Path | str,
+    *,
+    manifest: RunManifest,
+    frames: Iterable[TickFrame],
+    keyframe_interval: int = 100,
+) -> RunManifest:
+    """Export a replay-ready, chunked store with keyframes, diffs, and an index.
+
+    Layout (relative to out_dir):
+        manifest.json
+        index.json
+        keyframes/000000.json
+        diffs/000001.json
+
+    Notes:
+    - Computes diffs on the fly; does not retain full history in memory.
+    - Deterministic file content and write order.
+    - Paths in index are relative.
+    """
+    base = Path(out_dir)
+
+    # Constants
+    PAD = 6  # zero-pad width for tick filenames (lexical sort stability)
+
+    # Prepare deterministic artifact paths
+    manifest_rel = "manifest.json"
+    index_rel = "index.json"
+    keyframes_dir_rel = Path("keyframes")
+    diffs_dir_rel = Path("diffs")
+
+    # Iteration state
+    prev_frame: TickFrame | None = None
+    tick_min: int | None = None
+    tick_max: int | None = None
+    time_min: float | None = None
+    time_max: float | None = None
+    frame_count = 0
+
+    # Index structure (deterministic): map str(tick) -> {keyframe, diffs: []}
+    index_ticks: dict[str, dict[str, Any]] = {}
+
+    # Ensure directories exist deterministically before writing
+    (base / keyframes_dir_rel).mkdir(parents=True, exist_ok=True)
+    (base / diffs_dir_rel).mkdir(parents=True, exist_ok=True)
+
+    def tick_name(t: int) -> str:
+        return str(t).zfill(PAD) + ".json"
+
+    # Stream through frames once
+    for curr in frames:
+        t = int(curr.tick_index)
+        # Update ranges deterministically
+        if tick_min is None or t < tick_min:
+            tick_min = t
+        if tick_max is None or t > tick_max:
+            tick_max = t
+        if time_min is None or curr.time_seconds < time_min:
+            time_min = float(curr.time_seconds)
+        if time_max is None or curr.time_seconds > time_max:
+            time_max = float(curr.time_seconds)
+        frame_count += 1
+
+        # Determine this tick's anchor keyframe tick (floor to interval)
+        k_tick = (t // keyframe_interval) * keyframe_interval
+
+        # If this tick is an anchor, write full keyframe
+        if t == k_tick:
+            k_rel = keyframes_dir_rel / tick_name(t)
+            write_json(base / k_rel, curr)
+        # Compute and write diff for every tick > minimal observed (including keyframe ticks?)
+        # Per rules: One diff per tick; diff T transforms frame T-1 -> T
+        if prev_frame is not None:
+            d_rel = diffs_dir_rel / tick_name(t)
+            diff = compute_frame_diff(prev_frame, curr)
+            write_json(base / d_rel, diff)
+
+        # Build index entry for this tick
+        k_rel_path = keyframes_dir_rel / tick_name(k_tick)
+        diffs_list: list[str] = []
+        # diffs from k_tick+1 .. t (inclusive), but only if t >= k_tick
+        start = k_tick + 1
+        if prev_frame is None and t == k_tick:
+            # First observed frame may be a keyframe with no prior diff
+            pass
+        if t >= start:
+            # Build deterministic list of relative paths
+            for dt in range(start, t + 1):
+                diffs_list.append(str(diffs_dir_rel / tick_name(dt)))
+
+        index_ticks[str(t)] = {
+            "keyframe": str(k_rel_path),
+            "diffs": diffs_list,
+        }
+
+        prev_frame = curr
+
+    # Finalize manifest
+    schema_version = (
+        manifest.schema_version
+        if isinstance(manifest.schema_version, IntegrationSchemaVersion)
+        else IntegrationSchemaVersion(1, 0, 0)
+    )
+
+    finalized = RunManifest(
+        schema_version=schema_version,
+        run_id=manifest.run_id,
+        world_id=manifest.world_id,
+        episode_id=manifest.episode_id,
+        tick_start=int(tick_min or 0),
+        tick_end=int(tick_max or 0),
+        frame_count=int(frame_count),
+        time_start_seconds=time_min,
+        time_end_seconds=time_max,
+        artifacts={
+            "manifest": manifest_rel,
+            "index": index_rel,
+            "keyframes": str(keyframes_dir_rel),
+            "diffs": str(diffs_dir_rel),
+        },
+        exported_at_utc_ms=manifest.exported_at_utc_ms,
+    )
+
+    # Write manifest and index deterministically at the end (after data files)
+    write_json(base / manifest_rel, finalized)
+
+    index_obj = {
+        "schema_version": _schema_version_str(schema_version),
+        "run_id": finalized.run_id,
+        "episode_id": finalized.episode_id,
+        "keyframe_interval": int(keyframe_interval),
+        "ticks": index_ticks,
+    }
+    write_json(base / index_rel, index_obj)
+
+    return finalized
+
+
+__all__ = ["ExportConfig", "export_run", "export_replay"]

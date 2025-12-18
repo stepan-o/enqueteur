@@ -95,6 +95,9 @@ Goal: by end, we can **export a run**, **load it in a Godot-like viewer**, **scr
 
 **Acceptance**
 - A 1,000-tick run exports quickly and loads/scrubs without replaying from tick 0
+
+---
+
 ## Sprint 11 — Narrative → Bubble Events (Dialogue / Inner Monologue)
 
 ### S11.1 — BubbleEvent schema + mapping rules
