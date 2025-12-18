@@ -7,8 +7,11 @@ from .schema import (
     TickFrame,
     AgentFrame,
     ItemFrame,
+    RoomFrame,
+    EventFrame,
     IntegrationSchemaVersion,
 )
+from .util.stable_hash import stable_hash
 
 
 @dataclass(frozen=True)
@@ -32,8 +35,11 @@ class AgentMove:
 class FrameDiff:
     """Viewer-facing frame diff (primitives-only; Phase 1 scope).
 
-    Includes only viewer-relevant changes:
+    Phase 1 policy: rooms/events/narrative are replace-lists; Phase 2 may introduce structural diffs.
+
+    Includes viewer-relevant data needed to reconstruct the full TickFrame:
     - tick/time update (scalar header)
+    - rooms/events/narrative_fragments as replace-lists (Phase 1 policy)
     - agent movement (room/x/y changes)
     - agent spawn/despawn
     - item spawn/despawn
@@ -44,6 +50,11 @@ class FrameDiff:
     # Scalar timebase updates for the next frame
     tick_index: int
     time_seconds: float
+
+    # Replace-lists for full viewer reconstruction (copied from curr)
+    rooms: List[RoomFrame]
+    events: List[EventFrame]
+    narrative_fragments: List[dict]
 
     # Changes
     agents_moved: List[AgentMove]
@@ -114,9 +125,35 @@ def compute_frame_diff(prev: TickFrame, curr: TickFrame) -> FrameDiff:
     agents_spawned.sort(key=lambda a: a.agent_id)
     items_spawned.sort(key=lambda it: it.item_id)
 
+    # Replace-list payloads from current frame, deterministically sorted
+    rooms: List[RoomFrame] = list(curr.rooms)
+    rooms.sort(key=lambda r: r.room_id)
+
+    # Events: sort by (tick_index, kind, stable_hash(payload)) deterministically
+    events: List[EventFrame] = list(curr.events)
+    events.sort(key=lambda e: (int(e.tick_index), str(e.kind), stable_hash(e.payload)))
+
+    # Narrative fragments: sort by (tick/idx, importance DESC, agent_id, room_id)
+    default_tick = int(curr.tick_index)
+    narrative = [dict(d) for d in (curr.narrative_fragments or [])]
+    for d in narrative:
+        if "tick" not in d and "tick_index" not in d:
+            d["tick_index"] = default_tick
+    narrative.sort(
+        key=lambda d: (
+            int(d.get("tick", d.get("tick_index", default_tick)) or default_tick),
+            -int(d.get("importance", 0) or 0),
+            int(d.get("agent_id", 0) or 0),
+            int(d.get("room_id", 0) or 0),
+        )
+    )
+
     return FrameDiff(
         tick_index=curr.tick_index,
         time_seconds=curr.time_seconds,
+        rooms=rooms,
+        events=events,
+        narrative_fragments=narrative,
         agents_moved=moved,
         agents_spawned=agents_spawned,
         agents_despawned=agents_despawned,
@@ -136,22 +173,31 @@ def apply_frame_diff(frame: TickFrame, diff: FrameDiff) -> TickFrame:
 
     # Remove despawned
     for aid in diff.agents_despawned:
+        # If missing, consider it a malformed diff
+        if aid not in agents:
+            raise ValueError(f"Despawn references missing agent_id={aid}")
         agents.pop(aid, None)
     for iid in diff.items_despawned:
+        if iid not in items:
+            raise ValueError(f"Despawn references missing item_id={iid}")
         items.pop(iid, None)
 
-    # Add spawned (overwrite if present – should not happen, but deterministic)
+    # Add spawned — fail fast if ID already exists to prevent corruption
     for a in diff.agents_spawned:
+        if a.agent_id in agents:
+            raise ValueError(f"Spawn duplicates existing agent_id={a.agent_id}")
         agents[a.agent_id] = a
     for it in diff.items_spawned:
+        if it.item_id in items:
+            raise ValueError(f"Spawn duplicates existing item_id={it.item_id}")
         items[it.item_id] = it
 
     # Apply moves
     for m in diff.agents_moved:
         a = agents.get(m.agent_id)
         if a is None:
-            # Movement for a non-existent agent (e.g., malformed diff) — ignore deterministically
-            continue
+            # Movement for a non-existent agent is malformed
+            raise ValueError(f"Move references missing agent_id={m.agent_id}")
         # Rebuild AgentFrame with updated fields while preserving action_state_code
         agents[m.agent_id] = AgentFrame(
             agent_id=a.agent_id,
@@ -165,15 +211,23 @@ def apply_frame_diff(frame: TickFrame, diff: FrameDiff) -> TickFrame:
     next_agents = sorted(agents.values(), key=lambda a: a.agent_id)
     next_items = sorted(items.values(), key=lambda it: it.item_id)
 
-    # Rooms: Phase 1 diff does not alter rooms; keep as-is from prior frame
-    rooms = frame.rooms
-
-    # Events and narrative fragments are out of scope for diffs (Phase 1). Keep identical to prev.
-    events = frame.events
-    narrative = frame.narrative_fragments
+    # Replace lists from the diff for full reconstruction
+    rooms = list(sorted(diff.rooms, key=lambda r: r.room_id))
+    events = list(sorted(diff.events, key=lambda e: (int(e.tick_index), str(e.kind), stable_hash(e.payload))))
+    narrative = [dict(d) for d in diff.narrative_fragments]
+    # Ensure narrative sort is canonical
+    default_tick = int(diff.tick_index)
+    narrative.sort(
+        key=lambda d: (
+            int(d.get("tick", d.get("tick_index", default_tick)) or default_tick),
+            -int(d.get("importance", 0) or 0),
+            int(d.get("agent_id", 0) or 0),
+            int(d.get("room_id", 0) or 0),
+        )
+    )
 
     return TickFrame(
-        schema_version=frame.schema_version if isinstance(frame.schema_version, IntegrationSchemaVersion) else IntegrationSchemaVersion(1, 0, 0),
+        schema_version=frame.schema_version,
         run_id=frame.run_id,
         episode_id=frame.episode_id,
         tick_index=diff.tick_index,
