@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Iterable, Any, Iterator
 
 from .ui_events import BubbleEvent, bubble_event_sort_key
+from .psycho_topology import PsychoTopologyFrame
 
 from .schema import RunManifest, TickFrame, EventFrame, IntegrationSchemaVersion
 from .util.stable_json import write_json, write_jsonl
@@ -39,6 +40,7 @@ def export_run(
     frames: Iterable[TickFrame],
     events: Iterable[EventFrame] | None = None,
     ui_events: Iterable[BubbleEvent] | None = None,
+    psycho_topology: Iterable[PsychoTopologyFrame] | None = None,
     config: ExportConfig | None = None,
 ) -> RunManifest:
     """Write a minimal deterministic export for a run.
@@ -55,11 +57,13 @@ def export_run(
     frames_rel = "frames/frames.jsonl"
     events_rel = "events/events.jsonl"
     ui_events_rel = "ui_events/ui_events.jsonl"
+    psycho_topology_rel = "psycho_topology/psycho_topology.jsonl"
     manifest_rel = "manifest.json"
 
     frames_list = list(frames)
     events_list = list(events) if events is not None else None
     ui_events_list = list(ui_events) if ui_events is not None else None
+    psycho_topology_list = list(psycho_topology) if psycho_topology is not None else None
 
     # Determine tick/time ranges and counts from frames sequence (input order preserved)
     if frames_list:
@@ -87,6 +91,8 @@ def export_run(
         artifacts["events"] = events_rel
     if ui_events_list is not None:
         artifacts["ui_events"] = ui_events_rel
+    if psycho_topology_list is not None:
+        artifacts["psycho_topology"] = psycho_topology_rel
 
     # exported_at is only pulled from provided manifest or config; no clocks here
     exported_at_utc_ms = manifest.exported_at_utc_ms
@@ -119,6 +125,16 @@ def export_run(
         # Ensure deterministic ordering policy for BubbleEvents
         ordered_ui = sorted(ui_events_list, key=bubble_event_sort_key)
         write_jsonl(base / ui_events_rel, ordered_ui)
+    if psycho_topology_list is not None:
+        # Sort frames by tick_index deterministically
+        def _pt_key(pt: PsychoTopologyFrame) -> int:
+            try:
+                return int(pt.tick_index)
+            except Exception:
+                return 0
+
+        ordered_pt = sorted(psycho_topology_list, key=_pt_key)
+        write_jsonl(base / psycho_topology_rel, ordered_pt)
 
     return finalized
 
@@ -137,6 +153,7 @@ def export_replay(
     frames: Iterable[TickFrame],
     keyframe_interval: int = 100,
     ui_events: Iterable[BubbleEvent] | None = None,
+    psycho_topology: Iterable[PsychoTopologyFrame] | None = None,
 ) -> RunManifest:
     """Export a replay-ready, chunked store with keyframes, diffs, and an index.
 
@@ -162,6 +179,7 @@ def export_replay(
     keyframes_dir_rel = Path("keyframes")
     diffs_dir_rel = Path("diffs")
     ui_events_rel = Path("ui_events") / "ui_events.jsonl"
+    psycho_topology_rel = Path("psycho_topology") / "psycho_topology.jsonl"
 
     # Iteration state
     prev_frame: TickFrame | None = None
@@ -252,6 +270,7 @@ def export_replay(
             "keyframes": str(keyframes_dir_rel),
             "diffs": str(diffs_dir_rel),
             **({"ui_events": str(ui_events_rel)} if ui_events is not None else {}),
+            **({"psycho_topology": str(psycho_topology_rel)} if psycho_topology is not None else {}),
         },
         exported_at_utc_ms=manifest.exported_at_utc_ms,
     )
@@ -274,6 +293,17 @@ def export_replay(
         ui_list = list(ui_events)
         ui_list.sort(key=bubble_event_sort_key)
         write_jsonl(base / ui_events_rel, ui_list)
+
+    # Optional psycho topology stream
+    if psycho_topology is not None:
+        pt_list = list(psycho_topology)
+        def _pt_key(pt: PsychoTopologyFrame) -> int:
+            try:
+                return int(pt.tick_index)
+            except Exception:
+                return 0
+        pt_list.sort(key=_pt_key)
+        write_jsonl(base / psycho_topology_rel, pt_list)
 
     return finalized
 
