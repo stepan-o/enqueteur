@@ -123,6 +123,10 @@ class HistoryBuffer(Protocol):
         self, *, tick_index: int, episode_id: int, output: "NarrativeTickOutput"
     ) -> None: ...
 
+    def record_bubble_events(
+        self, *, tick_index: int, episode_id: int, events: list["BubbleEvent"]
+    ) -> None: ...
+
 
 @dataclass
 class NarrativeBudgetConfig:
@@ -217,6 +221,24 @@ class NarrativeRuntimeContext:
             )
         except Exception:
             # History logging is best-effort; swallow to keep runtime stable
+            pass
+
+        # Produce BubbleEvents from StoryFragments and record them (best-effort)
+        try:
+            from backend.sim4.runtime.bubble_bridge import story_fragments_to_bubble_events
+
+            bubble_events = story_fragments_to_bubble_events(
+                tick_index=tick_index,
+                fragments=output.story_fragments,
+                default_duration_ticks=30,
+            )
+            if bubble_events:
+                # Note: BubbleEvent is primitives-only; safe to store in history
+                self._history.record_bubble_events(
+                    tick_index=tick_index, episode_id=episode_id, events=bubble_events
+                )
+        except Exception:
+            # Best-effort logging; never break runtime
             pass
 
 

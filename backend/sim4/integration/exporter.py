@@ -4,6 +4,8 @@ from dataclasses import dataclass, asdict, is_dataclass
 from pathlib import Path
 from typing import Iterable, Any, Iterator
 
+from .ui_events import BubbleEvent, bubble_event_sort_key
+
 from .schema import RunManifest, TickFrame, EventFrame, IntegrationSchemaVersion
 from .util.stable_json import write_json, write_jsonl
 from .frame_diff import compute_frame_diff
@@ -36,6 +38,7 @@ def export_run(
     manifest: RunManifest,
     frames: Iterable[TickFrame],
     events: Iterable[EventFrame] | None = None,
+    ui_events: Iterable[BubbleEvent] | None = None,
     config: ExportConfig | None = None,
 ) -> RunManifest:
     """Write a minimal deterministic export for a run.
@@ -51,10 +54,12 @@ def export_run(
     base = Path(out_dir)
     frames_rel = "frames/frames.jsonl"
     events_rel = "events/events.jsonl"
+    ui_events_rel = "ui_events/ui_events.jsonl"
     manifest_rel = "manifest.json"
 
     frames_list = list(frames)
     events_list = list(events) if events is not None else None
+    ui_events_list = list(ui_events) if ui_events is not None else None
 
     # Determine tick/time ranges and counts from frames sequence (input order preserved)
     if frames_list:
@@ -80,6 +85,8 @@ def export_run(
     }
     if events_list is not None:
         artifacts["events"] = events_rel
+    if ui_events_list is not None:
+        artifacts["ui_events"] = ui_events_rel
 
     # exported_at is only pulled from provided manifest or config; no clocks here
     exported_at_utc_ms = manifest.exported_at_utc_ms
@@ -108,6 +115,10 @@ def export_run(
     write_jsonl(base / frames_rel, frames_list)
     if events_list is not None:
         write_jsonl(base / events_rel, events_list)
+    if ui_events_list is not None:
+        # Ensure deterministic ordering policy for BubbleEvents
+        ordered_ui = sorted(ui_events_list, key=bubble_event_sort_key)
+        write_jsonl(base / ui_events_rel, ordered_ui)
 
     return finalized
 
@@ -125,6 +136,7 @@ def export_replay(
     manifest: RunManifest,
     frames: Iterable[TickFrame],
     keyframe_interval: int = 100,
+    ui_events: Iterable[BubbleEvent] | None = None,
 ) -> RunManifest:
     """Export a replay-ready, chunked store with keyframes, diffs, and an index.
 
@@ -149,6 +161,7 @@ def export_replay(
     index_rel = "index.json"
     keyframes_dir_rel = Path("keyframes")
     diffs_dir_rel = Path("diffs")
+    ui_events_rel = Path("ui_events") / "ui_events.jsonl"
 
     # Iteration state
     prev_frame: TickFrame | None = None
@@ -238,6 +251,7 @@ def export_replay(
             "index": index_rel,
             "keyframes": str(keyframes_dir_rel),
             "diffs": str(diffs_dir_rel),
+            **({"ui_events": str(ui_events_rel)} if ui_events is not None else {}),
         },
         exported_at_utc_ms=manifest.exported_at_utc_ms,
     )
@@ -253,6 +267,13 @@ def export_replay(
         "ticks": index_ticks,
     }
     write_json(base / index_rel, index_obj)
+
+    # Optional UI events stream (write after index for determinism of layout order)
+    if ui_events is not None:
+        # We need to realize iterable to apply sorting and stable write
+        ui_list = list(ui_events)
+        ui_list.sort(key=bubble_event_sort_key)
+        write_jsonl(base / ui_events_rel, ui_list)
 
     return finalized
 
