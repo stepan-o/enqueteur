@@ -15,6 +15,7 @@ These rules are higher priority than performance hacks, framework trends, or con
 2. **Protocol is the system**
     - If it’s not expressed in KVP, it is not part of Loopforge.
     - All state derives from KVP messages and deterministic artifacts.
+    - Decoder MUST dispatch by `Envelope.msg_type` only; top-level shape-based decoding is forbidden.
 
 3. **Determinism is sacred**
     - Replay defines truth.
@@ -80,6 +81,7 @@ The viewer runtime is a deterministic state machine driven by KVP messages and/o
     - Send `SUBSCRIBE` with channels and policies
     - Wait for `SUBSCRIBED`
     - Do not assume unsolicited data will arrive
+    - v0.1 hard rule (non-negotiable): Viewer MUST NOT send `SUBSCRIBE.stream = REPLAY`. `SUBSCRIBE.stream` is LIVE-only in v0.1; replay/seek is controlled via `REPLAY_BEGIN` / `REPLAY_SEEK` + artifacts.
 
 3. **Baseline**
     - Acquire baseline `FULL_SNAPSHOT` (live: `snapshot_policy: ON_JOIN`; replay: nearest keyframe)
@@ -144,10 +146,17 @@ The webview must feel instant, stable, and correct. Seek must not require replay
     - treat as invalid stream
     - request recovery: `SNAPSHOT_ON_DESYNC` policy or re-seek
 
+### Replay Begin — v0.1 hard rules (non-negotiable)
+- The viewer MUST use `REPLAY_BEGIN.delivery = ARTIFACTS`.
+- `REPLAY_BEGIN.delivery = CONTINUOUS` is reserved in v0.1 and MUST be treated as unsupported.
+
 ---
 
 ## 6) Desync Detection & Recovery (Viewer Responsibilities)
 Viewer verifies determinism via `step_hash` and can report mismatch.
+
+- Always verify **tick continuity + payload validity**
+- Only do **hash mismatch** reporting if the viewer has an **external reference** (manifest) or a declared viewer-hash scheme.
 
 ### Minimum policy
 - On each applied diff, store `lastStepHash`
@@ -317,6 +326,10 @@ These are recommended defaults that keep us on the AAA path.
 - Codec boundary is sacred:
     - decoding/parsing must be swappable (JSON now, msgpack later)
     - never leak codec assumptions into the viewer’s core logic
+    
+    v0.1 hard rules (copy-paste):
+    - Viewer MUST NOT send `SUBSCRIBE.stream = REPLAY`.
+    - Viewer MUST use `REPLAY_BEGIN.delivery = ARTIFACTS`; `CONTINUOUS` is reserved/unsupported in v0.1.
 
 ### Rendering layer
 - React is UI orchestration; rendering should be:
@@ -340,3 +353,8 @@ md
 Copy code
 ## Appendix: One-Sentence North Star
 **The webview is a deterministic, protocol-driven playback client that can be swapped like an engine—React is just the skin, KVP is the spine.**
+### Data formats & transport
+
+- LIVE transport (e.g., WebSocket) must be ordered and in-order; viewer emits inputs over the same channel.
+- REPLAY artifacts may be fetched via HTTP or content-addressable storage; integrity/ordering is defined by artifact manifests.
+- v0.1 hard rule: Do not attempt to start replay via `SUBSCRIBE.stream`. Use `REPLAY_BEGIN` / `REPLAY_SEEK` and fetch artifacts; `REPLAY_BEGIN.delivery` MUST be `ARTIFACTS`.
