@@ -156,8 +156,16 @@ class OverlayPointer:
 
 @dataclass(frozen=True)
 class LayoutHints:
+    # Legacy/simple hints (kept for compatibility)
     records_dir: Optional[str] = None
     format: Optional[str] = None  # e.g., "SINGLE_JSON"
+    # S14.5 extended hints for discoverability without scanning
+    records_root: Optional[str] = None  # typically "."
+    snapshots_dir: Optional[str] = None
+    diffs_dir: Optional[str] = None
+    overlays_dir: Optional[str] = None
+    index_dir: Optional[str] = None
+    diff_storage: Optional[str] = None  # "PER_TICK_FILES" | "JSONL_CHUNKS"
 
     def to_dict(self) -> Dict[str, Any]:
         d: Dict[str, Any] = {}
@@ -165,6 +173,18 @@ class LayoutHints:
             d["records_dir"] = self.records_dir
         if self.format is not None:
             d["format"] = self.format
+        if self.records_root is not None:
+            d["records_root"] = self.records_root
+        if self.snapshots_dir is not None:
+            d["snapshots_dir"] = self.snapshots_dir
+        if self.diffs_dir is not None:
+            d["diffs_dir"] = self.diffs_dir
+        if self.overlays_dir is not None:
+            d["overlays_dir"] = self.overlays_dir
+        if self.index_dir is not None:
+            d["index_dir"] = self.index_dir
+        if self.diff_storage is not None:
+            d["diff_storage"] = self.diff_storage
         return d
 
     @staticmethod
@@ -176,7 +196,36 @@ class LayoutHints:
         fmt = d.get("format")
         if fmt is not None:
             _require(isinstance(fmt, str) and fmt != "", "LayoutHints.format must be non-empty string if present")
-        return LayoutHints(records_dir=rd, format=fmt)
+
+        rroot = d.get("records_root")
+        if rroot is not None:
+            _require(_is_rel_path(rroot) or rroot == ".", "LayoutHints.records_root must be relative or '.'")
+        sdir = d.get("snapshots_dir")
+        if sdir is not None:
+            _require(_is_rel_path(sdir), "LayoutHints.snapshots_dir must be relative if present")
+        ddir = d.get("diffs_dir")
+        if ddir is not None:
+            _require(_is_rel_path(ddir), "LayoutHints.diffs_dir must be relative if present")
+        odir = d.get("overlays_dir")
+        if odir is not None:
+            _require(_is_rel_path(odir), "LayoutHints.overlays_dir must be relative if present")
+        idir = d.get("index_dir")
+        if idir is not None:
+            _require(_is_rel_path(idir), "LayoutHints.index_dir must be relative if present")
+        dst = d.get("diff_storage")
+        if dst is not None:
+            _require(dst in ("PER_TICK_FILES", "JSONL_CHUNKS"), "LayoutHints.diff_storage invalid value")
+
+        return LayoutHints(
+            records_dir=rd,
+            format=fmt,
+            records_root=rroot,
+            snapshots_dir=sdir,
+            diffs_dir=ddir,
+            overlays_dir=odir,
+            index_dir=idir,
+            diff_storage=dst,
+        )
 
 
 @dataclass(frozen=True)
