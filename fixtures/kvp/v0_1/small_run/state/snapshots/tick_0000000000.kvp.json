@@ -1,1 +1,0 @@
-{"kvp_version":"0.1","msg_type":"FULL_SNAPSHOT","msg_id":"0270a109-d3ab-5fec-8660-6cbd7b9fd89d","sent_at_ms":0,"payload":{"schema_version":"1","tick":0,"state":{"tick":0,"value":0,"pos":{"x":0.123,"y":2.0},"rooms":[{"room_id":"a"},{"room_id":"b"}]},"step_hash":"a7f1d6a05192ac8488a84550f5bbcd4567dff04c205fde144652ec3899bd96a6"}}
