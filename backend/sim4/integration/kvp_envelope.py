@@ -25,6 +25,9 @@ ALLOWED_ARTIFACT_MSG_TYPES: Final[set[str]] = {
     "FRAME_DIFF",
     # Allow KERNEL_HELLO now (when serialized as an artifact later)
     "KERNEL_HELLO",
+    # Overlay sidecars (out-of-protocol X_* streams; S14.7)
+    "X_UI_EVENT_BATCH",
+    "X_PSYCHO_FRAME",
 }
 
 # Explicit forbidden prefixes (live/session)
