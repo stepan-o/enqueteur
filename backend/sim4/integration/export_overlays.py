@@ -89,7 +89,10 @@ def export_ui_events_jsonl(
             events=batch_events,
         )
         payload = batch.to_dict()
-        env = make_envelope("X_UI_EVENT_BATCH", payload, msg_id=str(uuid.uuid4()), sent_at_ms=0)
+        # Deterministic msg_id derived from batch window
+        ns = uuid.UUID("00000000-0000-5000-8000-000000000014")
+        msg_id = str(uuid.uuid5(ns, f"X_UI_EVENT_BATCH|{cur}|{win_end}"))
+        env = make_envelope("X_UI_EVENT_BATCH", payload, msg_id=msg_id, sent_at_ms=0)
         envelopes.append(env)
         cur = win_end + 1
 
@@ -126,7 +129,9 @@ def export_psycho_frames_jsonl(
             }
         )
         payload = pf.to_dict()
-        env = make_envelope("X_PSYCHO_FRAME", payload, msg_id=str(uuid.uuid4()), sent_at_ms=0)
+        ns = uuid.UUID("00000000-0000-5000-8000-000000000014")
+        msg_id = str(uuid.uuid5(ns, f"X_PSYCHO_FRAME|{payload['tick']}"))
+        env = make_envelope("X_PSYCHO_FRAME", payload, msg_id=msg_id, sent_at_ms=0)
         envs.append(env)
 
     out_path = root / rel_path

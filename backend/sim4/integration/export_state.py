@@ -74,6 +74,19 @@ def _write_env(run_root: Path, ptr: RecordPointer, env: Dict[str, Any]) -> None:
     write_record(out_path, env)
 
 
+# Deterministic UUID namespace for exporter-generated envelopes (Sprint 14.8)
+_KVP_NS = uuid.UUID("00000000-0000-5000-8000-000000000014")
+
+
+def _deterministic_msg_id(*parts: Any) -> str:
+    """Produce a deterministic UUIDv5 from stable string parts.
+
+    Parts are joined with '|' and encoded as str.
+    """
+    name = "|".join(str(p) for p in parts)
+    return str(uuid.uuid5(_KVP_NS, name))
+
+
 def export_state_records(run_root: str | Path, manifest: ManifestV0_1, source: StateSource) -> None:
     """Write snapshot + diff records to disk per manifest pointers and layout.
 
@@ -105,7 +118,7 @@ def export_state_records(run_root: str | Path, manifest: ManifestV0_1, source: S
         env = make_envelope(
             "FULL_SNAPSHOT",
             payload,
-            msg_id=str(uuid.uuid4()),
+            msg_id=_deterministic_msg_id("SNAP", t),
             sent_at_ms=0,
         )
         _write_env(root, ptr, env)
@@ -152,7 +165,7 @@ def export_state_records(run_root: str | Path, manifest: ManifestV0_1, source: S
         env = make_envelope(
             "FRAME_DIFF",
             payload,
-            msg_id=str(uuid.uuid4()),
+            msg_id=_deterministic_msg_id("DIFF", from_tick, to_tick),
             sent_at_ms=0,
         )
         _write_env(root, ptr, env)
