@@ -1,36 +1,42 @@
 // src/render/pixiScene.ts
 import * as PIXI from "pixi.js";
-import type { WorldState, RoomSnapshot, AgentSnapshot, NarrativeFragment } from "../state/worldStore";
-import { isoProject } from "./iso";
+import type { KvpAgent, KvpItem, KvpRoom, RenderSpec, WorldState } from "../state/worldStore";
+import { isoProject, setIsoTileSize } from "./iso";
 
 /**
  * PixiScene (WEBVIEW-0001)
  * -----------------------------------------------------------------------------
- * Responsibilities:
- * - Render the viewer’s mirrored WorldState (rooms, agents, narrative overlays)
- * - Provide minimal camera pan/zoom hooks (no fancy UX yet)
- * - Surface desync banner and allow requesting a fresh snapshot
- *
- * Non-goals:
- * - No simulation logic
- * - No state mutation except view-local visuals (interpolation can come later)
+ * Render the viewer’s mirrored WorldState with a noir-neon visual direction.
+ * Viewer-only: no sim logic, no mutation of kernel state.
  */
+
+const PALETTE = {
+    night: 0x0a0b10,
+    grid: 0x1b1f2a,
+    neonCyan: 0x4de1ff,
+    neonMagenta: 0xff4fd8,
+    neonViolet: 0x7a5cff,
+    neonAmber: 0xffb84d,
+    neonMint: 0x2dffb3,
+    ink: 0x0b0b12,
+};
+
+type RoomCenter = { x: number; y: number };
 
 export class PixiScene {
     public readonly app: PIXI.Application;
 
     private readonly root = new PIXI.Container();
+    private readonly gridLayer = new PIXI.Container();
     private readonly roomsLayer = new PIXI.Container();
+    private readonly itemsLayer = new PIXI.Container();
     private readonly agentsLayer = new PIXI.Container();
-    private readonly overlayLayer = new PIXI.Container();
     private readonly uiLayer = new PIXI.Container();
 
-    // Render objects keyed by IDs
+    private readonly gridGfx = new PIXI.Graphics();
     private readonly roomGfx = new Map<number, PIXI.Graphics>();
     private readonly agentNodes = new Map<number, PIXI.Container>();
-
-    // Narrative bubbles keyed by a stable-ish key
-    private readonly bubbleNodes = new Map<string, PIXI.Container>();
+    private readonly itemNodes = new Map<number, PIXI.Graphics>();
 
     // Camera state
     private camX = 0;
@@ -41,20 +47,21 @@ export class PixiScene {
     private desyncBanner?: PIXI.Container;
     private requestFreshSnapshotCb?: () => void;
 
-    // Optional: basic background
-    private bg?: PIXI.Graphics;
-
     // Pixi v8 init is async; gate rendering & input until ready.
     private ready = false;
 
     // Optional: stash latest state so we can render immediately after init completes.
     private pendingState?: WorldState;
 
+    private lastIsoKey = "";
+    private lastGridKey = "";
+    private lastLayoutKey = "";
+    private lastAutoFitKey = "";
+    private autoFitLocked = false;
+    private roomLayout = new Map<number, RoomCenter>();
+
     constructor(mountEl: HTMLElement) {
         this.app = new PIXI.Application();
-
-        // Pixi v8: Application.init() is async. Constructors cannot be async.
-        // We kick it off and gate render/input via `this.ready`.
         void this.init(mountEl);
     }
 
@@ -62,58 +69,32 @@ export class PixiScene {
         await this.app.init({
             resizeTo: mountEl,
             antialias: true,
-            backgroundAlpha: 1,
+            backgroundAlpha: 0,
         });
 
         mountEl.appendChild(this.app.canvas);
 
         // Layering
-        this.root.addChild(this.roomsLayer, this.agentsLayer, this.overlayLayer, this.uiLayer);
+        this.root.addChild(this.gridLayer, this.roomsLayer, this.itemsLayer, this.agentsLayer, this.uiLayer);
         this.app.stage.addChild(this.root);
 
-        // Simple background (keeps contrast predictable)
-        this.bg = new PIXI.Graphics();
-        this.app.stage.addChildAt(this.bg, 0);
+        this.gridLayer.addChild(this.gridGfx);
 
-        // Keep background covering canvas
-        this.app.ticker.add(() => {
-            if (!this.bg) return;
-            this.bg.clear();
-            this.bg.rect(0, 0, this.app.renderer.width, this.app.renderer.height);
-            this.bg.fill({ color: 0x0b0b0b, alpha: 1 });
-        });
-
-        // --- DEBUG: origin marker so we *always* see something if root is visible
-        const origin = new PIXI.Graphics();
-        origin.circle(0, 0, 6);
-        origin.fill({ color: 0xff3366, alpha: 0.9 });
-        origin.name = "__origin__";
-        this.root.addChild(origin);
-
-        const cross = new PIXI.Graphics();
-        cross.moveTo(-20, 0).lineTo(20, 0).stroke({ width: 2, color: 0xffffff, alpha: 0.25 });
-        cross.moveTo(0, -20).lineTo(0, 20).stroke({ width: 2, color: 0xffffff, alpha: 0.25 });
-        cross.name = "__cross__";
-        this.root.addChild(cross);
-
-        // Recenter camera relative to canvas size (more robust than a hardcoded offset)
         const recenter = () => {
             this.setCamera({
                 x: Math.floor(this.app.renderer.width * 0.5),
-                y: Math.floor(this.app.renderer.height * 0.5), // was 0.35; 0.5 is safer for iso
+                y: Math.floor(this.app.renderer.height * 0.45),
                 zoom: this.camZoom,
             });
         };
         recenter();
         this.app.renderer.on("resize", recenter);
 
-        // Basic wheel zoom (Phase 2 polish later) — only after canvas exists.
         this.enableWheelZoom();
         this.enableDragPan();
 
         this.ready = true;
 
-        // If state arrived before init completed, render once now.
         if (this.pendingState) {
             const s = this.pendingState;
             this.pendingState = undefined;
@@ -129,13 +110,9 @@ export class PixiScene {
     /** Main render entry (called from WorldStore subscription). */
     renderFromState(s: WorldState): void {
         if (!this.ready) {
-            // Store latest; render after init completes.
             this.pendingState = s;
             return;
         }
-
-        // --- DEBUG: one-line visibility check
-        // console.debug("[pixi] render", { rooms: s.rooms.size, agents: s.agents.size, narrative: s.narrative.size });
 
         if (s.desynced) {
             this.showDesyncBanner(s.desyncReason ?? "Desync detected");
@@ -144,16 +121,100 @@ export class PixiScene {
             this.hideDesyncBanner();
         }
 
-        this.renderRooms(s);
+        this.applyRenderSpec(s.renderSpec);
+        this.renderGrid(s.renderSpec);
+
+        const roomCenters = this.ensureRoomLayout(s, s.renderSpec);
+        this.autoFitCameraIfNeeded(s, s.renderSpec, roomCenters);
+        this.renderRooms(s, roomCenters);
+        this.renderItems(s, roomCenters);
         this.renderAgents(s);
-        this.renderNarrative(s);
+    }
+
+    /* --------------------------------------------------------------------------
+     * RenderSpec / Grid
+     * ------------------------------------------------------------------------ */
+
+    private applyRenderSpec(spec?: RenderSpec): void {
+        const iso = spec?.projection;
+        const isoKey = `${iso?.recommended_iso_tile_w ?? 64}x${iso?.recommended_iso_tile_h ?? 32}`;
+        if (isoKey !== this.lastIsoKey) {
+            this.lastIsoKey = isoKey;
+            setIsoTileSize(iso?.recommended_iso_tile_w ?? 64, iso?.recommended_iso_tile_h ?? 32);
+        }
+    }
+
+    private renderGrid(spec?: RenderSpec): void {
+        const bounds = getWorldBounds(spec);
+        const key = `${bounds.min_x}:${bounds.min_y}:${bounds.max_x}:${bounds.max_y}:${this.lastIsoKey}`;
+        if (key === this.lastGridKey) return;
+        this.lastGridKey = key;
+
+        const g = this.gridGfx;
+        g.clear();
+
+        const step = 1;
+        const color = PALETTE.grid;
+        const alpha = 0.25;
+
+        for (let x = Math.floor(bounds.min_x); x <= Math.ceil(bounds.max_x); x += step) {
+            const p0 = isoProject({ x, y: bounds.min_y });
+            const p1 = isoProject({ x, y: bounds.max_y });
+            g.moveTo(p0.x, p0.y);
+            g.lineTo(p1.x, p1.y);
+        }
+
+        for (let y = Math.floor(bounds.min_y); y <= Math.ceil(bounds.max_y); y += step) {
+            const p0 = isoProject({ x: bounds.min_x, y });
+            const p1 = isoProject({ x: bounds.max_x, y });
+            g.moveTo(p0.x, p0.y);
+            g.lineTo(p1.x, p1.y);
+        }
+
+        g.stroke({ width: 1, color, alpha });
     }
 
     /* --------------------------------------------------------------------------
      * Rooms
      * ------------------------------------------------------------------------ */
 
-    private renderRooms(s: WorldState): void {
+    private ensureRoomLayout(s: WorldState, spec?: RenderSpec): Map<number, RoomCenter> {
+        const bounds = getWorldBounds(spec);
+        const roomIds = Array.from(s.rooms.keys()).sort((a, b) => a - b);
+        const key = `${roomIds.join(",")}|${bounds.min_x}:${bounds.min_y}:${bounds.max_x}:${bounds.max_y}`;
+
+        if (key === this.lastLayoutKey && this.roomLayout.size > 0) {
+            return this.roomLayout;
+        }
+
+        const centers = new Map<number, RoomCenter>();
+        const agentBuckets = new Map<number, { x: number; y: number; count: number }>();
+
+        for (const a of s.agents.values()) {
+            const bucket = agentBuckets.get(a.room_id) ?? { x: 0, y: 0, count: 0 };
+            bucket.x += a.transform.x;
+            bucket.y += a.transform.y;
+            bucket.count += 1;
+            agentBuckets.set(a.room_id, bucket);
+        }
+
+        for (const r of s.rooms.values()) {
+            const bucket = agentBuckets.get(r.room_id);
+            if (bucket && bucket.count > 0) {
+                centers.set(r.room_id, clampPoint({ x: bucket.x / bucket.count, y: bucket.y / bucket.count }, bounds));
+            } else {
+                centers.set(r.room_id, scatterPoint(r.room_id, bounds));
+            }
+        }
+
+        this.roomLayout = centers;
+        this.lastLayoutKey = key;
+        this.lastAutoFitKey = "";
+        this.autoFitLocked = false;
+        return this.roomLayout;
+    }
+
+    private renderRooms(s: WorldState, centers: Map<number, RoomCenter>): void {
         const rooms = Array.from(s.rooms.values()).sort((a, b) => a.room_id - b.room_id);
 
         for (const r of rooms) {
@@ -164,67 +225,106 @@ export class PixiScene {
                 this.roomsLayer.addChild(g);
             }
 
-            this.drawRoom(g, r);
+            const center = centers.get(r.room_id) ?? { x: 0, y: 0 };
+            this.drawRoom(g, r, center);
         }
 
-        // Cleanup rooms no longer present
         for (const id of Array.from(this.roomGfx.keys())) {
             if (!s.rooms.has(id)) {
                 const g = this.roomGfx.get(id)!;
-                g.destroy();
+                g.destroy({ children: true });
                 this.roomGfx.delete(id);
             }
         }
     }
 
-    private drawRoom(g: PIXI.Graphics, r: RoomSnapshot): void {
+    private drawRoom(g: PIXI.Graphics, r: KvpRoom, center: RoomCenter): void {
         g.clear();
 
-        const b = r.bounds;
+        const occupants = r.occupants?.length ?? 0;
+        const size = clamp(0.9 + occupants * 0.12, 0.8, 2.2);
 
-        if (!b) {
-            g.circle(0, 0, 6);
-            g.stroke({ width: 1, color: 0xffffff, alpha: 0.25 });
-            return;
-        }
-
-        const p0 = isoProject({ x: b.x, y: b.y });
-        const p1 = isoProject({ x: b.x + b.w, y: b.y });
-        const p2 = isoProject({ x: b.x + b.w, y: b.y + b.h });
-        const p3 = isoProject({ x: b.x, y: b.y + b.h });
-
-        // Pixi v8-safe poly drawing (more reliable than moveTo/lineTo path reuse)
+        const p0 = isoProject({ x: center.x, y: center.y - size });
+        const p1 = isoProject({ x: center.x + size, y: center.y });
+        const p2 = isoProject({ x: center.x, y: center.y + size });
+        const p3 = isoProject({ x: center.x - size, y: center.y });
         const pts = [p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y];
 
-        // Optional: encode tension as fill alpha (still neutral)
-        const t = clamp01((r.tension ?? 0) / 100);
-        if (t > 0) {
-            g.poly(pts, true);
-            g.fill({ color: 0xffffff, alpha: 0.03 + t * 0.06 });
-        }
+        const { fill, stroke } = roomColors(r.tension_tier);
 
-        // Outline
         g.poly(pts, true);
-        g.stroke({ width: 1, color: 0xffffff, alpha: 0.18 });
+        g.fill({ color: fill, alpha: 0.08 });
+        g.stroke({ width: 2, color: stroke, alpha: r.highlight ? 0.9 : 0.45 });
 
-        // Room label (minimal, optional)
-        if (r.name) {
-            let label = g.getChildByName("label") as PIXI.Text | null;
-            if (!label) {
-                label = new PIXI.Text({
-                    text: r.name,
-                    style: { fontFamily: "monospace", fontSize: 10, fill: 0xffffff },
-                });
-                label.name = "label";
-                g.addChild(label);
-            }
-            label.text = r.name;
+        const halo = size * 1.5;
+        const h0 = isoProject({ x: center.x, y: center.y - halo });
+        const h1 = isoProject({ x: center.x + halo, y: center.y });
+        const h2 = isoProject({ x: center.x, y: center.y + halo });
+        const h3 = isoProject({ x: center.x - halo, y: center.y });
+        const hpts = [h0.x, h0.y, h1.x, h1.y, h2.x, h2.y, h3.x, h3.y];
+        g.poly(hpts, true);
+        g.stroke({ width: 1, color: stroke, alpha: 0.18 });
 
-            const center = isoProject({ x: b.x + b.w * 0.5, y: b.y + b.h * 0.5 });
-            label.x = center.x + 6;
-            label.y = center.y - 10;
-            label.alpha = 0.6;
+        let label = g.getChildByName("label") as PIXI.Text | null;
+        if (!label) {
+            label = new PIXI.Text({
+                text: r.label ?? `Room ${r.room_id}`,
+                style: {
+                    fontFamily: "Space Grotesk, sans-serif",
+                    fontSize: 11,
+                    fill: 0xffffff,
+                    letterSpacing: 0.5,
+                },
+            });
+            label.name = "label";
+            g.addChild(label);
         }
+        label.text = r.label ?? `Room ${r.room_id}`;
+        label.x = p0.x + 6;
+        label.y = p0.y - 20;
+        label.alpha = 0.7;
+    }
+
+    /* --------------------------------------------------------------------------
+     * Items
+     * ------------------------------------------------------------------------ */
+
+    private renderItems(s: WorldState, centers: Map<number, RoomCenter>): void {
+        const items = Array.from(s.items.values()).sort((a, b) => a.item_id - b.item_id);
+
+        for (const item of items) {
+            let node = this.itemNodes.get(item.item_id);
+            if (!node) {
+                node = new PIXI.Graphics();
+                this.itemNodes.set(item.item_id, node);
+                this.itemsLayer.addChild(node);
+            }
+            this.drawItem(node, item, centers);
+        }
+
+        for (const id of Array.from(this.itemNodes.keys())) {
+            if (!s.items.has(id)) {
+                const node = this.itemNodes.get(id)!;
+                node.destroy();
+                this.itemNodes.delete(id);
+            }
+        }
+    }
+
+    private drawItem(node: PIXI.Graphics, item: KvpItem, centers: Map<number, RoomCenter>): void {
+        node.clear();
+        const center = centers.get(item.room_id) ?? { x: 0, y: 0 };
+        const angle = (item.item_id * 2.3999632297) % (Math.PI * 2);
+        const radius = 0.35;
+        const pos = {
+            x: center.x + Math.cos(angle) * radius,
+            y: center.y + Math.sin(angle) * radius,
+        };
+        const p = isoProject(pos);
+
+        node.circle(p.x, p.y, 2.2);
+        node.fill({ color: PALETTE.neonAmber, alpha: 0.75 });
+        node.stroke({ width: 1, color: PALETTE.neonMagenta, alpha: 0.35 });
     }
 
     /* --------------------------------------------------------------------------
@@ -242,21 +342,14 @@ export class PixiScene {
                 this.agentsLayer.addChild(node);
             }
 
-            // Update position
-            const p = isoProject(a.pos);
+            const p = isoProject({ x: a.transform.x, y: a.transform.y });
             node.x = p.x;
             node.y = p.y;
 
-            // Update label
             const label = node.getChildByName("label") as PIXI.Text | null;
-            if (label) label.text = a.public_state?.label ?? `Agent ${a.agent_id}`;
-
-            // Optional: speaking indicator
-            const speak = node.getChildByName("speak") as PIXI.Graphics | null;
-            if (speak) speak.alpha = a.public_state?.speaking ? 0.9 : 0.15;
+            if (label) label.text = `Agent ${a.agent_id}`;
         }
 
-        // Cleanup despawned agents
         for (const id of Array.from(this.agentNodes.keys())) {
             if (!s.agents.has(id)) {
                 const node = this.agentNodes.get(id)!;
@@ -266,97 +359,34 @@ export class PixiScene {
         }
     }
 
-    private makeAgentNode(a: AgentSnapshot): PIXI.Container {
+    private makeAgentNode(a: KvpAgent): PIXI.Container {
         const c = new PIXI.Container();
 
-        const dot = new PIXI.Graphics();
-        dot.circle(0, 0, 4);
-        dot.fill({ color: 0xffffff, alpha: 0.9 });
-        c.addChild(dot);
+        const color = agentColor(a);
+        const ring = new PIXI.Graphics();
+        ring.circle(0, 0, 6);
+        ring.stroke({ width: 2, color, alpha: 0.85 });
+        c.addChild(ring);
 
-        const speak = new PIXI.Graphics();
-        speak.name = "speak";
-        speak.circle(0, -10, 2);
-        speak.fill({ color: 0xffffff, alpha: 0.15 });
-        c.addChild(speak);
+        const core = new PIXI.Graphics();
+        core.circle(0, 0, 2.5);
+        core.fill({ color: PALETTE.neonMint, alpha: 0.9 });
+        c.addChild(core);
 
         const label = new PIXI.Text({
-            text: a.public_state?.label ?? `Agent ${a.agent_id}`,
-            style: { fontFamily: "monospace", fontSize: 10, fill: 0xffffff },
+            text: `Agent ${a.agent_id}`,
+            style: {
+                fontFamily: "JetBrains Mono, monospace",
+                fontSize: 10,
+                fill: 0xffffff,
+            },
         });
         label.name = "label";
         label.x = 8;
         label.y = -18;
-        label.alpha = 0.8;
+        label.alpha = 0.75;
         c.addChild(label);
 
-        return c;
-    }
-
-    /* --------------------------------------------------------------------------
-     * Narrative (bubbles) — Phase 2 hook (still minimal)
-     * ------------------------------------------------------------------------ */
-
-    private renderNarrative(s: WorldState): void {
-        const frags = Array.from(s.narrative.values());
-        const seen = new Set<string>();
-
-        for (const n of frags) {
-            const key = narrativeKey(n);
-            seen.add(key);
-
-            let bubble = this.bubbleNodes.get(key);
-            if (!bubble) {
-                bubble = this.makeBubble(n);
-                this.bubbleNodes.set(key, bubble);
-                this.overlayLayer.addChild(bubble);
-            }
-
-            // Position bubble above entity if it exists
-            const agentId = n.entity_id;
-            const agent = s.agents.get(agentId);
-            if (agent) {
-                const p = isoProject(agent.pos);
-                bubble.x = p.x + 10;
-                bubble.y = p.y - 48;
-                bubble.alpha = 0.95;
-            } else {
-                bubble.alpha = 0;
-            }
-
-            const text = bubble.getChildByName("text") as PIXI.Text | null;
-            if (text) text.text = n.text;
-        }
-
-        // Cleanup stale bubbles
-        for (const key of Array.from(this.bubbleNodes.keys())) {
-            if (!seen.has(key)) {
-                const node = this.bubbleNodes.get(key)!;
-                node.destroy({ children: true });
-                this.bubbleNodes.delete(key);
-            }
-        }
-    }
-
-    private makeBubble(n: NarrativeFragment): PIXI.Container {
-        const c = new PIXI.Container();
-
-        const bg = new PIXI.Graphics();
-        bg.roundRect(0, 0, 220, 44, 8);
-        bg.fill({ color: 0x000000, alpha: 0.75 });
-        bg.stroke({ width: 1, color: 0xffffff, alpha: 0.15 });
-        c.addChild(bg);
-
-        const t = new PIXI.Text({
-            text: n.text,
-            style: { fontFamily: "monospace", fontSize: 11, fill: 0xffffff, wordWrap: true, wordWrapWidth: 200 },
-        });
-        t.name = "text";
-        t.x = 10;
-        t.y = 8;
-        c.addChild(t);
-
-        if (n.nondeterministic) c.alpha = 0.9;
         return c;
     }
 
@@ -376,14 +406,14 @@ export class PixiScene {
 
     private enableWheelZoom(): void {
         const canvas = this.app.canvas;
-
         canvas.addEventListener(
             "wheel",
             (e) => {
                 e.preventDefault();
+                this.autoFitLocked = true;
                 const delta = Math.sign(e.deltaY);
                 const factor = delta > 0 ? 0.9 : 1.1;
-                const next = clamp(this.camZoom * factor, 0.25, 3);
+                const next = clamp(this.camZoom * factor, 0.35, 3.2);
                 this.setCamera({ x: this.camX, y: this.camY, zoom: next });
             },
             { passive: false }
@@ -401,6 +431,7 @@ export class PixiScene {
             dragging = true;
             lastX = e.clientX;
             lastY = e.clientY;
+            this.autoFitLocked = true;
         });
 
         window.addEventListener("mouseup", () => {
@@ -418,6 +449,40 @@ export class PixiScene {
         });
     }
 
+    private autoFitCameraIfNeeded(
+        s: WorldState,
+        spec: RenderSpec | undefined,
+        centers: Map<number, RoomCenter>
+    ): void {
+        if (this.autoFitLocked) return;
+
+        const bounds = getWorldBounds(spec);
+        const key = `${bounds.min_x}:${bounds.min_y}:${bounds.max_x}:${bounds.max_y}:${this.lastIsoKey}`;
+        if (key === this.lastAutoFitKey) return;
+        this.lastAutoFitKey = key;
+
+        const isoBounds = computeIsoBounds(bounds, centers, s.agents);
+        const viewW = this.app.renderer.width;
+        const viewH = this.app.renderer.height;
+        if (viewW <= 0 || viewH <= 0) return;
+
+        const pad = 0.12;
+        const usableW = viewW * (1 - pad * 2);
+        const usableH = viewH * (1 - pad * 2);
+
+        const worldW = Math.max(1, isoBounds.max_x - isoBounds.min_x);
+        const worldH = Math.max(1, isoBounds.max_y - isoBounds.min_y);
+        const zoom = Math.min(usableW / worldW, usableH / worldH);
+
+        const centerX = (isoBounds.min_x + isoBounds.max_x) * 0.5;
+        const centerY = (isoBounds.min_y + isoBounds.max_y) * 0.5;
+
+        const camX = Math.floor(viewW * 0.5 - centerX * zoom);
+        const camY = Math.floor(viewH * 0.5 - centerY * zoom);
+
+        this.setCamera({ x: camX, y: camY, zoom: clamp(zoom, 0.4, 3.5) });
+    }
+
     /* --------------------------------------------------------------------------
      * Desync UI
      * ------------------------------------------------------------------------ */
@@ -431,13 +496,19 @@ export class PixiScene {
 
         const bg = new PIXI.Graphics();
         bg.roundRect(0, 0, 520, 84, 10);
-        bg.fill({ color: 0x000000, alpha: 0.85 });
-        bg.stroke({ width: 1, color: 0xffffff, alpha: 0.2 });
+        bg.fill({ color: PALETTE.ink, alpha: 0.92 });
+        bg.stroke({ width: 1, color: PALETTE.neonMagenta, alpha: 0.4 });
         banner.addChild(bg);
 
         const txt = new PIXI.Text({
             text: `DESYNC\n${reason}\nClick to request fresh snapshot.`,
-            style: { fontFamily: "monospace", fontSize: 12, fill: 0xffffff, wordWrap: true, wordWrapWidth: 500 },
+            style: {
+                fontFamily: "JetBrains Mono, monospace",
+                fontSize: 12,
+                fill: 0xffffff,
+                wordWrap: true,
+                wordWrapWidth: 500,
+            },
         });
         txt.x = 12;
         txt.y = 10;
@@ -465,14 +536,100 @@ export class PixiScene {
  * Helpers
  * ------------------------------------------------------------------------ */
 
-function narrativeKey(n: NarrativeFragment): string {
-    return `${n.entity_id}:${n.kind}:${n.text}`;
+function getWorldBounds(spec?: RenderSpec): { min_x: number; min_y: number; max_x: number; max_y: number } {
+    const b = spec?.coord_system?.bounds;
+    if (b) {
+        return { min_x: b.min_x, min_y: b.min_y, max_x: b.max_x, max_y: b.max_y };
+    }
+    return { min_x: 0, min_y: 0, max_x: 10, max_y: 6 };
+}
+
+function scatterPoint(seed: number, bounds: { min_x: number; min_y: number; max_x: number; max_y: number }): RoomCenter {
+    const u = fract(Math.sin(seed * 12.9898) * 43758.5453);
+    const v = fract(Math.sin((seed + 77) * 78.233) * 12345.678);
+    const pad = 0.8;
+    const x = lerp(bounds.min_x + pad, bounds.max_x - pad, u);
+    const y = lerp(bounds.min_y + pad, bounds.max_y - pad, v);
+    return { x, y };
+}
+
+function clampPoint(
+    p: RoomCenter,
+    bounds: { min_x: number; min_y: number; max_x: number; max_y: number }
+): RoomCenter {
+    return {
+        x: clamp(p.x, bounds.min_x + 0.5, bounds.max_x - 0.5),
+        y: clamp(p.y, bounds.min_y + 0.5, bounds.max_y - 0.5),
+    };
+}
+
+function computeIsoBounds(
+    bounds: { min_x: number; min_y: number; max_x: number; max_y: number },
+    centers: Map<number, RoomCenter>,
+    agents: Map<number, KvpAgent>
+): { min_x: number; min_y: number; max_x: number; max_y: number } {
+    const points: RoomCenter[] = [];
+
+    points.push({ x: bounds.min_x, y: bounds.min_y });
+    points.push({ x: bounds.min_x, y: bounds.max_y });
+    points.push({ x: bounds.max_x, y: bounds.min_y });
+    points.push({ x: bounds.max_x, y: bounds.max_y });
+
+    for (const c of centers.values()) points.push(c);
+    for (const a of agents.values()) points.push({ x: a.transform.x, y: a.transform.y });
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const p of points) {
+        const iso = isoProject(p);
+        minX = Math.min(minX, iso.x);
+        minY = Math.min(minY, iso.y);
+        maxX = Math.max(maxX, iso.x);
+        maxY = Math.max(maxY, iso.y);
+    }
+
+    if (!Number.isFinite(minX)) {
+        return { min_x: -50, min_y: -50, max_x: 50, max_y: 50 };
+    }
+
+    return { min_x: minX, min_y: minY, max_x: maxX, max_y: maxY };
+}
+
+function roomColors(tension: string): { fill: number; stroke: number } {
+    switch (tension) {
+        case "high":
+            return { fill: PALETTE.neonMagenta, stroke: PALETTE.neonMagenta };
+        case "medium":
+            return { fill: PALETTE.neonAmber, stroke: PALETTE.neonAmber };
+        default:
+            return { fill: PALETTE.neonCyan, stroke: PALETTE.neonCyan };
+    }
+}
+
+function agentColor(a: KvpAgent): number {
+    switch (a.role_code % 4) {
+        case 0:
+            return PALETTE.neonCyan;
+        case 1:
+            return PALETTE.neonMagenta;
+        case 2:
+            return PALETTE.neonViolet;
+        default:
+            return PALETTE.neonAmber;
+    }
 }
 
 function clamp(v: number, lo: number, hi: number): number {
     return Math.max(lo, Math.min(hi, v));
 }
 
-function clamp01(v: number): number {
-    return clamp(v, 0, 1);
+function lerp(a: number, b: number, t: number): number {
+    return a + (b - a) * t;
+}
+
+function fract(v: number): number {
+    return v - Math.floor(v);
 }

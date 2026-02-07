@@ -1,24 +1,89 @@
 // src/state/worldStore.ts
-/**
- * WorldStore (WEBVIEW-0001)
- * -----------------------------------------------------------------------------
- * The viewer's in-memory mirror of kernel truth.
- * - Accepts FULL_SNAPSHOT baseline
- * - Applies FRAME_DIFF incrementally
- * - Detects basic desync conditions (baseline mismatch, bad ordering)
- *
- * Non-goals:
- * - No simulation logic
- * - No derived inference beyond display-friendly indexing
- * - No persistence (replay caching comes later)
- */
 
-export type Tick = number;
+export type KvpRoom = {
+    room_id: number;
+    label: string;
+    kind_code: number;
+    occupants: number[];
+    items: number[];
+    neighbors: number[];
+    tension_tier: string;
+    highlight: boolean;
+};
 
-/* ---------------------------------------
- * Minimal payload shapes (v0.1 placeholders)
- * Replace with generated KVP types later.
- * ------------------------------------- */
+export type KvpTransform = {
+    room_id: number;
+    x: number;
+    y: number;
+};
+
+export type KvpAgent = {
+    agent_id: number;
+    room_id: number;
+    role_code: number;
+    generation: number;
+    profile_traits: Record<string, unknown>;
+    identity_vector: unknown[];
+    persona_style_vector: unknown[] | null;
+    drives: Record<string, unknown>;
+    emotions: Record<string, unknown>;
+    key_relationships: unknown[];
+    active_motives: unknown[];
+    plan: unknown | null;
+    transform: KvpTransform;
+    action_state_code: number;
+    narrative_state_ref: string | null;
+    cached_summary_ref: string | null;
+};
+
+export type KvpItem = {
+    item_id: number;
+    room_id: number;
+    owner_agent_id: number | null;
+    status_code: number;
+    label: string;
+};
+
+export type KvpEvent = {
+    tick: number;
+    event_id: number;
+    origin: string;
+    payload: Record<string, unknown>;
+};
+
+export type KvpState = {
+    rooms: KvpRoom[];
+    agents: KvpAgent[];
+    items: KvpItem[];
+    events: KvpEvent[];
+    debug?: unknown;
+};
+
+export type FullSnapshotPayload = {
+    schema_version: string;
+    tick: number;
+    state: KvpState;
+    step_hash: string;
+};
+
+export type DiffOp =
+    | { op: "UPSERT_ROOM"; room: KvpRoom }
+    | { op: "REMOVE_ROOM"; room_id: number }
+    | { op: "UPSERT_AGENT"; agent: KvpAgent }
+    | { op: "REMOVE_AGENT"; agent_id: number }
+    | { op: "UPSERT_ITEM"; item: KvpItem }
+    | { op: "REMOVE_ITEM"; item_id: number }
+    | { op: "UPSERT_EVENT"; event: KvpEvent }
+    | { op: "REMOVE_EVENT"; event_key: { tick: number; event_id: number } };
+
+export type FrameDiffPayload = {
+    schema_version: string;
+    from_tick: number;
+    to_tick: number;
+    prev_step_hash?: string | null;
+    ops: DiffOp[];
+    step_hash: string;
+};
 
 export type KernelHello = {
     engine_name: string;
@@ -28,281 +93,233 @@ export type KernelHello = {
     run_id: string;
     seed: number;
     tick_rate_hz: number;
+    time_origin_ms?: number;
 };
 
-export type Vec2 = { x: number; y: number };
-
-export type RoomSnapshot = {
-    room_id: number;
-    name?: string;
-    zone_id?: number;
-    bounds?: { x: number; y: number; w: number; h: number };
-    occupancy?: number;
-    tension?: number;
-};
-
-export type AgentSnapshot = {
-    agent_id: number;
-    room_id: number | null;
-    pos: Vec2;
-    facing_deg?: number;
-    public_state?: {
-        label?: string;
-        mood?: number;
-        energy?: number;
-        speaking?: boolean;
-        emote?: string | null;
-    };
-};
-
-export type NarrativeFragment = {
-    entity_id: number;
-    kind: "DIALOGUE" | "INNER_MONOLOGUE" | "THOUGHT_TAG" | string;
-    text: string;
-    ttl_ticks?: number;
-    nondeterministic?: boolean;
-};
-
-export type FullSnapshot = {
+export type RunAnchors = {
+    engine_name: string;
+    engine_version: string;
     schema_version: string;
-    tick: Tick;
-    step_hash: string;
-
-    world?: { rooms?: RoomSnapshot[] };
-    agents?: AgentSnapshot[];
-    narrative_fragments?: NarrativeFragment[];
+    world_id: string;
+    run_id: string;
+    seed: number;
+    tick_rate_hz: number;
+    time_origin_ms: number;
 };
 
-export type AgentMove = {
-    agent_id: number;
-    from_room_id: number | null;
-    to_room_id: number | null;
-    from_pos: Vec2;
-    to_pos: Vec2;
-};
-
-export type FrameDiff = {
-    schema_version: string;
-    from_tick: Tick;
-    to_tick: Tick;
-    step_hash: string;
-
-    diff: {
-        // Phase 1 policy: replace-lists (safe + simple)
-        room_replacements?: RoomSnapshot[];
-        narrative_replacements?: NarrativeFragment[];
-
-        // Incremental agent updates
-        agent_moves?: AgentMove[];
-        agent_spawns?: AgentSnapshot[];
-        agent_despawns?: number[];
-
-        // Events/items omitted for skeleton; add later
+export type RenderSpec = {
+    coord_system?: {
+        axis?: { x_positive: string; y_positive: string };
+        bounds?: { min_x: number; min_y: number; max_x: number; max_y: number };
+        origin?: { x: number; y: number };
+        units?: string;
+        units_per_tile?: number;
     };
+    projection?: { kind: string; recommended_iso_tile_w?: number; recommended_iso_tile_h?: number };
+    draw_order?: Record<string, unknown>;
+    local_sort_key?: Record<string, unknown>;
+    z_layer?: Record<string, unknown>;
+    asset_resolution?: Record<string, unknown>;
 };
-
-/* ---------------------------------------
- * Viewer State
- * ------------------------------------- */
 
 export type WorldState = {
-    // Connection/session metadata
+    mode: "live" | "offline";
+    tick: number;
+    stepHash?: string;
     connected: boolean;
-    kernelHello?: KernelHello;
-
-    // Current sim time
-    tick: Tick;
-    stepHash: string;
-
-    // Canonical indices for fast lookup
-    rooms: Map<number, RoomSnapshot>;
-    agents: Map<number, AgentSnapshot>;
-
-    // Narrative fragments are replace-lists; we index by a stable key.
-    narrative: Map<string, NarrativeFragment>;
-
-    // Diagnostics
     desynced: boolean;
     desyncReason?: string;
+    kernelHello?: KernelHello;
+    runAnchors?: RunAnchors;
+    renderSpec?: RenderSpec;
+    rooms: Map<number, KvpRoom>;
+    agents: Map<number, KvpAgent>;
+    items: Map<number, KvpItem>;
+    events: Map<string, KvpEvent>;
+    debug?: unknown;
 };
 
-export class WorldStore {
-    public state: WorldState;
+export type WorldStoreSubscriber = (s: WorldState) => void;
 
-    private listeners = new Set<(s: WorldState) => void>();
+export class WorldStore {
+    private state: WorldState;
+    private readonly subs = new Set<WorldStoreSubscriber>();
 
     constructor() {
         this.state = {
-            connected: false,
+            mode: "live",
             tick: 0,
-            stepHash: "",
+            stepHash: undefined,
+            connected: false,
+            desynced: false,
+            desyncReason: undefined,
+            kernelHello: undefined,
+            runAnchors: undefined,
+            renderSpec: undefined,
             rooms: new Map(),
             agents: new Map(),
-            narrative: new Map(),
-            desynced: false,
+            items: new Map(),
+            events: new Map(),
+            debug: undefined,
         };
     }
 
-    subscribe(fn: (s: WorldState) => void): () => void {
-        this.listeners.add(fn);
-        fn(this.state);
-        return () => this.listeners.delete(fn);
+    subscribe(cb: WorldStoreSubscriber): () => void {
+        this.subs.add(cb);
+        cb(this.state);
+        return () => this.subs.delete(cb);
     }
 
-    private emit(): void {
-        for (const fn of this.listeners) fn(this.state);
+    getState(): WorldState {
+        return this.state;
     }
 
-    /* ---------------------------------------
-     * Session / Connection
-     * ------------------------------------- */
+    setMode(mode: WorldState["mode"]): void {
+        this.state = { ...this.state, mode };
+        this.emit();
+    }
 
     setConnected(connected: boolean): void {
-        this.state.connected = connected;
-
-        // If disconnected, we do NOT clear state automatically.
-        // Viewer can decide whether to keep last frame visible.
+        this.state = { ...this.state, connected };
         this.emit();
     }
 
     setKernelHello(hello: KernelHello): void {
-        this.state.kernelHello = hello;
+        this.state = { ...this.state, kernelHello: hello };
         this.emit();
     }
 
-    /* ---------------------------------------
-     * Apply FULL_SNAPSHOT (baseline)
-     * ------------------------------------- */
+    setRunAnchors(anchors: RunAnchors): void {
+        this.state = { ...this.state, runAnchors: anchors };
+        this.emit();
+    }
 
-    applySnapshot(s: FullSnapshot): void {
-        // A snapshot is authoritative baseline; it resets desync flags.
-        this.state.desynced = false;
-        this.state.desyncReason = undefined;
+    setRenderSpec(spec: RenderSpec): void {
+        this.state = { ...this.state, renderSpec: spec };
+        this.emit();
+    }
 
-        this.state.tick = s.tick ?? 0;
-        this.state.stepHash = s.step_hash ?? "";
+    markDesync(reason: string): void {
+        this.state = { ...this.state, desynced: true, desyncReason: reason };
+        this.emit();
+    }
 
-        // Replace rooms
-        this.state.rooms.clear();
-        const rooms = s.world?.rooms ?? [];
-        for (const r of rooms) {
-            if (typeof r?.room_id !== "number") continue;
-            this.state.rooms.set(r.room_id, r);
+    clearDesync(): void {
+        if (!this.state.desynced) return;
+        this.state = { ...this.state, desynced: false, desyncReason: undefined };
+        this.emit();
+    }
+
+    applySnapshot(payload: FullSnapshotPayload): void {
+        if (!payload || !payload.state) {
+            this.markDesync("Invalid snapshot payload");
+            return;
         }
 
-        // Replace agents
-        this.state.agents.clear();
-        const agents = s.agents ?? [];
-        for (const a of agents) {
-            if (typeof a?.agent_id !== "number") continue;
-            this.state.agents.set(a.agent_id, sanitizeAgent(a));
-        }
+        const rooms = new Map<number, KvpRoom>();
+        for (const r of payload.state.rooms ?? []) rooms.set(r.room_id, r);
 
-        // Replace narrative fragments
-        this.state.narrative.clear();
-        const frags = s.narrative_fragments ?? [];
-        for (const n of frags) {
-            this.state.narrative.set(narrativeKey(n), n);
-        }
+        const agents = new Map<number, KvpAgent>();
+        for (const a of payload.state.agents ?? []) agents.set(a.agent_id, a);
+
+        const items = new Map<number, KvpItem>();
+        for (const i of payload.state.items ?? []) items.set(i.item_id, i);
+
+        const events = new Map<string, KvpEvent>();
+        for (const e of payload.state.events ?? []) events.set(eventKey(e), e);
+
+        this.state = {
+            ...this.state,
+            tick: payload.tick,
+            stepHash: payload.step_hash,
+            desynced: false,
+            desyncReason: undefined,
+            rooms,
+            agents,
+            items,
+            events,
+            debug: payload.state.debug,
+        };
 
         this.emit();
     }
 
-    /* ---------------------------------------
-     * Apply FRAME_DIFF (incremental)
-     * ------------------------------------- */
-
-    applyDiff(d: FrameDiff): void {
+    applyDiff(payload: FrameDiffPayload): void {
         if (this.state.desynced) return;
-
-        // Baseline must match current tick
-        if (d.from_tick !== this.state.tick) {
-            this.markDesync(`Diff baseline mismatch: expected from_tick=${this.state.tick}, got ${d.from_tick}`);
+        if (!payload || !Array.isArray(payload.ops)) {
+            this.markDesync("Invalid diff payload");
             return;
         }
 
-        // Tick must advance
-        if (typeof d.to_tick !== "number" || d.to_tick < d.from_tick) {
-            this.markDesync(`Invalid diff ticks: from=${d.from_tick} to=${d.to_tick}`);
+        if (typeof payload.prev_step_hash === "string" && this.state.stepHash && payload.prev_step_hash !== this.state.stepHash) {
+            this.markDesync("Step hash mismatch (diff chain broken)");
             return;
         }
 
-        // Phase 1: replace rooms/events/narrative as lists
-        const roomRepl = d.diff.room_replacements ?? [];
-        for (const r of roomRepl) {
-            if (typeof r?.room_id !== "number") continue;
-            this.state.rooms.set(r.room_id, r);
+        if (this.state.tick && payload.from_tick !== this.state.tick) {
+            this.markDesync(`Tick mismatch (expected ${this.state.tick}, got ${payload.from_tick})`);
+            return;
         }
 
-        // Agents: despawn → spawn → move
-        for (const id of d.diff.agent_despawns ?? []) {
-            this.state.agents.delete(id);
-        }
+        const rooms = new Map(this.state.rooms);
+        const agents = new Map(this.state.agents);
+        const items = new Map(this.state.items);
+        const events = new Map(this.state.events);
 
-        for (const a of d.diff.agent_spawns ?? []) {
-            if (typeof a?.agent_id !== "number") continue;
-            this.state.agents.set(a.agent_id, sanitizeAgent(a));
-        }
-
-        for (const m of d.diff.agent_moves ?? []) {
-            const a = this.state.agents.get(m.agent_id);
-            if (!a) continue;
-
-            a.room_id = m.to_room_id;
-            a.pos = { x: m.to_pos.x, y: m.to_pos.y };
-
-            this.state.agents.set(a.agent_id, a);
-        }
-
-        // Narrative replace-list policy
-        if (d.diff.narrative_replacements) {
-            this.state.narrative.clear();
-            for (const n of d.diff.narrative_replacements) {
-                this.state.narrative.set(narrativeKey(n), n);
+        for (const op of payload.ops) {
+            switch (op.op) {
+                case "UPSERT_ROOM":
+                    rooms.set(op.room.room_id, op.room);
+                    break;
+                case "REMOVE_ROOM":
+                    rooms.delete(op.room_id);
+                    break;
+                case "UPSERT_AGENT":
+                    agents.set(op.agent.agent_id, op.agent);
+                    break;
+                case "REMOVE_AGENT":
+                    agents.delete(op.agent_id);
+                    break;
+                case "UPSERT_ITEM":
+                    items.set(op.item.item_id, op.item);
+                    break;
+                case "REMOVE_ITEM":
+                    items.delete(op.item_id);
+                    break;
+                case "UPSERT_EVENT":
+                    events.set(eventKey(op.event), op.event);
+                    break;
+                case "REMOVE_EVENT":
+                    events.delete(eventKeyFromKey(op.event_key));
+                    break;
+                default:
+                    this.markDesync(`Unknown diff op: ${(op as { op: string }).op}`);
+                    return;
             }
         }
 
-        // Advance time
-        this.state.tick = d.to_tick;
-        this.state.stepHash = d.step_hash ?? this.state.stepHash;
+        this.state = {
+            ...this.state,
+            tick: payload.to_tick,
+            stepHash: payload.step_hash,
+            rooms,
+            agents,
+            items,
+            events,
+        };
 
         this.emit();
     }
 
-    /* ---------------------------------------
-     * Diagnostics
-     * ------------------------------------- */
-
-    markDesync(reason: string): void {
-        this.state.desynced = true;
-        this.state.desyncReason = reason;
-        this.emit();
+    private emit(): void {
+        for (const cb of this.subs) cb(this.state);
     }
 }
 
-/* ---------------------------------------
- * Helpers
- * ------------------------------------- */
-
-function sanitizeAgent(a: AgentSnapshot): AgentSnapshot {
-    // Ensure required fields exist for renderer.
-    const pos = a.pos ?? { x: 0, y: 0 };
-    return {
-        agent_id: a.agent_id,
-        room_id: a.room_id ?? null,
-        pos: { x: pos.x ?? 0, y: pos.y ?? 0 },
-        facing_deg: a.facing_deg ?? 0,
-        public_state: {
-            label: a.public_state?.label ?? `Agent ${a.agent_id}`,
-            mood: a.public_state?.mood ?? 0,
-            energy: a.public_state?.energy ?? 0,
-            speaking: a.public_state?.speaking ?? false,
-            emote: a.public_state?.emote ?? null,
-        },
-    };
+export function eventKey(ev: KvpEvent): string {
+    return `${ev.tick}:${ev.event_id}`;
 }
 
-function narrativeKey(n: NarrativeFragment): string {
-    // Stable-ish key for UI indexing in Phase 1. Replace with fragment_id later.
-    return `${n.entity_id}:${n.kind}:${n.text}`;
+export function eventKeyFromKey(key: { tick: number; event_id: number }): string {
+    return `${key.tick}:${key.event_id}`;
 }

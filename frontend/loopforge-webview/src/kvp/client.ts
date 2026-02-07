@@ -1,11 +1,16 @@
 // src/kvp/client.ts
-import type { WorldStore } from "../state/worldStore";
+import type {
+    FrameDiffPayload,
+    FullSnapshotPayload,
+    KernelHello,
+    WorldStore,
+} from "../state/worldStore";
 
 /**
  * KVP-0001 WebSocket client (WEBVIEW-0001).
  * - Protocol-first: ViewerHello → KernelHello → Subscribe → Snapshot/Diff stream
  * - No simulation logic.
- * - Forward-compatible: unknown msg types are ignored.
+ * - Strict: unknown msg types are rejected (desync).
  *
  * NOTE: This file includes minimal type definitions to compile immediately.
  * Later, move these into src/kvp/types.ts + schema-generated types.
@@ -17,7 +22,7 @@ import type { WorldStore } from "../state/worldStore";
 
 export type KvpVersion = "0.1";
 
-export type Channel = "WORLD" | "AGENTS" | "ITEMS" | "EVENTS" | "NARRATIVE" | "DEBUG";
+export type Channel = "WORLD" | "AGENTS" | "ITEMS" | "EVENTS" | "DEBUG";
 
 export type DiffPolicy = "DIFF_ONLY" | "PERIODIC_SNAPSHOT" | "SNAPSHOT_ON_DESYNC";
 export type SnapshotPolicy = "ON_JOIN" | "NEVER";
@@ -59,22 +64,7 @@ export type ViewerHello = {
     };
 };
 
-export type KernelHello = {
-    engine_name: string;
-    engine_version: string;
-    schema_version: string;
-    world_id: string;
-    run_id: string;
-    seed: number;
-    tick_rate_hz: number;
-    time_origin_ms?: number;
-};
-
-/** Placeholder shapes so the client can route payloads.
- * Real schemas live in KVP spec + your generated types.
- */
-export type FullSnapshot = any;
-export type FrameDiff = any;
+/** Payloads are defined in worldStore to keep viewer state consistent. */
 
 /* ---------------------------------------
  * Client options
@@ -230,13 +220,13 @@ export class KvpClient {
             }
 
             case "FULL_SNAPSHOT": {
-                const snap = env.payload as FullSnapshot;
+                const snap = env.payload as FullSnapshotPayload;
                 this.store.applySnapshot(snap);
                 break;
             }
 
             case "FRAME_DIFF": {
-                const diff = env.payload as FrameDiff;
+                const diff = env.payload as FrameDiffPayload;
                 this.store.applyDiff(diff);
                 break;
             }
@@ -252,7 +242,7 @@ export class KvpClient {
             }
 
             default: {
-                // Forward-compat: ignore unknown message types.
+                this.store.markDesync(`Unknown msg_type: ${env.msg_type}`);
                 break;
             }
         }

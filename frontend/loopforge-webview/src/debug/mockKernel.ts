@@ -1,80 +1,137 @@
 // src/debug/mockKernel.ts
-import type { WorldStore } from "../state/worldStore";
-import type { FullSnapshot } from "../state/worldStore";
+import type { FullSnapshotPayload, WorldStore } from "../state/worldStore";
 
 /**
  * DEV-ONLY: Inject a fake FULL_SNAPSHOT into the WorldStore
  * so we can validate the viewer render pipeline without a kernel.
  */
 export function injectMockSnapshot(store: WorldStore): void {
-    const snap: FullSnapshot = {
-        schema_version: "2",
+    const snap: FullSnapshotPayload = {
+        schema_version: "1",
         tick: 1,
         step_hash: "dev_mock_step_hash_0001",
-
-        world: {
+        state: {
             rooms: [
                 {
                     room_id: 1,
-                    name: "plaza",
-                    bounds: { x: 0, y: 0, w: 8, h: 6 },
-                    occupancy: 2,
-                    tension: 12,
+                    label: "Plaza",
+                    kind_code: 0,
+                    occupants: [101, 102],
+                    items: [201],
+                    neighbors: [2],
+                    tension_tier: "low",
+                    highlight: false,
                 },
                 {
                     room_id: 2,
-                    name: "alley",
-                    bounds: { x: 9, y: 1, w: 5, h: 4 },
-                    occupancy: 1,
-                    tension: 35,
+                    label: "Alley",
+                    kind_code: 1,
+                    occupants: [103],
+                    items: [202],
+                    neighbors: [1, 3],
+                    tension_tier: "medium",
+                    highlight: false,
                 },
                 {
                     room_id: 3,
-                    name: "cafe",
-                    bounds: { x: 3, y: 7, w: 6, h: 5 },
-                    occupancy: 3,
-                    tension: 5,
+                    label: "Cafe",
+                    kind_code: 2,
+                    occupants: [104],
+                    items: [203],
+                    neighbors: [2],
+                    tension_tier: "high",
+                    highlight: true,
                 },
             ],
+            agents: [
+                {
+                    agent_id: 101,
+                    room_id: 1,
+                    role_code: 0,
+                    generation: 0,
+                    profile_traits: {},
+                    identity_vector: [],
+                    persona_style_vector: null,
+                    drives: {},
+                    emotions: {},
+                    key_relationships: [],
+                    active_motives: [],
+                    plan: null,
+                    transform: { room_id: 1, x: 2.2, y: 1.2 },
+                    action_state_code: 0,
+                    narrative_state_ref: null,
+                    cached_summary_ref: null,
+                },
+                {
+                    agent_id: 102,
+                    room_id: 1,
+                    role_code: 1,
+                    generation: 0,
+                    profile_traits: {},
+                    identity_vector: [],
+                    persona_style_vector: null,
+                    drives: {},
+                    emotions: {},
+                    key_relationships: [],
+                    active_motives: [],
+                    plan: null,
+                    transform: { room_id: 1, x: 1.4, y: 2.0 },
+                    action_state_code: 1,
+                    narrative_state_ref: null,
+                    cached_summary_ref: null,
+                },
+                {
+                    agent_id: 103,
+                    room_id: 2,
+                    role_code: 2,
+                    generation: 0,
+                    profile_traits: {},
+                    identity_vector: [],
+                    persona_style_vector: null,
+                    drives: {},
+                    emotions: {},
+                    key_relationships: [],
+                    active_motives: [],
+                    plan: null,
+                    transform: { room_id: 2, x: 5.2, y: 2.8 },
+                    action_state_code: 2,
+                    narrative_state_ref: null,
+                    cached_summary_ref: null,
+                },
+                {
+                    agent_id: 104,
+                    room_id: 3,
+                    role_code: 3,
+                    generation: 0,
+                    profile_traits: {},
+                    identity_vector: [],
+                    persona_style_vector: null,
+                    drives: {},
+                    emotions: {},
+                    key_relationships: [],
+                    active_motives: [],
+                    plan: null,
+                    transform: { room_id: 3, x: 7.6, y: 1.4 },
+                    action_state_code: 3,
+                    narrative_state_ref: null,
+                    cached_summary_ref: null,
+                },
+            ],
+            items: [
+                { item_id: 201, room_id: 1, owner_agent_id: null, status_code: 0, label: "Neon Sign" },
+                { item_id: 202, room_id: 2, owner_agent_id: null, status_code: 0, label: "Crate" },
+                { item_id: 203, room_id: 3, owner_agent_id: null, status_code: 0, label: "Espresso" },
+            ],
+            events: [
+                {
+                    tick: 1,
+                    event_id: 1,
+                    origin: "world",
+                    payload: { kind: "mock_event", room_id: 1 },
+                },
+            ],
+            debug: { note: "mock snapshot" },
         },
-
-        agents: [
-            {
-                agent_id: 101,
-                room_id: 1,
-                pos: { x: 2, y: 2 },
-                public_state: { label: "Architect-00", speaking: true },
-            },
-            {
-                agent_id: 102,
-                room_id: 1,
-                pos: { x: 5, y: 3 },
-                public_state: { label: "Courier", speaking: false },
-            },
-            {
-                agent_id: 103,
-                room_id: 2,
-                pos: { x: 11, y: 3 },
-                public_state: { label: "Rumor-Monk", speaking: false },
-            },
-        ],
-
-        narrative_fragments: [
-            {
-                entity_id: 101,
-                kind: "INNER_MONOLOGUE",
-                text: "i can feel the city trying to become a story",
-                ttl_ticks: 120,
-                nondeterministic: true,
-            },
-            {
-                entity_id: 103,
-                kind: "DIALOGUE",
-                text: "something happened last night. nobody wants to say it first.",
-                ttl_ticks: 90,
-                nondeterministic: true,
-            },
-        ],
     };
 
     store.applySnapshot(snap);

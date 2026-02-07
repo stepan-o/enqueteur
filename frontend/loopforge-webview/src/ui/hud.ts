@@ -23,7 +23,7 @@ export function mountHud(store: WorldStore): HTMLElement {
     root.style.right = "10px";
     root.style.zIndex = "10";
     root.style.pointerEvents = "none"; // HUD is informational; interactive controls come later.
-    root.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    root.style.fontFamily = "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
     root.style.fontSize = "12px";
     root.style.color = "rgba(255,255,255,0.92)";
 
@@ -53,7 +53,7 @@ export function mountHud(store: WorldStore): HTMLElement {
     header.style.opacity = "0.95";
 
     const title = document.createElement("span");
-    title.textContent = "Loopforge WebView (Pixi)";
+    title.textContent = "Loopforge WebView";
 
     header.appendChild(dot);
     header.appendChild(title);
@@ -87,6 +87,7 @@ function renderHud(
 
     const lines: string[] = [];
 
+    lines.push(`mode:      ${s.mode}`);
     lines.push(`connected: ${connected ? "yes" : "no"}`);
     lines.push(`tick:      ${padLeft(String(s.tick), 8)}`);
     lines.push(`stepHash:  ${truncateHash(s.stepHash)}`);

@@ -994,10 +994,35 @@ function mountHud(store: WorldStore): HTMLElement {
 }
 
 /** -----------------------------
+ * Offline loader (skeleton)
+ * ------------------------------ */
+
+async function startOfflineRun(
+  store: WorldStore,
+  opts: { baseUrl: string; speed?: number }
+): Promise<void> {
+  // Minimal contract:
+  // - fetch `${baseUrl}/manifest.kvp.json`
+  // - load nearest FULL_SNAPSHOT
+  // - apply per-tick FRAME_DIFF ops in order
+  // - respect run_anchors.tick_rate_hz * speed
+  void opts;
+  void store;
+}
+
+/** -----------------------------
  * App bootstrap
  * ------------------------------ */
 
-export function bootWebView(opts: { wsUrl: string; mountEl: HTMLElement }): void {
+export type BootMode = "live" | "offline";
+export type BootOpts = {
+  mountEl: HTMLElement;
+  wsUrl?: string;
+  offlineBaseUrl?: string;
+  mode?: BootMode;
+};
+
+export function bootWebView(opts: BootOpts): void {
   const store = new WorldStore();
 
   // Pixi
@@ -1009,15 +1034,30 @@ export function bootWebView(opts: { wsUrl: string; mountEl: HTMLElement }): void
   // Render loop: redraw on store updates
   store.subscribe((s) => scene.renderFromState(s));
 
+  const mode = (opts.mode ?? import.meta.env.VITE_WEBVIEW_MODE ?? "offline") as BootMode;
+
+  if (mode === "offline") {
+    const baseUrl =
+      opts.offlineBaseUrl ?? import.meta.env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min";
+    const speed = parseFloat(import.meta.env.VITE_WEBVIEW_SPEED ?? "1");
+
+    store.setMode("offline");
+    store.setConnected(true);
+    startOfflineRun(store, { baseUrl, speed });
+    return;
+  }
+
+  store.setMode("live");
+
   // KVP client
   const client = new KvpClient(store, {
-    url: opts.wsUrl,
+    url: opts.wsUrl ?? import.meta.env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp",
     viewerName: "loopforge-webview-pixi",
     viewerVersion: "0.1.0",
-    supportedSchemaVersions: ["2"],
+    supportedSchemaVersions: ["1"],
     defaultSubscribe: {
       stream: "LIVE",
-      channels: ["WORLD", "AGENTS", "EVENTS", "DEBUG", "NARRATIVE"],
+      channels: ["WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"],
       diff_policy: "DIFF_ONLY",
       snapshot_policy: "ON_JOIN",
       compression: "NONE",
@@ -1036,7 +1076,11 @@ export function bootWebView(opts: { wsUrl: string; mountEl: HTMLElement }): void
  * In your main.ts:
  *
  *   import { bootWebView } from "./webview";
- *   bootWebView({ wsUrl: "ws://localhost:7777/kvp", mountEl: document.getElementById("app")! });
+ *   bootWebView({
+ *     mountEl: document.getElementById("app")!,
+ *     mode: "offline",
+ *     offlineBaseUrl: "/demo/kvp_demo_1min",
+ *   });
  *
  * ========================================================================== */
 ```

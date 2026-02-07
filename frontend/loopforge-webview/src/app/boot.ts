@@ -1,6 +1,7 @@
 // src/app/boot.ts
 import { WorldStore } from "../state/worldStore";
 import { KvpClient } from "../kvp/client";
+import { startOfflineRun } from "../kvp/offline";
 import { PixiScene } from "../render/pixiScene";
 import { mountHud } from "../ui/hud";
 import { injectMockSnapshot } from "../debug/mockKernel";
@@ -11,7 +12,16 @@ import { injectMockSnapshot } from "../debug/mockKernel";
  * - No simulation logic
  * - Web viewer is a client: snapshot + diff → render
  */
-export function boot(opts: { mountEl: HTMLElement; wsUrl: string }): void {
+export type BootMode = "live" | "offline";
+
+export type BootOpts = {
+    mountEl: HTMLElement;
+    wsUrl?: string;
+    offlineBaseUrl?: string;
+    mode?: BootMode;
+};
+
+export function boot(opts: BootOpts): void {
     const store = new WorldStore();
 
     // Mount container should be positioning context for HUD overlays.
@@ -42,12 +52,11 @@ export function boot(opts: { mountEl: HTMLElement; wsUrl: string }): void {
 
     // Render on state changes (simple + correct; later you can batch)
     store.subscribe((s) => {
-        // --- DEBUG: prove we have data, and that render is called -------------
         console.debug("[webview] state", {
             tick: s.tick,
             rooms: s.rooms.size,
             agents: s.agents.size,
-            narrative: s.narrative.size,
+            items: s.items.size,
             desynced: s.desynced,
             reason: s.desyncReason ?? null,
             stepHash: s.stepHash ?? null,
@@ -56,15 +65,40 @@ export function boot(opts: { mountEl: HTMLElement; wsUrl: string }): void {
         scene.renderFromState(s);
     });
 
+    const env = (import.meta as any).env ?? {};
+    const mode = (opts.mode ?? env.VITE_WEBVIEW_MODE ?? "offline") as BootMode;
+
+    if (mode === "offline") {
+        const baseUrl = opts.offlineBaseUrl ?? env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min";
+        const speed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
+
+        store.setMode("offline");
+        store.setConnected(true);
+
+        startOfflineRun(store, { baseUrl, speed })
+            .then(() => {
+                console.info("[webview] offline run ready:", baseUrl);
+            })
+            .catch((err: unknown) => {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.error("[webview] offline run failed:", msg);
+                store.markDesync(`Offline load failed: ${msg}`);
+            });
+
+        return;
+    }
+
+    store.setMode("live");
+
     // KVP client
     const client = new KvpClient(store, {
-        url: opts.wsUrl,
+        url: opts.wsUrl ?? env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp",
         viewerName: "loopforge-webview-pixi",
         viewerVersion: "0.1.0",
-        supportedSchemaVersions: ["2"],
+        supportedSchemaVersions: ["1"],
         defaultSubscribe: {
             stream: "LIVE",
-            channels: ["WORLD", "AGENTS", "EVENTS", "DEBUG", "NARRATIVE"],
+            channels: ["WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"],
             diff_policy: "DIFF_ONLY",
             snapshot_policy: "ON_JOIN",
             compression: "NONE",
@@ -79,12 +113,15 @@ export function boot(opts: { mountEl: HTMLElement; wsUrl: string }): void {
 
     // DEV: render without a kernel
     if (import.meta.env.DEV) {
-        console.info("[webview] DEV mode: injecting mock snapshot");
-        injectMockSnapshot(store);
+        const useMock = String(env.VITE_WEBVIEW_MOCK ?? "") === "1";
+        if (useMock) {
+            console.info("[webview] DEV mode: injecting mock snapshot");
+            injectMockSnapshot(store);
+        }
 
         // --- DEBUG: optionally run webview without WS to avoid overwriting mock
         // Set VITE_WEBVIEW_DISABLE_WS=1 to keep the mock state on screen.
-        const disableWs = String((import.meta as any).env?.VITE_WEBVIEW_DISABLE_WS ?? "") === "1";
+        const disableWs = String(env.VITE_WEBVIEW_DISABLE_WS ?? "") === "1";
         if (disableWs) {
             console.info("[webview] WS disabled (VITE_WEBVIEW_DISABLE_WS=1). Skipping client.connect().");
             return;
@@ -92,6 +129,6 @@ export function boot(opts: { mountEl: HTMLElement; wsUrl: string }): void {
     }
 
     // Connect!
-    console.info("[webview] connecting WS:", opts.wsUrl);
+    console.info("[webview] connecting WS:", opts.wsUrl ?? env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp");
     client.connect();
 }

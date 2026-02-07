@@ -81,9 +81,9 @@ Minimal example envelope (generic):
   - Payload contains schema_version, tick, state, step_hash
   - “Complete baseline”: a viewer-ready state object after canonicalization
 - FRAME_DIFF
-  - Payload contains schema_version, from_tick, to_tick (to_tick = from_tick + 1), prev_step_hash, state (v0.1 pragmatic diff), step_hash
+  - Payload contains schema_version, from_tick, to_tick (to_tick = from_tick + 1), prev_step_hash, ops[], step_hash
   - Hash chain: prev_step_hash must match the previous step (snapshot hash at keyframe, then prior diff)
-  - Apply concept: reconstruct by sequentially replacing state with payload.state (no kernel needed)
+  - Apply concept: reconstruct by applying payload.ops to the current canonical state (no kernel needed)
 - X_UI_EVENT_BATCH (JSONL)
   - Inclusive window: start_tick, end_tick
   - events: list of {tick, event_id, kind, data}; sorted by (tick, event_id)
@@ -109,7 +109,7 @@ Pseudocode (language-agnostic):
      diff_env = fetch_json(diff_ptr.rel_path)
      assert diff_env.payload.to_tick == t+1
      if strict_mode: assert diff_env.payload.prev_step_hash == prev_hash
-     state = diff_env.payload.state
+     state = apply_ops(state, diff_env.payload.ops)
      prev_hash = diff_env.payload.step_hash
 7) render(state)
 
@@ -147,13 +147,13 @@ Manifest snippet (tick window + one pointer each):
 Snapshot envelope snippet:
 {
   "msg_type": "FULL_SNAPSHOT",
-  "payload": {"schema_version": "1", "tick": 0, "state": {"tick": 0}, "step_hash": "…"}
+  "payload": {"schema_version": "1", "tick": 0, "state": {"rooms": [], "agents": [], "items": [], "events": []}, "step_hash": "…"}
 }
 
 Diff envelope snippet:
 {
   "msg_type": "FRAME_DIFF",
-  "payload": {"schema_version": "1", "from_tick": 0, "to_tick": 1, "prev_step_hash": "…", "state": {"tick": 1}, "step_hash": "…"}
+  "payload": {"schema_version": "1", "from_tick": 0, "to_tick": 1, "prev_step_hash": "…", "ops": [{"op": "UPSERT_AGENT", "agent": {"agent_id": 1}}], "step_hash": "…"}
 }
 
 Overlay JSONL line snippet (UI events):
