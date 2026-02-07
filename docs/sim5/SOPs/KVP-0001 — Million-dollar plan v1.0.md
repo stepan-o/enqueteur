@@ -2,6 +2,13 @@
 **North Star:** *KVP-0001 is constitutional.* Therefore **Option A**: exporters + fixtures + WEBVIEW contract **must match** `FULL_SNAPSHOT(world/agents/items/events)` and `FRAME_DIFF(ops[])`.  
 Any “state replacement” is a **new msg_type**, never a reinterpretation of `FRAME_DIFF`.
 
+**Implementation status (this repo, Feb 2026):**
+- Offline exporter is implemented in `backend/sim4/integration/export_state.py` and writes
+  `FULL_SNAPSHOT` plus `FRAME_DIFF` **with full-state payloads** (not ops yet).
+- Canonicalization + hashing are implemented (`canonicalize.py`, `jcs.py`, `step_hash.py`).
+- Host orchestration is in `backend/sim4/host/sim_runner.py` (runtime → snapshot → integration).
+- Live transport scaffolding exists (`live_session.py`, `live_sink.py`) but is minimal.
+
 ---
 
 ## 0) Canon: One Place Where Truth Lives

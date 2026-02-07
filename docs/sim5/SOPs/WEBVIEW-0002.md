@@ -322,7 +322,7 @@ These are recommended defaults that keep us on the AAA path.
 
 ### Data formats & transport
 - Live mode: WebSocket frames (KVP envelope)
-- Replay mode: HTTP fetch of deterministic artifacts (index/keyframes/diffs)
+- Replay mode: HTTP fetch of deterministic artifacts (manifest + snapshots/diffs)
 - Codec boundary is sacred:
     - decoding/parsing must be swappable (JSON now, msgpack later)
     - never leak codec assumptions into the viewer’s core logic
@@ -330,6 +330,7 @@ These are recommended defaults that keep us on the AAA path.
     v0.1 hard rules (copy-paste):
     - Viewer MUST NOT send `SUBSCRIBE.stream = REPLAY`.
     - Viewer MUST use `REPLAY_BEGIN.delivery = ARTIFACTS`; `CONTINUOUS` is reserved/unsupported in v0.1.
+    - Implementation note (Sim4 current): exports use `manifest.kvp.json` + `state/snapshots/` + `state/diffs/` (no index).
 
 ### Rendering layer
 - React is UI orchestration; rendering should be:

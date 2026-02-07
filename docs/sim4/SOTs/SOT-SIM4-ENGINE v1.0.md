@@ -26,18 +26,23 @@ Sim4 is a **dual-engine architecture**:
 
 **3. Presentation & IO Layers**
 * `snapshot/`, `integration/`
-* read-only views + export schemas for viewers (Godot/Web/etc.)
+* read-only views + KVP-0001 export schemas for viewers (Godot/Web/etc.)
 * no simulation logic; no kernel mutation
 
-The **six-layer DAG** of SOP-100 is preserved:
+**4. Host Orchestration (outside the SOP-100 DAG)**
+* `host/`
+* wires runtime → snapshot → integration for live sessions and offline artifacts
+
+The **SOP-100 DAG** is preserved:
 
 ```text
-Kernel:   runtime → ecs → world
-                \         \
-                 \         → snapshot → integration
-                  \
-                   → (read-only views) → narrative
+Kernel:   runtime → ecs
+         runtime → world
+         runtime → snapshot → integration
+         runtime → (read-only views) → narrative
 narrative → (suggestion queues) → runtime (Phase A integration ONLY)
+
+Host (outside DAG): host → runtime / snapshot / integration
 ```
 
 And the **7-layer agent mind** from SOP-300 + Free Agent Spec is realized as:
@@ -59,8 +64,7 @@ backend/sim4/
    │   ├── clock.py                      # TickClock / DeltaTime utilities
    │   ├── command_bus.py                # command routing + application coordination
    │   ├── events.py                     # runtime-level events + consolidation helpers
-   │   ├── narrative_context.py          # builds NarrativeContext from snapshots/diffs/events
-   │   └── bubble_bridge.py              # narrative bubbles → integration ui_events
+   │   └── narrative_context.py          # builds NarrativeContext from snapshots/diffs/events
    │
    ├── ecs/                              # ECS core (Rust-portable deterministic substrate)
    │   ├── world.py                      # ECSWorld — storage + apply_commands
@@ -108,6 +112,7 @@ backend/sim4/
    ├── snapshot/                         # Deterministic snapshots + diffs + episode assembly
    │   ├── world_snapshot.py             # WorldSnapshot / AgentSnapshot / RoomSnapshot / ItemSnapshot DTOs
    │   ├── world_snapshot_builder.py     # builds snapshots from ECS + world (Phase H)
+   │   ├── output.py                     # TickOutputSink (runtime → snapshot boundary)
    │   ├── snapshot_diff.py              # snapshot diff computation
    │   ├── diff_types.py                 # diff DTOs and stable structures
    │   ├── episode_types.py              # Episode DTOs (semantic-safe containers)
@@ -116,27 +121,28 @@ backend/sim4/
    ├── narrative/                        # Narrative sidecar contract surface (minimal by design)
    │   └── interface.py                  # DTOs + interface contract for narrative engine integration
    │
-   ├── integration/                      # IO/export schemas + deterministic serialization
-   │   ├── schema/                       # canonical frame schemas + versioning
-   │   │   ├── version.py
-   │   │   ├── run_manifest.py
-   │   │   ├── tick_frame.py
-   │   │   ├── room_frame.py
-   │   │   ├── agent_frame.py
-   │   │   ├── item_frame.py
-   │   │   └── event_frame.py
-   │   ├── adapters/
-   │   │   └── snapshot_adapter.py       # snapshot → integration frames
-   │   ├── frame_builder.py              # builds TickFrame from snapshots/events
-   │   ├── frame_diff.py                 # deterministic diffs for client streaming
-   │   ├── ui_events.py                  # UI event schema (bubble events, etc.)
-   │   ├── exporter.py                   # writes runs: manifest + frames + ui events
-   │   ├── types.py
-   │   ├── util/
-   │   │   ├── stable_json.py            # stable JSON serialization
-   │   │   ├── stable_hash.py            # stable hashing primitives
-   │   │   └── quantize.py               # quantization helpers for stable numeric export
-   │   └── tests/                        # integration export correctness + replay tests
+   ├── integration/                      # KVP-0001 schemas + deterministic export/live transport
+   │   ├── kvp_envelope.py               # KVP envelope helpers (offline)
+   │   ├── live_envelope.py              # live-session envelope validation
+   │   ├── run_anchors.py                # RunAnchors SSoT
+   │   ├── render_spec.py                # RenderSpec SSoT
+   │   ├── manifest_schema.py            # manifest.kvp.json SSoT
+   │   ├── manifest_writer.py            # manifest writer
+   │   ├── export_state.py               # snapshot/diff record writer (FULL_SNAPSHOT/FRAME_DIFF)
+   │   ├── export_overlays.py            # overlay writers (ui_events/psycho_frames JSONL)
+   │   ├── export_verify.py              # reconstruction validation
+   │   ├── kvp_state_history.py          # TickOutputSink + StateSource for offline exports
+   │   ├── live_session.py               # live protocol session (KERNEL_HELLO, SUBSCRIBE, etc.)
+   │   ├── live_sink.py                  # TickOutputSink → live envelopes
+   │   ├── canonicalize.py               # canonicalization + quantization
+   │   ├── step_hash.py                  # step hash for integrity chain
+   │   ├── record_writer.py              # stable record writer
+   │   ├── kvp_version.py                # KVP protocol version
+   │   └── schema_version.py             # integration schema version
+   │
+   ├── host/                             # End-to-end wiring outside SOP-100 DAG
+   │   ├── sim_runner.py                 # runtime → snapshot → integration orchestration
+   │   └── kvp_defaults.py               # helper defaults for RunAnchors/RenderSpec
    │
    └── tests/                            # end-to-end and unit tests across layers
        ├── ecs/...
@@ -148,13 +154,14 @@ backend/sim4/
 
 **Key structural corrections vs the old v1.0 spec**
 - `runtime/engine.py`, `runtime/diff.py`, `runtime/history.py`, `runtime/replay.py`, `runtime/world_context.py`, `runtime/episode.py` do not exist in this repo layout.
-  - The real orchestrator is `runtime/tick.py` + `runtime/scheduler.py` + `runtime/command_bus.py`.
+  - The real kernel orchestrator is `runtime/tick.py` + `runtime/scheduler.py` + `runtime/command_bus.py`.
 - `snapshot/` is not `builder.py/schema.py/serializer.py/diff_adapter.py`; it is:
   - `world_snapshot.py`, `world_snapshot_builder.py`, plus **diff** + **episode** modules.
 - `narrative/` is **not** the big generator/pipeline/memory stack here.
   - It is currently a **contract-first interface** module: `narrative/interface.py`.
 - `world/` is **flattened** into `context/views/commands/events/apply_world_commands` (no identity/graph/layout subfolders in this snapshot).
-- `integration/` is **schema** + **exporter** + **frame builders** + **diffs** + **ui events** + **stable util**, with strong test coverage.
+- `integration/` is **KVP-0001 SSoT** + **exporters** + **live transport**, with strict validation and hashing.
+- End-to-end wiring (runtime → snapshot → integration) lives in `host/`, which is explicitly outside the SOP-100 DAG.
 
 ---
 
@@ -218,8 +225,9 @@ L7 — Narrative & Persona/Aesthetic Mind
 
 #### L7 — Narrative & Persona/Aesthetic
 - Numeric substrate (optional / evolving) can live in `identity.py` or future dedicated components.
-- Semantic narrative artifacts are exported as **ui_events** via:
-  - `runtime/bubble_bridge.py` → `integration/ui_events.py`
+- Narrative artifacts are currently **not** exported directly from runtime.
+  - UI/narrative overlays are optional and written via `integration/export_overlays.py`
+    when provided to host-level orchestration.
 
 ---
 
@@ -237,7 +245,7 @@ tick(dt):
     Phase E: ECS apply_commands (ECS-only mutation)
     Phase F: World apply_world_commands (world-only mutation)
     Phase G: Event consolidation (runtime)
-    Phase H: Snapshot build + diff + episode hooks + export
+    Phase H: Snapshot build + history hook (TickOutputSink)
     Phase I: Narrative trigger (sidecar; no kernel mutation)
 ```
 
@@ -246,7 +254,8 @@ tick(dt):
 - Command routing/application: `runtime/command_bus.py` + `ecs/commands.py` + `world/apply_world_commands.py`
 - Runtime event consolidation: `runtime/events.py` (plus world events)
 - Snapshot build + diff + episode: `snapshot/world_snapshot_builder.py`, `snapshot/snapshot_diff.py`, `snapshot/episode_builder.py`
-- Narrative context + integration to UI events: `runtime/narrative_context.py` + `runtime/bubble_bridge.py`
+- Tick output hook: `snapshot/output.py` (TickOutputSink, called by `runtime/tick.py`)
+- Narrative context: `runtime/narrative_context.py` (sidecar only; no UI export wiring)
 
 ---
 
@@ -255,10 +264,10 @@ tick(dt):
   - Phase E: ECS `apply_commands` (inside `ecs/world.py` / command buffer logic)
   - Phase F: World `apply_world_commands` (`world/apply_world_commands.py`)
 - Phase ordering is explicit and stable; system order is pinned in `ecs/systems/scheduler_order.py`.
-- Any export output uses deterministic encoders:
-  - `integration/util/stable_json.py`
-  - stable hashing `stable_hash.py`
-  - numeric export stability `quantize.py`
+- Any export output uses deterministic canonicalization + hashing:
+  - `integration/canonicalize.py` (Q1E3 quantization + canonical object shape)
+  - `integration/jcs.py` (canonical JSON bytes)
+  - `integration/step_hash.py` (step hash chain)
 
 ---
 
@@ -308,8 +317,9 @@ In this repo, narrative is intentionally **contract-first**:
 Runtime prepares narrative inputs via:
 * `runtime/narrative_context.py`
 
-Runtime converts narrative outputs to presentation artifacts via:
-* `runtime/bubble_bridge.py` → integration `ui_events.py`
+Runtime does not currently convert narrative outputs to presentation artifacts.
+If UI/narrative overlays are needed, they are supplied to host orchestration and
+exported via `integration/export_overlays.py`.
 
 Narrative may **not**:
 * mutate ECS/world directly
@@ -329,13 +339,12 @@ Narrative may **not**:
 Snapshots and diffs are deterministic outputs of the kernel state.
 
 ### 7.2 Integration (IO / Export)
-`integration/` is stable export + schemas + tooling:
-* frame schemas: `integration/schema/*`
-* build frames: `frame_builder.py` + adapter `adapters/snapshot_adapter.py`
-* diffs: `frame_diff.py`
-* UI events: `ui_events.py`
-* exporter: `exporter.py`
-* determinism helpers: `util/stable_json.py`, `util/stable_hash.py`, `util/quantize.py`
+`integration/` is KVP-0001 export + schemas + tooling:
+* SSoT schemas: `run_anchors.py`, `render_spec.py`, `manifest_schema.py`
+* record writers: `export_state.py` (FULL_SNAPSHOT / FRAME_DIFF)
+* overlays: `export_overlays.py`
+* live transport: `live_session.py`, `live_sink.py`
+* determinism helpers: `canonicalize.py`, `jcs.py`, `step_hash.py`
 
 Integration is IO-only: no simulation mutations.
 

@@ -79,3 +79,5 @@ scratch.py
 
 # Analysis exports
 episode_export.json!/docs/legacy/sim2/architecture/architect_chat_history/
+
+runs/

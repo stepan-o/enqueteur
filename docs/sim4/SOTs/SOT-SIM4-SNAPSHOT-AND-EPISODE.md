@@ -55,16 +55,15 @@ Deferred to Sprint 8+:
 - Advanced agent identity/persona/drive population in snapshots.
 - Runtime wiring for history/diff and NarrativeTickContext invocation.
 
-Sprint 8/11 status: diff_summary is wired; narrative Phase I exists; bubble export exists.
+Sprint 8+ status: diff_summary wiring exists (via HistoryBuffer interface); narrative Phase I exists; UI bubble export is not wired.
 
 ## 1. Position in the 6-Layer DAG
 DAG reminder:
 ```text
-Kernel:   runtime → ecs → world
-                \         \
-                 \         → snapshot → integration
-                  \
-                   → (read-only views) → narrative
+Kernel:   runtime → ecs
+         runtime → world
+         runtime → snapshot → integration
+         runtime → (read-only views) → narrative
 narrative → (suggestion queues) → runtime (Phase A integration ONLY)
 ```
 
@@ -94,6 +93,7 @@ Canonical structure:
 ```text
 snapshot/
     world_snapshot.py      # WorldSnapshot, RoomSnapshot, AgentSnapshot, ItemSnapshot, etc.
+    output.py              # TickOutputSink interface (runtime → snapshot boundary)
     episode_types.py       # StageEpisodeV2, EpisodeMeta, EpisodeMood, DayWithScenes, Scene, etc.
     diff_types.py          # (optional) SnapshotDiff, EventSummary types
     world_snapshot_builder.py  # build_world_snapshot(...)
@@ -413,7 +413,7 @@ Notes:
 * `key_world_snapshots` can be a sparse selection of snapshots (e.g., one per scene or per key moment), not every tick.
 * `key_agent_timelines` is optional and may be omitted or minimal for Sim4; SOT sets the shape.
 * **StageEpisodeV2 narrative_fragments is optional / may remain empty in Sim4**
-* **UI-facing narrative bubbles are exported via integration (ui_events.jsonl)**, derived deterministically from StoryFragments at the runtime→integration boundary.
+* UI-facing overlays are exported only if supplied to host orchestration; runtime does not map StoryFragments to UI bubbles.
 
 ---
 
@@ -535,19 +535,19 @@ episode_builder may be called by runtime after tick F/G/H.
 It may read narrative outputs from history, but never invoke narrative directly.
 
 StageEpisodeV2 narrative_fragments is optional / may remain empty in Sim4.
-
-UI-facing narrative bubbles are exported via integration (ui_events.jsonl), derived deterministically from StoryFragments at the runtime→integration boundary.
+UI-facing overlays are exported only if supplied to host orchestration.
 
 7. Integration Points
    7.1 Runtime Tick & History
 
 Per SOT-SIM4-RUNTIME-TICK:
 
-Phase H: Diff Recording + History:
+Phase H: Snapshot + history hook:
 
 build_world_snapshot(...) is called for the current tick.
 
-Snapshot is stored in HistoryBuffer.
+Snapshot is emitted via `TickOutputSink` (snapshot/output.py) when provided.
+Host-level orchestration may record snapshots for export (e.g., KVP state history).
 
 episode_builder may be invoked to extend the current episode.
 

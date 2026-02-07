@@ -81,7 +81,10 @@ The viewer is not authoritative and never re-simulates.
 
 🧩 Scope of Work (Sprints 9–14 Overview)
 
-You will implement (when instructed):
+You will implement (when instructed). **Status note (current repo):**
+- KVP-0001 export spine is already implemented in `backend/sim4/integration/*` and `backend/sim4/host/sim_runner.py`.
+- Legacy `TickFrame`/`frame_diff`/`exporter.py` architecture is **removed**.
+- UI bubble events are **not** wired from runtime; overlays are exported only if provided to host.
 
 Sprint 9 — Integration Spine
 

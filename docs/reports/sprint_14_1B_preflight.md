@@ -6,6 +6,10 @@ Scope: Verify current codebase facts against Assumption Groups A–C. No code ad
 
 Note on evidence boundaries: The repository contains a Sim5 protocol spec in docs, a TypeScript webview client, and a Sim4 integration/export layer. Verification below references only implemented code, not specification text unless explicitly noted as documentation-only.
 
+**Update (Feb 2026):** The Sim4 integration layer has been replaced with KVP-0001
+SSoT modules and a host-level runner. Legacy `render_specs.py`, `frame_builder.py`,
+`frame_diff.py`, `exporter.py`, and related schema modules were removed.
+
 ---
 
 Section 1 — Confirmed True
@@ -24,14 +28,12 @@ Section 1 — Confirmed True
     - MsgType union type includes "KERNEL_HELLO" (lines ~33–41)
   - Status: ✅ Exists in the same MsgType union used by the client for routing.
 
-- Float quantization utility exists and is used (Sim4 integration)
-  - Where: backend/sim4/integration/util/quantize.py
-  - Symbol: qf(x: float, step: float = 1e-4) → float
+- Canonicalization + quantization utilities exist and are used (Sim4 integration)
+  - Where: backend/sim4/integration/canonicalize.py (Q1E3 quantization + canonicalization)
   - Usage examples:
-    - backend/sim4/integration/render_specs.py: RoomRenderSpec.__post_init__, AgentRenderSpec.__post_init__
-    - backend/sim4/integration/layout_algos.py (multiple qf calls)
-    - backend/sim4/integration/psycho_topology.py (qf used for metrics)
-  - Status: ✅ Exists and is actively enforced for Sim4 integration DTOs and helpers.
+    - backend/sim4/integration/export_state.py (canonicalize_state_obj before hashing)
+    - backend/sim4/integration/kvp_state_history.py (canonicalize_state_obj before hashing)
+  - Status: ✅ Exists and is enforced for KVP export records.
 
 ---
 
@@ -51,21 +53,20 @@ Section 2 — Partially True / Risky
   - Status: ⚠️ Exists in frontend types and is deserializable via the client’s JSON codec; kernel-side producer is not present here.
 
 - Canonicalization/Quantization for protocol messages
-  - Evidence: Quantization (qf) is implemented and used in Sim4 integration DTOs (e.g., RoomRenderSpec, AgentRenderSpec). The KVP-0001 spec in docs mandates canonicalization, but implemented canonicalize hooks for KVP messages are not present in runtime code; only documentation shows Rust examples. No enforcement point “before emit/write” for KVP envelopes is found in code.
-  - Files: backend/sim4/integration/util/quantize.py; backend/sim4/integration/render_specs.py
-  - Status: ⚠️ Quantization exists and is used for Sim4 integration artifacts; enforcement for KVP protocol messages is not found in code.
+  - Evidence: KVP export paths canonicalize state and compute step_hash before writing envelopes.
+  - Files: backend/sim4/integration/canonicalize.py, jcs.py, step_hash.py, export_state.py
+  - Status: ✅ Implemented for offline export.
 
 ---
 
 Section 3 — False / Missing
 
-- RenderSpec payload (as a structured KVP contract) and reference from KernelHello
-  - Expected: A structured RenderSpec (coord system, projection, etc.) referenced by KernelHello per KVP-0001; KernelHello.render_spec should be present.
+- RenderSpec payload (structured KVP contract) and reference from KernelHello
   - Found:
-    - Sim4-specific render specs exist: backend/sim4/integration/render_specs.py defines RoomRenderSpec and AgentRenderSpec (viewer-facing DTOs), and TickFrame references them (backend/sim4/integration/schema/tick_frame.py lines ~38–41).
-    - The frontend KernelHello type (client.ts, worldStore.ts) does not include render_spec.
-    - No code links a KVP RenderSpec into KernelHello in this repo.
-  - Status: ❌ Does not exist in implemented code.
+    - RenderSpec SSoT exists: backend/sim4/integration/render_spec.py
+    - RenderSpec is required by manifest schema and used in offline export (manifest.kvp.json).
+    - Live session helper constructs KernelHello payload with render_spec (backend/sim4/integration/live_session.py).
+  - Status: ⚠️ RenderSpec exists and is used in offline exports; kernel-side live transport is scaffolded but no server transport is present in this repo.
 
 - Live handshake path that constructs and sends KernelHello (kernel → viewer)
   - Expected: A server/kernel component constructs a KernelHello payload with real runtime values, including a fully populated render_spec, and sends it inside the same Envelope/codec path as other messages.
@@ -75,16 +76,13 @@ Section 3 — False / Missing
     - No WebSocket server or transport code emitting KernelHello is present in backend.
   - Status: ❌ Does not exist in this repo.
 
-- Offline export framing (14.1A) implemented with run-scoped folder and artifacts/
-  - Expected (implementation): run_<run_id>/ with manifest.kvp.json, keyframes/, diffs/, artifacts/manifest.json, artifacts/checksums.json created by exporter.
-  - Found (current implemented exporter is Sim4-era):
-    - backend/sim4/integration/exporter.py writes:
-      - manifest.json (at export root)
-      - frames/frames.jsonl
-      - optional: events/events.jsonl, ui_events/ui_events.jsonl, psycho_topology/psycho_topology.jsonl
-    - RunManifest dataclass tracks artifacts as a dict of relative paths (backend/sim4/integration/schema/run_manifest.py), but not under an artifacts/ directory and not following the 14.1A KVP envelope scheme.
-    - No writer for artifacts/manifest.json or artifacts/checksums.json exists.
-  - Status: ❌ Does not exist (implemented structure differs; no artifacts/ folder or KVP envelope files).
+- Offline export framing (KVP-0001 v0.1) implemented
+  - Found:
+    - backend/sim4/integration/export_state.py writes FULL_SNAPSHOT + FRAME_DIFF envelopes
+    - backend/sim4/integration/manifest_schema.py defines ManifestV0_1 (manifest.kvp.json)
+    - backend/sim4/host/sim_runner.py orchestrates runtime → snapshot → integration exports
+    - Layout: state/snapshots + state/diffs (no artifacts/ sidecar directory)
+  - Status: ✅ Implemented (matches docs/kvp_export_layout_v0_1.md).
 
 ---
 
@@ -94,21 +92,22 @@ Section 4 — Blocking Ambiguities
   - Without kernel/server code in this repo, we cannot verify that KernelHello is constructed with real runtime values, uses the same Envelope+codec, or includes render_spec. This blocks Sprint 14.1B implementation planning.
 
 - RenderSpec definition for KVP-0001 vs Sim4 integration specs
-  - The only implemented "render spec" code is for Sim4 integration (RoomRenderSpec, AgentRenderSpec) and is not wired into KernelHello. It is unclear whether Sim5 intends a different, consolidated RenderSpec (coord system, projection, z layers) per KVP-0001. This gap affects manifest generation and handshake completeness.
+  - RenderSpec SSoT exists and is validated in offline manifests; legacy Room/Agent render specs were removed.
 
-- Offline export framing (14.1A) vs existing Sim4 exporter
-  - The implemented exporter writes Sim4-style artifacts (manifest.json + frames.jsonl) and not KVP envelopes or the artifacts/ subfolder specified for 14.1A. It’s ambiguous whether 14.1A expects a new exporter or adaptation of the existing one; in any case, the implementation does not exist here.
+- Offline export framing vs existing exporter
+  - Legacy exporter was removed; KVP-0001 export is now the primary implementation.
 
-Stop Rule Assessment
-- Group A: Multiple items are ❌/⚠️ (RenderSpec linkage and kernel-side implementations missing).
-- Group B: ❌ No kernel-side KernelHello construction present.
-- Therefore, Sprint 14.1B must pause until clarifications and/or kernel-side code are available in this repository.
+Stop Rule Assessment (updated)
+- Group A: Most items now ✅/⚠️ (RenderSpec + KVP export exist; kernel-side transport still missing).
+- Group B: ⚠️ No backend transport emitting KernelHello in this repo.
+- Therefore, kernel-side transport remains the primary blocker.
 
-Appendix — File References Index
+Appendix — File References Index (updated)
 - frontend/loopforge-webview/src/kvp/client.ts: Envelope, MsgType, KernelHello type, KvpClient.sendEnvelope, KvpClient.onMessage
 - frontend/loopforge-webview/src/state/worldStore.ts: KernelHello type usage and storage
-- backend/sim4/integration/util/quantize.py: qf quantization utility
-- backend/sim4/integration/render_specs.py: RoomRenderSpec, AgentRenderSpec using qf
-- backend/sim4/integration/schema/tick_frame.py: room_render_specs and agent_render_specs presence
-- backend/sim4/integration/schema/run_manifest.py: RunManifest with artifacts dict
-- backend/sim4/integration/exporter.py: export_run writing manifest.json and frames.jsonl (and optional sidecars)
+- backend/sim4/integration/canonicalize.py: canonicalization + quantization
+- backend/sim4/integration/render_spec.py: RenderSpec SSoT
+- backend/sim4/integration/run_anchors.py: RunAnchors SSoT
+- backend/sim4/integration/manifest_schema.py: ManifestV0_1
+- backend/sim4/integration/export_state.py: FULL_SNAPSHOT/FRAME_DIFF writer
+- backend/sim4/host/sim_runner.py: orchestration and artifact export

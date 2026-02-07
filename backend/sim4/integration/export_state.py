@@ -8,6 +8,7 @@ Responsibilities (offline only):
 - Emit FULL_SNAPSHOT at keyframe ticks and FRAME_DIFF for each transition
 - Apply canonicalization (Q1E3) before hashing; include schema_version in payload
 - Enforce strict invariants and hash chain via prev_step_hash
+ - Emit FRAME_DIFF ops[] (KVP-0001) instead of full-state diffs
 
 No transport/session logic. Files only.
 """
@@ -19,6 +20,7 @@ import uuid
 
 from .schema_version import INTEGRATION_SCHEMA_VERSION
 from .canonicalize import canonicalize_state_obj
+from .diff_ops import compute_state_diff_ops
 from .step_hash import compute_step_hash
 from .kvp_envelope import make_envelope, validate_envelope
 from .record_writer import write_record
@@ -53,16 +55,24 @@ def _snapshot_payload(tick: int, state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _diff_payload(from_tick: int, to_tick: int, prev_step_hash: str, state_to: Dict[str, Any]) -> Dict[str, Any]:
+def _diff_payload(
+    from_tick: int,
+    to_tick: int,
+    prev_step_hash: str,
+    state_from: Dict[str, Any],
+    state_to: Dict[str, Any],
+) -> Dict[str, Any]:
     _ensure(to_tick == from_tick + 1, "to_tick must equal from_tick + 1")
-    can = canonicalize_state_obj(state_to)
-    step_hash = compute_step_hash(can)
+    can_from = canonicalize_state_obj(state_from)
+    can_to = canonicalize_state_obj(state_to)
+    ops = compute_state_diff_ops(can_from, can_to)
+    step_hash = compute_step_hash(can_to)
     return {
         "schema_version": INTEGRATION_SCHEMA_VERSION,
         "from_tick": int(from_tick),
         "to_tick": int(to_tick),
         "prev_step_hash": prev_step_hash,
-        "state": can,  # simplest verifiable diff: full state for to_tick
+        "ops": ops,
         "step_hash": step_hash,
     }
 
@@ -155,13 +165,14 @@ def export_state_records(run_root: str | Path, manifest: ManifestV0_1, source: S
             # We expect previous diff to have established a hash
             _ensure((from_tick - 1) in manifest.diffs.diffs_by_from_tick or from_tick in kf_ticks,
                     "Diff chain must be contiguous")
-            # prev hash must come from prior step
-            key = from_tick - 1
+            # prev hash must come from the prior step's hash (tick=from_tick)
+            key = from_tick
             _ensure(key in last_known_hash_by_tick, "Missing prior step hash to chain from")
             prev_hash = last_known_hash_by_tick[key]
 
+        state_from = source.get_state(from_tick)
         state_to = source.get_state(to_tick)
-        payload = _diff_payload(from_tick, to_tick, prev_hash, state_to)
+        payload = _diff_payload(from_tick, to_tick, prev_hash, state_from, state_to)
         env = make_envelope(
             "FRAME_DIFF",
             payload,

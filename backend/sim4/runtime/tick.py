@@ -53,7 +53,7 @@ from backend.sim4.runtime.command_bus import ECSCommandBatch, WorldCommandBatch
 from backend.sim4.world.commands import WorldCommand
 from backend.sim4.runtime.events import RuntimeEvent, consolidate_events
 from backend.sim4.snapshot.world_snapshot_builder import build_world_snapshot
-from backend.sim4.integration.adapters import build_tick_frame
+from backend.sim4.snapshot.output import TickOutputSink
 
 
 @dataclass(frozen=True)
@@ -84,8 +84,6 @@ class TickResult:
     ecs_commands_applied: int = 0
     world_commands_applied: int = 0
     notes: dict[str, Any] = field(default_factory=dict)
-    # Phase H export (viewer-facing frame). Use Any to avoid coupling to integration schema.
-    tick_frame: Any | None = field(default=None)
 
 
 def tick(
@@ -99,7 +97,7 @@ def tick(
     world_commands_in: Optional[Iterable[WorldCommand]] = None,
     episode_id: int = 0,
     narrative_ctx: "NarrativeRuntimeContext | None" = None,
-    tick_frame_sink: Any | None = None,
+    tick_output_sink: TickOutputSink | None = None,
     run_id: int | None = None,
 ) -> TickResult:
     """
@@ -126,13 +124,26 @@ def tick(
         clock: TickClock instance (dt is fixed per instance).
         ecs_world: ECS world state owner.
         world_ctx: WorldContext world-layer state owner (world substrate for now).
-        rng_seed: Deterministic RNG seed (accepted but unused in 6.2).
-        system_scheduler: Placeholder for system scheduling (unused in 6.2).
-        previous_events: Optional prior global events buffer (unused in 6.2).
+        rng_seed: Deterministic RNG seed used to derive per-system seeds.
+        system_scheduler: Object that may expose iter_phase_systems(phase) to
+            enumerate system classes for phases "B"/"C"/"D"; tolerated if None.
+        previous_events: Optional prior global events buffer consumed during
+            Phase A input collection (currently unused; accepted for API stability).
+        world_commands_in: Iterable of WorldCommand objects to apply in Phase F.
+            Commands are globally sequenced via WorldCommandBatch before apply.
+        episode_id: Episode identifier propagated to Phase H snapshot/export and
+            to optional narrative sidecar in Phase I.
+        narrative_ctx: Optional NarrativeRuntimeContext providing a
+            run_tick_narrative(...) hook; if provided, called in Phase I and any
+            exceptions are swallowed to preserve kernel determinism.
+        tick_output_sink: Optional TickOutputSink implementation to receive a
+            snapshot-first runtime output in Phase H (on_tick_output(...)).
+        run_id: Optional run identifier (reserved for future wiring).
 
     Returns:
-        TickResult with the tick_index, dt, and any world events collected
-        during Phase F (empty in the skeleton path).
+        TickResult capturing tick_index, dt, Phase F world_events, globally
+        sequenced ECS commands applied in Phase E, consolidated runtime_events
+        from Phase G, and counters of applied commands.
     """
 
     # Phase 1 — Lock WorldContext (conceptual; no-op for now)
@@ -204,8 +215,8 @@ def tick(
         runtime_events=(),    # TODO[RT-G]: internal runtime events when available
     )
 
-    # Phase H — History/diff hook (viewer frame emission in 9.3; no persistence yet)
-    tick_frame = None
+    # Phase H — History/diff hook (snapshot emission; no persistence yet)
+    world_snapshot = None
     try:
         world_snapshot = build_world_snapshot(
             tick_index=clock.tick_index,
@@ -213,23 +224,22 @@ def tick(
             world_ctx=world_ctx,
             ecs_world=ecs_world,
         )
-
-        tick_frame = build_tick_frame(
-            world_snapshot=world_snapshot,
-            recent_events=runtime_events,
-            narrative_fragments=(),
-            run_id=run_id,
-        )
-
-        if tick_frame_sink is not None:
-            try:
-                tick_frame_sink(tick_frame)
-            except Exception:
-                # Sink must never break deterministic kernel tick
-                pass
     except Exception:
-        # Phase H must not break deterministic kernel; swallow adapter/snapshot errors
-        tick_frame = None
+        # Phase H must not break deterministic kernel; swallow snapshot errors
+        world_snapshot = None
+
+    if world_snapshot is not None and tick_output_sink is not None:
+        try:
+            tick_output_sink.on_tick_output(
+                tick_index=clock.tick_index,
+                dt=clock.dt,
+                world_snapshot=world_snapshot,
+                runtime_events=runtime_events,
+                narrative_fragments=(),
+            )
+        except Exception:
+            # Sink must never break deterministic kernel tick
+            pass
 
     # Phase I — Narrative trigger (optional)
     if narrative_ctx is not None:
@@ -257,5 +267,4 @@ def tick(
         ecs_commands_applied=ecs_commands_applied,
         world_commands_applied=world_commands_applied,
         notes={},
-        tick_frame=tick_frame,
     )

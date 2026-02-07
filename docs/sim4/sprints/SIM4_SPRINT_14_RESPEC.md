@@ -1,5 +1,10 @@
 ## Sprint 14 — KVP Replay Export v0.1 (“Viewer-proof offline + React parity”)
 
+**Status update (Feb 2026):** Current implementation differs from this respec:
+- `manifest.kvp.json` is a ManifestV0_1 JSON (not a KERNEL_HELLO envelope).
+- `FRAME_DIFF` payloads are full-state (no ops list yet).
+- Overlays are optional sidecars exported via `integration/export_overlays.py`.
+
 **Goal:** Replace Sprint 14 with a complete, typed, deterministic **offline export + React viewer consumption** path where *every artifact is a KVP envelope message* and the viewer can reuse the same parser/state machine as WS.
 
 **Definition of Done (global)**

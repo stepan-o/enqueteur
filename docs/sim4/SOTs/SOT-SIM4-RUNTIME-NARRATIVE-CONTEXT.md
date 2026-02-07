@@ -1,6 +1,6 @@
 # SOT-SIM4-RUNTIME-NARRATIVE-CONTEXT
 
-**Runtime ↔ Narrative Bridge, Logging/Replay Contracts, and UI Bubble Events**  
+**Runtime ↔ Narrative Bridge, Logging/Replay Contracts (No UI Export Wiring Yet)**  
 **Draft 1.1** — Architect-level; **SOP-100 / SOP-200 / SOP-300** compliant
 
 ---
@@ -11,7 +11,7 @@ This SOT defines the **runtime-owned** contracts and orchestrator for Sim4 narra
 
 - How runtime constructs narrative contexts (**tick / episode / UI**).
 - How runtime calls a `NarrativeEngineInterface`.
-- How outputs are **validated**, **logged for replay**, and **exported for viewer consumption**.
+- How outputs are **validated** and **logged for replay**.
 - How outputs may later be applied back into the simulation via **future-tick command scheduling** (planned).
 
 This SOT is the **single source of truth** for how runtime packages data for the narrative sidecar **and** how narrative outputs are recorded to support deterministic replay and viewer playback.
@@ -24,10 +24,8 @@ This SOT is the **single source of truth** for how runtime packages data for the
     - `NarrativeUICallContext`, `NarrativeUIText`
 - Runtime bridge:
     - `NarrativeRuntimeContext` (build contexts, gate stride/budget, call engine, log outputs)
-- **Bubble events (viewer-facing UI events)**:
-    - Mapping `StoryFragment → BubbleEvent`
-    - Logging bubble events into history
-    - Export pipeline includes `ui_events.jsonl`
+UI/export surfaces are **out of scope** for runtime; any overlays are exported
+by integration when supplied by host orchestration.
 
 ### Out of scope
 - Narrative logic (LLM prompts, semantic reasoning, policy logic) — owned by `narrative/`
@@ -38,7 +36,7 @@ This SOT is the **single source of truth** for how runtime packages data for the
 
 ## 1. Status: what is implemented today
 
-### ✅ Implemented (Sprints 8 + 11)
+### ✅ Implemented (Sprints 8.x)
 - Runtime-owned DTOs exist in `runtime/narrative_context.py`.
 - `NarrativeRuntimeContext`:
     - Builds `WorldSnapshot` via snapshot builder (read-only).
@@ -47,10 +45,11 @@ This SOT is the **single source of truth** for how runtime packages data for the
     - Calls `NarrativeEngineInterface.run_tick_jobs`.
     - Logs tick output via `history.record_narrative_tick_output(...)`.
     - Is defensive: engine failures become a **no-op narrative output**.
-- **BubbleEvents pipeline (Sprint 11)**
-    - Deterministic bridge `StoryFragment → BubbleEvent`
-    - Runtime records via `history.record_bubble_events(...)` (best-effort).
-    - Integration exporter writes `ui_events/ui_events.jsonl` and adds `"ui_events"` artifact to `RunManifest`.
+### ❌ Not implemented (current code)
+- **BubbleEvents pipeline** is not present:
+  - No `runtime/bubble_bridge.py`
+  - No `integration/ui_events.py`
+  - No export wiring from narrative outputs to UI overlays
 
 ### ⏳ Deferred / planned
 - Wiring `recent_events` into `NarrativeTickContext` (currently `[]`).
@@ -90,13 +89,10 @@ narrative → runtime (outputs only via DTOs + history logs; no direct mutation)
 ```text
 backend/sim4/runtime/
   narrative_context.py # runtime-owned narrative DTOs + bridge
-  bubble_bridge.py # pure StoryFragment → BubbleEvent mapping (S11.2)
-  tick_loop.py # tick driver calls NarrativeRuntimeContext (Phase I)
-  history.py # history storage + replay logs
+  tick.py # tick driver calls NarrativeRuntimeContext (Phase I) when provided
 
   backend/sim4/integration/
-  ui_events.py # BubbleEvent DTO + ordering rules (S11.1)
-  exporter.py # exports ui_events.jsonl as artifacts (S11.2)
+  export_overlays.py # optional overlay writers (ui_events/psycho_frames JSONL)
 ```
 
 ---
@@ -157,7 +153,8 @@ class StoryFragment:
     importance: float
 ```
 
-**Runtime rule:** StoryFragments do not directly mutate ECS/world. They are logged and may be converted to UI events (BubbleEvents).
+**Runtime rule:** StoryFragments do not directly mutate ECS/world. They are logged only;
+UI overlays, if needed, are exported out-of-band by integration.
 
 
 ---
@@ -169,12 +166,11 @@ Runtime depends on history via a protocol:
 
 - `get_diff_summary_for_tick(tick_index, episode_id) -> dict`
 - `record_narrative_tick_output(tick_index, episode_id, output) -> None`
-- `record_bubble_events(tick_index, episode_id, events) -> None`  ✅ (Sprint 11)
 
 History logging must be:
 - stable (JSON-serializable)
 - deterministic (stable ordering enforced by runtime before logging where applicable)
-- sufficient to replay narrative effects without re-calling narrative
+- sufficient to replay narrative effects without re-calling narrative (where a HistoryBuffer implementation exists)
 
 ---
 
@@ -189,7 +185,7 @@ History logging must be:
 
 ### 6.2 Tick pipeline integration (Phase I)
 `runtime.tick(...)` (or tick driver) calls:
-- `NarrativeRuntimeContext.run_tick_narrative(...)` exactly once per tick **after history/diff phase**.
+- `NarrativeRuntimeContext.run_tick_narrative(...)` exactly once per tick **after snapshot emission**.
 - Failures must not affect deterministic kernel execution.
 
 ### 6.3 Current implementation note (authoritative)
@@ -198,34 +194,12 @@ History logging must be:
 
 ---
 
-## 7. BubbleEvents (viewer UI events) — Sprint 11
+## 7. UI overlays (current status)
 
-### 7.1 Integration contract (owned by integration)
-`integration/ui_events.py` defines:
-- `BubbleEvent {tick_index, duration_ticks, agent_id, room_id, kind, text, importance}`
-- deterministic `bubble_event_sort_key(...)`
-- canonical mapping policy comments
-
-### 7.2 Runtime bridge mapping (owned by runtime; pure)
-`runtime/bubble_bridge.py` provides a **pure** transform:
-
-**Input:** `List[StoryFragment]`  
-**Output:** `List[BubbleEvent]`
-
-Canonical mapping policy (runtime-side):
-- Filter empty/whitespace text
-- Map scopes into bubble kinds
-- Anchor bubbles deterministically (agent/room/global)
-- Convert importance float → int deterministically (round + clamp)
-- Apply deterministic ordering using `bubble_event_sort_key`
-
-### 7.3 Logging + export
-- Runtime logs bubble events via `history.record_bubble_events(...)` (best-effort).
-- Integration exporter includes:
-  - `ui_events/ui_events.jsonl` (stable JSONL)
-  - `"ui_events"` artifact path in `RunManifest.artifacts`
-
-This enables viewer playback and scrub consistency without re-running narrative.
+UI overlays (bubble events, psycho frames, etc.) are **not** produced by runtime.
+If overlays are desired for a run, they are supplied to host orchestration and
+exported via `integration/export_overlays.py`. There is currently no
+`StoryFragment → BubbleEvent` mapping in code.
 
 ---
 
@@ -251,7 +225,7 @@ A future `ExternalCommandSink` or runtime command queue may accept validated com
 
 Replay mode means:
 - Runtime does **not** call narrative engines.
-- Runtime reuses recorded narrative outputs (and bubble events) from History logs.
+- Runtime reuses recorded narrative outputs from History logs (if any).
 - Viewer exports remain stable and repeatable.
 
 (Exact replay driver is a separate SOT, but this SOT defines the required log shapes.)
@@ -279,14 +253,12 @@ This SOT is “implemented” when:
 - `NarrativeRuntimeContext` is the only tick-level narrative entry point
 - narrative runs only in Phase I (or equivalent post-history phase)
 - outputs are logged into history for replay
-- bubble events are deterministically produced + exported as `ui_events.jsonl`
 - no disallowed imports violate SOP-100/SOP-300
 
 ---
 
 ## Appendix A — Key moments / changes from Draft 1.0 → 1.1
 
-- Added **BubbleEvents** as first-class output pipeline (StoryFragment → BubbleEvent).
-- Added HistoryBuffer method `record_bubble_events(...)`.
-- Export artifacts now include `ui_events.jsonl`.
+- Focused the SOT on runtime ↔ narrative DTOs and logging.
+- Marked UI overlay export as **out of scope** for runtime (handled in integration when provided by host).
 - Marked substrate application pipeline as **planned** (not implemented) instead of describing it as present.

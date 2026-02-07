@@ -1,4 +1,7 @@
 # Sprint 14 — KVP Replay Export v0.1 (“Viewer-proof offline + React parity”)
+**Status update (Feb 2026):** Current implementation uses `manifest.kvp.json` as
+ManifestV0_1 (not a KERNEL_HELLO envelope), does not emit REPLAY_INDEX/RUN_INTEGRITY
+messages, and writes per-tick diff files (no JSONL chunking).
 ## 14.0A — Message type inventory + schema decisions (LOCK)
 ### 1) v0.1 Export Message Types (final set)
 **Already in KVP-0001**

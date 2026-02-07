@@ -1,0 +1,2 @@
+{"kvp_version":"0.1","msg_type":"X_UI_EVENT_BATCH","msg_id":"8404d276-1250-5813-b804-04ce8a5fddee","sent_at_ms":0,"payload":{"schema_version":"1","start_tick":0,"end_tick":1,"events":[{"tick":0,"event_id":"a","kind":"hover","data":{"x":1.234}},{"tick":0,"event_id":"b","kind":"click","data":{"x":1.235}}]}}
+{"kvp_version":"0.1","msg_type":"X_UI_EVENT_BATCH","msg_id":"c3c934f7-b92a-5143-9052-b1fce3f9a891","sent_at_ms":0,"payload":{"schema_version":"1","start_tick":2,"end_tick":3,"events":[{"tick":2,"event_id":"z","kind":"note","data":{}}]}}

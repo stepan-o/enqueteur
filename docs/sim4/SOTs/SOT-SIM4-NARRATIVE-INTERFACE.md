@@ -298,7 +298,7 @@ class StoryFragment:
     agent_id: int | None
     room_id: int | None
     text: str           # full natural language
-    importance: float   # 0–1 scoring for UI prioritization, runtime will convert it for BubbleEvents (round+clamp to [-100, 100]), and viewers resolve ties deterministically
+    importance: float   # 0–1 scoring for UI prioritization; conversion policy is TBD in current implementation
 ```
 
 Use:
@@ -308,12 +308,9 @@ Use:
 
 **BubbleEvents are not produced by narrative.**
 
-Runtime converts `StoryFragment → BubbleEvent` using a deterministic policy  
-(scope/kind/anchors/importance conversion) and exports `ui_events.jsonl`.
-
-Sprint 11 closure implementation note:
-* Until `StoryFragment` includes an explicit marker (future schema bump), **agent scope maps to DIALOGUE** for bubbles.
-* Future extension could add `voice: "DIALOGUE"|"THOUGHT"` or similar (breaking change → requires schema bump).
+Current implementation does **not** include a `StoryFragment → BubbleEvent` mapping
+or `ui_events.jsonl` export pipeline. If UI overlays are needed, they are supplied
+to host orchestration and exported via integration sidecars.
 
 #### 5.2.3 MemoryUpdate
 Semantic memory operations for the **Archivist** role:

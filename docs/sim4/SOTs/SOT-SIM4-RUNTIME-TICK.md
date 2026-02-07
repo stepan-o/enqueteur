@@ -10,26 +10,33 @@ This SOT defines the **runtime/tick architecture** of Sim4:
 * how **phases** are ordered and executed
 * how **ECS**, **world**, and **narrative** are orchestrated
 * where **mutation is allowed** and how it happens
-* how **RNG**, **diff**, **history**, **replay** integrate into the tick
+* how **RNG** integrates into the tick (diff/history/replay are planned)
 * how this stays compatible with **SOP-000**, **100**, **200**, **300**, and **SimX vision**
 
 It is the canonical spec for:
-* runtime/engine.py
-* runtime/scheduler.py
-* runtime/world_context.py
-* runtime/diff.py, history.py, replay.py
-* their contracts with ecs/, world/, narrative/, snapshot/.
+* runtime/tick.py (implemented)
+* runtime/clock.py (implemented)
+* runtime/scheduler.py (implemented)
+* runtime/command_bus.py (implemented)
+* runtime/events.py (implemented)
+* runtime/narrative_context.py (implemented)
+* planned: runtime/engine.py, runtime/diff.py, runtime/history.py, runtime/replay.py
+* contracts with ecs/, world/, narrative/, snapshot/.
+
+**Implementation status (current repo):**
+- `tick.py` is the only orchestrator; there is no `engine.py`.
+- Phase H emits a `WorldSnapshot` to `snapshot/output.py::TickOutputSink` if provided.
+- Offline exports and live envelopes are wired by `host/sim_runner.py` (outside the SOP-100 DAG).
 
 ---
 
 ## 1. Runtime’s Role in the 6-Layer DAG
 Per **SOP-100**, the engine DAG is:
 ```text
-Kernel:   runtime → ecs → world
-                \         \
-                 \         → snapshot → integration
-                  \
-                   → (read-only views) → narrative
+Kernel:   runtime → ecs
+         runtime → world
+         runtime → snapshot → integration
+         runtime → (read-only views) → narrative
 narrative → (suggestion queues) → runtime (Phase A integration ONLY)
 ```
 
@@ -52,26 +59,21 @@ Runtime is the **conductor**, not a player.
 
 ## 2. Core Runtime Modules
 Runtime consists of:
-* `engine.py`
-  * `SimulationEngine`
-  * public API: `run()`, `step()`, `pause()`, `resume()`, etc.
+* `tick.py`
+  * `tick(...)` — canonical tick pipeline
 * `clock.py`
   * `TickClock`, `DeltaTime`
 * `scheduler.py`
   * `PhaseScheduler`: maps phases → ECS systems
-* `diff.py`
-  * `DiffBuilder`: computes per-tick state diffs
-* `history.py`
-  * `HistoryBuffer`, `EventLog`
-* `replay.py`
-  * `ReplayEngine`: consumes diffs to reconstruct state
+* `command_bus.py`
+  * ECS/world command batching + sequencing
 * `events.py`
   * `GlobalEvent`, `LocalEvent`, `EventBus`
-* `world_context.py`
-  * `WorldContext`: owns `world/` state + subsystems  
-  (rooms, assets, navgraph, world events)
-* `episode.py`
-  * `EpisodeMeta` basics for narrative arc context
+* `narrative_context.py`
+  * NarrativeRuntimeContext + DTOs
+
+Planned (not implemented):
+* `engine.py`, `diff.py`, `history.py`, `replay.py`, `episode.py`, `world_context.py` façade
 
 Runtime does **not** live in any other folder; other layers never import it.
 
@@ -91,7 +93,7 @@ tick(dt):
     7. Phase E: ECS Structural Commit & Command Application
     8. Phase F: World Updates
     9. Phase G: Event Consolidation
-    10. Phase H: Diff Recording + History Append
+    10. Phase H: Snapshot emission (TickOutputSink)
     11. Phase I: Narrative Trigger (post-tick)
     12. Unlock WorldContext
 ```
@@ -100,12 +102,12 @@ tick(dt):
 * ECS component writes: Phases **B–E** (deterministic ECS systems)
 * Phase **E**: structural commit + buffered command-batch application (entity create/delete, component add/remove, global ECSCommandBatch)
 * World mutations: **Phase F** (via WorldContext.apply_commands(...))
-* History/diff: **Phase H** (recording only, no sim-state mutation)
+* History/diff: **Phase H** (snapshot emission only in current code)
 * Narrative: **Phase I** (semantic only, no kernel mutation)
 
 All other phases are **pure** (read-only or buffering only).
 
-Note (Phase H): Phase H may emit a viewer-facing TickFrame (snapshot + events + narrative fragments) for deterministic replay/viewer tooling. This is recording/view-shaping only and does not mutate kernel state.
+Note (Phase H): Phase H emits a WorldSnapshot to an optional `TickOutputSink`. No TickFrame adapter exists in current code.
 
 ---
 
@@ -328,71 +330,26 @@ pushes them into the EventBus and interim structures for history/diff/snapshot
 
 No simulation state mutation occurs here — events are just records.
 
-4.8 Phase H — Diff/History hooks + Viewer Frame Emission (read-only)
+4.8 Phase H — Snapshot emission (read-only)
 
 Responsibility:
-Compute diffs and append to history. Additionally, Phase H may build and emit a viewer-facing TickFrame for deterministic replay/viewer tooling. This remains strictly a recording/view‑shaping action (no simulation).
+Build a `WorldSnapshot` and emit it to an optional `TickOutputSink`. This is
+strictly read-only (no simulation mutation).
 
-Viewer Frame Emission (9.3 readiness):
+Runtime performs the following steps in Phase H:
 
-Runtime performs the following read-only steps in Phase H:
-
-1. Build a WorldSnapshot via the snapshot builder (read-only over ECS/world; no RNG, no I/O).
-2. Build a TickFrame via the integration adapter (pure transformation of snapshot + consolidated events + optional narrative fragments).
-3. Optionally invoke a TickFrame sink (viewer streaming hook). The sink is best-effort; any exception is swallowed so tick determinism is never compromised.
-
-Constraints for viewer frame emission:
-
-* No kernel mutation (runtime/ecs/world state).
-* No I/O.
-* No clocks/RNG usage.
-* No runtime coupling to integration types: runtime may treat TickFrame as Any/opaque DTO; the integration adapter remains the boundary.
-
-runtime/diff.py:
-
-Compares:
-
-ECS state at tick start vs end
-
-World state at tick start vs end
-
-Produces a TickDiff:
-
-list of component changes
-
-list of world state changes
-
-event references
-
-RNG sub-seed usage summary (optional)
-
-runtime/history.py:
-
-Appends TickRecord to HistoryBuffer:
-
-tick index
-
-TickDiff
-
-events
-
-RNG seed info (for replay)
+1. Build a `WorldSnapshot` via `snapshot/world_snapshot_builder.py`.
+2. If a `TickOutputSink` is provided, call `on_tick_output(...)` (best-effort; exceptions are swallowed).
 
 Constraints:
+* No kernel mutation (runtime/ecs/world state).
+* No I/O or RNG.
+* No direct dependency on integration types.
 
-Phase H is recording only:
-
-does not change ECS or world state
-
-only writes to history/diff logs
-
-The diff format must be:
-
-stable
-
-serializable
-
-independent of memory addresses
+Note:
+- `runtime/diff.py`, `runtime/history.py`, and `runtime/replay.py` are **not implemented**.
+- Offline exports and replay artifacts are produced by `host/sim_runner.py` using
+  `integration/export_state.py` (KVP-0001 envelopes).
 
 4.9 Phase I — Narrative Trigger (Post-Tick)
 
@@ -500,35 +457,12 @@ time-based seeds
 
 OS entropy
 
-7. Replay Contract
+7. Replay Contract (planned)
 
-runtime/replay.py:
-
-Reconstructs state from:
-
-initial world config
-
-same seed
-
-TickDiff log
-
-Replay guarantees:
-
-same ECS state
-
-same world state
-
-same event streams
-
-same snapshots
-
-same narrative triggers (same sequence & content inputs)
-
-Runtime tick loop is reused by replay; replay just:
-
-replays diffs instead of re-running systems,
-
-or optionally re-runs systems and checks that new diffs == recorded diffs (determinism test mode).
+Replay modules (`runtime/replay.py`) are **not implemented** in current code.
+For offline artifacts, replay-style verification is performed in
+`integration/export_verify.py`, which reconstructs state by applying KVP diffs
+from `manifest.kvp.json` and validates the step_hash chain.
 
 8. Interaction with Other SOTs & SOPs
 
@@ -577,9 +511,7 @@ No kernel state mutation occurs outside:
 
 Narrative is triggered only after Phase H.
 
-Replay reconstructs identical ECS/world history from diff logs.
-
-RNG usage is centralized and logged.
+Replay/diff logging is planned but not yet implemented in runtime.
 
 At that point, the runtime tick is SimX-safe:
 we can scale up worlds, agents, and narrative complexity without breaking determinism or Rust portability.
@@ -593,8 +525,8 @@ As of Sprint 6 (2025-12-01), the following runtime tick behavior is implemented 
   - Phase E: ECS command application via `ECSCommandBatch` (global seq 0..N-1 in aggregated order) and `ECSWorld.apply_commands(...)`.
   - Phase F: World command application via `WorldCommandBatch` (global seq 0..N-1) and `apply_world_commands(...)` from `backend.sim4.world.apply_world_commands`, emitting `WorldEvent` values.
   - Phase G: Event consolidation into a flat `RuntimeEvent` list via `backend.sim4.runtime.events::consolidate_events(...)` (ordering policy: world → ecs → runtime, each in provided order).
-  - Phase H: builds a WorldSnapshot and emits a viewer-facing TickFrame via the integration adapter (optional sink, best-effort; no diff/history persistence yet).
-  - Phase I: present as a stub (no narrative bridge wired yet).
+  - Phase H: builds a WorldSnapshot and emits it to an optional `TickOutputSink` (best-effort; no diff/history persistence in runtime).
+  - Phase I: calls the narrative bridge if provided (exceptions swallowed to preserve determinism).
 
 Deviations from the long‑term design in this SOT (pragmatic for Sprint 6):
 
@@ -603,9 +535,10 @@ Deviations from the long‑term design in this SOT (pragmatic for Sprint 6):
 - Phases B/C/D are not yet specialized/renamed as Perception/Cognition/Intention:
   - The scheduler simply executes configured system types for phases "B", "C", and "D".
 - History/diff/replay modules:
-  - No `runtime/diff.py`, `runtime/history.py`, or `runtime/replay.py` exist yet; Phase H currently performs snapshot + TickFrame emission only (viewer readiness). Persistent diff/history/replay remain pending.
+  - No `runtime/diff.py`, `runtime/history.py`, or `runtime/replay.py` exist yet; Phase H currently performs snapshot + `TickOutputSink` emission only. Persistent diff/history/replay remain pending.
+  - Offline artifacts are exported by host orchestration (`host/sim_runner.py`) using `integration/export_state.py`.
 - Narrative integration:
-  - Phase I does not yet call any narrative bridge; it is reserved for later Sprints (see SOT‑SIM4‑RUNTIME‑NARRATIVE‑CONTEXT).
+  - Phase I calls `NarrativeRuntimeContext` if it is passed into `tick(...)`; this remains optional and best-effort.
 
 Determinism & layer boundaries satisfied in Sprint 6:
 

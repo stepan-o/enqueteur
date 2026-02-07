@@ -1,0 +1,1 @@
+{"kvp_version":"0.1","msg_type":"FRAME_DIFF","msg_id":"618bd36a-ae2b-5c2b-b7da-2e769a9e8d88","sent_at_ms":0,"payload":{"schema_version":"1","from_tick":1,"to_tick":2,"prev_step_hash":"0befdc4abbba6d24578b73bd6172d4519c0f87f1dbb21ed69d61ad47e931d907","ops":[],"step_hash":"263c0de76f133f66d8df76b4bbae7911ad3962e978f0f78f4858f0f10182aff0"}}

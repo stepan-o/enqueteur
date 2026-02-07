@@ -2,6 +2,13 @@
 
 Goal: by the end, we can **export a run**, **load it in a Godot-like viewer**, **scrub time (rewind/zoom)**, render **2.5D/isometric placeholders**, show **bubbles**, and overlay **psycho topology** — without violating SOP-100/200.
 
+**Status update (Feb 2026):** This plan is largely superseded by the current KVP-0001
+implementation in `backend/sim4/integration/*` and `backend/sim4/host/sim_runner.py`.
+Legacy `TickFrame`/`frame_diff`/`exporter.py` workstreams were removed in favor of
+KVP envelopes (`FULL_SNAPSHOT` + `FRAME_DIFF`), a manifest SSoT, and optional overlays.
+The detailed sprint tasks below should be treated as **historical** and not
+actionable unless explicitly revived.
+
 ---
 
 ## Sprint 9 — Integration Spine (Run Export + Schemas)

@@ -5,7 +5,7 @@ Sprint 14.6 — Export Verifier (offline, deterministic)
 
 Verifies exported artifacts using the manifest pointers:
 - Loads nearest keyframe snapshot <= target tick
-- Applies per‑tick diffs sequentially up to target
+- Applies per‑tick ops-based diffs sequentially up to target
 - Validates: envelope shape, payload schema_version, tick continuity,
   to_tick == from_tick+1, prev_step_hash chain, and canonical step_hash.
 
@@ -20,6 +20,7 @@ from .manifest_schema import ManifestV0_1
 from .record_writer import read_record
 from .kvp_envelope import validate_envelope
 from .step_hash import compute_step_hash
+from .diff_ops import apply_state_diff_ops
 
 
 def _require(cond: bool, msg: str) -> None:
@@ -56,7 +57,11 @@ def _verify_snapshot_payload(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], s
     return state, step_hash, tick
 
 
-def _verify_diff_payload(payload: Dict[str, Any], prev_step_hash: str) -> Tuple[Dict[str, Any], str, int, int]:
+def _verify_diff_payload(
+    payload: Dict[str, Any],
+    prev_step_hash: str,
+    state_before: Dict[str, Any],
+) -> Tuple[Dict[str, Any], str, int, int]:
     _require(isinstance(payload, dict), "diff payload must be a dict")
     _require(payload.get("schema_version") == INTEGRATION_SCHEMA_VERSION, "schema_version missing/invalid in diff")
     _require("from_tick" in payload and "to_tick" in payload, "diff missing from/to tick")
@@ -64,9 +69,11 @@ def _verify_diff_payload(payload: Dict[str, Any], prev_step_hash: str) -> Tuple[
     tt = int(payload["to_tick"])  # type: ignore[arg-type]
     _require(tt == ft + 1, "diff to_tick must equal from_tick + 1")
     _require(payload.get("prev_step_hash") == prev_step_hash, "diff prev_step_hash does not match chain")
-    _require("state" in payload and "step_hash" in payload, "diff missing state/step_hash")
-    state = payload["state"]
+    _require("ops" in payload and "step_hash" in payload, "diff missing ops/step_hash")
+    ops = payload["ops"]
     step_hash = payload["step_hash"]
+    # Apply ops to reconstruct state
+    state = apply_state_diff_ops(state_before, ops)
     recomputed = compute_step_hash(state)
     _require(recomputed == step_hash, "diff step_hash does not match canonical bytes")
     return state, step_hash, ft, tt
@@ -98,7 +105,7 @@ def reconstruct_state_at_tick(run_root: str | Path, manifest: ManifestV0_1, targ
         _require(ptr is not None, f"Missing diff for from_tick={cur_tick}")
         env = _load_envelope(root / ptr.rel_path)
         _require(env.get("msg_type") == "FRAME_DIFF", "diff envelope msg_type must be FRAME_DIFF")
-        cur_state, cur_hash, ft, tt = _verify_diff_payload(env["payload"], cur_hash)  # type: ignore[index]
+        cur_state, cur_hash, ft, tt = _verify_diff_payload(env["payload"], cur_hash, cur_state)  # type: ignore[index]
         _require(ft == cur_tick and tt == cur_tick + 1, "diff transition does not match expected ticks")
         cur_tick = tt
 

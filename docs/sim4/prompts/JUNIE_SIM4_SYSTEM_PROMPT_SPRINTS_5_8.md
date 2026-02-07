@@ -36,9 +36,14 @@ Suggestions are turned into inputs for the next tick and are always sanitized by
 
 The layer DAG you must preserve:
 
-runtime   →   ecs   →   world   →   snapshot   →   integration
+runtime → ecs
+runtime → world
+runtime → snapshot → integration
 ↑
 narrative (sidecar, reads via adapters, writes only narrative/suggestions)
+
+Host orchestration (`host/`) sits **outside** the SOP-100 DAG and is allowed to
+wire runtime → snapshot → integration for live/offline exports.
 
 
 Key rules:
@@ -95,9 +100,9 @@ ecs/ must not import from world/, narrative/, or integration/.
 
 world/ must not import ecs/.
 
-snapshot/ pulls from runtime/ECS/world but is view-only.
+snapshot/ pulls from ECS/world but is view-only. runtime may import snapshot.
 
-integration/ depends on snapshot//runtime but contains no simulation logic.
+integration/ depends on snapshot (and its own SSoT schemas) but contains no simulation logic.
 
 ECS & Command Model
 

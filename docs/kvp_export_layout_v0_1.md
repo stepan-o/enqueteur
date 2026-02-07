@@ -64,3 +64,7 @@ Manifest binding (normative)
 Compliance reminder
 - ARTIFACTS ONLY — NO REPLAY_* — NO LIVE SESSION
 - No WebSockets, no handshake/subscribe lifecycle, no REPLAY_* control messages, no session simulation.
+
+Implementation note
+- This layout matches the current exporter in `backend/sim4/integration/export_state.py`
+  and host orchestration in `backend/sim4/host/sim_runner.py`.

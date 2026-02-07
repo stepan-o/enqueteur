@@ -52,8 +52,9 @@ def test_fixture_record_schemas_and_envelope_first_dispatch():
         validate_envelope(env)
         assert envelope_msg_type(env) == "FRAME_DIFF"
         p = env["payload"]
-        assert set(p.keys()) >= {"schema_version", "from_tick", "to_tick", "prev_step_hash", "state", "step_hash"}
+        assert set(p.keys()) >= {"schema_version", "from_tick", "to_tick", "prev_step_hash", "ops", "step_hash"}
         assert p["to_tick"] == p["from_tick"] + 1
+        assert isinstance(p["ops"], list)
     # overlays JSONL: each line is envelope
     for k, op in (m.overlays or {}).items():
         lines = [ln for ln in (FIXTURE_ROOT / op.rel_path).read_text("utf-8").splitlines() if ln.strip()]

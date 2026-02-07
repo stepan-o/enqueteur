@@ -2,6 +2,12 @@
 
 ---
 
+**Status update (Feb 2026):** Offline export is implemented via
+`backend/sim4/integration/export_state.py` and `backend/sim4/host/sim_runner.py`.
+Live transport scaffolding also exists (`integration/live_session.py`), but is out of
+scope for offline exports. The current exporter uses per-tick diff files and
+ManifestV0_1 (not a KERNEL_HELLO envelope).
+
 ## 0) Scope Lock (Non-Negotiable)
 
 Sprint 14 implements **ARTIFACT / OFFLINE replay only**.

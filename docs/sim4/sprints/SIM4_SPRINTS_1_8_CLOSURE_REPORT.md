@@ -1,5 +1,9 @@
 # Sim4 – LLM Architect Onboarding & Godot Viewer Readiness (Post–Sprint 8)
 
+**Status update (Feb 2026):** Bubble event export and legacy integration pipelines
+described here were removed in favor of KVP-0001 exports. Treat UI-bubble export
+references below as historical.
+
 You’re coming in **after Sprints 1–8** of Sim4.  
 The core substrate is in place; we now want to:
 

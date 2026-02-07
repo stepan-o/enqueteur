@@ -1,0 +1,2 @@
+{"kvp_version":"0.1","msg_type":"X_PSYCHO_FRAME","msg_id":"21b5c968-d6fa-5796-af98-6782a4ff0747","sent_at_ms":0,"payload":{"schema_version":"1","tick":1,"nodes":[{"id":"n1","data":{"w":2.3}},{"id":"n2","data":{"w":2.346}}],"edges":[{"src_id":"n1","dst_id":"n2","kind":"rel","data":{"p":0.5}}]}}
+{"kvp_version":"0.1","msg_type":"X_PSYCHO_FRAME","msg_id":"5b787866-1921-5757-800f-86fc7cfd3f61","sent_at_ms":0,"payload":{"schema_version":"1","tick":3,"nodes":[{"id":"n3","data":{}}],"edges":[]}}
