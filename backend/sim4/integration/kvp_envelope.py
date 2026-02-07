@@ -19,7 +19,9 @@ import uuid as _uuid
 from .kvp_version import KVP_VERSION
 
 
-# Allowed artifact message types for Sprint 14
+# Allowed artifact message types for Sprint 14.
+# Envelope-level guardrail: includes X_* overlays because those are still
+# standalone envelopes, even though they are not referenced as state pointers.
 ALLOWED_ARTIFACT_MSG_TYPES: Final[set[str]] = {
     "FULL_SNAPSHOT",
     "FRAME_DIFF",
@@ -65,7 +67,22 @@ def _validate_msg_id(s: str) -> None:
 def make_envelope(msg_type: str, payload: Dict[str, Any], *, msg_id: str, sent_at_ms: int) -> Dict[str, Any]:
     """Construct a strict KVP envelope dict.
 
-    Raises ValueError on any rule violation.
+    Args:
+        msg_type: Artifact message type in SCREAMING_SNAKE_CASE. Must be one of
+            ALLOWED_ARTIFACT_MSG_TYPES and must not start with any FORBIDDEN_PREFIXES.
+        payload: Message payload as a dictionary. Must be a dict; content is not
+            validated here beyond type.
+        msg_id: Unique identifier for the message. Must be a valid UUID string.
+        sent_at_ms: Send timestamp in milliseconds since epoch. Must be an integer >= 0.
+
+    Returns:
+        A new envelope dictionary with keys: kvp_version, msg_type, msg_id,
+        sent_at_ms, payload. The function performs final validation before
+        returning the envelope.
+
+    Raises:
+        ValueError: If any of the input arguments violate envelope rules (e.g.,
+            unknown msg_type, non-dict payload, non-UUID msg_id, or negative/non-int sent_at_ms).
     """
     # msg_type rules
     if not isinstance(msg_type, str) or not msg_type:
@@ -106,7 +123,17 @@ def make_envelope(msg_type: str, payload: Dict[str, Any], *, msg_id: str, sent_a
 
 
 def validate_envelope(envelope: Dict[str, Any]) -> None:
-    """Validate an envelope dict in-place. Raises ValueError if invalid."""
+    """Validate an envelope dict in-place.
+
+    Args:
+        envelope: Envelope dictionary to validate. Must include keys
+            kvp_version, msg_type, msg_id, sent_at_ms, and payload.
+
+    Raises:
+        ValueError: If the envelope is missing required keys or any field fails
+            validation (version mismatch, msg_type shape/allow-list, msg_id UUID,
+            sent_at_ms integer >= 0, payload is a dict).
+    """
     if not isinstance(envelope, dict):
         raise ValueError("envelope must be a dict")
     _require_keys(envelope, ["kvp_version", "msg_type", "msg_id", "sent_at_ms", "payload"])
@@ -146,8 +173,20 @@ def validate_envelope(envelope: Dict[str, Any]) -> None:
 def envelope_msg_type(envelope: Dict[str, Any]) -> str:
     """Return the envelope msg_type; raises if missing/invalid.
 
-    This function intentionally consults only msg_type and not payload shape
-    to enforce envelope-first dispatch.
+    Args:
+        envelope: Envelope dictionary to inspect. Must contain a non-empty
+            string field "msg_type".
+
+    Returns:
+        The msg_type string extracted from the envelope.
+
+    Raises:
+        ValueError: If envelope is not a dict, lacks msg_type, or msg_type is
+            not a non-empty string.
+
+    Notes:
+        This function intentionally consults only msg_type and not payload shape
+        to enforce envelope-first dispatch.
     """
     if not isinstance(envelope, dict):
         raise ValueError("envelope must be a dict")

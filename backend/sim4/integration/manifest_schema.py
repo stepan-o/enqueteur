@@ -31,6 +31,8 @@ from .render_spec import RenderSpec
 
 
 ALLOWED_CHANNELS: Tuple[str, ...] = ("WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG")
+# Manifest pointer surface only: overlays are enumerated under manifest.overlays,
+# so X_* message types are intentionally excluded here.
 ALLOWED_MSG_TYPES_FOR_POINTERS: Tuple[str, ...] = ("FULL_SNAPSHOT", "FRAME_DIFF", "KERNEL_HELLO")
 
 
