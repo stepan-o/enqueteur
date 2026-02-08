@@ -1,10 +1,14 @@
 // src/ui/devControls.ts
 
 type FloorFilter = "all" | 0 | 1;
+type CameraMode = "free" | "auto";
 
 type DevControlsOpts = {
   onFloorChange: (floor: FloorFilter) => void;
   onRestart: () => void;
+  onCameraModeChange?: (mode: CameraMode) => void;
+  onPlaybackToggle?: (paused: boolean) => void;
+  onSpeedChange?: (speed: number) => void;
 };
 
 export function mountDevControls(opts: DevControlsOpts): HTMLElement {
@@ -69,10 +73,54 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
   floorRow.appendChild(btn1);
   panel.appendChild(floorRow);
 
+  const cameraRow = document.createElement("div");
+  cameraRow.style.display = "flex";
+  cameraRow.style.gap = "6px";
+  cameraRow.style.alignItems = "center";
+
+  const cameraLabel = document.createElement("div");
+  cameraLabel.textContent = "Camera";
+  cameraLabel.style.fontSize = "12px";
+  cameraLabel.style.minWidth = "48px";
+  cameraRow.appendChild(cameraLabel);
+
+  const camFree = makeMiniButton("Free");
+  const camAuto = makeMiniButton("Auto");
+  let camMode: CameraMode = "free";
+  const setCamMode = (mode: CameraMode) => {
+    camMode = mode;
+    [camFree, camAuto].forEach((b) => (b.dataset.active = "false"));
+    if (mode === "free") camFree.dataset.active = "true";
+    if (mode === "auto") camAuto.dataset.active = "true";
+    opts.onCameraModeChange?.(mode);
+  };
+  camFree.addEventListener("click", () => setCamMode("free"));
+  camAuto.addEventListener("click", () => setCamMode("auto"));
+  setCamMode(camMode);
+
+  cameraRow.appendChild(camFree);
+  cameraRow.appendChild(camAuto);
+  panel.appendChild(cameraRow);
+
+  const cameraHint = document.createElement("div");
+  cameraHint.textContent = "Tip: click an agent to follow";
+  cameraHint.style.fontSize = "11px";
+  cameraHint.style.opacity = "0.7";
+  panel.appendChild(cameraHint);
+
   const playbackRow = document.createElement("div");
   playbackRow.style.display = "flex";
   playbackRow.style.gap = "8px";
   playbackRow.style.alignItems = "center";
+
+  const playPause = makeMiniButton("Pause");
+  let playing = true;
+  playPause.addEventListener("click", () => {
+    playing = !playing;
+    playPause.textContent = playing ? "Pause" : "Play";
+    opts.onPlaybackToggle?.(!playing);
+  });
+  playbackRow.appendChild(playPause);
 
   const restart = makeMiniButton("Restart Playback");
   restart.style.flex = "1";
@@ -81,8 +129,36 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
 
   panel.appendChild(playbackRow);
 
+  const speedRow = document.createElement("div");
+  speedRow.style.display = "flex";
+  speedRow.style.gap = "6px";
+  speedRow.style.alignItems = "center";
+
+  const speedLabel = document.createElement("div");
+  speedLabel.textContent = "Speed";
+  speedLabel.style.fontSize = "12px";
+  speedLabel.style.minWidth = "48px";
+  speedRow.appendChild(speedLabel);
+
+  const speeds = [0.5, 1, 2, 4];
+  const speedButtons = speeds.map((s) => makeMiniButton(`${s}x`));
+  let activeSpeed = 1;
+  const setSpeed = (value: number) => {
+    activeSpeed = value;
+    speedButtons.forEach((b) => (b.dataset.active = "false"));
+    const idx = speeds.indexOf(value);
+    if (idx >= 0) speedButtons[idx].dataset.active = "true";
+    opts.onSpeedChange?.(value);
+  };
+  speedButtons.forEach((btn, idx) => {
+    btn.addEventListener("click", () => setSpeed(speeds[idx]));
+    speedRow.appendChild(btn);
+  });
+  setSpeed(activeSpeed);
+  panel.appendChild(speedRow);
+
   const placeholder = document.createElement("div");
-  placeholder.textContent = "Timeline controls coming next";
+  placeholder.textContent = "Scrub + timeline controls coming next";
   placeholder.style.fontSize = "11px";
   placeholder.style.opacity = "0.7";
   panel.appendChild(placeholder);

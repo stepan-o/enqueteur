@@ -7,6 +7,7 @@ import type {
     RunAnchors,
     WorldStore,
 } from "../state/worldStore";
+import type { OverlayStore, UIOverlayEvent, PsychoFrame } from "../state/overlayStore";
 
 type RecordPointer = {
     rel_path: string;
@@ -27,6 +28,7 @@ type OfflineManifest = {
     keyframe_ticks?: number[];
     snapshots: Record<string, RecordPointer>;
     diffs: { diffs_by_from_tick: Record<string, RecordPointer> };
+    overlays?: Record<string, { rel_path: string; format: string; notes?: string | null }>;
 };
 
 export type OfflineRunOptions = {
@@ -35,15 +37,25 @@ export type OfflineRunOptions = {
     endTick?: number;
     tickRateHz?: number;
     speed?: number;
+    overlayStore?: OverlayStore;
 };
 
 export type OfflineRunHandle = {
     stop: () => void;
+    pause: () => void;
+    resume: () => void;
+    setSpeed: (speed: number) => void;
+    isPaused: () => boolean;
 };
 
 export async function startOfflineRun(store: WorldStore, opts: OfflineRunOptions): Promise<OfflineRunHandle> {
     const baseUrl = opts.baseUrl.replace(/\/+$/, "");
     const manifest = await fetchJson<OfflineManifest>(`${baseUrl}/manifest.kvp.json`);
+    const overlayStore = opts.overlayStore;
+
+    if (overlayStore && manifest.overlays) {
+        await loadOverlayStreams(baseUrl, manifest.overlays, overlayStore);
+    }
 
     store.setRunAnchors(manifest.run_anchors);
     if (manifest.render_spec) store.setRenderSpec(manifest.render_spec);
@@ -76,38 +88,47 @@ export async function startOfflineRun(store: WorldStore, opts: OfflineRunOptions
 
     const snapPayload = await loadPayload<FullSnapshotPayload>(baseUrl, snapPtr.rel_path);
     store.applySnapshot(snapPayload);
+    if (overlayStore) overlayStore.setTick(snapPayload.tick);
 
     let currentTick = snapPayload.tick;
 
     if (currentTick < startTick) {
-        currentTick = await fastForward(store, baseUrl, manifest, currentTick, startTick);
+        currentTick = await fastForward(store, baseUrl, manifest, currentTick, startTick, overlayStore);
     }
 
     const tickRateHz = opts.tickRateHz ?? manifest.run_anchors.tick_rate_hz ?? 30;
-    const speed = opts.speed && opts.speed > 0 ? opts.speed : 1;
-    const intervalMs = Math.max(5, Math.floor(1000 / (tickRateHz * speed)));
+    let speed = opts.speed && opts.speed > 0 ? opts.speed : 1;
+    let intervalMs = Math.max(5, Math.floor(1000 / (tickRateHz * speed)));
 
     let stopped = false;
     let inFlight = false;
+    let paused = false;
+    let timer: number | null = null;
 
-    const timer = window.setInterval(() => {
-        if (stopped || inFlight) return;
-        inFlight = true;
-        void stepOnce()
-            .catch((err: unknown) => {
-                const msg = err instanceof Error ? err.message : String(err);
-                store.markDesync(`Offline playback error: ${msg}`);
-                stopped = true;
-                window.clearInterval(timer);
-            })
-            .finally(() => {
-                inFlight = false;
-            });
-    }, intervalMs);
+    const startTimer = () => {
+        if (timer !== null) window.clearInterval(timer);
+        if (paused || stopped) return;
+        timer = window.setInterval(() => {
+            if (stopped || inFlight || paused) return;
+            inFlight = true;
+            void stepOnce()
+                .catch((err: unknown) => {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    store.markDesync(`Offline playback error: ${msg}`);
+                    stopped = true;
+                    if (timer !== null) window.clearInterval(timer);
+                })
+                .finally(() => {
+                    inFlight = false;
+                });
+        }, intervalMs);
+    };
+
+    startTimer();
 
     async function stepOnce(): Promise<void> {
         if (currentTick >= endTick) {
-            window.clearInterval(timer);
+            if (timer !== null) window.clearInterval(timer);
             return;
         }
 
@@ -119,13 +140,30 @@ export async function startOfflineRun(store: WorldStore, opts: OfflineRunOptions
         const diffPayload = await loadPayload<FrameDiffPayload>(baseUrl, ptr.rel_path);
         store.applyDiff(diffPayload);
         currentTick = diffPayload.to_tick;
+        if (overlayStore) overlayStore.setTick(currentTick);
     }
 
     return {
         stop: () => {
             stopped = true;
-            window.clearInterval(timer);
+            if (timer !== null) window.clearInterval(timer);
         },
+        pause: () => {
+            paused = true;
+            if (timer !== null) window.clearInterval(timer);
+        },
+        resume: () => {
+            if (stopped) return;
+            paused = false;
+            startTimer();
+        },
+        setSpeed: (nextSpeed: number) => {
+            if (!Number.isFinite(nextSpeed) || nextSpeed <= 0) return;
+            speed = nextSpeed;
+            intervalMs = Math.max(5, Math.floor(1000 / (tickRateHz * speed)));
+            startTimer();
+        },
+        isPaused: () => paused,
     };
 }
 
@@ -143,7 +181,8 @@ async function fastForward(
     baseUrl: string,
     manifest: OfflineManifest,
     fromTick: number,
-    toTick: number
+    toTick: number,
+    overlayStore?: OverlayStore
 ): Promise<number> {
     let current = fromTick;
     while (current < toTick) {
@@ -154,8 +193,47 @@ async function fastForward(
         const diffPayload = await loadPayload<FrameDiffPayload>(baseUrl, ptr.rel_path);
         store.applyDiff(diffPayload);
         current = diffPayload.to_tick;
+        if (overlayStore) overlayStore.setTick(current);
     }
     return current;
+}
+
+async function loadOverlayStreams(
+    baseUrl: string,
+    overlays: Record<string, { rel_path: string; format: string; notes?: string | null }>,
+    store: OverlayStore
+): Promise<void> {
+    const entries = Object.values(overlays);
+    for (const entry of entries) {
+        if (!entry?.rel_path) continue;
+        const url = `${baseUrl}/${entry.rel_path}`;
+        try {
+            const text = await fetchText(url);
+            const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+            for (const line of lines) {
+                let env: any;
+                try {
+                    env = JSON.parse(line);
+                } catch {
+                    continue;
+                }
+                const msgType = env?.msg_type;
+                const payload = env?.payload;
+                if (msgType === "X_UI_EVENT_BATCH" && payload) {
+                    const events = (payload.events ?? []) as UIOverlayEvent[];
+                    store.ingestUiEventBatch({
+                        start_tick: payload.start_tick ?? 0,
+                        end_tick: payload.end_tick ?? 0,
+                        events,
+                    });
+                } else if (msgType === "X_PSYCHO_FRAME" && payload) {
+                    store.ingestPsychoFrame(payload as PsychoFrame);
+                }
+            }
+        } catch (err) {
+            console.warn("[webview] overlay load failed", url, err);
+        }
+    }
 }
 
 async function loadPayload<T>(baseUrl: string, relPath: string): Promise<T> {
@@ -169,4 +247,12 @@ async function fetchJson<T>(url: string): Promise<T> {
         throw new Error(`Fetch failed (${res.status}) for ${url}`);
     }
     return (await res.json()) as T;
+}
+
+async function fetchText(url: string): Promise<string> {
+    const res = await fetch(url);
+    if (!res.ok) {
+        throw new Error(`Fetch failed (${res.status}) for ${url}`);
+    }
+    return res.text();
 }

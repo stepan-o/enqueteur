@@ -54,6 +54,8 @@ export class PixiScene {
     private readonly roomFloors = new Map<number, number>();
     private readonly roomCutout = new Map<number, number>();
     private readonly roomCutoutTarget = new Map<number, number>();
+    private readonly roomPings = new Map<number, number>();
+    private readonly seenEventKeys = new Map<string, number>();
     private isoTileW = 64;
     private isoTileH = 32;
     private floorFilter: "all" | 0 | 1 = 0;
@@ -62,6 +64,10 @@ export class PixiScene {
     private camX = 0;
     private camY = 0;
     private camZoom = 1;
+    private cameraMode: "free" | "follow" | "auto" = "free";
+    private followAgentId?: number;
+    private autoDirectorRoomId?: number;
+    private autoDirectorNextSwitch = 0;
 
     // Desync UI
     private desyncBanner?: PIXI.Container;
@@ -148,6 +154,28 @@ export class PixiScene {
         if (this.lastState) this.renderFromState(this.lastState);
     }
 
+    setCameraMode(mode: "free" | "auto"): void {
+        if (mode === "free") {
+            this.cameraMode = "free";
+            this.followAgentId = undefined;
+            return;
+        }
+        this.cameraMode = "auto";
+        this.autoDirectorNextSwitch = 0;
+        this.autoFitLocked = true;
+    }
+
+    followAgent(agentId?: number): void {
+        if (!agentId) {
+            if (this.cameraMode === "follow") this.cameraMode = "free";
+            this.followAgentId = undefined;
+            return;
+        }
+        this.cameraMode = "follow";
+        this.followAgentId = agentId;
+        this.autoFitLocked = true;
+    }
+
     /** Main render entry (called from WorldStore subscription). */
     renderFromState(s: WorldState): void {
         if (!this.ready) {
@@ -169,6 +197,8 @@ export class PixiScene {
 
         this.applyRenderSpec(s.renderSpec);
         this.renderFloor(s.renderSpec);
+
+        this.applyEventPings(s);
 
         const roomCenters = this.ensureRoomLayout(s, s.renderSpec);
         this.lastCenters = roomCenters;
@@ -384,6 +414,20 @@ export class PixiScene {
         }
     }
 
+    private applyEventPings(s: WorldState): void {
+        const pruneBefore = s.tick - 600;
+        for (const [key, tick] of this.seenEventKeys.entries()) {
+            if (tick < pruneBefore) this.seenEventKeys.delete(key);
+        }
+
+        for (const [key, ev] of s.events.entries()) {
+            if (this.seenEventKeys.has(key)) continue;
+            this.seenEventKeys.set(key, ev.tick);
+            const roomId = extractRoomIdFromEvent(ev);
+            if (roomId !== null) this.roomPings.set(roomId, 1);
+        }
+    }
+
     private drawRoom(
         g: PIXI.Graphics,
         r: KvpRoom,
@@ -397,6 +441,8 @@ export class PixiScene {
         const height = roomHeightPx(r, this.isoTileH);
         const colors = roomColors(r);
         const elev = floorElevationPx(floor, this.isoTileH);
+        const ping = this.roomPings.get(r.room_id) ?? 0;
+        const pulse = tensionPulse(r);
 
         const base = isoRectPoints(rb, 0, elev);
         const top = isoRectPoints(rb, height, elev);
@@ -426,6 +472,11 @@ export class PixiScene {
         g.poly(pointsToArray(top), true);
         g.fill({ color: colors.top, alpha: roofAlpha });
 
+        if (pulse > 0.01) {
+            g.poly(pointsToArray(top), true);
+            g.fill({ color: colors.glow, alpha: pulse * 0.22 });
+        }
+
         // Outline
         g.stroke({ width: 2, color: colors.stroke, alpha: r.highlight ? 0.95 : 0.7 });
 
@@ -444,6 +495,14 @@ export class PixiScene {
         if (r.highlight) {
             g.poly(pointsToArray(top), true);
             g.stroke({ width: 2, color: colors.glow, alpha: 0.35 });
+        }
+
+        if (ping > 0.01) {
+            const pingAlpha = clamp(ping, 0, 1) * 0.65;
+            g.poly(pointsToArray(top), true);
+            g.stroke({ width: 3, color: colors.glow, alpha: pingAlpha });
+            g.poly(pointsToArray(base), true);
+            g.stroke({ width: 2, color: colors.glow, alpha: pingAlpha * 0.7 });
         }
 
         let label = g.getChildByName("label") as PIXI.Text | null;
@@ -542,6 +601,12 @@ export class PixiScene {
             let node = this.agentNodes.get(a.agent_id);
             if (!node) {
                 node = this.makeAgentNode(a);
+                node.eventMode = "static";
+                node.cursor = "pointer";
+                node.on("pointertap", () => {
+                    const next = this.followAgentId === a.agent_id ? undefined : a.agent_id;
+                    this.followAgent(next);
+                });
                 this.agentNodes.set(a.agent_id, node);
                 this.agentsLayer.addChild(node);
             }
@@ -556,6 +621,8 @@ export class PixiScene {
 
             const label = node.getChildByName("label") as PIXI.Text | null;
             if (label) label.text = `Agent ${a.agent_id}`;
+
+            this.updateAgentSignals(node, a);
             node.visible = true;
         }
 
@@ -569,10 +636,31 @@ export class PixiScene {
         }
     }
 
+    private updateAgentSignals(node: PIXI.Container, a: KvpAgent): void {
+        const ring = node.getChildByName("moodRing") as PIXI.Graphics | null;
+        if (ring) {
+            const color = agentMoodColor(a);
+            ring.clear();
+            ring.ellipse(0, 8, 11, 5);
+            ring.stroke({ width: 2, color, alpha: 0.5 });
+        }
+
+        const bubble = node.getChildByName("bubble") as PIXI.Graphics | null;
+        if (bubble) {
+            bubble.visible = agentIsSpeaking(a);
+        }
+    }
+
     private makeAgentNode(a: KvpAgent): PIXI.Container {
         const c = new PIXI.Container();
 
         const color = agentColor(a);
+        const ring = new PIXI.Graphics();
+        ring.name = "moodRing";
+        ring.ellipse(0, 8, 11, 5);
+        ring.stroke({ width: 2, color: color, alpha: 0.45 });
+        c.addChild(ring);
+
         const body = new PIXI.Graphics();
         body.roundRect(-6, -10, 12, 20, 5);
         body.fill({ color, alpha: 0.95 });
@@ -605,6 +693,16 @@ export class PixiScene {
         label.alpha = 0.85;
         c.addChild(label);
 
+        const bubble = new PIXI.Graphics();
+        bubble.name = "bubble";
+        bubble.roundRect(6, -34, 14, 10, 4);
+        bubble.fill({ color: PALETTE.paper, alpha: 0.9 });
+        bubble.stroke({ width: 1, color: PALETTE.ink, alpha: 0.6 });
+        bubble.poly([10, -24, 12, -18, 8, -22], true);
+        bubble.fill({ color: PALETTE.paper, alpha: 0.9 });
+        bubble.visible = false;
+        c.addChild(bubble);
+
         return c;
     }
 
@@ -617,6 +715,8 @@ export class PixiScene {
             const dt = Math.max(1, t.deltaMS);
             this.tickAgentMotion(dt);
             this.tickRoomCutout(dt);
+            this.tickRoomPings(dt);
+            this.tickCameraDirector(dt);
         });
     }
 
@@ -666,6 +766,27 @@ export class PixiScene {
         }
     }
 
+    private tickRoomPings(dtMs: number): void {
+        if (this.roomPings.size === 0) return;
+        const decay = Math.exp(-dtMs / 700);
+        let changed = false;
+
+        for (const [id, current] of this.roomPings.entries()) {
+            const next = current * decay;
+            if (next < 0.02) {
+                this.roomPings.delete(id);
+                changed = true;
+                continue;
+            }
+            if (Math.abs(next - current) > 0.002) changed = true;
+            this.roomPings.set(id, next);
+        }
+
+        if (changed && this.lastState && this.lastCenters) {
+            this.renderRooms(this.lastState, this.lastCenters);
+        }
+    }
+
     private setCamera(v: { x: number; y: number; zoom: number }): void {
         this.camX = v.x;
         this.camY = v.y;
@@ -700,6 +821,7 @@ export class PixiScene {
         let lastY = 0;
 
         canvas.addEventListener("mousedown", (e) => {
+            if (this.cameraMode !== "free") return;
             dragging = true;
             lastX = e.clientX;
             lastY = e.clientY;
@@ -719,6 +841,66 @@ export class PixiScene {
 
             this.setCamera({ x: this.camX + dx, y: this.camY + dy, zoom: this.camZoom });
         });
+    }
+
+    private tickCameraDirector(dtMs: number): void {
+        if (this.cameraMode === "free") return;
+        if (this.cameraMode === "follow") {
+            if (!this.followAgentId) return;
+            const target = this.getAgentWorldPos(this.followAgentId);
+            if (!target) return;
+            this.panCameraToWorld(target, dtMs);
+            return;
+        }
+
+        const now = performance.now();
+        if (now >= this.autoDirectorNextSwitch) {
+            this.autoDirectorRoomId = this.pickAutoDirectorRoom();
+            this.autoDirectorNextSwitch = now + 6200;
+        }
+        if (!this.autoDirectorRoomId) return;
+        const center = this.lastCenters?.get(this.autoDirectorRoomId);
+        if (!center) return;
+        this.panCameraToWorld(center, dtMs);
+    }
+
+    private panCameraToWorld(target: RoomCenter, dtMs: number): void {
+        const iso = isoProjectWorld(target);
+        const viewW = this.app.renderer.width;
+        const viewH = this.app.renderer.height;
+        const desiredX = viewW * 0.5 - iso.x * this.camZoom;
+        const desiredY = viewH * 0.45 - iso.y * this.camZoom;
+        const smooth = 1 - Math.exp(-dtMs / 260);
+        const nextX = lerp(this.camX, desiredX, smooth);
+        const nextY = lerp(this.camY, desiredY, smooth);
+        this.setCamera({ x: nextX, y: nextY, zoom: this.camZoom });
+    }
+
+    private getAgentWorldPos(agentId: number): RoomCenter | null {
+        const motion = this.agentMotion.get(agentId);
+        if (motion) return motion.current;
+        if (!this.lastState) return null;
+        const agent = this.lastState.agents.get(agentId);
+        if (!agent) return null;
+        const localExtents = computeLocalExtents(Array.from(this.lastState.agents.values()), this.roomBounds);
+        return resolveAgentWorldPos(agent, this.roomBounds, localExtents);
+    }
+
+    private pickAutoDirectorRoom(): number | undefined {
+        if (!this.lastState) return undefined;
+        const rooms = Array.from(this.lastState.rooms.values()).filter((r) =>
+            isRoomVisible(r.room_id, this.roomFloors, this.floorFilter)
+        );
+        if (rooms.length === 0) return undefined;
+        let best: { id: number; score: number } | null = null;
+        for (const r of rooms) {
+            const ping = this.roomPings.get(r.room_id) ?? 0;
+            const tension = tensionWeight(r);
+            const jitter = Math.sin(performance.now() * 0.001 + r.room_id) * 0.05;
+            const score = ping * 2.0 + tension + jitter;
+            if (!best || score > best.score) best = { id: r.room_id, score };
+        }
+        return best?.id;
     }
 
     private autoFitCameraIfNeeded(
@@ -959,6 +1141,30 @@ function roomColors(
 function agentColor(a: KvpAgent): number {
     const colors = [PALETTE.sea, PALETTE.coral, PALETTE.mustard, PALETTE.mint, PALETTE.lilac];
     return colors[a.role_code % colors.length];
+}
+
+function agentMoodColor(a: KvpAgent): number {
+    const palette = [PALETTE.mint, PALETTE.sea, PALETTE.mustard, PALETTE.coral, PALETTE.lilac];
+    const idx = Math.abs(a.action_state_code ?? 0) % palette.length;
+    return palette[idx];
+}
+
+function agentIsSpeaking(a: KvpAgent): boolean {
+    return (a.action_state_code ?? 0) % 5 === 2;
+}
+
+function tensionPulse(r: KvpRoom): number {
+    const tier = (r.tension_tier ?? "low").toLowerCase();
+    const intensity = tier === "high" ? 0.9 : tier === "medium" ? 0.5 : 0.2;
+    const t = performance.now() * 0.002 + r.room_id * 0.7;
+    return intensity * (0.35 + 0.35 * Math.sin(t));
+}
+
+function tensionWeight(r: KvpRoom): number {
+    const tier = (r.tension_tier ?? "low").toLowerCase();
+    if (tier === "high") return 1.0;
+    if (tier === "medium") return 0.6;
+    return 0.2;
 }
 
 function computeLocalExtents(
@@ -1260,6 +1466,12 @@ function isElevatorRoom(r: KvpRoom | undefined): boolean {
     return label.includes("elevator") || label.includes("lift");
 }
 
+function extractRoomIdFromEvent(ev: { payload?: Record<string, unknown> }): number | null {
+    const payload = ev.payload ?? {};
+    const roomId = toNumber(payload.room_id ?? payload.previous_room_id ?? payload.target_room_id);
+    return roomId;
+}
+
 function isoRect(bounds: RoomBounds): number[] {
     return pointsToArray(isoRectPoints(bounds, 0, 0));
 }
@@ -1343,6 +1555,12 @@ function mixColor(a: number, b: number, t: number): number {
     const ng = clamp(Math.round(ag + (bg - ag) * t), 0, 255);
     const nb = clamp(Math.round(ab + (bb - ab) * t), 0, 255);
     return (nr << 16) | (ng << 8) | nb;
+}
+
+function toNumber(val: unknown): number | null {
+    if (typeof val === "number" && Number.isFinite(val)) return val;
+    if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) return Number(val);
+    return null;
 }
 
 function clamp(v: number, lo: number, hi: number): number {

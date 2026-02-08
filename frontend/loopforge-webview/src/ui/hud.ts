@@ -1,5 +1,6 @@
 // src/ui/hud.ts
-import type { WorldStore, WorldState } from "../state/worldStore";
+import type { WorldStore, WorldState, KvpEvent, KvpRoom } from "../state/worldStore";
+import type { OverlayStore, OverlayState, UIOverlayEvent } from "../state/overlayStore";
 
 /**
  * HUD (WEBVIEW-0001)
@@ -16,7 +17,7 @@ import type { WorldStore, WorldState } from "../state/worldStore";
  * - No heavy UI framework
  */
 
-export function mountHud(store: WorldStore): HTMLElement {
+export function mountHud(store: WorldStore, overlayStore?: OverlayStore): HTMLElement {
     const root = document.createElement("div");
     root.style.position = "absolute";
     root.style.top = "10px";
@@ -63,10 +64,45 @@ export function mountHud(store: WorldStore): HTMLElement {
     panel.appendChild(header);
     panel.appendChild(body);
 
+    const feedPanel = document.createElement("div");
+    feedPanel.style.marginTop = "10px";
+    feedPanel.style.padding = "10px 12px";
+    feedPanel.style.borderRadius = "12px";
+    feedPanel.style.background = "rgba(247, 242, 233, 0.78)";
+    feedPanel.style.border = "2px solid rgba(31, 36, 43, 0.35)";
+    feedPanel.style.minWidth = "280px";
+    feedPanel.style.maxWidth = "320px";
+    feedPanel.style.whiteSpace = "pre";
+    feedPanel.style.lineHeight = "1.35";
+
+    const feedTitle = document.createElement("div");
+    feedTitle.textContent = "Live Feed";
+    feedTitle.style.fontWeight = "600";
+    feedTitle.style.marginBottom = "6px";
+
+    const feedBody = document.createElement("div");
+    feedBody.style.opacity = "0.9";
+
+    feedPanel.appendChild(feedTitle);
+    feedPanel.appendChild(feedBody);
+    root.appendChild(feedPanel);
+
+    let lastWorldState: WorldState | null = null;
+    let lastOverlayState: OverlayState | null = null;
+
     // Render loop: on store updates
     store.subscribe((s) => {
+        lastWorldState = s;
         renderHud({ dot, body }, s);
+        renderFeed({ feedBody }, s, lastOverlayState);
     });
+
+    if (overlayStore) {
+        overlayStore.subscribe((o) => {
+            lastOverlayState = o;
+            if (lastWorldState) renderFeed({ feedBody }, lastWorldState, o);
+        });
+    }
 
     return root;
 }
@@ -119,6 +155,36 @@ function renderHud(
     el.body.textContent = lines.join("\n");
 }
 
+function renderFeed(
+    el: { feedBody: HTMLDivElement },
+    s: WorldState,
+    overlay: OverlayState | null
+): void {
+    const lines: string[] = [];
+    const roomMap = s.rooms;
+
+    if (overlay && overlay.recentEvents.length > 0) {
+        const events = overlay.recentEvents.slice(-6);
+        for (const ev of events) {
+            lines.push(formatOverlayEvent(ev, roomMap));
+        }
+    } else {
+        const events = Array.from(s.events.values())
+            .sort((a, b) => b.tick - a.tick)
+            .slice(0, 6);
+        for (const ev of events) {
+            lines.push(formatWorldEvent(ev, roomMap));
+        }
+    }
+
+    if (lines.length === 0) {
+        el.feedBody.textContent = "No events yet";
+        return;
+    }
+
+    el.feedBody.textContent = lines.join("\n");
+}
+
 function padLeft(s: string, n: number): string {
     if (s.length >= n) return s;
     return " ".repeat(n - s.length) + s;
@@ -128,4 +194,33 @@ function truncateHash(h: string): string {
     if (!h) return "-";
     if (h.length <= 16) return h;
     return `${h.slice(0, 8)}…${h.slice(-8)}`;
+}
+
+function formatWorldEvent(ev: KvpEvent, rooms: Map<number, KvpRoom>): string {
+    const payload = (ev.payload ?? {}) as Record<string, unknown>;
+    const kind = String(payload.kind ?? ev.origin ?? "event");
+    const roomId = toNumber(payload.room_id ?? payload.previous_room_id);
+    const roomLabel = roomId !== null ? rooms.get(roomId)?.label : null;
+    const detail = roomLabel ? ` · ${roomLabel}` : "";
+    return `${padLeft(String(ev.tick), 6)} · ${kind}${detail}`;
+}
+
+function formatOverlayEvent(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>): string {
+    const data = ev.data ?? {};
+    const roomId = toNumber(data.room_id);
+    const agentId = toNumber(data.agent_id);
+    let detail = "";
+    if (roomId !== null) {
+        const label = rooms.get(roomId)?.label ?? `Room ${roomId}`;
+        detail = ` · ${label}`;
+    } else if (agentId !== null) {
+        detail = ` · Agent ${agentId}`;
+    }
+    return `${padLeft(String(ev.tick), 6)} · ${ev.kind}${detail}`;
+}
+
+function toNumber(val: unknown): number | null {
+    if (typeof val === "number" && Number.isFinite(val)) return val;
+    if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) return Number(val);
+    return null;
 }

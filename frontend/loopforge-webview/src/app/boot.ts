@@ -1,7 +1,9 @@
 // src/app/boot.ts
 import { WorldStore } from "../state/worldStore";
+import { OverlayStore } from "../state/overlayStore";
 import { KvpClient } from "../kvp/client";
 import { startOfflineRun } from "../kvp/offline";
+import type { OfflineRunHandle } from "../kvp/offline";
 import { PixiScene } from "../render/pixiScene";
 import { mountHud } from "../ui/hud";
 import { mountDevControls } from "../ui/devControls";
@@ -24,6 +26,7 @@ export type BootOpts = {
 
 export function boot(opts: BootOpts): void {
     const store = new WorldStore();
+    const overlayStore = new OverlayStore();
 
     // Mount container should be positioning context for HUD overlays.
     opts.mountEl.style.position = "relative";
@@ -34,7 +37,7 @@ export function boot(opts: BootOpts): void {
     const scene = new PixiScene(opts.mountEl);
 
     // HUD (DOM overlay)
-    const hud = mountHud(store);
+    const hud = mountHud(store, overlayStore);
     opts.mountEl.appendChild(hud);
 
     // --- DEBUG: prove canvas exists + has size (Pixi v8 async init) -----------
@@ -68,17 +71,30 @@ export function boot(opts: BootOpts): void {
 
     const env = (import.meta as any).env ?? {};
     const mode = (opts.mode ?? env.VITE_WEBVIEW_MODE ?? "offline") as BootMode;
-    let offlineHandle: { stop: () => void } | null = null;
+    let offlineHandle: OfflineRunHandle | null = null;
     let offlineBaseUrl = opts.offlineBaseUrl ?? env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min";
     let offlineSpeed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
 
     const devControls = mountDevControls({
         onFloorChange: (floor) => scene.setFloorFilter(floor),
+        onCameraModeChange: (mode) => scene.setCameraMode(mode),
+        onPlaybackToggle: (paused) => {
+            if (mode !== "offline") return;
+            if (!offlineHandle) return;
+            if (paused) offlineHandle.pause();
+            else offlineHandle.resume();
+        },
+        onSpeedChange: (speed) => {
+            offlineSpeed = speed;
+            if (mode !== "offline") return;
+            if (!offlineHandle) return;
+            offlineHandle.setSpeed(speed);
+        },
         onRestart: () => {
             if (mode !== "offline") return;
             if (offlineHandle) offlineHandle.stop();
             store.clearDesync();
-            startOfflineRun(store, { baseUrl: offlineBaseUrl, speed: offlineSpeed })
+            startOfflineRun(store, { baseUrl: offlineBaseUrl, speed: offlineSpeed, overlayStore })
                 .then((handle) => {
                     offlineHandle = handle;
                 })
@@ -97,7 +113,7 @@ export function boot(opts: BootOpts): void {
         store.setMode("offline");
         store.setConnected(true);
 
-        startOfflineRun(store, { baseUrl, speed })
+        startOfflineRun(store, { baseUrl, speed, overlayStore })
             .then((handle) => {
                 console.info("[webview] offline run ready:", baseUrl);
                 offlineHandle = handle;
