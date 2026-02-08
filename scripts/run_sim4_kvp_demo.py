@@ -23,7 +23,7 @@ from backend.sim4.ecs.query import QuerySignature
 from backend.sim4.ecs.systems.base import SystemContext
 from backend.sim4.ecs.components.embodiment import Transform, RoomPresence
 from backend.sim4.ecs.components.intent_action import ActionState
-from backend.sim4.world.context import WorldContext, RoomRecord, ItemRecord
+from backend.sim4.world.context import WorldContext, ItemRecord
 from backend.sim4.world.commands import WorldCommand, WorldCommandKind
 from backend.sim4.host.sim_runner import SimRunner, OfflineExportConfig
 from backend.sim4.host.kvp_defaults import (
@@ -31,6 +31,7 @@ from backend.sim4.host.kvp_defaults import (
     default_render_spec,
     tick_rate_hz_from_clock,
 )
+from backend.sim4.world.loopforge_layout import apply_loopforge_layout
 
 
 class DemoScheduler:
@@ -43,8 +44,8 @@ class DemoScheduler:
 
 class WanderSystem:
     base_positions: dict[int, tuple[float, float]] = {}
-    amp_x: float = 0.7
-    amp_y: float = 0.5
+    amp_x: float = 2.8
+    amp_y: float = 2.0
     freq: float = 0.03
     phase_stride: float = 0.7
 
@@ -86,33 +87,31 @@ class ActionPulseSystem:
                 )
 
 
-def build_world(num_rooms: int, num_agents: int) -> tuple[WorldContext, ECSWorld, list[int], list[int]]:
+def build_world(num_rooms: int, num_agents: int) -> tuple[WorldContext, ECSWorld, list[int], list[int], list[int]]:
     world_ctx = WorldContext()
-    room_ids = list(range(1, num_rooms + 1))
-    for rid in room_ids:
-        world_ctx.register_room(RoomRecord(id=rid, label=f"Room {rid}"))
+    apply_loopforge_layout(world_ctx)
+    room_ids = sorted(world_ctx.rooms_by_id.keys())
 
     # Doors (optional): 1..(num_rooms-1)
-    door_ids = list(range(1, max(1, num_rooms)))
+    door_ids = list(range(1, max(1, len(room_ids))))
     for did in door_ids:
         world_ctx.register_door(did, is_open=False)
 
     ecs_world = ECSWorld()
     agent_ids: list[int] = []
 
-    # Layout base positions in a small grid within ~10x5 bounds
-    cols = 4
-    spacing_x = 2.0
-    spacing_y = 2.0
-    base_x0 = 1.5
-    base_y0 = 1.0
-
     for i in range(num_agents):
         room_id = room_ids[i % len(room_ids)]
-        col = i % cols
-        row = i // cols
-        base_x = base_x0 + col * spacing_x
-        base_y = base_y0 + row * spacing_y
+        room = world_ctx.rooms_by_id[room_id]
+        bounds = room.bounds
+        center_x = (bounds.min_x + bounds.max_x) / 2.0
+        center_y = (bounds.min_y + bounds.max_y) / 2.0
+        span_x = max(1.0, (bounds.max_x - bounds.min_x) * 0.35)
+        span_y = max(1.0, (bounds.max_y - bounds.min_y) * 0.35)
+        jitter_x = ((i % 3) - 1) * span_x * 0.3
+        jitter_y = (((i + 1) % 3) - 1) * span_y * 0.3
+        base_x = center_x + jitter_x
+        base_y = center_y + jitter_y
 
         entity_id = ecs_world.create_entity(
             [
@@ -131,7 +130,7 @@ def build_world(num_rooms: int, num_agents: int) -> tuple[WorldContext, ECSWorld
         room_id = room_ids[i % len(room_ids)]
         world_ctx.register_item(ItemRecord(id=item_id, room_id=room_id))
 
-    return world_ctx, ecs_world, agent_ids, door_ids
+    return world_ctx, ecs_world, agent_ids, door_ids, room_ids
 
 
 def make_world_commands_provider(
@@ -203,7 +202,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    world_ctx, ecs_world, _agent_ids, door_ids = build_world(args.rooms, args.agents)
+    world_ctx, ecs_world, _agent_ids, door_ids, room_ids = build_world(args.rooms, args.agents)
     clock = TickClock(dt=1.0 / float(args.tick_rate))
 
     run_root = _REPO_ROOT / args.run_root
@@ -224,7 +223,7 @@ def main() -> None:
     scheduler = DemoScheduler({"B": [WanderSystem, ActionPulseSystem]})
 
     world_commands_provider = make_world_commands_provider(
-        room_ids=list(range(1, args.rooms + 1)),
+        room_ids=room_ids,
         door_ids=door_ids,
         spawn_every=10,
         item_lifespan=300,
