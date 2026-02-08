@@ -152,6 +152,11 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
   slider.value = "0";
   slider.style.width = "100%";
   slider.style.cursor = "pointer";
+  const datalistId = `keyframes-${Math.floor(Math.random() * 1e6)}`;
+  slider.setAttribute("list", datalistId);
+
+  const datalist = document.createElement("datalist");
+  datalist.id = datalistId;
 
   let dragging = false;
   slider.addEventListener("pointerdown", () => {
@@ -171,7 +176,37 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
 
   timelineRow.appendChild(tickLabel);
   timelineRow.appendChild(slider);
+  timelineRow.appendChild(datalist);
   panel.appendChild(timelineRow);
+
+  const highlightRow = document.createElement("div");
+  highlightRow.style.display = "flex";
+  highlightRow.style.gap = "6px";
+  highlightRow.style.alignItems = "center";
+
+  const highlightLabel = document.createElement("div");
+  highlightLabel.textContent = "Highlights";
+  highlightLabel.style.fontSize = "12px";
+  highlightLabel.style.minWidth = "72px";
+  highlightRow.appendChild(highlightLabel);
+
+  const highlightSelect = document.createElement("select");
+  highlightSelect.style.flex = "1";
+  highlightSelect.style.padding = "4px 6px";
+  highlightSelect.style.borderRadius = "8px";
+  highlightSelect.style.border = "2px solid rgba(31, 36, 43, 0.35)";
+  highlightSelect.style.background = "rgba(247, 242, 233, 0.9)";
+  highlightSelect.style.fontSize = "11px";
+
+  const highlightButton = makeMiniButton("Jump");
+  highlightButton.addEventListener("click", () => {
+    const tick = Number(highlightSelect.value);
+    if (Number.isFinite(tick)) opts.onSeek?.(tick);
+  });
+
+  highlightRow.appendChild(highlightSelect);
+  highlightRow.appendChild(highlightButton);
+  panel.appendChild(highlightRow);
 
   const speedRow = document.createElement("div");
   speedRow.style.display = "flex";
@@ -222,6 +257,8 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
     opts.viewerStore.subscribe((v) => {
       slider.min = String(v.playbackStartTick);
       slider.max = String(v.playbackEndTick);
+      updateKeyframeMarks(datalist, v.keyframeTicks);
+      updateHighlightOptions(highlightSelect, v.highlights);
     });
   }
 
@@ -254,4 +291,43 @@ function makeMiniButton(label: string): HTMLButtonElement {
   });
   observer.observe(btn, { attributes: true, attributeFilter: ["data-active"] });
   return btn;
+}
+
+function updateKeyframeMarks(list: HTMLDataListElement, ticks: number[]): void {
+  while (list.firstChild) list.removeChild(list.firstChild);
+  const cleaned = compressKeyframes(ticks, 60);
+  cleaned.forEach((t) => {
+    const opt = document.createElement("option");
+    opt.value = String(t);
+    list.appendChild(opt);
+  });
+}
+
+function compressKeyframes(ticks: number[], maxCount: number): number[] {
+  const unique = Array.from(new Set(ticks.filter((t) => Number.isFinite(t)))).sort((a, b) => a - b);
+  if (unique.length <= maxCount) return unique;
+  const step = Math.ceil(unique.length / maxCount);
+  return unique.filter((_, idx) => idx % step === 0 || idx === unique.length - 1);
+}
+
+function updateHighlightOptions(
+  select: HTMLSelectElement,
+  highlights: Array<{ tick: number; label: string }>
+): void {
+  const current = select.value;
+  while (select.firstChild) select.removeChild(select.firstChild);
+  if (highlights.length === 0) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No highlights yet";
+    select.appendChild(opt);
+    return;
+  }
+  highlights.forEach((h) => {
+    const opt = document.createElement("option");
+    opt.value = String(h.tick);
+    opt.textContent = `${h.tick} · ${h.label}`;
+    select.appendChild(opt);
+  });
+  if (current) select.value = current;
 }

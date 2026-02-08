@@ -3,6 +3,8 @@
 export type ViewerState = {
     playbackStartTick: number;
     playbackEndTick: number;
+    keyframeTicks: number[];
+    highlights: Array<{ tick: number; label: string }>;
 };
 
 export type ViewerStoreSubscriber = (s: ViewerState) => void;
@@ -15,6 +17,8 @@ export class ViewerStore {
         this.state = {
             playbackStartTick: 0,
             playbackEndTick: 0,
+            keyframeTicks: [],
+            highlights: [],
         };
     }
 
@@ -36,8 +40,25 @@ export class ViewerStore {
         this.emit();
     }
 
+    setKeyframes(ticks: number[]): void {
+        const filtered = ticks
+            .filter((t) => Number.isFinite(t))
+            .map((t) => Math.floor(t))
+            .filter((t) => t >= 0);
+        this.state = { ...this.state, keyframeTicks: filtered };
+        this.emit();
+    }
+
+    setHighlights(entries: Array<{ tick: number; label: string }>): void {
+        const filtered = entries
+            .filter((h) => Number.isFinite(h.tick))
+            .map((h) => ({ tick: Math.floor(h.tick), label: h.label ?? `Tick ${h.tick}` }))
+            .filter((h) => h.tick >= 0);
+        this.state = { ...this.state, highlights: filtered };
+        this.emit();
+    }
+
     private emit(): void {
         for (const cb of this.subs) cb(this.state);
     }
 }
-

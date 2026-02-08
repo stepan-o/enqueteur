@@ -58,7 +58,8 @@ export async function startOfflineRun(store: WorldStore, opts: OfflineRunOptions
     const viewerStore = opts.viewerStore;
 
     if (overlayStore && manifest.overlays) {
-        await loadOverlayStreams(baseUrl, manifest.overlays, overlayStore);
+        const highlights = await loadOverlayStreams(baseUrl, manifest.overlays, overlayStore);
+        if (viewerStore) viewerStore.setHighlights(highlights);
     }
 
     store.setRunAnchors(manifest.run_anchors);
@@ -83,7 +84,10 @@ export async function startOfflineRun(store: WorldStore, opts: OfflineRunOptions
 
     const startTick = opts.startTick ?? manifest.available_start_tick ?? snapshotTicks[0];
     const endTick = opts.endTick ?? manifest.available_end_tick ?? snapshotTicks[snapshotTicks.length - 1];
-    if (viewerStore) viewerStore.setPlaybackWindow(startTick, endTick);
+    if (viewerStore) {
+        viewerStore.setPlaybackWindow(startTick, endTick);
+        viewerStore.setKeyframes(computeKeyframes(manifest, startTick, endTick));
+    }
 
     const snapshotTick = findLatestSnapshot(snapshotTicks, startTick);
     const snapPtr = manifest.snapshots[String(snapshotTick)];
@@ -241,8 +245,9 @@ async function loadOverlayStreams(
     baseUrl: string,
     overlays: Record<string, { rel_path: string; format: string; notes?: string | null }>,
     store: OverlayStore
-): Promise<void> {
+): Promise<Array<{ tick: number; label: string }>> {
     const entries = Object.values(overlays);
+    const highlightMap = new Map<number, string>();
     for (const entry of entries) {
         if (!entry?.rel_path) continue;
         const url = `${baseUrl}/${entry.rel_path}`;
@@ -265,6 +270,11 @@ async function loadOverlayStreams(
                         end_tick: payload.end_tick ?? 0,
                         events,
                     });
+                    for (const ev of events) {
+                        if (!highlightMap.has(ev.tick)) {
+                            highlightMap.set(ev.tick, formatHighlightLabel(ev));
+                        }
+                    }
                 } else if (msgType === "X_PSYCHO_FRAME" && payload) {
                     store.ingestPsychoFrame(payload as PsychoFrame);
                 }
@@ -273,6 +283,11 @@ async function loadOverlayStreams(
             console.warn("[webview] overlay load failed", url, err);
         }
     }
+    const highlights = Array.from(highlightMap.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([tick, label]) => ({ tick, label }))
+        .slice(0, 40);
+    return highlights;
 }
 
 async function loadPayload<T>(baseUrl: string, relPath: string): Promise<T> {
@@ -294,4 +309,28 @@ async function fetchText(url: string): Promise<string> {
         throw new Error(`Fetch failed (${res.status}) for ${url}`);
     }
     return res.text();
+}
+
+function computeKeyframes(manifest: OfflineManifest, startTick: number, endTick: number): number[] {
+    if (Array.isArray(manifest.keyframe_ticks) && manifest.keyframe_ticks.length > 0) {
+        return manifest.keyframe_ticks
+            .map((t) => Math.floor(Number(t)))
+            .filter((t) => Number.isFinite(t) && t >= 0);
+    }
+    const interval = Number(manifest.keyframe_interval ?? 0);
+    if (!Number.isFinite(interval) || interval <= 0) {
+        return [startTick, endTick].filter((t, i, a) => a.indexOf(t) === i);
+    }
+    const ticks: number[] = [];
+    for (let t = startTick; t <= endTick; t += interval) ticks.push(t);
+    return ticks;
+}
+
+function formatHighlightLabel(ev: UIOverlayEvent): string {
+    const kind = ev.kind ?? "event";
+    const roomId = (ev.data as any)?.room_id;
+    const agentId = (ev.data as any)?.agent_id;
+    if (roomId !== undefined && roomId !== null) return `${kind} · room ${roomId}`;
+    if (agentId !== undefined && agentId !== null) return `${kind} · agent ${agentId}`;
+    return kind;
 }
