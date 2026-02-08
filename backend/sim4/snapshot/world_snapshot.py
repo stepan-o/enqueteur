@@ -49,6 +49,14 @@ class TransformSnapshot:
 
 
 @dataclass(frozen=True)
+class RoomBoundsSnapshot:
+    min_x: float
+    min_y: float
+    max_x: float
+    max_y: float
+
+
+@dataclass(frozen=True)
 class RoomSnapshot:
     room_id: int
     label: str
@@ -58,6 +66,9 @@ class RoomSnapshot:
     neighbors: list[int]
     tension_tier: str | None
     highlight: bool | None
+    bounds: RoomBoundsSnapshot | None = None
+    zone: str | None = None
+    level: int | None = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +128,7 @@ class WorldSnapshot:
 __all__ = [
     "WorldSnapshot",
     "RoomSnapshot",
+    "RoomBoundsSnapshot",
     "AgentSnapshot",
     "ItemSnapshot",
     "AgentSocialSnapshot",

@@ -23,6 +23,7 @@ Layer purity: This package does not import ecs/ or runtime/ (SOP-100).
 from .context import (
     WorldContext,
     RoomRecord,
+    RoomBounds,
     ItemRecord,
     RoomID,
     AgentID,
@@ -41,11 +42,13 @@ from .commands import (
 from .events import WorldEvent, WorldEventKind
 from .apply_world_commands import apply_world_commands
 from .views import WorldViews, RoomView
+from .loopforge_layout import apply_loopforge_layout, WORLD_BOUNDS, LoopforgeRoomId, RoomKind
 
 __all__ = [
     # IDs & records / context
     "WorldContext",
     "RoomRecord",
+    "RoomBounds",
     "ItemRecord",
     "RoomID",
     "AgentID",
@@ -67,4 +70,9 @@ __all__ = [
     # Views
     "WorldViews",
     "RoomView",
+    # Loopforge layout
+    "apply_loopforge_layout",
+    "WORLD_BOUNDS",
+    "LoopforgeRoomId",
+    "RoomKind",
 ]

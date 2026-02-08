@@ -20,6 +20,7 @@ from typing import Dict, List, Tuple
 from backend.sim4.snapshot.world_snapshot import (
     WorldSnapshot,
     RoomSnapshot,
+    RoomBoundsSnapshot,
     AgentSnapshot,
     ItemSnapshot,
     TransformSnapshot,
@@ -43,16 +44,27 @@ def _build_rooms(world_ctx: WorldContext) -> List[RoomSnapshot]:
         occupants = sorted(list(views.get_room_agents(rid)))
         items = sorted(list(views.get_room_items(rid)))
         neighbors = sorted(list(views.iter_room_neighbors(rid)))
+        bounds = None
+        if rec.bounds is not None:
+            bounds = RoomBoundsSnapshot(
+                min_x=float(rec.bounds.min_x),
+                min_y=float(rec.bounds.min_y),
+                max_x=float(rec.bounds.max_x),
+                max_y=float(rec.bounds.max_y),
+            )
         rooms.append(
             RoomSnapshot(
                 room_id=rid,
                 label=rec.label or "",
-                kind_code=0,
+                kind_code=int(rec.kind_code),
                 occupants=occupants,
                 items=items,
                 neighbors=neighbors,
-                tension_tier="low",
-                highlight=False,
+                tension_tier=rec.tension_tier if rec.tension_tier is not None else "low",
+                highlight=rec.highlight if rec.highlight is not None else False,
+                bounds=bounds,
+                zone=rec.zone,
+                level=int(rec.level),
             )
         )
     return rooms

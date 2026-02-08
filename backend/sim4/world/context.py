@@ -28,17 +28,47 @@ DoorID = int
 
 
 @dataclass(frozen=True)
+class RoomBounds:
+    """Axis-aligned bounds for a room footprint in world units."""
+
+    min_x: float
+    min_y: float
+    max_x: float
+    max_y: float
+
+    def __post_init__(self) -> None:
+        if not (self.max_x > self.min_x and self.max_y > self.min_y):
+            raise ValueError("RoomBounds must satisfy max_x > min_x and max_y > min_y")
+
+
+@dataclass(frozen=True)
 class RoomRecord:
     """
-    Lightweight, ID-centric room descriptor.
+    Lightweight, ID-centric room descriptor with optional spatial metadata.
 
     Notes:
-    - Keep minimal fields for Sub‑Sprint 5.1; richer metadata can be added later
-      per SOT-SIM4-WORLD-ENGINE (e.g., geometry refs, neighbor links).
+    - Keep fields deterministic and read-only; world views may expose them.
+    - Richer metadata can be added later per SOT-SIM4-WORLD-ENGINE.
     """
 
     id: RoomID
     label: Optional[str] = None
+    kind_code: int = 0
+    bounds: RoomBounds | None = None
+    zone: Optional[str] = None
+    level: int = 0
+    neighbors: tuple[RoomID, ...] = ()
+    tension_tier: Optional[str] = None
+    highlight: Optional[bool] = None
+
+    def __post_init__(self) -> None:
+        # Normalize neighbor list to a sorted, unique tuple for determinism.
+        if self.neighbors:
+            uniq = sorted(set(int(n) for n in self.neighbors))
+            object.__setattr__(self, "neighbors", tuple(uniq))
+        # Ensure level is non-negative for simple multi-level layout.
+        if self.level < 0:
+            raise ValueError("RoomRecord.level must be >= 0")
 
 
 @dataclass

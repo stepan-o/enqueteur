@@ -28,6 +28,7 @@ from backend.sim4.runtime.clock import TickClock
 
 DEFAULT_ENGINE_NAME = "Sim4"
 DEFAULT_ENGINE_VERSION = "1.0.0"
+DEFAULT_WORLD_BOUNDS = Bounds(min_x=0.0, min_y=0.0, max_x=500.0, max_y=500.0)
 
 
 def tick_rate_hz_from_clock(clock: TickClock) -> int:
@@ -90,7 +91,7 @@ def default_render_spec(
 ) -> RenderSpec:
     """Build a RenderSpec with defaults aligned to tests and KVP-0001."""
     if bounds is None:
-        bounds = Bounds(min_x=0.0, min_y=0.0, max_x=10.0, max_y=5.0)
+        bounds = DEFAULT_WORLD_BOUNDS
 
     if draw_order_rooms is None:
         draw_order_rooms = ["floors", "walls"]
@@ -134,6 +135,7 @@ def default_render_spec(
 __all__ = [
     "DEFAULT_ENGINE_NAME",
     "DEFAULT_ENGINE_VERSION",
+    "DEFAULT_WORLD_BOUNDS",
     "tick_rate_hz_from_clock",
     "default_run_anchors",
     "default_render_spec",

@@ -98,9 +98,9 @@ class WorldViews:
     def iter_room_neighbors(self, room_id: RoomID) -> Iterable[RoomID]:
         """Iterate neighbor rooms for navigation/visibility queries.
 
-        The navgraph/topology is not implemented in 5.4; return an empty tuple
-        to keep behavior deterministic and safe.
-        TODO[NAVGRAPH]: implement when world layout/graph is introduced.
+        Returns the room's declared neighbor IDs (if any), sorted and immutable.
         """
-
-        return ()
+        rec = self._world_ctx.get_room(room_id)
+        if rec is None or not rec.neighbors:
+            return ()
+        return rec.neighbors
