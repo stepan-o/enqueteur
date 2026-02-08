@@ -1,14 +1,19 @@
 // src/ui/devControls.ts
+import type { WorldStore } from "../state/worldStore";
+import type { ViewerStore } from "../state/viewerStore";
 
 type FloorFilter = "all" | 0 | 1;
 type CameraMode = "free" | "auto";
 
 type DevControlsOpts = {
+  store?: WorldStore;
+  viewerStore?: ViewerStore;
   onFloorChange: (floor: FloorFilter) => void;
   onRestart: () => void;
   onCameraModeChange?: (mode: CameraMode) => void;
   onPlaybackToggle?: (paused: boolean) => void;
   onSpeedChange?: (speed: number) => void;
+  onSeek?: (tick: number) => void;
 };
 
 export function mountDevControls(opts: DevControlsOpts): HTMLElement {
@@ -129,6 +134,45 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
 
   panel.appendChild(playbackRow);
 
+  const timelineRow = document.createElement("div");
+  timelineRow.style.display = "flex";
+  timelineRow.style.flexDirection = "column";
+  timelineRow.style.gap = "6px";
+
+  const tickLabel = document.createElement("div");
+  tickLabel.textContent = "Tick 0";
+  tickLabel.style.fontSize = "11px";
+  tickLabel.style.opacity = "0.85";
+
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.min = "0";
+  slider.max = "0";
+  slider.step = "1";
+  slider.value = "0";
+  slider.style.width = "100%";
+  slider.style.cursor = "pointer";
+
+  let dragging = false;
+  slider.addEventListener("pointerdown", () => {
+    dragging = true;
+  });
+  slider.addEventListener("pointerup", () => {
+    dragging = false;
+    opts.onSeek?.(Number(slider.value));
+  });
+  slider.addEventListener("change", () => {
+    if (!dragging) opts.onSeek?.(Number(slider.value));
+  });
+  slider.addEventListener("input", () => {
+    const tick = Number(slider.value);
+    tickLabel.textContent = `Tick ${tick}`;
+  });
+
+  timelineRow.appendChild(tickLabel);
+  timelineRow.appendChild(slider);
+  panel.appendChild(timelineRow);
+
   const speedRow = document.createElement("div");
   speedRow.style.display = "flex";
   speedRow.style.gap = "6px";
@@ -158,12 +202,29 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
   panel.appendChild(speedRow);
 
   const placeholder = document.createElement("div");
-  placeholder.textContent = "Scrub + timeline controls coming next";
+  placeholder.textContent = "Scrub + timeline controls";
   placeholder.style.fontSize = "11px";
   placeholder.style.opacity = "0.7";
   panel.appendChild(placeholder);
 
   root.appendChild(panel);
+
+  if (opts.store) {
+    opts.store.subscribe((s) => {
+      if (!dragging) {
+        slider.value = String(s.tick);
+        tickLabel.textContent = `Tick ${s.tick}`;
+      }
+    });
+  }
+
+  if (opts.viewerStore) {
+    opts.viewerStore.subscribe((v) => {
+      slider.min = String(v.playbackStartTick);
+      slider.max = String(v.playbackEndTick);
+    });
+  }
+
   return root;
 }
 

@@ -8,6 +8,7 @@ import type {
     WorldStore,
 } from "../state/worldStore";
 import type { OverlayStore, UIOverlayEvent, PsychoFrame } from "../state/overlayStore";
+import type { ViewerStore } from "../state/viewerStore";
 
 type RecordPointer = {
     rel_path: string;
@@ -38,6 +39,7 @@ export type OfflineRunOptions = {
     tickRateHz?: number;
     speed?: number;
     overlayStore?: OverlayStore;
+    viewerStore?: ViewerStore;
 };
 
 export type OfflineRunHandle = {
@@ -46,12 +48,14 @@ export type OfflineRunHandle = {
     resume: () => void;
     setSpeed: (speed: number) => void;
     isPaused: () => boolean;
+    seekToTick: (tick: number) => Promise<void>;
 };
 
 export async function startOfflineRun(store: WorldStore, opts: OfflineRunOptions): Promise<OfflineRunHandle> {
     const baseUrl = opts.baseUrl.replace(/\/+$/, "");
     const manifest = await fetchJson<OfflineManifest>(`${baseUrl}/manifest.kvp.json`);
     const overlayStore = opts.overlayStore;
+    const viewerStore = opts.viewerStore;
 
     if (overlayStore && manifest.overlays) {
         await loadOverlayStreams(baseUrl, manifest.overlays, overlayStore);
@@ -79,6 +83,7 @@ export async function startOfflineRun(store: WorldStore, opts: OfflineRunOptions
 
     const startTick = opts.startTick ?? manifest.available_start_tick ?? snapshotTicks[0];
     const endTick = opts.endTick ?? manifest.available_end_tick ?? snapshotTicks[snapshotTicks.length - 1];
+    if (viewerStore) viewerStore.setPlaybackWindow(startTick, endTick);
 
     const snapshotTick = findLatestSnapshot(snapshotTicks, startTick);
     const snapPtr = manifest.snapshots[String(snapshotTick)];
@@ -103,13 +108,14 @@ export async function startOfflineRun(store: WorldStore, opts: OfflineRunOptions
     let stopped = false;
     let inFlight = false;
     let paused = false;
+    let seeking = false;
     let timer: number | null = null;
 
     const startTimer = () => {
         if (timer !== null) window.clearInterval(timer);
         if (paused || stopped) return;
         timer = window.setInterval(() => {
-            if (stopped || inFlight || paused) return;
+            if (stopped || inFlight || paused || seeking) return;
             inFlight = true;
             void stepOnce()
                 .catch((err: unknown) => {
@@ -164,6 +170,39 @@ export async function startOfflineRun(store: WorldStore, opts: OfflineRunOptions
             startTimer();
         },
         isPaused: () => paused,
+        seekToTick: async (targetTick: number) => {
+            if (!Number.isFinite(targetTick)) return;
+            const clamped = Math.max(startTick, Math.min(endTick, Math.floor(targetTick)));
+            const wasPaused = paused;
+            paused = true;
+            seeking = true;
+            if (timer !== null) window.clearInterval(timer);
+
+            while (inFlight) {
+                await new Promise((r) => setTimeout(r, 5));
+            }
+
+            const snapTick = findLatestSnapshot(snapshotTicks, clamped);
+            const snapPtr = manifest.snapshots[String(snapTick)];
+            if (!snapPtr) {
+                seeking = false;
+                return;
+            }
+            const snapPayload = await loadPayload<FullSnapshotPayload>(baseUrl, snapPtr.rel_path);
+            store.applySnapshot(snapPayload);
+            if (overlayStore) overlayStore.setTick(snapPayload.tick);
+            currentTick = snapPayload.tick;
+
+            if (currentTick < clamped) {
+                currentTick = await fastForward(store, baseUrl, manifest, currentTick, clamped, overlayStore);
+            }
+
+            seeking = false;
+            if (!wasPaused) {
+                paused = false;
+                startTimer();
+            }
+        },
     };
 }
 

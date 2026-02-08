@@ -10,6 +10,7 @@ Default profile: ~1 minute at 30 Hz, written to:
 from pathlib import Path
 import argparse
 import math
+import random
 import sys
 
 # Ensure repository root is on sys.path so `backend` package imports work when run directly
@@ -133,6 +134,54 @@ def build_world(num_rooms: int, num_agents: int) -> tuple[WorldContext, ECSWorld
     return world_ctx, ecs_world, agent_ids, door_ids, room_ids
 
 
+def build_ui_events(num_ticks: int, room_ids: list[int], agent_ids: list[int], seed: int) -> list[dict]:
+    rng = random.Random(seed)
+    events: list[dict] = []
+    event_id = 0
+    for tick in range(1, num_ticks + 1, 45):
+        room_id = room_ids[event_id % len(room_ids)]
+        events.append(
+            {
+                "tick": tick,
+                "event_id": f"room_pulse_{event_id}",
+                "kind": "room_pulse",
+                "data": {"room_id": room_id},
+            }
+        )
+        if agent_ids:
+            agent_id = agent_ids[event_id % len(agent_ids)]
+            jitter = rng.randint(0, 6)
+            events.append(
+                {
+                    "tick": min(num_ticks, tick + jitter),
+                    "event_id": f"agent_notice_{event_id}",
+                    "kind": "agent_notice",
+                    "data": {"agent_id": agent_id, "room_id": room_id},
+                }
+            )
+        event_id += 1
+    return events
+
+
+def build_psycho_frames(num_ticks: int, agent_ids: list[int], seed: int) -> list[dict]:
+    rng = random.Random(seed + 99)
+    frames: list[dict] = []
+    for tick in range(1, num_ticks + 1, 20):
+        nodes = []
+        for aid in agent_ids:
+            nodes.append(
+                {
+                    "id": aid,
+                    "data": {
+                        "mood": round(rng.random(), 3),
+                        "energy": round(rng.random(), 3),
+                    },
+                }
+            )
+        frames.append({"tick": tick, "nodes": nodes, "edges": []})
+    return frames
+
+
 def make_world_commands_provider(
     room_ids: list[int],
     door_ids: list[int],
@@ -202,15 +251,20 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    world_ctx, ecs_world, _agent_ids, door_ids, room_ids = build_world(args.rooms, args.agents)
+    world_ctx, ecs_world, agent_ids, door_ids, room_ids = build_world(args.rooms, args.agents)
     clock = TickClock(dt=1.0 / float(args.tick_rate))
 
     run_root = _REPO_ROOT / args.run_root
+    ui_events = build_ui_events(int(args.ticks), room_ids, agent_ids, int(args.seed))
+    psycho_frames = build_psycho_frames(int(args.ticks), agent_ids, int(args.seed))
+
     offline = OfflineExportConfig(
         run_root=run_root,
         channels=["WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"],
         keyframe_interval=int(args.tick_rate * 2),
         validate=True,
+        ui_events=ui_events,
+        psycho_frames=psycho_frames,
     )
 
     run_anchors = default_run_anchors(

@@ -1,6 +1,7 @@
 // src/app/boot.ts
 import { WorldStore } from "../state/worldStore";
 import { OverlayStore } from "../state/overlayStore";
+import { ViewerStore } from "../state/viewerStore";
 import { KvpClient } from "../kvp/client";
 import { startOfflineRun } from "../kvp/offline";
 import type { OfflineRunHandle } from "../kvp/offline";
@@ -27,6 +28,7 @@ export type BootOpts = {
 export function boot(opts: BootOpts): void {
     const store = new WorldStore();
     const overlayStore = new OverlayStore();
+    const viewerStore = new ViewerStore();
 
     // Mount container should be positioning context for HUD overlays.
     opts.mountEl.style.position = "relative";
@@ -76,6 +78,8 @@ export function boot(opts: BootOpts): void {
     let offlineSpeed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
 
     const devControls = mountDevControls({
+        store,
+        viewerStore,
         onFloorChange: (floor) => scene.setFloorFilter(floor),
         onCameraModeChange: (mode) => scene.setCameraMode(mode),
         onPlaybackToggle: (paused) => {
@@ -90,11 +94,16 @@ export function boot(opts: BootOpts): void {
             if (!offlineHandle) return;
             offlineHandle.setSpeed(speed);
         },
+        onSeek: (tick) => {
+            if (mode !== "offline") return;
+            if (!offlineHandle) return;
+            void offlineHandle.seekToTick(tick);
+        },
         onRestart: () => {
             if (mode !== "offline") return;
             if (offlineHandle) offlineHandle.stop();
             store.clearDesync();
-            startOfflineRun(store, { baseUrl: offlineBaseUrl, speed: offlineSpeed, overlayStore })
+            startOfflineRun(store, { baseUrl: offlineBaseUrl, speed: offlineSpeed, overlayStore, viewerStore })
                 .then((handle) => {
                     offlineHandle = handle;
                 })
@@ -113,7 +122,7 @@ export function boot(opts: BootOpts): void {
         store.setMode("offline");
         store.setConnected(true);
 
-        startOfflineRun(store, { baseUrl, speed, overlayStore })
+        startOfflineRun(store, { baseUrl, speed, overlayStore, viewerStore })
             .then((handle) => {
                 console.info("[webview] offline run ready:", baseUrl);
                 offlineHandle = handle;
