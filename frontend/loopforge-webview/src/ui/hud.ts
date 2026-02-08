@@ -23,16 +23,16 @@ export function mountHud(store: WorldStore): HTMLElement {
     root.style.right = "10px";
     root.style.zIndex = "10";
     root.style.pointerEvents = "none"; // HUD is informational; interactive controls come later.
-    root.style.fontFamily = "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    root.style.fontFamily = "Chivo Mono, JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
     root.style.fontSize = "12px";
-    root.style.color = "rgba(255,255,255,0.92)";
+    root.style.color = "rgba(31, 36, 43, 0.95)";
 
     const panel = document.createElement("div");
     panel.style.padding = "10px 12px";
-    panel.style.borderRadius = "10px";
-    panel.style.background = "rgba(0,0,0,0.55)";
-    panel.style.backdropFilter = "blur(6px)";
-    panel.style.border = "1px solid rgba(255,255,255,0.12)";
+    panel.style.borderRadius = "12px";
+    panel.style.background = "rgba(247, 242, 233, 0.85)";
+    panel.style.backdropFilter = "blur(8px)";
+    panel.style.border = "2px solid rgba(31, 36, 43, 0.65)";
     panel.style.minWidth = "280px";
     panel.style.whiteSpace = "pre";
     panel.style.lineHeight = "1.35";
@@ -81,9 +81,9 @@ function renderHud(
     const desynced = s.desynced;
 
     // Dot color (small, simple signal)
-    if (!connected) el.dot.style.background = "rgba(255,255,255,0.25)";
-    else if (desynced) el.dot.style.background = "rgba(255,255,255,0.55)";
-    else el.dot.style.background = "rgba(255,255,255,0.9)";
+    if (!connected) el.dot.style.background = "rgba(59, 75, 90, 0.35)";
+    else if (desynced) el.dot.style.background = "rgba(242, 160, 129, 0.9)";
+    else el.dot.style.background = "rgba(90, 169, 178, 0.95)";
 
     const lines: string[] = [];
 

@@ -4,6 +4,7 @@ import { KvpClient } from "../kvp/client";
 import { startOfflineRun } from "../kvp/offline";
 import { PixiScene } from "../render/pixiScene";
 import { mountHud } from "../ui/hud";
+import { mountDevControls } from "../ui/devControls";
 import { injectMockSnapshot } from "../debug/mockKernel";
 
 /**
@@ -67,17 +68,39 @@ export function boot(opts: BootOpts): void {
 
     const env = (import.meta as any).env ?? {};
     const mode = (opts.mode ?? env.VITE_WEBVIEW_MODE ?? "offline") as BootMode;
+    let offlineHandle: { stop: () => void } | null = null;
+    let offlineBaseUrl = opts.offlineBaseUrl ?? env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min";
+    let offlineSpeed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
+
+    const devControls = mountDevControls({
+        onFloorChange: (floor) => scene.setFloorFilter(floor),
+        onRestart: () => {
+            if (mode !== "offline") return;
+            if (offlineHandle) offlineHandle.stop();
+            store.clearDesync();
+            startOfflineRun(store, { baseUrl: offlineBaseUrl, speed: offlineSpeed })
+                .then((handle) => {
+                    offlineHandle = handle;
+                })
+                .catch((err: unknown) => {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    store.markDesync(`Offline restart failed: ${msg}`);
+                });
+        },
+    });
+    opts.mountEl.appendChild(devControls);
 
     if (mode === "offline") {
-        const baseUrl = opts.offlineBaseUrl ?? env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min";
-        const speed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
+        const baseUrl = offlineBaseUrl;
+        const speed = offlineSpeed;
 
         store.setMode("offline");
         store.setConnected(true);
 
         startOfflineRun(store, { baseUrl, speed })
-            .then(() => {
+            .then((handle) => {
                 console.info("[webview] offline run ready:", baseUrl);
+                offlineHandle = handle;
             })
             .catch((err: unknown) => {
                 const msg = err instanceof Error ? err.message : String(err);

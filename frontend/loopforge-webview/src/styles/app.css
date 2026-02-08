@@ -1,19 +1,19 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;700&family=Chivo+Mono:wght@400;600&display=swap");
 
 :root {
-  --bg-0: #07080c;
-  --bg-1: #0c1018;
-  --bg-2: #101a2a;
-  --neon-cyan: #4de1ff;
-  --neon-magenta: #ff4fd8;
-  --neon-violet: #7a5cff;
-  --neon-amber: #ffb84d;
-  --ink: #0b0b12;
+  --bg-0: #f7f2e9;
+  --bg-1: #d8efe9;
+  --bg-2: #c1e3de;
+  --accent-teal: #5aa9b2;
+  --accent-coral: #f2a081;
+  --accent-mustard: #f0c35a;
+  --accent-mint: #9dd7c7;
+  --ink: #1f242b;
 
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Bricolage Grotesque", "Space Grotesk", sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -31,12 +31,12 @@ html, body {
 body {
   position: relative;
   background-image:
-    radial-gradient(60% 80% at 20% 10%, rgba(77, 225, 255, 0.18), transparent 60%),
-    radial-gradient(50% 70% at 80% 20%, rgba(255, 79, 216, 0.14), transparent 65%),
-    radial-gradient(70% 80% at 40% 90%, rgba(122, 92, 255, 0.18), transparent 60%),
-    linear-gradient(140deg, var(--bg-0), var(--bg-1), var(--bg-2));
+    radial-gradient(60% 80% at 10% 15%, rgba(90, 169, 178, 0.3), transparent 60%),
+    radial-gradient(60% 70% at 85% 20%, rgba(242, 160, 129, 0.28), transparent 60%),
+    radial-gradient(70% 80% at 60% 90%, rgba(157, 215, 199, 0.35), transparent 60%),
+    linear-gradient(145deg, var(--bg-0), var(--bg-1), var(--bg-2));
   background-size: 140% 140%;
-  animation: aurora 18s ease-in-out infinite;
+  animation: aurora 22s ease-in-out infinite;
 }
 
 body::before {
@@ -44,9 +44,9 @@ body::before {
   position: absolute;
   inset: 0;
   background-image:
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02) 1px, transparent 1px, transparent 3px),
-    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.06), transparent 70%);
-  opacity: 0.35;
+    repeating-linear-gradient(35deg, rgba(31, 36, 43, 0.04), rgba(31, 36, 43, 0.04) 1px, transparent 1px, transparent 4px),
+    radial-gradient(circle at 50% 40%, rgba(31, 36, 43, 0.08), transparent 70%);
+  opacity: 0.3;
   pointer-events: none;
   mix-blend-mode: screen;
 }
@@ -58,33 +58,33 @@ body::before {
 }
 
 a {
-  color: var(--neon-cyan);
+  color: var(--accent-teal);
   text-decoration: none;
 }
 a:hover {
-  color: var(--neon-magenta);
+  color: var(--accent-coral);
 }
 
 button {
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 2px solid rgba(31, 36, 43, 0.7);
   padding: 0.6em 1.2em;
   font-size: 0.95em;
   font-weight: 600;
-  font-family: "Space Grotesk", sans-serif;
-  background-color: rgba(12, 16, 24, 0.6);
-  color: rgba(255, 255, 255, 0.9);
+  font-family: "Bricolage Grotesque", "Space Grotesk", sans-serif;
+  background-color: rgba(247, 242, 233, 0.85);
+  color: var(--ink);
   cursor: pointer;
   transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
 }
 button:hover {
-  border-color: var(--neon-magenta);
-  box-shadow: 0 0 16px rgba(255, 79, 216, 0.2);
+  border-color: var(--accent-coral);
+  box-shadow: 0 0 16px rgba(242, 160, 129, 0.2);
   transform: translateY(-1px);
 }
 button:focus,
 button:focus-visible {
-  outline: 2px solid rgba(77, 225, 255, 0.6);
+  outline: 2px solid rgba(90, 169, 178, 0.7);
   outline-offset: 2px;
 }
 

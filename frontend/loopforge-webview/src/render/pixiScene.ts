@@ -6,37 +6,57 @@ import { isoProject, setIsoTileSize } from "./iso";
 /**
  * PixiScene (WEBVIEW-0001)
  * -----------------------------------------------------------------------------
- * Render the viewer’s mirrored WorldState with a noir-neon visual direction.
+ * Render the viewer’s mirrored WorldState with a stylized industrial-illustration direction.
  * Viewer-only: no sim logic, no mutation of kernel state.
  */
 
 const PALETTE = {
-    night: 0x0a0b10,
-    grid: 0x1b1f2a,
-    neonCyan: 0x4de1ff,
-    neonMagenta: 0xff4fd8,
-    neonViolet: 0x7a5cff,
-    neonAmber: 0xffb84d,
-    neonMint: 0x2dffb3,
-    ink: 0x0b0b12,
+    paper: 0xf7f2e9,
+    mist: 0xd8efe9,
+    teal: 0x5aa9b2,
+    sea: 0x6bc5c2,
+    mint: 0x9dd7c7,
+    coral: 0xf2a081,
+    mustard: 0xf0c35a,
+    lilac: 0xb7b9d9,
+    slate: 0x3b4b5a,
+    ink: 0x1f242b,
+    shadow: 0x182128,
+    grid: 0x2f3b47,
 };
 
 type RoomCenter = { x: number; y: number };
+type RoomBounds = { min_x: number; min_y: number; max_x: number; max_y: number };
+type AgentMotion = { current: RoomCenter; target: RoomCenter; facing: number };
+const WORLD_UNITS_PER_TILE = 20;
 
 export class PixiScene {
     public readonly app: PIXI.Application;
 
     private readonly root = new PIXI.Container();
     private readonly gridLayer = new PIXI.Container();
+    private readonly pathsLayer = new PIXI.Container();
     private readonly roomsLayer = new PIXI.Container();
     private readonly itemsLayer = new PIXI.Container();
     private readonly agentsLayer = new PIXI.Container();
     private readonly uiLayer = new PIXI.Container();
 
     private readonly gridGfx = new PIXI.Graphics();
+    private readonly pathsGfx = new PIXI.Graphics();
     private readonly roomGfx = new Map<number, PIXI.Graphics>();
     private readonly agentNodes = new Map<number, PIXI.Container>();
     private readonly itemNodes = new Map<number, PIXI.Graphics>();
+    private readonly agentMotion = new Map<number, AgentMotion>();
+    private selectedRoomId?: number;
+    private lastState?: WorldState;
+    private lastCenters?: Map<number, RoomCenter>;
+    private readonly roomBounds = new Map<number, RoomBounds>();
+    private readonly roomFloors = new Map<number, number>();
+    private readonly roomCutout = new Map<number, number>();
+    private readonly roomCutoutTarget = new Map<number, number>();
+    private isoTileW = 64;
+    private isoTileH = 32;
+    private floorFilter: "all" | 0 | 1 = 0;
 
     // Camera state
     private camX = 0;
@@ -75,10 +95,22 @@ export class PixiScene {
         mountEl.appendChild(this.app.canvas);
 
         // Layering
-        this.root.addChild(this.gridLayer, this.roomsLayer, this.itemsLayer, this.agentsLayer, this.uiLayer);
+        this.root.addChild(this.gridLayer, this.pathsLayer, this.roomsLayer, this.itemsLayer, this.agentsLayer, this.uiLayer);
         this.app.stage.addChild(this.root);
 
         this.gridLayer.addChild(this.gridGfx);
+        this.pathsLayer.addChild(this.pathsGfx);
+
+        this.roomsLayer.sortableChildren = true;
+        this.itemsLayer.sortableChildren = true;
+        this.agentsLayer.sortableChildren = true;
+
+        this.gridLayer.eventMode = "static";
+        this.gridLayer.on("pointertap", () => {
+            if (this.selectedRoomId !== undefined) {
+                this.setSelectedRoom(undefined);
+            }
+        });
 
         const recenter = () => {
             this.setCamera({
@@ -92,6 +124,7 @@ export class PixiScene {
 
         this.enableWheelZoom();
         this.enableDragPan();
+        this.enableMotionTicker();
 
         this.ready = true;
 
@@ -107,12 +140,21 @@ export class PixiScene {
         this.requestFreshSnapshotCb = cb;
     }
 
+    setFloorFilter(filter: "all" | 0 | 1): void {
+        this.floorFilter = filter;
+        if (this.selectedRoomId !== undefined && !isRoomVisible(this.selectedRoomId, this.roomFloors, filter)) {
+            this.selectedRoomId = undefined;
+        }
+        if (this.lastState) this.renderFromState(this.lastState);
+    }
+
     /** Main render entry (called from WorldStore subscription). */
     renderFromState(s: WorldState): void {
         if (!this.ready) {
             this.pendingState = s;
             return;
         }
+        this.lastState = s;
 
         if (s.desynced) {
             this.showDesyncBanner(s.desyncReason ?? "Desync detected");
@@ -121,18 +163,25 @@ export class PixiScene {
             this.hideDesyncBanner();
         }
 
+        if (this.selectedRoomId !== undefined) {
+            this.setSelectedRoom(this.selectedRoomId);
+        }
+
         this.applyRenderSpec(s.renderSpec);
-        this.renderGrid(s.renderSpec);
+        this.renderFloor(s.renderSpec);
 
         const roomCenters = this.ensureRoomLayout(s, s.renderSpec);
+        this.lastCenters = roomCenters;
         this.autoFitCameraIfNeeded(s, s.renderSpec, roomCenters);
+        this.renderPaths(s, roomCenters);
         this.renderRooms(s, roomCenters);
-        this.renderItems(s, roomCenters);
+        // Items are intentionally hidden for now (visual clarity).
+        this.clearItems();
         this.renderAgents(s);
     }
 
     /* --------------------------------------------------------------------------
-     * RenderSpec / Grid
+     * RenderSpec / Floor
      * ------------------------------------------------------------------------ */
 
     private applyRenderSpec(spec?: RenderSpec): void {
@@ -140,11 +189,13 @@ export class PixiScene {
         const isoKey = `${iso?.recommended_iso_tile_w ?? 64}x${iso?.recommended_iso_tile_h ?? 32}`;
         if (isoKey !== this.lastIsoKey) {
             this.lastIsoKey = isoKey;
-            setIsoTileSize(iso?.recommended_iso_tile_w ?? 64, iso?.recommended_iso_tile_h ?? 32);
+            this.isoTileW = iso?.recommended_iso_tile_w ?? 64;
+            this.isoTileH = iso?.recommended_iso_tile_h ?? 32;
+            setIsoTileSize(this.isoTileW, this.isoTileH);
         }
     }
 
-    private renderGrid(spec?: RenderSpec): void {
+    private renderFloor(spec?: RenderSpec): void {
         const bounds = getWorldBounds(spec);
         const key = `${bounds.min_x}:${bounds.min_y}:${bounds.max_x}:${bounds.max_y}:${this.lastIsoKey}`;
         if (key === this.lastGridKey) return;
@@ -153,57 +204,134 @@ export class PixiScene {
         const g = this.gridGfx;
         g.clear();
 
-        const step = 1;
+        const base = isoRect(bounds);
+        g.poly(base, true);
+        g.fill({ color: PALETTE.paper, alpha: 0.85 });
+        g.stroke({ width: 2, color: PALETTE.ink, alpha: 0.15 });
+
+        // Large city-block grid (lighter than the old blueprint)
+        const step = TILE_UNITS;
         const color = PALETTE.grid;
-        const alpha = 0.25;
+        const alpha = 0.18;
 
         for (let x = Math.floor(bounds.min_x); x <= Math.ceil(bounds.max_x); x += step) {
-            const p0 = isoProject({ x, y: bounds.min_y });
-            const p1 = isoProject({ x, y: bounds.max_y });
+            const p0 = isoProjectWorld({ x, y: bounds.min_y });
+            const p1 = isoProjectWorld({ x, y: bounds.max_y });
             g.moveTo(p0.x, p0.y);
             g.lineTo(p1.x, p1.y);
         }
 
         for (let y = Math.floor(bounds.min_y); y <= Math.ceil(bounds.max_y); y += step) {
-            const p0 = isoProject({ x: bounds.min_x, y });
-            const p1 = isoProject({ x: bounds.max_x, y });
+            const p0 = isoProjectWorld({ x: bounds.min_x, y });
+            const p1 = isoProjectWorld({ x: bounds.max_x, y });
             g.moveTo(p0.x, p0.y);
             g.lineTo(p1.x, p1.y);
         }
 
         g.stroke({ width: 1, color, alpha });
+
+        // Subtle diagonal hatch for texture
+        drawIsoHatch(g, bounds, 28, PALETTE.slate, 0.08);
+    }
+
+    private setSelectedRoom(roomId: number | undefined): void {
+        this.selectedRoomId = roomId;
+        if (this.lastState) {
+            for (const r of this.lastState.rooms.values()) {
+                this.roomCutoutTarget.set(r.room_id, roomId === r.room_id ? 1 : 0);
+            }
+        }
     }
 
     /* --------------------------------------------------------------------------
      * Rooms
      * ------------------------------------------------------------------------ */
 
+    private renderPaths(s: WorldState, centers: Map<number, RoomCenter>): void {
+        const g = this.pathsGfx;
+        g.clear();
+
+        const pairs = new Set<string>();
+        for (const r of s.rooms.values()) {
+            if (!isRoomVisible(r.room_id, this.roomFloors, this.floorFilter)) continue;
+            for (const n of r.neighbors ?? []) {
+                const a = Math.min(r.room_id, n);
+                const b = Math.max(r.room_id, n);
+                pairs.add(`${a}:${b}`);
+            }
+        }
+
+        for (const key of pairs) {
+            const [aStr, bStr] = key.split(":");
+            const aId = Number(aStr);
+            const bId = Number(bStr);
+            const a = centers.get(aId);
+            const b = centers.get(bId);
+            if (!a || !b) continue;
+            if (!isRoomVisible(aId, this.roomFloors, this.floorFilter)) continue;
+            if (!isRoomVisible(bId, this.roomFloors, this.floorFilter)) continue;
+            const ra = s.rooms.get(aId);
+            const rb = s.rooms.get(bId);
+            const floorA = this.roomFloors.get(aId) ?? 0;
+            const floorB = this.roomFloors.get(bId) ?? 0;
+            if (floorA !== floorB && !isElevatorRoom(ra) && !isElevatorRoom(rb)) {
+                continue;
+            }
+            const ba = this.roomBounds.get(aId) ?? null;
+            const bb = this.roomBounds.get(bId) ?? null;
+            const aEdge = ba ? rectEdgePoint(ba, b) : a;
+            const bEdge = bb ? rectEdgePoint(bb, a) : b;
+            const p0 = isoProjectWorld(aEdge);
+            const p1 = isoProjectWorld(bEdge);
+            g.moveTo(p0.x, p0.y);
+            g.lineTo(p1.x, p1.y);
+        }
+
+        g.stroke({ width: 6, color: PALETTE.paper, alpha: 0.22 });
+        g.stroke({ width: 2, color: PALETTE.slate, alpha: 0.4 });
+    }
+
     private ensureRoomLayout(s: WorldState, spec?: RenderSpec): Map<number, RoomCenter> {
         const bounds = getWorldBounds(spec);
-        const roomIds = Array.from(s.rooms.keys()).sort((a, b) => a - b);
-        const key = `${roomIds.join(",")}|${bounds.min_x}:${bounds.min_y}:${bounds.max_x}:${bounds.max_y}`;
+        const roomSig = Array.from(s.rooms.values())
+            .map((r) => `${r.room_id}:${r.label ?? ""}:${r.zone ?? ""}:${r.level ?? ""}:${r.bounds ? "b" : "n"}`)
+            .sort()
+            .join("|");
+        const key = `${roomSig}|${bounds.min_x}:${bounds.min_y}:${bounds.max_x}:${bounds.max_y}`;
 
         if (key === this.lastLayoutKey && this.roomLayout.size > 0) {
             return this.roomLayout;
         }
 
+        const rooms = Array.from(s.rooms.values());
+        const hasBounds = rooms.length > 0 && rooms.every((r) => !!r.bounds);
         const centers = new Map<number, RoomCenter>();
-        const agentBuckets = new Map<number, { x: number; y: number; count: number }>();
+        this.roomBounds.clear();
+        this.roomFloors.clear();
 
-        for (const a of s.agents.values()) {
-            const bucket = agentBuckets.get(a.room_id) ?? { x: 0, y: 0, count: 0 };
-            bucket.x += a.transform.x;
-            bucket.y += a.transform.y;
-            bucket.count += 1;
-            agentBuckets.set(a.room_id, bucket);
+        if (hasBounds) {
+            for (const r of rooms) {
+                const rb = roomBoundsFromRoom(r)!;
+                this.roomBounds.set(r.room_id, rb);
+                centers.set(r.room_id, boundsCenter(rb));
+                this.roomFloors.set(r.room_id, r.level ?? 0);
+            }
+        } else {
+            const layout = buildTileLayout(rooms, bounds);
+            for (const [id, rb] of layout.boundsById.entries()) {
+                this.roomBounds.set(id, rb);
+                centers.set(id, boundsCenter(rb));
+            }
+            for (const [id, floor] of layout.floorById.entries()) {
+                this.roomFloors.set(id, floor);
+            }
         }
 
+        // Initialize cutout state
         for (const r of s.rooms.values()) {
-            const bucket = agentBuckets.get(r.room_id);
-            if (bucket && bucket.count > 0) {
-                centers.set(r.room_id, clampPoint({ x: bucket.x / bucket.count, y: bucket.y / bucket.count }, bounds));
-            } else {
-                centers.set(r.room_id, scatterPoint(r.room_id, bounds));
+            if (!this.roomCutout.has(r.room_id)) {
+                this.roomCutout.set(r.room_id, 0);
+                this.roomCutoutTarget.set(r.room_id, 0);
             }
         }
 
@@ -218,15 +346,33 @@ export class PixiScene {
         const rooms = Array.from(s.rooms.values()).sort((a, b) => a.room_id - b.room_id);
 
         for (const r of rooms) {
+            if (!isRoomVisible(r.room_id, this.roomFloors, this.floorFilter)) {
+                const existing = this.roomGfx.get(r.room_id);
+                if (existing) existing.visible = false;
+                continue;
+            }
             let g = this.roomGfx.get(r.room_id);
             if (!g) {
                 g = new PIXI.Graphics();
                 this.roomGfx.set(r.room_id, g);
                 this.roomsLayer.addChild(g);
+                g.eventMode = "static";
+                g.cursor = "pointer";
+                g.on("pointertap", () => {
+                    this.setSelectedRoom(this.selectedRoomId === r.room_id ? undefined : r.room_id);
+                });
             }
 
             const center = centers.get(r.room_id) ?? { x: 0, y: 0 };
-            this.drawRoom(g, r, center);
+            const rb = this.roomBounds.get(r.room_id) ?? roomBoundsFromRoom(r) ?? boundsFromCenter(center, 2);
+            const floor = this.roomFloors.get(r.room_id) ?? 0;
+            const cutout = this.roomCutout.get(r.room_id) ?? 0;
+            this.drawRoom(g, r, center, rb, floor, cutout);
+            g.visible = true;
+            g.zIndex = isoProjectWorld(center).y;
+
+            const hit = isoRectPoints(rb, 0, floorElevationPx(floor, this.isoTileH));
+            g.hitArea = new PIXI.Polygon(pointsToArray(hit));
         }
 
         for (const id of Array.from(this.roomGfx.keys())) {
@@ -238,51 +384,87 @@ export class PixiScene {
         }
     }
 
-    private drawRoom(g: PIXI.Graphics, r: KvpRoom, center: RoomCenter): void {
+    private drawRoom(
+        g: PIXI.Graphics,
+        r: KvpRoom,
+        center: RoomCenter,
+        rb: RoomBounds,
+        floor: number,
+        cutout: number
+    ): void {
         g.clear();
 
-        const occupants = r.occupants?.length ?? 0;
-        const size = clamp(0.9 + occupants * 0.12, 0.8, 2.2);
+        const height = roomHeightPx(r, this.isoTileH);
+        const colors = roomColors(r);
+        const elev = floorElevationPx(floor, this.isoTileH);
 
-        const p0 = isoProject({ x: center.x, y: center.y - size });
-        const p1 = isoProject({ x: center.x + size, y: center.y });
-        const p2 = isoProject({ x: center.x, y: center.y + size });
-        const p3 = isoProject({ x: center.x - size, y: center.y });
-        const pts = [p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y];
+        const base = isoRectPoints(rb, 0, elev);
+        const top = isoRectPoints(rb, height, elev);
 
-        const { fill, stroke } = roomColors(r.tension_tier);
+        // Base shadow (grounding)
+        g.poly(pointsToArray(base), true);
+        g.fill({ color: PALETTE.shadow, alpha: 0.1 });
 
-        g.poly(pts, true);
-        g.fill({ color: fill, alpha: 0.08 });
-        g.stroke({ width: 2, color: stroke, alpha: r.highlight ? 0.9 : 0.45 });
+        const open = clamp(cutout, 0, 1);
+        const outdoor = isOutdoorRoom(r);
+        const wallAlphaA = outdoor ? 0.0 : lerp(0.82, 0.12, open);
+        const wallAlphaB = outdoor ? 0.0 : lerp(0.85, 0.12, open);
+        const roofAlpha = outdoor ? 0.0 : lerp(0.95, 0.4, open);
+        const floorAlpha = outdoor ? 0.9 : lerp(0.0, 0.9, open);
+        const cutHeight = height * (1 - open * 0.8);
+        const wallTop = isoRectPoints(rb, cutHeight, elev);
 
-        const halo = size * 1.5;
-        const h0 = isoProject({ x: center.x, y: center.y - halo });
-        const h1 = isoProject({ x: center.x + halo, y: center.y });
-        const h2 = isoProject({ x: center.x, y: center.y + halo });
-        const h3 = isoProject({ x: center.x - halo, y: center.y });
-        const hpts = [h0.x, h0.y, h1.x, h1.y, h2.x, h2.y, h3.x, h3.y];
-        g.poly(hpts, true);
-        g.stroke({ width: 1, color: stroke, alpha: 0.18 });
+        // Right face (east)
+        g.poly(pointsToArray([base[1], base[2], wallTop[2], wallTop[1]]), true);
+        g.fill({ color: colors.sideA, alpha: wallAlphaA });
+
+        // Left face (south)
+        g.poly(pointsToArray([base[2], base[3], wallTop[3], wallTop[2]]), true);
+        g.fill({ color: colors.sideB, alpha: wallAlphaB });
+
+        // Top face
+        g.poly(pointsToArray(top), true);
+        g.fill({ color: colors.top, alpha: roofAlpha });
+
+        // Outline
+        g.stroke({ width: 2, color: colors.stroke, alpha: r.highlight ? 0.95 : 0.7 });
+
+        // Subtle hatch texture (roof)
+        if (!outdoor) {
+            drawRoomHatch(g, top, colors.stroke);
+        }
+
+        // Interior floor on selection
+        if (floorAlpha > 0.01) {
+            g.poly(pointsToArray(base), true);
+            g.fill({ color: colors.floor, alpha: floorAlpha });
+            drawRoomHatch(g, base, colors.stroke);
+        }
+
+        if (r.highlight) {
+            g.poly(pointsToArray(top), true);
+            g.stroke({ width: 2, color: colors.glow, alpha: 0.35 });
+        }
 
         let label = g.getChildByName("label") as PIXI.Text | null;
         if (!label) {
             label = new PIXI.Text({
                 text: r.label ?? `Room ${r.room_id}`,
                 style: {
-                    fontFamily: "Space Grotesk, sans-serif",
-                    fontSize: 11,
-                    fill: 0xffffff,
-                    letterSpacing: 0.5,
+                    fontFamily: "Bricolage Grotesque, Space Grotesk, sans-serif",
+                    fontSize: 12,
+                    fill: 0x1f242b,
+                    letterSpacing: 0.2,
                 },
             });
             label.name = "label";
             g.addChild(label);
         }
         label.text = r.label ?? `Room ${r.room_id}`;
-        label.x = p0.x + 6;
-        label.y = p0.y - 20;
-        label.alpha = 0.7;
+        const topCenter = centerOfPoints(top);
+        label.x = topCenter.x - label.width * 0.5;
+        label.y = open > 0.5 ? topCenter.y + 6 : topCenter.y - 14;
+        label.alpha = 0.85;
     }
 
     /* --------------------------------------------------------------------------
@@ -299,7 +481,7 @@ export class PixiScene {
                 this.itemNodes.set(item.item_id, node);
                 this.itemsLayer.addChild(node);
             }
-            this.drawItem(node, item, centers);
+            this.drawItem(node, item, centers, this.roomBounds);
         }
 
         for (const id of Array.from(this.itemNodes.keys())) {
@@ -311,20 +493,36 @@ export class PixiScene {
         }
     }
 
-    private drawItem(node: PIXI.Graphics, item: KvpItem, centers: Map<number, RoomCenter>): void {
-        node.clear();
-        const center = centers.get(item.room_id) ?? { x: 0, y: 0 };
-        const angle = (item.item_id * 2.3999632297) % (Math.PI * 2);
-        const radius = 0.35;
-        const pos = {
-            x: center.x + Math.cos(angle) * radius,
-            y: center.y + Math.sin(angle) * radius,
-        };
-        const p = isoProject(pos);
+    private clearItems(): void {
+        for (const id of Array.from(this.itemNodes.keys())) {
+            const node = this.itemNodes.get(id)!;
+            node.destroy();
+            this.itemNodes.delete(id);
+        }
+    }
 
-        node.circle(p.x, p.y, 2.2);
-        node.fill({ color: PALETTE.neonAmber, alpha: 0.75 });
-        node.stroke({ width: 1, color: PALETTE.neonMagenta, alpha: 0.35 });
+    private drawItem(
+        node: PIXI.Graphics,
+        item: KvpItem,
+        centers: Map<number, RoomCenter>,
+        rooms: Map<number, KvpRoom>
+    ): void {
+        node.clear();
+        const pos = resolveItemWorldPos(item, rooms, centers);
+        const size = 0.6;
+        const rb = boundsFromCenter(pos, size);
+        const top = isoRectPoints(rb, 6, 0);
+        const base = isoRectPoints(rb, 0, 0);
+
+        node.zIndex = top[2].y;
+
+        node.poly(pointsToArray([base[1], base[2], top[2], top[1]]), true);
+        node.fill({ color: PALETTE.mint, alpha: 0.9 });
+        node.poly(pointsToArray([base[2], base[3], top[3], top[2]]), true);
+        node.fill({ color: PALETTE.teal, alpha: 0.85 });
+        node.poly(pointsToArray(top), true);
+        node.fill({ color: PALETTE.paper, alpha: 0.95 });
+        node.stroke({ width: 1.4, color: PALETTE.ink, alpha: 0.65 });
     }
 
     /* --------------------------------------------------------------------------
@@ -333,8 +531,14 @@ export class PixiScene {
 
     private renderAgents(s: WorldState): void {
         const agents = Array.from(s.agents.values()).sort((a, b) => a.agent_id - b.agent_id);
+        const localExtents = computeLocalExtents(agents, this.roomBounds);
 
         for (const a of agents) {
+            if (!isRoomVisible(a.room_id, this.roomFloors, this.floorFilter)) {
+                const existing = this.agentNodes.get(a.agent_id);
+                if (existing) existing.visible = false;
+                continue;
+            }
             let node = this.agentNodes.get(a.agent_id);
             if (!node) {
                 node = this.makeAgentNode(a);
@@ -342,12 +546,17 @@ export class PixiScene {
                 this.agentsLayer.addChild(node);
             }
 
-            const p = isoProject({ x: a.transform.x, y: a.transform.y });
-            node.x = p.x;
-            node.y = p.y;
+            const target = resolveAgentWorldPos(a, this.roomBounds, localExtents);
+            const motion = this.agentMotion.get(a.agent_id);
+            if (!motion) {
+                this.agentMotion.set(a.agent_id, { current: { ...target }, target, facing: 0 });
+            } else {
+                motion.target = target;
+            }
 
             const label = node.getChildByName("label") as PIXI.Text | null;
             if (label) label.text = `Agent ${a.agent_id}`;
+            node.visible = true;
         }
 
         for (const id of Array.from(this.agentNodes.keys())) {
@@ -355,6 +564,7 @@ export class PixiScene {
                 const node = this.agentNodes.get(id)!;
                 node.destroy({ children: true });
                 this.agentNodes.delete(id);
+                this.agentMotion.delete(id);
             }
         }
     }
@@ -363,28 +573,36 @@ export class PixiScene {
         const c = new PIXI.Container();
 
         const color = agentColor(a);
-        const ring = new PIXI.Graphics();
-        ring.circle(0, 0, 6);
-        ring.stroke({ width: 2, color, alpha: 0.85 });
-        c.addChild(ring);
+        const body = new PIXI.Graphics();
+        body.roundRect(-6, -10, 12, 20, 5);
+        body.fill({ color, alpha: 0.95 });
+        body.stroke({ width: 2, color: PALETTE.ink, alpha: 0.85 });
+        c.addChild(body);
 
-        const core = new PIXI.Graphics();
-        core.circle(0, 0, 2.5);
-        core.fill({ color: PALETTE.neonMint, alpha: 0.9 });
-        c.addChild(core);
+        const visor = new PIXI.Graphics();
+        visor.roundRect(-4.5, -3, 9, 5, 2);
+        visor.fill({ color: PALETTE.paper, alpha: 0.9 });
+        visor.stroke({ width: 1, color: PALETTE.ink, alpha: 0.7 });
+        c.addChild(visor);
+
+        const facing = new PIXI.Graphics();
+        facing.name = "facing";
+        facing.poly([-2, -12, 2, -12, 0, -18], true);
+        facing.fill({ color: PALETTE.ink, alpha: 0.8 });
+        c.addChild(facing);
 
         const label = new PIXI.Text({
             text: `Agent ${a.agent_id}`,
             style: {
-                fontFamily: "JetBrains Mono, monospace",
+                fontFamily: "Chivo Mono, JetBrains Mono, monospace",
                 fontSize: 10,
-                fill: 0xffffff,
+                fill: 0x1f242b,
             },
         });
         label.name = "label";
         label.x = 8;
-        label.y = -18;
-        label.alpha = 0.75;
+        label.y = -22;
+        label.alpha = 0.85;
         c.addChild(label);
 
         return c;
@@ -393,6 +611,60 @@ export class PixiScene {
     /* --------------------------------------------------------------------------
      * Camera controls (basic)
      * ------------------------------------------------------------------------ */
+
+    private enableMotionTicker(): void {
+        this.app.ticker.add((t) => {
+            const dt = Math.max(1, t.deltaMS);
+            this.tickAgentMotion(dt);
+            this.tickRoomCutout(dt);
+        });
+    }
+
+    private tickAgentMotion(dtMs: number): void {
+        if (this.agentMotion.size === 0) return;
+
+        const smooth = 1 - Math.exp(-dtMs / 120);
+
+        for (const [id, motion] of this.agentMotion.entries()) {
+            const dx = motion.target.x - motion.current.x;
+            const dy = motion.target.y - motion.current.y;
+            motion.current.x += dx * smooth;
+            motion.current.y += dy * smooth;
+
+            if (Math.abs(dx) + Math.abs(dy) > 0.001) {
+                motion.facing = Math.atan2(dy, dx);
+            }
+
+            const node = this.agentNodes.get(id);
+            if (!node) continue;
+
+            const p = isoProjectWorld(motion.current);
+            const bob = Math.sin(performance.now() * 0.004 + id) * 1.2;
+            node.x = p.x;
+            node.y = p.y - 6 + bob;
+            node.zIndex = node.y;
+
+            const facing = node.getChildByName("facing") as PIXI.Graphics | null;
+            if (facing) facing.rotation = motion.facing + Math.PI / 2;
+        }
+    }
+
+    private tickRoomCutout(dtMs: number): void {
+        if (this.roomCutout.size === 0) return;
+        const smooth = 1 - Math.exp(-dtMs / 180);
+        let changed = false;
+
+        for (const [id, current] of this.roomCutout.entries()) {
+            const target = this.roomCutoutTarget.get(id) ?? 0;
+            const next = current + (target - current) * smooth;
+            if (Math.abs(next - current) > 0.001) changed = true;
+            this.roomCutout.set(id, next);
+        }
+
+        if (changed && this.lastState && this.lastCenters) {
+            this.renderRooms(this.lastState, this.lastCenters);
+        }
+    }
 
     private setCamera(v: { x: number; y: number; zoom: number }): void {
         this.camX = v.x;
@@ -461,7 +733,20 @@ export class PixiScene {
         if (key === this.lastAutoFitKey) return;
         this.lastAutoFitKey = key;
 
-        const isoBounds = computeIsoBounds(bounds, centers, s.agents);
+        const visibleRooms = new Map<number, RoomBounds>();
+        for (const [id, rb] of this.roomBounds.entries()) {
+            if (isRoomVisible(id, this.roomFloors, this.floorFilter)) visibleRooms.set(id, rb);
+        }
+
+        const visibleAgents = Array.from(s.agents.values()).filter((a) =>
+            isRoomVisible(a.room_id, this.roomFloors, this.floorFilter)
+        );
+        const localExtents = computeLocalExtents(visibleAgents, this.roomBounds);
+        const agentPoints = visibleAgents.map((a) => resolveAgentWorldPos(a, this.roomBounds, localExtents));
+        const isoBounds = computeIsoBounds(bounds, centers, visibleRooms, agentPoints);
+        const maxFloor = Math.max(0, ...Array.from(this.roomFloors.values()));
+        const elev = floorElevationPx(maxFloor, this.isoTileH);
+        isoBounds.min_y -= elev;
         const viewW = this.app.renderer.width;
         const viewH = this.app.renderer.height;
         if (viewW <= 0 || viewH <= 0) return;
@@ -497,15 +782,15 @@ export class PixiScene {
         const bg = new PIXI.Graphics();
         bg.roundRect(0, 0, 520, 84, 10);
         bg.fill({ color: PALETTE.ink, alpha: 0.92 });
-        bg.stroke({ width: 1, color: PALETTE.neonMagenta, alpha: 0.4 });
+        bg.stroke({ width: 2, color: PALETTE.coral, alpha: 0.6 });
         banner.addChild(bg);
 
         const txt = new PIXI.Text({
             text: `DESYNC\n${reason}\nClick to request fresh snapshot.`,
             style: {
-                fontFamily: "JetBrains Mono, monospace",
+                fontFamily: "Chivo Mono, JetBrains Mono, monospace",
                 fontSize: 12,
-                fill: 0xffffff,
+                fill: 0xf7f2e9,
                 wordWrap: true,
                 wordWrapWidth: 500,
             },
@@ -536,12 +821,38 @@ export class PixiScene {
  * Helpers
  * ------------------------------------------------------------------------ */
 
-function getWorldBounds(spec?: RenderSpec): { min_x: number; min_y: number; max_x: number; max_y: number } {
+function getWorldBounds(spec?: RenderSpec): RoomBounds {
     const b = spec?.coord_system?.bounds;
     if (b) {
         return { min_x: b.min_x, min_y: b.min_y, max_x: b.max_x, max_y: b.max_y };
     }
-    return { min_x: 0, min_y: 0, max_x: 10, max_y: 6 };
+    return { min_x: 0, min_y: 0, max_x: 500, max_y: 500 };
+}
+
+function roomBoundsFromRoom(r: KvpRoom): RoomBounds | null {
+    if (!r.bounds) return null;
+    return {
+        min_x: r.bounds.min_x,
+        min_y: r.bounds.min_y,
+        max_x: r.bounds.max_x,
+        max_y: r.bounds.max_y,
+    };
+}
+
+function boundsFromCenter(c: RoomCenter, size: number): RoomBounds {
+    return {
+        min_x: c.x - size,
+        min_y: c.y - size,
+        max_x: c.x + size,
+        max_y: c.y + size,
+    };
+}
+
+function boundsCenter(b: RoomBounds): RoomCenter {
+    return {
+        x: (b.min_x + b.max_x) * 0.5,
+        y: (b.min_y + b.max_y) * 0.5,
+    };
 }
 
 function scatterPoint(seed: number, bounds: { min_x: number; min_y: number; max_x: number; max_y: number }): RoomCenter {
@@ -564,9 +875,10 @@ function clampPoint(
 }
 
 function computeIsoBounds(
-    bounds: { min_x: number; min_y: number; max_x: number; max_y: number },
+    bounds: RoomBounds,
     centers: Map<number, RoomCenter>,
-    agents: Map<number, KvpAgent>
+    rooms: Map<number, RoomBounds>,
+    agents: RoomCenter[]
 ): { min_x: number; min_y: number; max_x: number; max_y: number } {
     const points: RoomCenter[] = [];
 
@@ -575,8 +887,15 @@ function computeIsoBounds(
     points.push({ x: bounds.max_x, y: bounds.min_y });
     points.push({ x: bounds.max_x, y: bounds.max_y });
 
+    for (const rb of rooms.values()) {
+        points.push({ x: rb.min_x, y: rb.min_y });
+        points.push({ x: rb.min_x, y: rb.max_y });
+        points.push({ x: rb.max_x, y: rb.min_y });
+        points.push({ x: rb.max_x, y: rb.max_y });
+    }
+
     for (const c of centers.values()) points.push(c);
-    for (const a of agents.values()) points.push({ x: a.transform.x, y: a.transform.y });
+    for (const a of agents) points.push(a);
 
     let minX = Infinity;
     let minY = Infinity;
@@ -584,7 +903,7 @@ function computeIsoBounds(
     let maxY = -Infinity;
 
     for (const p of points) {
-        const iso = isoProject(p);
+        const iso = isoProjectWorld(p);
         minX = Math.min(minX, iso.x);
         minY = Math.min(minY, iso.y);
         maxX = Math.max(maxX, iso.x);
@@ -598,28 +917,432 @@ function computeIsoBounds(
     return { min_x: minX, min_y: minY, max_x: maxX, max_y: maxY };
 }
 
-function roomColors(tension: string): { fill: number; stroke: number } {
-    switch (tension) {
-        case "high":
-            return { fill: PALETTE.neonMagenta, stroke: PALETTE.neonMagenta };
-        case "medium":
-            return { fill: PALETTE.neonAmber, stroke: PALETTE.neonAmber };
-        default:
-            return { fill: PALETTE.neonCyan, stroke: PALETTE.neonCyan };
-    }
+function roomHeightPx(r: KvpRoom, isoTileH: number): number {
+    const base = Math.max(isoTileH * 0.9, 16);
+    const zoneBoost = r.zone === "core" ? isoTileH * 0.35 : r.zone === "control" ? isoTileH * 0.2 : 0;
+    return base + zoneBoost;
+}
+
+function roomColors(
+    r: KvpRoom
+): { top: number; sideA: number; sideB: number; stroke: number; glow: number; floor: number } {
+    const zone = (r.zone ?? "").toLowerCase();
+    const base =
+        zone === "core"
+            ? PALETTE.mustard
+            : zone === "work"
+            ? PALETTE.sea
+            : zone === "support"
+            ? PALETTE.mint
+            : zone === "control"
+            ? PALETTE.lilac
+            : zone === "residential"
+            ? PALETTE.coral
+            : zone === "perimeter"
+            ? PALETTE.teal
+            : PALETTE.mist;
+
+    const tension = (r.tension_tier ?? "low").toLowerCase();
+    const accent =
+        tension === "high" ? mixColor(base, PALETTE.coral, 0.35) : tension === "medium" ? mixColor(base, PALETTE.mustard, 0.2) : base;
+
+    return {
+        top: accent,
+        sideA: shadeColor(accent, -0.18),
+        sideB: shadeColor(accent, -0.28),
+        stroke: PALETTE.ink,
+        glow: shadeColor(accent, 0.18),
+        floor: mixColor(accent, PALETTE.paper, 0.55),
+    };
 }
 
 function agentColor(a: KvpAgent): number {
-    switch (a.role_code % 4) {
-        case 0:
-            return PALETTE.neonCyan;
-        case 1:
-            return PALETTE.neonMagenta;
-        case 2:
-            return PALETTE.neonViolet;
-        default:
-            return PALETTE.neonAmber;
+    const colors = [PALETTE.sea, PALETTE.coral, PALETTE.mustard, PALETTE.mint, PALETTE.lilac];
+    return colors[a.role_code % colors.length];
+}
+
+function computeLocalExtents(
+    agents: KvpAgent[],
+    rooms: Map<number, RoomBounds>
+): Map<number, { maxX: number; maxY: number; useLocal: boolean }> {
+    const extents = new Map<number, { maxX: number; maxY: number; useLocal: boolean }>();
+
+    for (const a of agents) {
+        const entry = extents.get(a.room_id) ?? { maxX: 0, maxY: 0, useLocal: false };
+        entry.maxX = Math.max(entry.maxX, Math.abs(a.transform.x));
+        entry.maxY = Math.max(entry.maxY, Math.abs(a.transform.y));
+        extents.set(a.room_id, entry);
     }
+
+    for (const [roomId, entry] of extents.entries()) {
+        const rb = rooms.get(roomId);
+        if (!rb) continue;
+        const w = rb.max_x - rb.min_x;
+        const h = rb.max_y - rb.min_y;
+        const localish = entry.maxX <= 25 && entry.maxY <= 25;
+        const largeRoom = w >= 40 && h >= 40;
+        entry.useLocal = localish && largeRoom;
+    }
+
+    return extents;
+}
+
+function resolveAgentWorldPos(
+    a: KvpAgent,
+    rooms: Map<number, RoomBounds>,
+    extents: Map<number, { maxX: number; maxY: number; useLocal: boolean }>
+): RoomCenter {
+    const rb = rooms.get(a.room_id) ?? null;
+    if (!rb) return { x: a.transform.x, y: a.transform.y };
+
+    if (withinBounds(rb, a.transform.x, a.transform.y)) {
+        return { x: a.transform.x, y: a.transform.y };
+    }
+
+    const entry = extents.get(a.room_id);
+    if (!entry || !entry.useLocal) {
+        return clampPoint({ x: a.transform.x, y: a.transform.y }, rb);
+    }
+
+    const pad = Math.min((rb.max_x - rb.min_x) * 0.08, (rb.max_y - rb.min_y) * 0.08);
+    const usableW = Math.max(1, rb.max_x - rb.min_x - pad * 2);
+    const usableH = Math.max(1, rb.max_y - rb.min_y - pad * 2);
+    const nx = entry.maxX > 0 ? clamp(a.transform.x / entry.maxX, 0, 1) : 0.5;
+    const ny = entry.maxY > 0 ? clamp(a.transform.y / entry.maxY, 0, 1) : 0.5;
+    return {
+        x: rb.min_x + pad + nx * usableW,
+        y: rb.min_y + pad + ny * usableH,
+    };
+}
+
+function resolveItemWorldPos(
+    item: KvpItem,
+    rooms: Map<number, RoomBounds>,
+    centers: Map<number, RoomCenter>
+): RoomCenter {
+    const rb = rooms.get(item.room_id) ?? null;
+    if (!rb) {
+        const center = centers.get(item.room_id) ?? { x: 0, y: 0 };
+        const angle = (item.item_id * 2.3999632297) % (Math.PI * 2);
+        const radius = 0.65;
+        return { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius };
+    }
+
+    const u = fract(Math.sin(item.item_id * 12.9898) * 43758.5453);
+    const v = fract(Math.sin((item.item_id + 77) * 78.233) * 12345.678);
+    const pad = Math.min((rb.max_x - rb.min_x) * 0.1, (rb.max_y - rb.min_y) * 0.1);
+    return {
+        x: lerp(rb.min_x + pad, rb.max_x - pad, u),
+        y: lerp(rb.min_y + pad, rb.max_y - pad, v),
+    };
+}
+
+function rectEdgePoint(bounds: RoomBounds, target: RoomCenter): RoomCenter {
+    const cx = (bounds.min_x + bounds.max_x) * 0.5;
+    const cy = (bounds.min_y + bounds.max_y) * 0.5;
+    const dx = target.x - cx;
+    const dy = target.y - cy;
+    const w = Math.max(0.001, (bounds.max_x - bounds.min_x) * 0.5);
+    const h = Math.max(0.001, (bounds.max_y - bounds.min_y) * 0.5);
+    const t = Math.max(Math.abs(dx) / w, Math.abs(dy) / h);
+    return { x: cx + dx / t, y: cy + dy / t };
+}
+
+function floorElevationPx(floor: number, isoTileH: number): number {
+    if (floor <= 0) return 0;
+    return Math.max(isoTileH * 1.6, 28) * floor;
+}
+
+function isRoomVisible(roomId: number, floors: Map<number, number>, filter: "all" | 0 | 1): boolean {
+    if (filter === "all") return true;
+    const roomFloor = floors.get(roomId) ?? 0;
+    return roomFloor === filter;
+}
+
+type TileLayout = {
+    boundsById: Map<number, RoomBounds>;
+    floorById: Map<number, number>;
+};
+
+const TILE_UNITS = WORLD_UNITS_PER_TILE;
+
+function buildTileLayout(rooms: KvpRoom[], world: RoomBounds): TileLayout {
+    const boundsById = new Map<number, RoomBounds>();
+    const floorById = new Map<number, number>();
+
+    const indoors: KvpRoom[] = [];
+    const outdoors: KvpRoom[] = [];
+    for (const r of rooms) {
+        if (isOutdoorRoom(r)) outdoors.push(r);
+        else indoors.push(r);
+    }
+
+    const placed0 = new Set<string>();
+    const placed1 = new Set<string>();
+
+    const originX = world.min_x + TILE_UNITS;
+    const originY = world.min_y + TILE_UNITS;
+
+    const grid0W = 10;
+    const grid0H = 8;
+    const grid1W = 8;
+    const grid1H = 6;
+
+    const placeAt = (
+        r: KvpRoom,
+        floor: number,
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+        offsetX: number,
+        offsetY: number
+    ): boolean => {
+        const occupied = floor === 0 ? placed0 : placed1;
+        for (let dy = 0; dy < h; dy += 1) {
+            for (let dx = 0; dx < w; dx += 1) {
+                const key = `${x + dx},${y + dy}`;
+                if (occupied.has(key)) return false;
+            }
+        }
+        for (let dy = 0; dy < h; dy += 1) {
+            for (let dx = 0; dx < w; dx += 1) {
+                occupied.add(`${x + dx},${y + dy}`);
+            }
+        }
+        const min_x = originX + offsetX + x * TILE_UNITS;
+        const min_y = originY + offsetY + y * TILE_UNITS;
+        const max_x = min_x + w * TILE_UNITS;
+        const max_y = min_y + h * TILE_UNITS;
+        boundsById.set(r.room_id, { min_x, min_y, max_x, max_y });
+        floorById.set(r.room_id, floor);
+        return true;
+    };
+
+    const placeRoom = (r: KvpRoom, floor: number, gridW: number, gridH: number, offsetX: number, offsetY: number) => {
+        const [w, h] = roomTileSize(r);
+        const occupied = floor === 0 ? placed0 : placed1;
+        for (let y = 0; y <= gridH - h; y += 1) {
+            for (let x = 0; x <= gridW - w; x += 1) {
+                let ok = true;
+                for (let dy = 0; dy < h; dy += 1) {
+                    for (let dx = 0; dx < w; dx += 1) {
+                        const key = `${x + dx},${y + dy}`;
+                        if (occupied.has(key)) ok = false;
+                    }
+                }
+                if (!ok) continue;
+                for (let dy = 0; dy < h; dy += 1) {
+                    for (let dx = 0; dx < w; dx += 1) {
+                        occupied.add(`${x + dx},${y + dy}`);
+                    }
+                }
+                const min_x = originX + offsetX + x * TILE_UNITS;
+                const min_y = originY + offsetY + y * TILE_UNITS;
+                const max_x = min_x + w * TILE_UNITS;
+                const max_y = min_y + h * TILE_UNITS;
+                boundsById.set(r.room_id, { min_x, min_y, max_x, max_y });
+                floorById.set(r.room_id, floor);
+                return true;
+            }
+        }
+        return false;
+    };
+
+    const lobby = pickLobbyRoom(indoors);
+    const elevator = pickElevatorRoom(indoors, lobby);
+
+    if (lobby) {
+        const lobbyX = Math.floor(grid0W / 2);
+        const lobbyY = grid0H - 2;
+        placeAt(lobby, 0, lobbyX, lobbyY, 1, 2, 0, 0);
+    }
+
+    if (elevator) {
+        const lobbyX = Math.floor(grid0W / 2);
+        const lobbyY = grid0H - 2;
+        placeAt(elevator, 0, lobbyX, Math.max(0, lobbyY - 1), 1, 1, 0, 0);
+    }
+
+    const floor1Rooms = indoors.filter((r) => isUpperFloorRoom(r) && r !== lobby && r !== elevator);
+    if (floor1Rooms.length === 0 && indoors.length > 3) {
+        const fallback = indoors.filter((r) => r !== lobby && r !== elevator);
+        if (fallback.length > 0) floor1Rooms.push(fallback[fallback.length - 1]);
+    }
+
+    // Sort larger rooms first for better packing
+    indoors.sort((a, b) => {
+        const [aw, ah] = roomTileSize(a);
+        const [bw, bh] = roomTileSize(b);
+        return bw * bh - aw * ah;
+    });
+    outdoors.sort((a, b) => {
+        const [aw, ah] = roomTileSize(a);
+        const [bw, bh] = roomTileSize(b);
+        return bw * bh - aw * ah;
+    });
+
+    for (const r of floor1Rooms) {
+        if (boundsById.has(r.room_id)) continue;
+        const ok = placeRoom(r, 1, grid1W, grid1H, 0, 0);
+        if (!ok) placeRoom(r, 0, grid0W, grid0H, 0, 0);
+    }
+
+    for (const r of indoors) {
+        if (boundsById.has(r.room_id)) continue;
+        placeRoom(r, 0, grid0W, grid0H, 0, 0);
+    }
+
+    // Outdoor band on floor 0 (no second floor above)
+    for (const r of outdoors) {
+        if (!boundsById.has(r.room_id)) {
+            placeRoom(r, 0, 8, 2, 0, TILE_UNITS * 9);
+        }
+    }
+
+    // Fallback for any unplaced rooms
+    for (const r of rooms) {
+        if (!boundsById.has(r.room_id)) {
+            placeRoom(r, 0, grid0W, grid0H, 0, 0);
+        }
+    }
+
+    return { boundsById, floorById };
+}
+
+function roomTileSize(r: KvpRoom): [number, number] {
+    const label = (r.label ?? "").toLowerCase();
+    if (label.includes("lobby") || label.includes("entry") || label.includes("reception")) return [1, 2];
+    if (label.includes("elevator") || label.includes("lift")) return [1, 1];
+    if (label.includes("brain") || label.includes("forge")) return [2, 2];
+    if (label.includes("assembly") || label.includes("habitation") || label.includes("yard")) return [2, 2];
+    if (label.includes("cooling") || label.includes("resonance")) return [2, 1];
+    if (label.includes("maintenance") || label.includes("commons") || label.includes("supervisor")) return [1, 2];
+    if (label.includes("outdoor") || label.includes("courtyard")) return [2, 2];
+    return (r.room_id % 3) === 0 ? [2, 1] : (r.room_id % 4) === 0 ? [1, 2] : [1, 1];
+}
+
+function roomFloor(r: KvpRoom): number {
+    const label = (r.label ?? "").toLowerCase();
+    if (label.includes("deck") || label.includes("supervisor")) return 1;
+    if (label.includes("elevator") || label.includes("lift")) return 0;
+    return 0;
+}
+
+function pickLobbyRoom(rooms: KvpRoom[]): KvpRoom | undefined {
+    const labeled = rooms.find((r) => /lobby|entry|reception/.test((r.label ?? "").toLowerCase()));
+    if (labeled) return labeled;
+    return rooms.slice().sort((a, b) => a.room_id - b.room_id)[0];
+}
+
+function pickElevatorRoom(rooms: KvpRoom[], lobby?: KvpRoom): KvpRoom | undefined {
+    const labeled = rooms.find((r) => /elevator|lift/.test((r.label ?? "").toLowerCase()));
+    if (labeled) return labeled;
+    const remaining = rooms.filter((r) => r !== lobby).sort((a, b) => a.room_id - b.room_id);
+    return remaining[0];
+}
+
+function isUpperFloorRoom(r: KvpRoom): boolean {
+    const label = (r.label ?? "").toLowerCase();
+    return /deck|supervisor|control|loft|office|upper|lab/.test(label);
+}
+
+function isOutdoorRoom(r: KvpRoom): boolean {
+    const label = (r.label ?? "").toLowerCase();
+    if (label.includes("yard") || label.includes("outdoor") || label.includes("courtyard")) return true;
+    const zone = (r.zone ?? "").toLowerCase();
+    return zone === "perimeter";
+}
+
+function isElevatorRoom(r: KvpRoom | undefined): boolean {
+    if (!r) return false;
+    const label = (r.label ?? "").toLowerCase();
+    return label.includes("elevator") || label.includes("lift");
+}
+
+function isoRect(bounds: RoomBounds): number[] {
+    return pointsToArray(isoRectPoints(bounds, 0, 0));
+}
+
+function isoRectPoints(bounds: RoomBounds, heightPx: number, elevPx: number): RoomCenter[] {
+    const corners = [
+        { x: bounds.min_x, y: bounds.min_y },
+        { x: bounds.max_x, y: bounds.min_y },
+        { x: bounds.max_x, y: bounds.max_y },
+        { x: bounds.min_x, y: bounds.max_y },
+    ];
+    return corners.map((c) => {
+        const p = isoProjectWorld(c);
+        return { x: p.x, y: p.y - heightPx - elevPx };
+    });
+}
+
+function pointsToArray(points: RoomCenter[]): number[] {
+    const out: number[] = [];
+    for (const p of points) out.push(p.x, p.y);
+    return out;
+}
+
+function centerOfPoints(points: RoomCenter[]): RoomCenter {
+    const sum = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+    return { x: sum.x / points.length, y: sum.y / points.length };
+}
+
+function withinBounds(bounds: RoomBounds, x: number, y: number): boolean {
+    return x >= bounds.min_x && x <= bounds.max_x && y >= bounds.min_y && y <= bounds.max_y;
+}
+
+function isoProjectWorld(p: RoomCenter): RoomCenter {
+    return isoProject({ x: p.x / WORLD_UNITS_PER_TILE, y: p.y / WORLD_UNITS_PER_TILE });
+}
+
+function drawIsoHatch(g: PIXI.Graphics, bounds: RoomBounds, step: number, color: number, alpha: number): void {
+    for (let y = Math.floor(bounds.min_y); y <= Math.ceil(bounds.max_y); y += step) {
+        const p0 = isoProjectWorld({ x: bounds.min_x, y });
+        const p1 = isoProjectWorld({ x: bounds.max_x, y: y + step * 0.4 });
+        g.moveTo(p0.x, p0.y);
+        g.lineTo(p1.x, p1.y);
+    }
+    g.stroke({ width: 1, color, alpha });
+}
+
+function drawRoomHatch(g: PIXI.Graphics, top: RoomCenter[], color: number): void {
+    if (top.length !== 4) return;
+    for (let i = 1; i <= 3; i += 1) {
+        const t = i / 4;
+        const a = lerpPoint(top[0], top[3], t);
+        const b = lerpPoint(top[1], top[2], t);
+        g.moveTo(a.x, a.y);
+        g.lineTo(b.x, b.y);
+    }
+    g.stroke({ width: 1, color, alpha: 0.12 });
+}
+
+function lerpPoint(a: RoomCenter, b: RoomCenter, t: number): RoomCenter {
+    return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+}
+
+function shadeColor(hex: number, factor: number): number {
+    const r = (hex >> 16) & 0xff;
+    const g = (hex >> 8) & 0xff;
+    const b = hex & 0xff;
+    const nr = clamp(Math.round(r + 255 * factor), 0, 255);
+    const ng = clamp(Math.round(g + 255 * factor), 0, 255);
+    const nb = clamp(Math.round(b + 255 * factor), 0, 255);
+    return (nr << 16) | (ng << 8) | nb;
+}
+
+function mixColor(a: number, b: number, t: number): number {
+    const ar = (a >> 16) & 0xff;
+    const ag = (a >> 8) & 0xff;
+    const ab = a & 0xff;
+    const br = (b >> 16) & 0xff;
+    const bg = (b >> 8) & 0xff;
+    const bb = b & 0xff;
+    const nr = clamp(Math.round(ar + (br - ar) * t), 0, 255);
+    const ng = clamp(Math.round(ag + (bg - ag) * t), 0, 255);
+    const nb = clamp(Math.round(ab + (bb - ab) * t), 0, 255);
+    return (nr << 16) | (ng << 8) | nb;
 }
 
 function clamp(v: number, lo: number, hi: number): number {

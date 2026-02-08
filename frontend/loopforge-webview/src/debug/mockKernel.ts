@@ -21,6 +21,9 @@ export function injectMockSnapshot(store: WorldStore): void {
                     neighbors: [2],
                     tension_tier: "low",
                     highlight: false,
+                    bounds: { min_x: 1, min_y: 1, max_x: 4, max_y: 4 },
+                    zone: "residential",
+                    level: 0,
                 },
                 {
                     room_id: 2,
@@ -31,6 +34,9 @@ export function injectMockSnapshot(store: WorldStore): void {
                     neighbors: [1, 3],
                     tension_tier: "medium",
                     highlight: false,
+                    bounds: { min_x: 4.5, min_y: 1.2, max_x: 7.2, max_y: 4.8 },
+                    zone: "work",
+                    level: 0,
                 },
                 {
                     room_id: 3,
@@ -41,6 +47,9 @@ export function injectMockSnapshot(store: WorldStore): void {
                     neighbors: [2],
                     tension_tier: "high",
                     highlight: true,
+                    bounds: { min_x: 7.6, min_y: 0.8, max_x: 10.0, max_y: 3.8 },
+                    zone: "support",
+                    level: 1,
                 },
             ],
             agents: [

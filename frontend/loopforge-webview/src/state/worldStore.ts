@@ -7,8 +7,11 @@ export type KvpRoom = {
     occupants: number[];
     items: number[];
     neighbors: number[];
-    tension_tier: string;
-    highlight: boolean;
+    tension_tier: string | null;
+    highlight: boolean | null;
+    bounds?: { min_x: number; min_y: number; max_x: number; max_y: number } | null;
+    zone?: string | null;
+    level?: number | null;
 };
 
 export type KvpTransform = {
