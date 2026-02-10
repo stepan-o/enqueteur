@@ -114,7 +114,7 @@ def _specs() -> List[LoopforgeRoomSpec]:
             room_id=int(LoopforgeRoomId.LOBBY),
             label="Lobby",
             kind_code=int(RoomKind.CORE),
-            bounds=RoomBounds(min_x=0.0, min_y=10.0, max_x=10.0, max_y=16.0),
+            bounds=RoomBounds(min_x=1.0, min_y=10.0, max_x=10.0, max_y=16.0),
             zone="core",
             level=0,
             neighbors=(
