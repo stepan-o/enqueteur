@@ -42,6 +42,10 @@ export function boot(opts: BootOpts): void {
     const hud = mountHud(store, overlayStore);
     opts.mountEl.appendChild(hud);
 
+    overlayStore.subscribe((o) => {
+        scene.ingestOverlayEvents(o.eventsAtTick);
+    });
+
     // --- DEBUG: prove canvas exists + has size (Pixi v8 async init) -----------
     const debugCanvasProbe = () => {
         const canvas = opts.mountEl.querySelector("canvas") as HTMLCanvasElement | null;

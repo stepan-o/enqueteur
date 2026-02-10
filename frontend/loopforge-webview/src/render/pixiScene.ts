@@ -1,6 +1,7 @@
 // src/render/pixiScene.ts
 import * as PIXI from "pixi.js";
 import type { KvpAgent, KvpItem, KvpRoom, RenderSpec, WorldState } from "../state/worldStore";
+import type { UIOverlayEvent } from "../state/overlayStore";
 import { isoProject, setIsoTileSize } from "./iso";
 
 /**
@@ -39,6 +40,7 @@ export class PixiScene {
     private readonly roomsLayer = new PIXI.Container();
     private readonly itemsLayer = new PIXI.Container();
     private readonly agentsLayer = new PIXI.Container();
+    private readonly overlayLayer = new PIXI.Container();
     private readonly uiLayer = new PIXI.Container();
 
     private readonly gridGfx = new PIXI.Graphics();
@@ -56,6 +58,9 @@ export class PixiScene {
     private readonly roomCutoutTarget = new Map<number, number>();
     private readonly roomPings = new Map<number, number>();
     private readonly seenEventKeys = new Map<string, number>();
+    private readonly seenOverlayKeys = new Set<string>();
+    private readonly agentOverlayBubbles = new Map<number, OverlayBubble>();
+    private readonly roomOverlayBubbles = new Map<number, OverlayBubble>();
     private isoTileW = 64;
     private isoTileH = 32;
     private floorFilter: "all" | 0 | 1 = 0;
@@ -101,7 +106,15 @@ export class PixiScene {
         mountEl.appendChild(this.app.canvas);
 
         // Layering
-        this.root.addChild(this.gridLayer, this.pathsLayer, this.roomsLayer, this.itemsLayer, this.agentsLayer, this.uiLayer);
+        this.root.addChild(
+            this.gridLayer,
+            this.pathsLayer,
+            this.roomsLayer,
+            this.itemsLayer,
+            this.agentsLayer,
+            this.overlayLayer,
+            this.uiLayer
+        );
         this.app.stage.addChild(this.root);
 
         this.gridLayer.addChild(this.gridGfx);
@@ -110,6 +123,7 @@ export class PixiScene {
         this.roomsLayer.sortableChildren = true;
         this.itemsLayer.sortableChildren = true;
         this.agentsLayer.sortableChildren = true;
+        this.overlayLayer.sortableChildren = true;
 
         this.gridLayer.eventMode = "static";
         this.gridLayer.on("pointertap", () => {
@@ -152,6 +166,27 @@ export class PixiScene {
             this.selectedRoomId = undefined;
         }
         if (this.lastState) this.renderFromState(this.lastState);
+    }
+
+    ingestOverlayEvents(events: UIOverlayEvent[]): void {
+        if (!events || events.length === 0) return;
+        const now = performance.now();
+        for (const ev of events) {
+            const key = `${ev.tick}:${ev.event_id}:${ev.kind}`;
+            if (this.seenOverlayKeys.has(key)) continue;
+            this.seenOverlayKeys.add(key);
+
+            const roomId = getRecordNumber(ev.data, "room_id");
+            const agentId = getRecordNumber(ev.data, "agent_id");
+            const type = overlayBubbleType(ev.kind);
+            const text = overlayBubbleText(ev);
+
+            if (agentId !== null) {
+                this.spawnAgentBubble(agentId, text, type, now);
+            } else if (roomId !== null) {
+                this.spawnRoomBubble(roomId, text, type, now);
+            }
+        }
     }
 
     setCameraMode(mode: "free" | "auto"): void {
@@ -717,6 +752,7 @@ export class PixiScene {
             this.tickRoomCutout(dt);
             this.tickRoomPings(dt);
             this.tickCameraDirector(dt);
+            this.tickOverlayBubbles(dt);
         });
     }
 
@@ -787,13 +823,103 @@ export class PixiScene {
         }
     }
 
-    private setCamera(v: { x: number; y: number; zoom: number }): void {
-        this.camX = v.x;
-        this.camY = v.y;
-        this.camZoom = v.zoom;
+    private tickOverlayBubbles(dtMs: number): void {
+        void dtMs;
+        if (this.agentOverlayBubbles.size === 0 && this.roomOverlayBubbles.size === 0) return;
+        const now = performance.now();
+        this.tickAgentBubbles(now);
+        this.tickRoomBubbles(now);
+    }
 
-        this.root.x = this.camX;
-        this.root.y = this.camY;
+    private tickAgentBubbles(now: number): void {
+        for (const [agentId, bubble] of this.agentOverlayBubbles.entries()) {
+            const node = bubble.node;
+            const pos = this.getAgentWorldPos(agentId);
+            if (pos) {
+                const iso = isoProjectWorld(pos);
+                node.x = iso.x + 10;
+                node.y = iso.y - 38;
+                node.zIndex = node.y;
+                node.visible = true;
+            } else {
+                node.visible = false;
+            }
+            const life = bubble.expiresAt - now;
+            if (life <= 0) {
+                node.destroy({ children: true });
+                this.agentOverlayBubbles.delete(agentId);
+                continue;
+            }
+            const alpha = Math.min(1, life / 2200);
+            node.alpha = alpha;
+        }
+    }
+
+    private tickRoomBubbles(now: number): void {
+        for (const [roomId, bubble] of this.roomOverlayBubbles.entries()) {
+            const node = bubble.node;
+            const rb = this.roomBounds.get(roomId);
+            const floor = this.roomFloors.get(roomId) ?? 0;
+            const room = this.lastState?.rooms.get(roomId);
+            if (rb && room) {
+                const height = roomHeightPx(room, this.isoTileH);
+                const topCenter = roomTopCenter(rb, floor, height, this.isoTileH);
+                node.x = topCenter.x - node.width * 0.5;
+                node.y = topCenter.y - 34;
+                node.zIndex = node.y;
+                node.visible = isRoomVisible(roomId, this.roomFloors, this.floorFilter);
+            } else {
+                node.visible = false;
+            }
+            const life = bubble.expiresAt - now;
+            if (life <= 0) {
+                node.destroy({ children: true });
+                this.roomOverlayBubbles.delete(roomId);
+                continue;
+            }
+            const alpha = Math.min(1, life / 2400);
+            node.alpha = alpha;
+        }
+    }
+
+    private spawnAgentBubble(agentId: number, text: string, type: OverlayBubbleType, now: number): void {
+        const bubble = this.agentOverlayBubbles.get(agentId);
+        if (bubble) {
+            bubble.expiresAt = now + 2400;
+            const label = bubble.node.getChildByName("label") as PIXI.Text | null;
+            if (label) label.text = text;
+            return;
+        }
+        const node = makeOverlayBubble(text, type);
+        node.zIndex = 9999;
+        this.overlayLayer.addChild(node);
+        this.agentOverlayBubbles.set(agentId, { node, expiresAt: now + 2400 });
+    }
+
+    private spawnRoomBubble(roomId: number, text: string, type: OverlayBubbleType, now: number): void {
+        const bubble = this.roomOverlayBubbles.get(roomId);
+        if (bubble) {
+            bubble.expiresAt = now + 2600;
+            const label = bubble.node.getChildByName("label") as PIXI.Text | null;
+            if (label) label.text = text;
+            return;
+        }
+        const node = makeOverlayBubble(text, type);
+        node.zIndex = 9999;
+        this.overlayLayer.addChild(node);
+        this.roomOverlayBubbles.set(roomId, { node, expiresAt: now + 2600 });
+    }
+
+    private setCamera(v: { x: number; y: number; zoom: number }): void {
+        const zoom = Number.isFinite(v.zoom) && v.zoom > 0 ? v.zoom : this.camZoom || 1;
+        const x = Number.isFinite(v.x) ? v.x : this.camX;
+        const y = Number.isFinite(v.y) ? v.y : this.camY;
+        this.camX = x;
+        this.camY = y;
+        this.camZoom = zoom;
+
+        this.root.x = Math.round(this.camX);
+        this.root.y = Math.round(this.camY);
         this.root.scale.set(this.camZoom);
     }
 
@@ -1037,15 +1163,6 @@ function boundsCenter(b: RoomBounds): RoomCenter {
     };
 }
 
-function scatterPoint(seed: number, bounds: { min_x: number; min_y: number; max_x: number; max_y: number }): RoomCenter {
-    const u = fract(Math.sin(seed * 12.9898) * 43758.5453);
-    const v = fract(Math.sin((seed + 77) * 78.233) * 12345.678);
-    const pad = 0.8;
-    const x = lerp(bounds.min_x + pad, bounds.max_x - pad, u);
-    const y = lerp(bounds.min_y + pad, bounds.max_y - pad, v);
-    return { x, y };
-}
-
 function clampPoint(
     p: RoomCenter,
     bounds: { min_x: number; min_y: number; max_x: number; max_y: number }
@@ -1064,10 +1181,12 @@ function computeIsoBounds(
 ): { min_x: number; min_y: number; max_x: number; max_y: number } {
     const points: RoomCenter[] = [];
 
-    points.push({ x: bounds.min_x, y: bounds.min_y });
-    points.push({ x: bounds.min_x, y: bounds.max_y });
-    points.push({ x: bounds.max_x, y: bounds.min_y });
-    points.push({ x: bounds.max_x, y: bounds.max_y });
+    if (rooms.size === 0 && centers.size === 0 && agents.length === 0) {
+        points.push({ x: bounds.min_x, y: bounds.min_y });
+        points.push({ x: bounds.min_x, y: bounds.max_y });
+        points.push({ x: bounds.max_x, y: bounds.min_y });
+        points.push({ x: bounds.max_x, y: bounds.max_y });
+    }
 
     for (const rb of rooms.values()) {
         points.push({ x: rb.min_x, y: rb.min_y });
@@ -1428,13 +1547,6 @@ function roomTileSize(r: KvpRoom): [number, number] {
     return (r.room_id % 3) === 0 ? [2, 1] : (r.room_id % 4) === 0 ? [1, 2] : [1, 1];
 }
 
-function roomFloor(r: KvpRoom): number {
-    const label = (r.label ?? "").toLowerCase();
-    if (label.includes("deck") || label.includes("supervisor")) return 1;
-    if (label.includes("elevator") || label.includes("lift")) return 0;
-    return 0;
-}
-
 function pickLobbyRoom(rooms: KvpRoom[]): KvpRoom | undefined {
     const labeled = rooms.find((r) => /lobby|entry|reception/.test((r.label ?? "").toLowerCase()));
     if (labeled) return labeled;
@@ -1470,6 +1582,62 @@ function extractRoomIdFromEvent(ev: { payload?: Record<string, unknown> }): numb
     const payload = ev.payload ?? {};
     const roomId = toNumber(payload.room_id ?? payload.previous_room_id ?? payload.target_room_id);
     return roomId;
+}
+
+type OverlayBubbleType = "speech" | "thought" | "notice";
+type OverlayBubble = { node: PIXI.Container; expiresAt: number };
+
+function overlayBubbleType(kind: string): OverlayBubbleType {
+    const k = (kind ?? "").toLowerCase();
+    if (k.includes("thought") || k.includes("idea")) return "thought";
+    if (k.includes("say") || k.includes("speak") || k.includes("announce")) return "speech";
+    return "notice";
+}
+
+function overlayBubbleText(ev: UIOverlayEvent): string {
+    const text = getRecordString(ev.data, "text");
+    if (text) return text;
+    const kind = ev.kind ?? "event";
+    return kind.replace(/_/g, " ");
+}
+
+function makeOverlayBubble(text: string, type: OverlayBubbleType): PIXI.Container {
+    const container = new PIXI.Container();
+    const bg = new PIXI.Graphics();
+    const label = new PIXI.Text({
+        text,
+        style: {
+            fontFamily: "Bricolage Grotesque, Space Grotesk, sans-serif",
+            fontSize: 10,
+            fill: 0x1f242b,
+        },
+    });
+    label.name = "label";
+    const padX = 8;
+    const padY = 4;
+    const w = label.width + padX * 2;
+    const h = label.height + padY * 2;
+    bg.roundRect(0, 0, w, h, 6);
+    const fill = type === "thought" ? PALETTE.lilac : type === "speech" ? PALETTE.paper : PALETTE.mint;
+    bg.fill({ color: fill, alpha: 0.92 });
+    bg.stroke({ width: 1, color: PALETTE.ink, alpha: 0.35 });
+    container.addChild(bg);
+
+    label.x = padX;
+    label.y = padY;
+    container.addChild(label);
+
+    const tail = new PIXI.Graphics();
+    tail.poly([6, h, 12, h + 6, 2, h + 6], true);
+    tail.fill({ color: fill, alpha: 0.92 });
+    container.addChild(tail);
+    return container;
+}
+
+function roomTopCenter(bounds: RoomBounds, floor: number, height: number, isoTileH: number): RoomCenter {
+    const elev = floorElevationPx(floor, isoTileH);
+    const top = isoRectPoints(bounds, height, elev);
+    return centerOfPoints(top);
 }
 
 function isoRect(bounds: RoomBounds): number[] {
@@ -1561,6 +1729,17 @@ function toNumber(val: unknown): number | null {
     if (typeof val === "number" && Number.isFinite(val)) return val;
     if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) return Number(val);
     return null;
+}
+
+function getRecordNumber(data: Record<string, unknown>, key: string): number | null {
+    if (!data) return null;
+    return toNumber(data[key]);
+}
+
+function getRecordString(data: Record<string, unknown>, key: string): string | null {
+    if (!data) return null;
+    const val = data[key];
+    return typeof val === "string" ? val : null;
 }
 
 function clamp(v: number, lo: number, hi: number): number {
