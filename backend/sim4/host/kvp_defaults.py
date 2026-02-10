@@ -28,7 +28,7 @@ from backend.sim4.runtime.clock import TickClock
 
 DEFAULT_ENGINE_NAME = "Sim4"
 DEFAULT_ENGINE_VERSION = "1.0.0"
-DEFAULT_WORLD_BOUNDS = Bounds(min_x=0.0, min_y=0.0, max_x=500.0, max_y=500.0)
+DEFAULT_WORLD_BOUNDS = Bounds(min_x=0.0, min_y=0.0, max_x=35.0, max_y=25.0)
 
 
 def tick_rate_hz_from_clock(clock: TickClock) -> int:

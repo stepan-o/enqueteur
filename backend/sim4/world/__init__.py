@@ -42,7 +42,13 @@ from .commands import (
 from .events import WorldEvent, WorldEventKind
 from .apply_world_commands import apply_world_commands
 from .views import WorldViews, RoomView
-from .loopforge_layout import apply_loopforge_layout, WORLD_BOUNDS, LoopforgeRoomId, RoomKind
+from .loopforge_layout import (
+    apply_loopforge_layout,
+    WORLD_BOUNDS,
+    LoopforgeRoomId,
+    LoopforgeDoorId,
+    RoomKind,
+)
 
 __all__ = [
     # IDs & records / context
@@ -74,5 +80,6 @@ __all__ = [
     "apply_loopforge_layout",
     "WORLD_BOUNDS",
     "LoopforgeRoomId",
+    "LoopforgeDoorId",
     "RoomKind",
 ]

@@ -93,10 +93,8 @@ def build_world(num_rooms: int, num_agents: int) -> tuple[WorldContext, ECSWorld
     apply_loopforge_layout(world_ctx)
     room_ids = sorted(world_ctx.rooms_by_id.keys())
 
-    # Doors (optional): 1..(num_rooms-1)
-    door_ids = list(range(1, max(1, len(room_ids))))
-    for did in door_ids:
-        world_ctx.register_door(did, is_open=False)
+    # Doors (from layout, if defined)
+    door_ids = sorted(world_ctx.door_open.keys())
 
     ecs_world = ECSWorld()
     agent_ids: list[int] = []

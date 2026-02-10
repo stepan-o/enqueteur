@@ -1,4 +1,4 @@
-"""Canonical Loopforge world layout (v0.1).
+"""Canonical Loopforge world layout (v0.2).
 
 This module defines a deterministic, hand-authored level layout for the
 Loopforge "AI brain factory" campus. It is intentionally data-only and
@@ -15,15 +15,19 @@ from .context import WorldContext, RoomRecord, RoomBounds
 
 
 class LoopforgeRoomId(IntEnum):
-    BRAIN_FORGE = 1
-    ASSEMBLY_LINE = 2
-    RESONANCE_HALL = 3
-    ELEVATOR_CORE = 4
-    SUPERVISOR_DECK = 5
-    COOLING_VENTS = 6
-    LOADING_YARD = 7
-    HABITATION_BLOCK = 8
-    LOBBY_ENTRY = 9
+    WEAVING_GALLERY = 1
+    COGNITION_BREWING = 2
+    BURNIN_THEATRE = 3
+    LOBBY = 4
+    DISPATCH = 5
+    SECURITY = 6
+    NEURAL_LATTICE = 7
+    BRAIN_FORGE = 8
+    SHIPPING = 9
+
+
+class LoopforgeDoorId(IntEnum):
+    DISPATCH_SECURITY = 1
 
 
 class RoomKind(IntEnum):
@@ -33,6 +37,14 @@ class RoomKind(IntEnum):
     CONTROL = 4
     PERIMETER = 5
     RESIDENTIAL = 6
+
+
+@dataclass(frozen=True)
+class LoopforgeDoorSpec:
+    door_id: int
+    room_a: int
+    room_b: int
+    is_open: bool = False
 
 
 @dataclass(frozen=True)
@@ -48,139 +60,156 @@ class LoopforgeRoomSpec:
     highlight: bool
 
 
-WORLD_BOUNDS = RoomBounds(min_x=0.0, min_y=0.0, max_x=500.0, max_y=500.0)
+WORLD_BOUNDS = RoomBounds(min_x=0.0, min_y=0.0, max_x=35.0, max_y=25.0)
 
 
 def _specs() -> List[LoopforgeRoomSpec]:
     return [
         LoopforgeRoomSpec(
-            room_id=int(LoopforgeRoomId.BRAIN_FORGE),
-            label="Brain Forge",
-            kind_code=int(RoomKind.CORE),
-            bounds=RoomBounds(min_x=220.0, min_y=260.0, max_x=260.0, max_y=300.0),
-            zone="core",
-            level=0,
-            neighbors=(
-                int(LoopforgeRoomId.ASSEMBLY_LINE),
-                int(LoopforgeRoomId.RESONANCE_HALL),
-                int(LoopforgeRoomId.ELEVATOR_CORE),
-                int(LoopforgeRoomId.LOADING_YARD),
-                int(LoopforgeRoomId.SUPERVISOR_DECK),
-            ),
-            tension_tier="high",
-            highlight=True,
-        ),
-        LoopforgeRoomSpec(
-            room_id=int(LoopforgeRoomId.ASSEMBLY_LINE),
-            label="Assembly Line",
+            room_id=int(LoopforgeRoomId.WEAVING_GALLERY),
+            label="Weaving Gallery",
             kind_code=int(RoomKind.WORK),
-            bounds=RoomBounds(min_x=260.0, min_y=260.0, max_x=300.0, max_y=280.0),
+            bounds=RoomBounds(min_x=5.0, min_y=1.0, max_x=17.0, max_y=9.0),
             zone="work",
             level=0,
             neighbors=(
-                int(LoopforgeRoomId.BRAIN_FORGE),
-                int(LoopforgeRoomId.COOLING_VENTS),
-                int(LoopforgeRoomId.LOADING_YARD),
+                int(LoopforgeRoomId.COGNITION_BREWING),
+                int(LoopforgeRoomId.LOBBY),
+                int(LoopforgeRoomId.DISPATCH),
             ),
-            tension_tier="high",
+            tension_tier="low",
             highlight=False,
         ),
         LoopforgeRoomSpec(
-            room_id=int(LoopforgeRoomId.RESONANCE_HALL),
-            label="Resonance Hall",
+            room_id=int(LoopforgeRoomId.COGNITION_BREWING),
+            label="Cognition Brewing",
             kind_code=int(RoomKind.WORK),
-            bounds=RoomBounds(min_x=180.0, min_y=260.0, max_x=220.0, max_y=280.0),
+            bounds=RoomBounds(min_x=18.0, min_y=1.0, max_x=28.0, max_y=9.0),
             zone="work",
             level=0,
             neighbors=(
+                int(LoopforgeRoomId.WEAVING_GALLERY),
+                int(LoopforgeRoomId.BURNIN_THEATRE),
+                int(LoopforgeRoomId.SECURITY),
                 int(LoopforgeRoomId.BRAIN_FORGE),
-                int(LoopforgeRoomId.HABITATION_BLOCK),
             ),
-            tension_tier="high",
+            tension_tier="medium",
             highlight=False,
         ),
         LoopforgeRoomSpec(
-            room_id=int(LoopforgeRoomId.ELEVATOR_CORE),
-            label="Elevator Core",
+            room_id=int(LoopforgeRoomId.BURNIN_THEATRE),
+            label="Burnin Theatre",
             kind_code=int(RoomKind.SUPPORT),
-            bounds=RoomBounds(min_x=240.0, min_y=300.0, max_x=260.0, max_y=320.0),
-            zone="circulation",
-            level=0,
-            neighbors=(
-                int(LoopforgeRoomId.BRAIN_FORGE),
-                int(LoopforgeRoomId.LOBBY_ENTRY),
-                int(LoopforgeRoomId.SUPERVISOR_DECK),
-            ),
-            tension_tier="medium",
-            highlight=True,
-        ),
-        LoopforgeRoomSpec(
-            room_id=int(LoopforgeRoomId.SUPERVISOR_DECK),
-            label="Supervisor Deck",
-            kind_code=int(RoomKind.CONTROL),
-            bounds=RoomBounds(min_x=240.0, min_y=240.0, max_x=260.0, max_y=280.0),
-            zone="control",
-            level=1,
-            neighbors=(
-                int(LoopforgeRoomId.BRAIN_FORGE),
-                int(LoopforgeRoomId.ELEVATOR_CORE),
-            ),
-            tension_tier="medium",
-            highlight=True,
-        ),
-        LoopforgeRoomSpec(
-            room_id=int(LoopforgeRoomId.COOLING_VENTS),
-            label="Cooling Vent Farms",
-            kind_code=int(RoomKind.SUPPORT),
-            bounds=RoomBounds(min_x=260.0, min_y=240.0, max_x=300.0, max_y=260.0),
+            bounds=RoomBounds(min_x=28.0, min_y=4.0, max_x=35.0, max_y=12.0),
             zone="support",
             level=0,
             neighbors=(
-                int(LoopforgeRoomId.ASSEMBLY_LINE),
-            ),
-            tension_tier="low",
-            highlight=False,
-        ),
-        LoopforgeRoomSpec(
-            room_id=int(LoopforgeRoomId.LOADING_YARD),
-            label="Loading Yard",
-            kind_code=int(RoomKind.PERIMETER),
-            bounds=RoomBounds(min_x=260.0, min_y=280.0, max_x=300.0, max_y=300.0),
-            zone="perimeter",
-            level=0,
-            neighbors=(
-                int(LoopforgeRoomId.ASSEMBLY_LINE),
-                int(LoopforgeRoomId.BRAIN_FORGE),
+                int(LoopforgeRoomId.COGNITION_BREWING),
+                int(LoopforgeRoomId.SHIPPING),
             ),
             tension_tier="medium",
             highlight=False,
         ),
         LoopforgeRoomSpec(
-            room_id=int(LoopforgeRoomId.HABITATION_BLOCK),
-            label="Habitation Block",
-            kind_code=int(RoomKind.RESIDENTIAL),
-            bounds=RoomBounds(min_x=160.0, min_y=280.0, max_x=200.0, max_y=320.0),
-            zone="residential",
-            level=0,
-            neighbors=(
-                int(LoopforgeRoomId.RESONANCE_HALL),
-            ),
-            tension_tier="low",
-            highlight=False,
-        ),
-        LoopforgeRoomSpec(
-            room_id=int(LoopforgeRoomId.LOBBY_ENTRY),
-            label="Lobby Entry",
+            room_id=int(LoopforgeRoomId.LOBBY),
+            label="Lobby",
             kind_code=int(RoomKind.CORE),
-            bounds=RoomBounds(min_x=240.0, min_y=320.0, max_x=260.0, max_y=360.0),
+            bounds=RoomBounds(min_x=0.0, min_y=10.0, max_x=10.0, max_y=16.0),
             zone="core",
             level=0,
             neighbors=(
-                int(LoopforgeRoomId.ELEVATOR_CORE),
+                int(LoopforgeRoomId.WEAVING_GALLERY),
+                int(LoopforgeRoomId.DISPATCH),
             ),
             tension_tier="low",
             highlight=True,
         ),
+        LoopforgeRoomSpec(
+            room_id=int(LoopforgeRoomId.DISPATCH),
+            label="Dispatch",
+            kind_code=int(RoomKind.WORK),
+            bounds=RoomBounds(min_x=10.0, min_y=13.0, max_x=16.0, max_y=17.0),
+            zone="work",
+            level=0,
+            neighbors=(
+                int(LoopforgeRoomId.LOBBY),
+                int(LoopforgeRoomId.WEAVING_GALLERY),
+                int(LoopforgeRoomId.SECURITY),
+                int(LoopforgeRoomId.NEURAL_LATTICE),
+            ),
+            tension_tier="medium",
+            highlight=False,
+        ),
+        LoopforgeRoomSpec(
+            room_id=int(LoopforgeRoomId.SECURITY),
+            label="Security",
+            kind_code=int(RoomKind.CONTROL),
+            bounds=RoomBounds(min_x=16.0, min_y=13.0, max_x=20.0, max_y=17.0),
+            zone="control",
+            level=0,
+            neighbors=(
+                int(LoopforgeRoomId.DISPATCH),
+                int(LoopforgeRoomId.COGNITION_BREWING),
+                int(LoopforgeRoomId.BRAIN_FORGE),
+            ),
+            tension_tier="high",
+            highlight=True,
+        ),
+        LoopforgeRoomSpec(
+            room_id=int(LoopforgeRoomId.NEURAL_LATTICE),
+            label="Neural Lattice",
+            kind_code=int(RoomKind.WORK),
+            bounds=RoomBounds(min_x=10.0, min_y=20.0, max_x=20.0, max_y=25.0),
+            zone="work",
+            level=0,
+            neighbors=(
+                int(LoopforgeRoomId.DISPATCH),
+                int(LoopforgeRoomId.BRAIN_FORGE),
+            ),
+            tension_tier="high",
+            highlight=True,
+        ),
+        LoopforgeRoomSpec(
+            room_id=int(LoopforgeRoomId.BRAIN_FORGE),
+            label="Brain Forge",
+            kind_code=int(RoomKind.CORE),
+            bounds=RoomBounds(min_x=20.0, min_y=14.0, max_x=28.0, max_y=25.0),
+            zone="core",
+            level=0,
+            neighbors=(
+                int(LoopforgeRoomId.SECURITY),
+                int(LoopforgeRoomId.COGNITION_BREWING),
+                int(LoopforgeRoomId.NEURAL_LATTICE),
+                int(LoopforgeRoomId.SHIPPING),
+            ),
+            tension_tier="high",
+            highlight=True,
+        ),
+        LoopforgeRoomSpec(
+            room_id=int(LoopforgeRoomId.SHIPPING),
+            label="Shipping",
+            kind_code=int(RoomKind.PERIMETER),
+            bounds=RoomBounds(min_x=30.0, min_y=15.0, max_x=35.0, max_y=25.0),
+            zone="perimeter",
+            level=0,
+            neighbors=(
+                int(LoopforgeRoomId.BRAIN_FORGE),
+                int(LoopforgeRoomId.BURNIN_THEATRE),
+            ),
+            tension_tier="medium",
+            highlight=False,
+        ),
+    ]
+
+
+def _door_specs() -> List[LoopforgeDoorSpec]:
+    return [
+        LoopforgeDoorSpec(
+            door_id=int(LoopforgeDoorId.DISPATCH_SECURITY),
+            room_a=int(LoopforgeRoomId.DISPATCH),
+            room_b=int(LoopforgeRoomId.SECURITY),
+            is_open=False,
+        )
     ]
 
 
@@ -207,6 +236,24 @@ def _validate_layout(specs: Iterable[LoopforgeRoomSpec]) -> None:
                 raise ValueError(f"Room {room_id} is not reciprocated by neighbor {n}")
 
 
+def _validate_doors(doors: Iterable[LoopforgeDoorSpec], specs: Iterable[LoopforgeRoomSpec]) -> None:
+    door_list = list(doors)
+    if not door_list:
+        return
+    room_ids = {s.room_id for s in specs}
+    door_ids = {d.door_id for d in door_list}
+    if len(door_ids) != len(door_list):
+        raise ValueError("Duplicate door_id detected in Loopforge layout")
+    neighbors_by_id = {s.room_id: set(s.neighbors) for s in specs}
+    for d in door_list:
+        if d.room_a not in room_ids or d.room_b not in room_ids:
+            raise ValueError(f"Door {d.door_id} references unknown room ids")
+        if d.room_b not in neighbors_by_id.get(d.room_a, set()):
+            raise ValueError(
+                f"Door {d.door_id} requires neighbors between rooms {d.room_a} and {d.room_b}"
+            )
+
+
 def apply_loopforge_layout(world_ctx: WorldContext) -> None:
     """Register the canonical Loopforge layout into the WorldContext.
 
@@ -214,7 +261,9 @@ def apply_loopforge_layout(world_ctx: WorldContext) -> None:
     systems or ECS state, and it does not perform any I/O.
     """
     specs = _specs()
+    doors = _door_specs()
     _validate_layout(specs)
+    _validate_doors(doors, specs)
     for s in specs:
         world_ctx.register_room(
             RoomRecord(
@@ -229,10 +278,13 @@ def apply_loopforge_layout(world_ctx: WorldContext) -> None:
                 highlight=s.highlight,
             )
         )
+    for d in doors:
+        world_ctx.register_door(d.door_id, is_open=d.is_open)
 
 
 __all__ = [
     "LoopforgeRoomId",
+    "LoopforgeDoorId",
     "RoomKind",
     "WORLD_BOUNDS",
     "apply_loopforge_layout",

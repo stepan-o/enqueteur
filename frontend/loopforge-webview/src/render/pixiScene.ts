@@ -29,7 +29,13 @@ const PALETTE = {
 type RoomCenter = { x: number; y: number };
 type RoomBounds = { min_x: number; min_y: number; max_x: number; max_y: number };
 type AgentMotion = { current: RoomCenter; target: RoomCenter; facing: number };
-const WORLD_UNITS_PER_TILE = 20;
+const DEFAULT_WORLD_UNITS_PER_TILE = 20;
+let worldUnitsPerTile = DEFAULT_WORLD_UNITS_PER_TILE;
+
+function resolveUnitsPerTile(spec?: RenderSpec): number {
+    const units = spec?.coord_system?.units_per_tile;
+    return Number.isFinite(units) && (units ?? 0) > 0 ? (units as number) : DEFAULT_WORLD_UNITS_PER_TILE;
+}
 
 export class PixiScene {
     public readonly app: PIXI.Application;
@@ -251,12 +257,17 @@ export class PixiScene {
 
     private applyRenderSpec(spec?: RenderSpec): void {
         const iso = spec?.projection;
-        const isoKey = `${iso?.recommended_iso_tile_w ?? 64}x${iso?.recommended_iso_tile_h ?? 32}`;
+        const nextUnits = resolveUnitsPerTile(spec);
+        const isoKey = `${iso?.recommended_iso_tile_w ?? 64}x${iso?.recommended_iso_tile_h ?? 32}@${nextUnits}`;
         if (isoKey !== this.lastIsoKey) {
             this.lastIsoKey = isoKey;
             this.isoTileW = iso?.recommended_iso_tile_w ?? 64;
             this.isoTileH = iso?.recommended_iso_tile_h ?? 32;
             setIsoTileSize(this.isoTileW, this.isoTileH);
+            worldUnitsPerTile = nextUnits;
+            this.lastGridKey = "";
+            this.lastLayoutKey = "";
+            this.lastAutoFitKey = "";
         }
     }
 
@@ -275,7 +286,7 @@ export class PixiScene {
         g.stroke({ width: 2, color: PALETTE.ink, alpha: 0.15 });
 
         // Large city-block grid (lighter than the old blueprint)
-        const step = TILE_UNITS;
+        const step = Math.max(1, worldUnitsPerTile);
         const color = PALETTE.grid;
         const alpha = 0.18;
 
@@ -1389,8 +1400,6 @@ type TileLayout = {
     floorById: Map<number, number>;
 };
 
-const TILE_UNITS = WORLD_UNITS_PER_TILE;
-
 function buildTileLayout(rooms: KvpRoom[], world: RoomBounds): TileLayout {
     const boundsById = new Map<number, RoomBounds>();
     const floorById = new Map<number, number>();
@@ -1405,8 +1414,9 @@ function buildTileLayout(rooms: KvpRoom[], world: RoomBounds): TileLayout {
     const placed0 = new Set<string>();
     const placed1 = new Set<string>();
 
-    const originX = world.min_x + TILE_UNITS;
-    const originY = world.min_y + TILE_UNITS;
+    const tileUnits = Math.max(1, worldUnitsPerTile);
+    const originX = world.min_x + tileUnits;
+    const originY = world.min_y + tileUnits;
 
     const grid0W = 10;
     const grid0H = 8;
@@ -1435,10 +1445,10 @@ function buildTileLayout(rooms: KvpRoom[], world: RoomBounds): TileLayout {
                 occupied.add(`${x + dx},${y + dy}`);
             }
         }
-        const min_x = originX + offsetX + x * TILE_UNITS;
-        const min_y = originY + offsetY + y * TILE_UNITS;
-        const max_x = min_x + w * TILE_UNITS;
-        const max_y = min_y + h * TILE_UNITS;
+        const min_x = originX + offsetX + x * tileUnits;
+        const min_y = originY + offsetY + y * tileUnits;
+        const max_x = min_x + w * tileUnits;
+        const max_y = min_y + h * tileUnits;
         boundsById.set(r.room_id, { min_x, min_y, max_x, max_y });
         floorById.set(r.room_id, floor);
         return true;
@@ -1462,10 +1472,10 @@ function buildTileLayout(rooms: KvpRoom[], world: RoomBounds): TileLayout {
                         occupied.add(`${x + dx},${y + dy}`);
                     }
                 }
-                const min_x = originX + offsetX + x * TILE_UNITS;
-                const min_y = originY + offsetY + y * TILE_UNITS;
-                const max_x = min_x + w * TILE_UNITS;
-                const max_y = min_y + h * TILE_UNITS;
+                const min_x = originX + offsetX + x * tileUnits;
+                const min_y = originY + offsetY + y * tileUnits;
+                const max_x = min_x + w * tileUnits;
+                const max_y = min_y + h * tileUnits;
                 boundsById.set(r.room_id, { min_x, min_y, max_x, max_y });
                 floorById.set(r.room_id, floor);
                 return true;
@@ -1521,7 +1531,7 @@ function buildTileLayout(rooms: KvpRoom[], world: RoomBounds): TileLayout {
     // Outdoor band on floor 0 (no second floor above)
     for (const r of outdoors) {
         if (!boundsById.has(r.room_id)) {
-            placeRoom(r, 0, 8, 2, 0, TILE_UNITS * 9);
+            placeRoom(r, 0, 8, 2, 0, tileUnits * 9);
         }
     }
 
@@ -1673,7 +1683,7 @@ function withinBounds(bounds: RoomBounds, x: number, y: number): boolean {
 }
 
 function isoProjectWorld(p: RoomCenter): RoomCenter {
-    return isoProject({ x: p.x / WORLD_UNITS_PER_TILE, y: p.y / WORLD_UNITS_PER_TILE });
+    return isoProject({ x: p.x / worldUnitsPerTile, y: p.y / worldUnitsPerTile });
 }
 
 function drawIsoHatch(g: PIXI.Graphics, bounds: RoomBounds, step: number, color: number, alpha: number): void {
