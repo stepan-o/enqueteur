@@ -49,9 +49,8 @@ class WorldViewsHandle(Protocol):
     dummy classes.
     """
 
-    # Example placeholders for future expansion:
-    # def agents_in_room(self, room_id: int) -> Iterable[int]: ...
-    # def room_neighbors(self, room_id: int) -> Iterable[int]: ...
+    def get_room_bounds(self, room_id: int):
+        """Return room bounds if available; systems must tolerate None."""
     ...
 
 

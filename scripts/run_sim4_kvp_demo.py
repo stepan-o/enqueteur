@@ -26,6 +26,10 @@ from backend.sim4.ecs.systems.base import SystemContext
 from backend.sim4.ecs.components.embodiment import Transform, RoomPresence
 from backend.sim4.ecs.components.intent_action import ActionState
 from backend.sim4.ecs.components.work import WorkDesire, WorkAssignment
+from backend.sim4.ecs.systems.work_desire_system import WorkDesireSystem
+from backend.sim4.ecs.systems.work_assignment_system import WorkAssignmentSystem
+from backend.sim4.ecs.systems.workstation_movement_system import WorkstationMovementSystem
+from backend.sim4.ecs.systems.object_workstation_system import ObjectWorkstationSystem
 from backend.sim4.world.context import WorldContext, ItemRecord
 from backend.sim4.world.commands import WorldCommand, WorldCommandKind
 from backend.sim4.host.sim_runner import SimRunner, OfflineExportConfig
@@ -294,7 +298,13 @@ def main() -> None:
     )
     render_spec = default_render_spec()
 
-    scheduler = DemoScheduler({"B": [WanderSystem, ActionPulseSystem]})
+    scheduler = DemoScheduler(
+        {
+            "B": [WanderSystem, ActionPulseSystem],
+            "C": [WorkDesireSystem],
+            "D": [WorkAssignmentSystem, WorkstationMovementSystem, ObjectWorkstationSystem],
+        }
+    )
 
     world_commands_provider = make_world_commands_provider(
         room_ids=room_ids,

@@ -63,7 +63,12 @@ class WorkAssignmentSystem:
 
             if current_oid is not None:
                 mismatched_room = current_info is not None and current_info["room_id"] != room_id
-                if (not wants_work) or (current_info is None) or (not _is_available(current_info)) or mismatched_room:
+                occupied_by_other = (
+                    current_info is not None
+                    and current_info["occupant"] is not None
+                    and current_info["occupant"] != agent_id
+                )
+                if (not wants_work) or (current_info is None) or (not _is_available(current_info)) or mismatched_room or occupied_by_other:
                     _release_assignment(ctx, agent_id, current_oid, current_info)
                     current_oid = None
 

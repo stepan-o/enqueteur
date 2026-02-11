@@ -20,8 +20,9 @@ class DummyWorldViews:
     All methods are no-ops or return empty iterables.
     """
 
-    # No concrete methods required for this sprint; Protocol is placeholder-only.
-    pass
+    def get_room_bounds(self, room_id: int):
+        _ = room_id
+        return None
 
 
 def make_dummy_world() -> ECSWorld:

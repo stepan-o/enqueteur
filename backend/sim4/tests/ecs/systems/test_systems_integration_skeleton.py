@@ -20,8 +20,9 @@ from backend.sim4.ecs.systems.scheduler_order import (
 class DummyWorldViews:  # satisfies WorldViewsHandle Protocol for this sprint
     """Minimal dummy implementation of WorldViewsHandle for integration tests."""
 
-    # If WorldViewsHandle gains required methods later, implement them here as no-ops.
-    pass
+    def get_room_bounds(self, room_id: int):
+        _ = room_id
+        return None
 
 
 def make_dummy_world() -> ECSWorld:

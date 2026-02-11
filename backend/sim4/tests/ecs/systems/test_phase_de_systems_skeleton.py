@@ -36,8 +36,9 @@ class DummyWorldViews:
     Minimal dummy implementation of WorldViewsHandle for Phase D/E tests.
     """
 
-    # Protocol has no concrete methods yet for this sprint.
-    pass
+    def get_room_bounds(self, room_id: int):
+        _ = room_id
+        return None
 
 
 def make_minimal_world() -> ECSWorld:

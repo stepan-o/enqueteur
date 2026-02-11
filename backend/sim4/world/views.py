@@ -99,6 +99,13 @@ class WorldViews:
             items=self.get_room_items(room_id),
         )
 
+    def get_room_bounds(self, room_id: RoomID):
+        """Return RoomBounds for the room, if defined."""
+        rec = self._world_ctx.get_room(room_id)
+        if rec is None:
+            return None
+        return rec.bounds
+
     # --- Optional: neighbor/adjacency queries ---
     def iter_room_neighbors(self, room_id: RoomID) -> Iterable[RoomID]:
         """Iterate neighbor rooms for navigation/visibility queries.
