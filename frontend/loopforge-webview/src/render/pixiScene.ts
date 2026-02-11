@@ -31,10 +31,17 @@ type RoomBounds = { min_x: number; min_y: number; max_x: number; max_y: number }
 type AgentMotion = { current: RoomCenter; target: RoomCenter; facing: number };
 const DEFAULT_WORLD_UNITS_PER_TILE = 20;
 let worldUnitsPerTile = DEFAULT_WORLD_UNITS_PER_TILE;
+let worldRotationQuarterTurns = 0;
+let worldCenter: RoomCenter = { x: 0, y: 0 };
 
 function resolveUnitsPerTile(spec?: RenderSpec): number {
     const units = spec?.coord_system?.units_per_tile;
     return Number.isFinite(units) && (units ?? 0) > 0 ? (units as number) : DEFAULT_WORLD_UNITS_PER_TILE;
+}
+
+function normalizeQuarterTurns(turns: number): number {
+    const raw = Math.round(turns);
+    return ((raw % 4) + 4) % 4;
 }
 
 export class PixiScene {
@@ -70,6 +77,7 @@ export class PixiScene {
     private isoTileW = 64;
     private isoTileH = 32;
     private floorFilter: "all" | 0 | 1 = 0;
+    private viewRotation = 0;
 
     // Camera state
     private camX = 0;
@@ -206,6 +214,22 @@ export class PixiScene {
         this.autoFitLocked = true;
     }
 
+    setViewRotation(turns: number): void {
+        const next = normalizeQuarterTurns(turns);
+        if (next === this.viewRotation) return;
+        this.viewRotation = next;
+        worldRotationQuarterTurns = next;
+        this.lastGridKey = "";
+        this.lastLayoutKey = "";
+        this.lastAutoFitKey = "";
+        this.lastIsoKey = "";
+        if (this.lastState) this.renderFromState(this.lastState);
+    }
+
+    rotateView(deltaQuarterTurns: number): void {
+        this.setViewRotation(this.viewRotation + deltaQuarterTurns);
+    }
+
     followAgent(agentId?: number): void {
         if (!agentId) {
             if (this.cameraMode === "follow") this.cameraMode = "free";
@@ -256,9 +280,14 @@ export class PixiScene {
      * ------------------------------------------------------------------------ */
 
     private applyRenderSpec(spec?: RenderSpec): void {
+        const bounds = getWorldBounds(spec);
+        worldCenter = {
+            x: (bounds.min_x + bounds.max_x) * 0.5,
+            y: (bounds.min_y + bounds.max_y) * 0.5,
+        };
         const iso = spec?.projection;
         const nextUnits = resolveUnitsPerTile(spec);
-        const isoKey = `${iso?.recommended_iso_tile_w ?? 64}x${iso?.recommended_iso_tile_h ?? 32}@${nextUnits}`;
+        const isoKey = `${iso?.recommended_iso_tile_w ?? 64}x${iso?.recommended_iso_tile_h ?? 32}@${nextUnits}:r${this.viewRotation}`;
         if (isoKey !== this.lastIsoKey) {
             this.lastIsoKey = isoKey;
             this.isoTileW = iso?.recommended_iso_tile_w ?? 64;
@@ -1687,7 +1716,24 @@ function withinBounds(bounds: RoomBounds, x: number, y: number): boolean {
 }
 
 function isoProjectWorld(p: RoomCenter): RoomCenter {
-    return isoProject({ x: p.x / worldUnitsPerTile, y: p.y / worldUnitsPerTile });
+    const turns = worldRotationQuarterTurns;
+    let x = p.x;
+    let y = p.y;
+    if (turns !== 0) {
+        const dx = p.x - worldCenter.x;
+        const dy = p.y - worldCenter.y;
+        if (turns === 1) {
+            x = worldCenter.x - dy;
+            y = worldCenter.y + dx;
+        } else if (turns === 2) {
+            x = worldCenter.x - dx;
+            y = worldCenter.y - dy;
+        } else {
+            x = worldCenter.x + dy;
+            y = worldCenter.y - dx;
+        }
+    }
+    return isoProject({ x: x / worldUnitsPerTile, y: y / worldUnitsPerTile });
 }
 
 function drawIsoHatch(g: PIXI.Graphics, bounds: RoomBounds, step: number, color: number, alpha: number): void {

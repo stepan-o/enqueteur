@@ -86,6 +86,7 @@ export function boot(opts: BootOpts): void {
         viewerStore,
         onFloorChange: (floor) => scene.setFloorFilter(floor),
         onCameraModeChange: (mode) => scene.setCameraMode(mode),
+        onRotate: (delta) => scene.rotateView(delta),
         onPlaybackToggle: (paused) => {
             if (mode !== "offline") return;
             if (!offlineHandle) return;

@@ -11,6 +11,7 @@ type DevControlsOpts = {
   onFloorChange: (floor: FloorFilter) => void;
   onRestart: () => void;
   onCameraModeChange?: (mode: CameraMode) => void;
+  onRotate?: (deltaQuarterTurns: number) => void;
   onPlaybackToggle?: (paused: boolean) => void;
   onSpeedChange?: (speed: number) => void;
   onSeek?: (tick: number) => void;
@@ -106,6 +107,25 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
   cameraRow.appendChild(camFree);
   cameraRow.appendChild(camAuto);
   panel.appendChild(cameraRow);
+
+  const rotateRow = document.createElement("div");
+  rotateRow.style.display = "flex";
+  rotateRow.style.gap = "6px";
+  rotateRow.style.alignItems = "center";
+
+  const rotateLabel = document.createElement("div");
+  rotateLabel.textContent = "View";
+  rotateLabel.style.fontSize = "12px";
+  rotateLabel.style.minWidth = "48px";
+  rotateRow.appendChild(rotateLabel);
+
+  const rotateLeft = makeMiniButton("Rotate -90");
+  const rotateRight = makeMiniButton("Rotate +90");
+  rotateLeft.addEventListener("click", () => opts.onRotate?.(-1));
+  rotateRight.addEventListener("click", () => opts.onRotate?.(1));
+  rotateRow.appendChild(rotateLeft);
+  rotateRow.appendChild(rotateRight);
+  panel.appendChild(rotateRow);
 
   const cameraHint = document.createElement("div");
   cameraHint.textContent = "Tip: click an agent to follow";
