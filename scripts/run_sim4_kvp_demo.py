@@ -25,6 +25,7 @@ from backend.sim4.ecs.query import QuerySignature
 from backend.sim4.ecs.systems.base import SystemContext
 from backend.sim4.ecs.components.embodiment import Transform, RoomPresence
 from backend.sim4.ecs.components.intent_action import ActionState
+from backend.sim4.ecs.components.work import WorkDesire, WorkAssignment
 from backend.sim4.world.context import WorldContext, ItemRecord
 from backend.sim4.world.commands import WorldCommand, WorldCommandKind
 from backend.sim4.host.sim_runner import SimRunner, OfflineExportConfig
@@ -117,11 +118,19 @@ def build_world(num_rooms: int, num_agents: int) -> tuple[WorldContext, ECSWorld
         base_x = center_x + jitter_x
         base_y = center_y + jitter_y
 
+        desire_seed = random.uniform(0.1, 0.6)
         entity_id = ecs_world.create_entity(
             [
                 Transform(room_id=room_id, x=base_x, y=base_y, orientation=0.0),
                 RoomPresence(room_id=room_id, time_in_room=0.0),
                 ActionState(mode_code=(i % 3), time_in_mode=0.0, last_mode_change_tick=0),
+                WorkDesire(
+                    value=desire_seed,
+                    threshold=0.7,
+                    increase_rate=0.012,
+                    last_tick=0,
+                ),
+                WorkAssignment(object_id=None, load_band=0, ticks_working=0),
             ]
         )
         agent_ids.append(entity_id)

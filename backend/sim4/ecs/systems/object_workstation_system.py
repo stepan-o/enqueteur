@@ -11,8 +11,7 @@ from typing import Dict, List
 
 from .base import SystemContext
 from ..query import QuerySignature
-from ..components.embodiment import RoomPresence
-from ..components.intent_action import ActionState
+from ..components.work import WorkAssignment
 from ..components.objects import (
     WorkstationStatus,
     ObjectRef,
@@ -36,19 +35,12 @@ class ObjectWorkstationSystem:
     """Phase D: updates workstation state + production metrics."""
 
     def run(self, ctx: SystemContext) -> None:
-        room_agents: Dict[int, List[int]] = {}
-        agent_action: Dict[int, int] = {}
-
-        agent_sig = QuerySignature(read=(RoomPresence,), write=(), optional=(ActionState,))
-        for row in ctx.world.query(agent_sig):
-            rp = row.components[0]
-            action = row.components[1] if len(row.components) > 1 else None
-            room_agents.setdefault(rp.room_id, []).append(row.entity)
-            if action is not None:
-                agent_action[row.entity] = int(action.mode_code)
-
-        for agents in room_agents.values():
-            agents.sort()
+        agent_load: Dict[int, int] = {}
+        assignment_sig = QuerySignature(read=(WorkAssignment,), write=())
+        for row in ctx.world.query(assignment_sig):
+            assignment = row.components[0]
+            if assignment.object_id is not None:
+                agent_load[row.entity] = int(assignment.load_band)
 
         obj_sig = QuerySignature(
             read=(ObjectRef, ObjectPlacement, ProductionProfile),
@@ -62,30 +54,28 @@ class ObjectWorkstationSystem:
 
         objects.sort(key=lambda o: (o[2].room_id, o[0]))
 
-        per_room_idx: Dict[int, int] = {}
         factory_input = 0.0
         active_objects = 0
         overdrive_objects = 0
 
         for object_id, eid, placement, profile, stats, ws in objects:
-            agents = room_agents.get(placement.room_id, [])
-            idx = per_room_idx.get(placement.room_id, 0)
-            per_room_idx[placement.room_id] = idx + 1
-            occupant = agents[idx % len(agents)] if agents else None
-
             status = _safe_status(ws.status_code)
+            occupant = ws.occupant_agent_id
+            if status in (WorkstationStatus.UNAVAILABLE, WorkstationStatus.BROKEN):
+                occupant = None
+            if stats.durability <= 0.0:
+                status = WorkstationStatus.BROKEN
+                occupant = None
 
             if status == WorkstationStatus.UNAVAILABLE:
                 desired_status = WorkstationStatus.UNAVAILABLE
-                occupant = None
-            elif stats.durability <= 0.0:
+            elif status == WorkstationStatus.BROKEN:
                 desired_status = WorkstationStatus.BROKEN
-                occupant = None
             elif occupant is None:
                 desired_status = WorkstationStatus.NOT_OCCUPIED
             else:
-                action_code = agent_action.get(occupant, 0)
-                desired_status = _status_from_agent(action_code, stats.efficiency)
+                load_band = agent_load.get(occupant, 0)
+                desired_status = _status_from_load(load_band, stats.efficiency)
 
             ticks_in_state = ws.ticks_in_state + 1
             if desired_status != status or occupant != ws.occupant_agent_id:
@@ -148,21 +138,17 @@ def _safe_status(code: int) -> WorkstationStatus:
         return WorkstationStatus.NOT_OCCUPIED
 
 
-def _status_from_agent(action_code: int, efficiency: float) -> WorkstationStatus:
+def _status_from_load(load_band: int, efficiency: float) -> WorkstationStatus:
     if efficiency <= 0.15:
         return WorkstationStatus.RUNNING_IDLE
-    band = int(action_code) % 4
-    if band == 0:
+    band = int(load_band)
+    if band <= 0:
         return WorkstationStatus.RUNNING_IDLE
     if band == 1:
         return WorkstationStatus.PRODUCING_HALF
     if band == 2:
         return WorkstationStatus.PRODUCING_CAPACITY
-    return (
-        WorkstationStatus.PRODUCING_OVERDRIVE
-        if efficiency >= 0.6
-        else WorkstationStatus.PRODUCING_CAPACITY
-    )
+    return WorkstationStatus.PRODUCING_OVERDRIVE if efficiency >= 0.6 else WorkstationStatus.PRODUCING_CAPACITY
 
 
 def _output_multiplier(status: WorkstationStatus, overdrive_multiplier: float) -> float:

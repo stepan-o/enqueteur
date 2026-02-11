@@ -36,6 +36,7 @@ from .intent_action import (
 from .narrative_state import NarrativeState
 from .inventory import InventorySubstrate, ItemState
 from .meta import DebugFlags, SystemMarkers
+from .work import WorkDesire, WorkAssignment
 from .objects import (
     WorkstationStatus,
     ObjectRef,
@@ -79,6 +80,8 @@ __all__ = [
     "ItemState",
     "DebugFlags",
     "SystemMarkers",
+    "WorkDesire",
+    "WorkAssignment",
     "WorkstationStatus",
     "ObjectRef",
     "ObjectClass",

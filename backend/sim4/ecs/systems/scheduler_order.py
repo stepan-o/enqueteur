@@ -13,11 +13,13 @@ from .perception_system import PerceptionSystem
 from .cognitive_preprocessor import CognitivePreprocessor
 from .emotion_gradient_system import EmotionGradientSystem
 from .drive_update_system import DriveUpdateSystem
+from .work_desire_system import WorkDesireSystem
 from .motive_formation_system import MotiveFormationSystem
 from .plan_resolution_system import PlanResolutionSystem
 from .social_update_system import SocialUpdateSystem
 from .intent_resolver_system import IntentResolverSystem
 from .movement_resolution_system import MovementResolutionSystem
+from .work_assignment_system import WorkAssignmentSystem
 from .object_workstation_system import ObjectWorkstationSystem
 from .interaction_resolution_system import InteractionResolutionSystem
 from .inventory_system import InventorySystem
@@ -34,6 +36,7 @@ PHASE_C_SYSTEMS = [
     CognitivePreprocessor,
     EmotionGradientSystem,
     DriveUpdateSystem,
+    WorkDesireSystem,
     MotiveFormationSystem,
     PlanResolutionSystem,
     SocialUpdateSystem,
@@ -42,6 +45,7 @@ PHASE_C_SYSTEMS = [
 PHASE_D_SYSTEMS = [
     IntentResolverSystem,
     MovementResolutionSystem,
+    WorkAssignmentSystem,
     ObjectWorkstationSystem,
     InteractionResolutionSystem,
     InventorySystem,
