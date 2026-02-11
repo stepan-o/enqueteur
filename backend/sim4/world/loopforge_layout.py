@@ -63,9 +63,9 @@ class LoopforgeRoomSpec:
 
 WORLD_BOUNDS = RoomBounds(min_x=0.0, min_y=0.0, max_x=35.0, max_y=25.0)
 
-_HEIGHT_BASE = 0.9
-_HEIGHT_CONTROL = 1.1
-_HEIGHT_CORE = 1.25
+_HEIGHT_BASE = 4.0
+_HEIGHT_CONTROL = 4.0
+_HEIGHT_CORE = 4.0
 
 
 def _specs() -> List[LoopforgeRoomSpec]:
