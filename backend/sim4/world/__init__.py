@@ -25,10 +25,12 @@ from .context import (
     RoomRecord,
     RoomBounds,
     ItemRecord,
+    ObjectRecord,
     RoomID,
     AgentID,
     ItemID,
     DoorID,
+    ObjectID,
 )
 from .commands import (
     WorldCommand,
@@ -56,10 +58,12 @@ __all__ = [
     "RoomRecord",
     "RoomBounds",
     "ItemRecord",
+    "ObjectRecord",
     "RoomID",
     "AgentID",
     "ItemID",
     "DoorID",
+    "ObjectID",
     # Commands & helpers
     "WorldCommand",
     "WorldCommandKind",

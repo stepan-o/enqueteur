@@ -10,17 +10,26 @@ Ops follow the KVP-0001 shape:
   - {"op": "REMOVE_AGENT", "agent_id": 1}
   - {"op": "UPSERT_ITEM", "item": {...}}
   - {"op": "REMOVE_ITEM", "item_id": 1}
+  - {"op": "UPSERT_OBJECT", "object": {...}}
+  - {"op": "REMOVE_OBJECT", "object_id": 1}
   - {"op": "UPSERT_EVENT", "event": {...}}
   - {"op": "REMOVE_EVENT", "event_key": {"tick": 1, "event_id": 5}}
 
 Ops are emitted in a deterministic order:
-  ROOMS → AGENTS → ITEMS → EVENTS, with removals before upserts within each type.
+  ROOMS → AGENTS → ITEMS → OBJECTS → EVENTS, with removals before upserts within each type.
 """
 
 from typing import Any, Dict, Iterable, List, Tuple
 import copy
 
-from .canonicalize import canonicalize_state_obj, sort_rooms, sort_agents, sort_items, sort_events
+from .canonicalize import (
+    canonicalize_state_obj,
+    sort_rooms,
+    sort_agents,
+    sort_items,
+    sort_objects,
+    sort_events,
+)
 
 
 def _get_field(obj: Any, name: str) -> Any:
@@ -106,6 +115,15 @@ def compute_state_diff_ops(state_from: Dict[str, Any], state_to: Dict[str, Any])
         remove_op="REMOVE_ITEM",
     )
 
+    # Objects
+    _diff_group(
+        state_from.get("objects", []),
+        state_to.get("objects", []),
+        id_field="object_id",
+        upsert_op="UPSERT_OBJECT",
+        remove_op="REMOVE_OBJECT",
+    )
+
     # Events (keyed by tick+event_id)
     events_from = state_from.get("events", [])
     events_to = state_to.get("events", [])
@@ -135,9 +153,10 @@ def apply_state_diff_ops(state: Dict[str, Any], ops: List[Dict[str, Any]]) -> Di
     rooms = _index_by_id(new_state.get("rooms", []), "room_id") if ("rooms" in new_state) else {}
     agents = _index_by_id(new_state.get("agents", []), "agent_id") if ("agents" in new_state) else {}
     items = _index_by_id(new_state.get("items", []), "item_id") if ("items" in new_state) else {}
+    objects = _index_by_id(new_state.get("objects", []), "object_id") if ("objects" in new_state) else {}
     events = {_event_key(ev): ev for ev in new_state.get("events", [])} if ("events" in new_state) else {}
 
-    touched = {"rooms": False, "agents": False, "items": False, "events": False}
+    touched = {"rooms": False, "agents": False, "items": False, "objects": False, "events": False}
 
     for op in ops:
         if not isinstance(op, dict) or "op" not in op:
@@ -186,6 +205,20 @@ def apply_state_diff_ops(state: Dict[str, Any], ops: List[Dict[str, Any]]) -> Di
             items.pop(iid, None)
             touched["items"] = True
 
+        elif kind == "UPSERT_OBJECT":
+            obj = op.get("object")
+            if obj is None:
+                raise ValueError("UPSERT_OBJECT missing object payload")
+            oid = _get_field(obj, "object_id")
+            if oid is None:
+                raise ValueError("UPSERT_OBJECT object missing object_id")
+            objects[oid] = obj
+            touched["objects"] = True
+        elif kind == "REMOVE_OBJECT":
+            oid = op.get("object_id")
+            objects.pop(oid, None)
+            touched["objects"] = True
+
         elif kind == "UPSERT_EVENT":
             ev = op.get("event")
             if ev is None:
@@ -208,6 +241,8 @@ def apply_state_diff_ops(state: Dict[str, Any], ops: List[Dict[str, Any]]) -> Di
         new_state["agents"] = sort_agents(list(agents.values()))
     if "items" in new_state or touched["items"]:
         new_state["items"] = sort_items(list(items.values()))
+    if "objects" in new_state or touched["objects"]:
+        new_state["objects"] = sort_objects(list(objects.values()))
     if "events" in new_state or touched["events"]:
         new_state["events"] = sort_events(list(events.values()))
 

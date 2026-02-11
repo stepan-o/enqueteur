@@ -23,6 +23,7 @@ from backend.sim4.snapshot.world_snapshot import (
     RoomBoundsSnapshot,
     AgentSnapshot,
     ItemSnapshot,
+    ObjectSnapshot,
     TransformSnapshot,
 )
 from backend.sim4.world.context import WorldContext
@@ -140,6 +141,29 @@ def _build_items(world_ctx: WorldContext) -> List[ItemSnapshot]:
     return items
 
 
+def _build_objects(world_ctx: WorldContext) -> List[ObjectSnapshot]:
+    objects: List[ObjectSnapshot] = []
+    object_ids = list(world_ctx.objects_by_id.keys())
+    object_ids.sort()
+    for oid in object_ids:
+        obj = world_ctx.objects_by_id[oid]
+        objects.append(
+            ObjectSnapshot(
+                object_id=oid,
+                class_code=obj.class_code,
+                room_id=obj.room_id,
+                tile_x=int(obj.tile_x),
+                tile_y=int(obj.tile_y),
+                size_w=int(obj.size_w),
+                size_h=int(obj.size_h),
+                orientation=int(obj.orientation),
+                scale=float(obj.scale),
+                height=float(obj.height) if obj.height is not None else None,
+            )
+        )
+    return objects
+
+
 def build_world_snapshot(
     tick_index: int,
     episode_id: int,
@@ -156,6 +180,7 @@ def build_world_snapshot(
     rooms = _build_rooms(world_ctx)
     agents = _build_agents(ecs_world)
     items = _build_items(world_ctx)
+    objects = _build_objects(world_ctx)
 
     # Indices mapping IDs to positional indices in the lists
     room_index: Dict[int, int] = {r.room_id: idx for idx, r in enumerate(rooms)}
@@ -181,6 +206,7 @@ def build_world_snapshot(
         rooms=rooms,
         agents=agents,
         items=items,
+        objects=objects,
         room_index=room_index,
         agent_index=agent_index,
     )

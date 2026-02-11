@@ -1,8 +1,9 @@
 // src/render/pixiScene.ts
 import * as PIXI from "pixi.js";
-import type { KvpAgent, KvpItem, KvpRoom, RenderSpec, WorldState } from "../state/worldStore";
+import type { KvpAgent, KvpItem, KvpObject, KvpRoom, RenderSpec, WorldState } from "../state/worldStore";
 import type { UIOverlayEvent } from "../state/overlayStore";
 import { isoProject, setIsoTileSize } from "./iso";
+import { getObjectVisual, type ObjectPartSpec } from "./objectRegistry";
 
 /**
  * PixiScene (WEBVIEW-0001)
@@ -51,6 +52,7 @@ export class PixiScene {
     private readonly gridLayer = new PIXI.Container();
     private readonly pathsLayer = new PIXI.Container();
     private readonly roomsLayer = new PIXI.Container();
+    private readonly objectsLayer = new PIXI.Container();
     private readonly itemsLayer = new PIXI.Container();
     private readonly agentsLayer = new PIXI.Container();
     private readonly overlayLayer = new PIXI.Container();
@@ -59,6 +61,7 @@ export class PixiScene {
     private readonly gridGfx = new PIXI.Graphics();
     private readonly pathsGfx = new PIXI.Graphics();
     private readonly roomGfx = new Map<number, PIXI.Graphics>();
+    private readonly objectGfx = new Map<number, PIXI.Graphics>();
     private readonly agentNodes = new Map<number, PIXI.Container>();
     private readonly itemNodes = new Map<number, PIXI.Graphics>();
     private readonly agentMotion = new Map<number, AgentMotion>();
@@ -124,6 +127,7 @@ export class PixiScene {
             this.gridLayer,
             this.pathsLayer,
             this.roomsLayer,
+            this.objectsLayer,
             this.itemsLayer,
             this.agentsLayer,
             this.overlayLayer,
@@ -135,6 +139,7 @@ export class PixiScene {
         this.pathsLayer.addChild(this.pathsGfx);
 
         this.roomsLayer.sortableChildren = true;
+        this.objectsLayer.sortableChildren = true;
         this.itemsLayer.sortableChildren = true;
         this.agentsLayer.sortableChildren = true;
         this.overlayLayer.sortableChildren = true;
@@ -270,6 +275,7 @@ export class PixiScene {
         this.autoFitCameraIfNeeded(s, s.renderSpec, roomCenters);
         this.renderPaths(s, roomCenters);
         this.renderRooms(s, roomCenters);
+        this.renderObjects(s);
         // Items are intentionally hidden for now (visual clarity).
         this.clearItems();
         this.renderAgents(s);
@@ -486,6 +492,88 @@ export class PixiScene {
                 g.destroy({ children: true });
                 this.roomGfx.delete(id);
             }
+        }
+    }
+
+    private renderObjects(s: WorldState): void {
+        const objects = Array.from(s.objects.values()).sort((a, b) => a.object_id - b.object_id);
+        for (const obj of objects) {
+            if (!isRoomVisible(obj.room_id, this.roomFloors, this.floorFilter)) {
+                const existing = this.objectGfx.get(obj.object_id);
+                if (existing) existing.visible = false;
+                continue;
+            }
+            const room = s.rooms.get(obj.room_id);
+            const rb = room ? roomBoundsFromRoom(room) : null;
+            if (!room || !rb) {
+                const existing = this.objectGfx.get(obj.object_id);
+                if (existing) existing.visible = false;
+                continue;
+            }
+
+            let g = this.objectGfx.get(obj.object_id);
+            if (!g) {
+                g = new PIXI.Graphics();
+                this.objectGfx.set(obj.object_id, g);
+                this.objectsLayer.addChild(g);
+            }
+
+            const floor = this.roomFloors.get(obj.room_id) ?? 0;
+            const center = objectWorldCenter(obj, rb);
+            this.drawObject(g, obj, room, rb, floor);
+            g.visible = true;
+            g.zIndex = isoProjectWorld(center).y;
+        }
+
+        for (const id of Array.from(this.objectGfx.keys())) {
+            if (!s.objects.has(id)) {
+                const g = this.objectGfx.get(id)!;
+                g.destroy({ children: true });
+                this.objectGfx.delete(id);
+            }
+        }
+    }
+
+    private drawObject(
+        g: PIXI.Graphics,
+        obj: KvpObject,
+        room: KvpRoom,
+        rb: RoomBounds,
+        floor: number
+    ): void {
+        g.clear();
+        const visual = getObjectVisual(obj.class_code);
+        const parts = visual?.parts ?? [
+            {
+                shape: "box",
+                size: { w: Math.max(1, obj.size_w), h: Math.max(1, obj.size_h), z: Math.max(0.5, obj.height ?? 1) },
+                color: 0xb6c4c3,
+            },
+        ];
+        const baseCenter = objectWorldCenter(obj, rb);
+        const turns = normalizeQuarterTurns(obj.orientation ?? 0);
+        const scale = obj.scale && obj.scale > 0 ? obj.scale : 1.0;
+        const footprint = visual?.footprint ?? { w: obj.size_w, h: obj.size_h };
+        const scaleX = scale * (obj.size_w / Math.max(0.001, footprint.w));
+        const scaleY = scale * (obj.size_h / Math.max(0.001, footprint.h));
+        let scaleZ = scale;
+        if (obj.height && visual?.height_ref && visual.height_ref > 0) {
+            scaleZ = (obj.height / visual.height_ref) * scale;
+        }
+        const elevBase = floorElevationPx(floor, this.isoTileH);
+
+        for (const part of parts) {
+            drawObjectPart(
+                g,
+                part,
+                baseCenter,
+                turns,
+                scaleX,
+                scaleY,
+                scaleZ,
+                elevBase,
+                this.isoTileH
+            );
         }
     }
 
@@ -1196,6 +1284,23 @@ function boundsFromCenter(c: RoomCenter, size: number): RoomBounds {
     };
 }
 
+function objectWorldCenter(obj: KvpObject, roomBounds: RoomBounds): RoomCenter {
+    const turns = normalizeQuarterTurns(obj.orientation ?? 0);
+    const footW = turns % 2 === 1 ? obj.size_h : obj.size_w;
+    const footH = turns % 2 === 1 ? obj.size_w : obj.size_h;
+    const cx = roomBounds.min_x + obj.tile_x + footW * 0.5;
+    const cy = roomBounds.min_y + obj.tile_y + footH * 0.5;
+    return { x: cx, y: cy };
+}
+
+function rotateOffset(dx: number, dy: number, turns: number): RoomCenter {
+    const t = normalizeQuarterTurns(turns);
+    if (t === 1) return { x: -dy, y: dx };
+    if (t === 2) return { x: -dx, y: -dy };
+    if (t === 3) return { x: dy, y: -dx };
+    return { x: dx, y: dy };
+}
+
 function boundsCenter(b: RoomBounds): RoomCenter {
     return {
         x: (b.min_x + b.max_x) * 0.5,
@@ -1698,6 +1803,66 @@ function isoRectPoints(bounds: RoomBounds, heightPx: number, elevPx: number): Ro
         const p = isoProjectWorld(c);
         return { x: p.x, y: p.y - heightPx - elevPx };
     });
+}
+
+function drawObjectPart(
+    g: PIXI.Graphics,
+    part: ObjectPartSpec,
+    baseCenter: RoomCenter,
+    turns: number,
+    scaleX: number,
+    scaleY: number,
+    scaleZ: number,
+    elevBase: number,
+    isoTileH: number
+): void {
+    const offset = part.offset ?? { x: 0, y: 0, z: 0 };
+    const roff = rotateOffset(offset.x, offset.y, turns);
+    let w = part.size.w * scaleX;
+    let h = part.size.h * scaleY;
+    const z = part.size.z * scaleZ;
+    if (turns % 2 === 1) {
+        const tmp = w;
+        w = h;
+        h = tmp;
+    }
+    const cx = baseCenter.x + roff.x * scaleX;
+    const cy = baseCenter.y + roff.y * scaleY;
+    const bounds: RoomBounds = {
+        min_x: cx - w * 0.5,
+        min_y: cy - h * 0.5,
+        max_x: cx + w * 0.5,
+        max_y: cy + h * 0.5,
+    };
+    const heightPx = (z / worldUnitsPerTile) * isoTileH;
+    const elevPx = elevBase + (offset.z * scaleZ / worldUnitsPerTile) * isoTileH;
+
+    const base = isoRectPoints(bounds, 0, elevPx);
+    const top = isoRectPoints(bounds, heightPx, elevPx);
+    const opacity = part.opacity ?? 0.95;
+    const baseColor = part.color ?? 0xb6c4c3;
+    const sideA = shadeColor(baseColor, -0.12);
+    const sideB = shadeColor(baseColor, -0.22);
+    const topColor = shadeColor(baseColor, 0.02);
+
+    // Right face (east)
+    g.poly(pointsToArray([base[1], base[2], top[2], top[1]]), true);
+    g.fill({ color: sideA, alpha: opacity });
+
+    // Left face (south)
+    g.poly(pointsToArray([base[2], base[3], top[3], top[2]]), true);
+    g.fill({ color: sideB, alpha: opacity });
+
+    // Top face
+    g.poly(pointsToArray(top), true);
+    g.fill({ color: topColor, alpha: opacity });
+
+    if (part.emissive && part.emissive > 0) {
+        g.poly(pointsToArray(top), true);
+        g.fill({ color: shadeColor(baseColor, 0.25), alpha: Math.min(0.6, part.emissive) });
+    }
+
+    g.stroke({ width: 1, color: shadeColor(baseColor, -0.35), alpha: 0.65 });
 }
 
 function pointsToArray(points: RoomCenter[]): number[] {

@@ -19,6 +19,7 @@ def make_world_snapshot(tick: int, episode_id: int = 1) -> WorldSnapshot:
         rooms=[],
         agents=[],
         items=[],
+        objects=[],
         room_index=None,
         agent_index=None,
     )

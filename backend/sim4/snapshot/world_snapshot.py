@@ -114,6 +114,20 @@ class ItemSnapshot:
 
 
 @dataclass(frozen=True)
+class ObjectSnapshot:
+    object_id: int
+    class_code: str
+    room_id: int
+    tile_x: int
+    tile_y: int
+    size_w: int
+    size_h: int
+    orientation: int
+    scale: float
+    height: float | None
+
+
+@dataclass(frozen=True)
 class WorldSnapshot:
     world_id: int
     tick_index: int
@@ -122,6 +136,7 @@ class WorldSnapshot:
     rooms: list[RoomSnapshot]
     agents: list[AgentSnapshot]
     items: list[ItemSnapshot]
+    objects: list[ObjectSnapshot]
     room_index: dict[int, int] | None
     agent_index: dict[int, int] | None
 
@@ -132,6 +147,7 @@ __all__ = [
     "RoomBoundsSnapshot",
     "AgentSnapshot",
     "ItemSnapshot",
+    "ObjectSnapshot",
     "AgentSocialSnapshot",
     "MotiveSnapshot",
     "PlanSnapshot",

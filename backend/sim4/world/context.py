@@ -25,6 +25,7 @@ RoomID = int
 AgentID = int  # typically ECS EntityID, but kept world-local here
 ItemID = int
 DoorID = int
+ObjectID = int
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,43 @@ class ItemRecord:
     room_id: Optional[RoomID] = None
 
 
+@dataclass(frozen=True)
+class ObjectRecord:
+    """
+    Static object placement record (data-only, immutable).
+
+    - class_code: stable type identifier (viewer maps to visuals)
+    - tile_x/tile_y: tile origin within the room bounds (post-orientation footprint)
+    - size_w/size_h: footprint in tiles
+    - orientation: 0..3 quarter turns (clockwise)
+    - scale: optional scalar applied about footprint center
+    - height: optional vertical extent in world units (tiles)
+    """
+
+    id: ObjectID
+    class_code: str
+    room_id: RoomID
+    tile_x: int
+    tile_y: int
+    size_w: int
+    size_h: int
+    orientation: int = 0
+    scale: float = 1.0
+    height: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        if not self.class_code:
+            raise ValueError("ObjectRecord.class_code must be non-empty")
+        if self.size_w <= 0 or self.size_h <= 0:
+            raise ValueError("ObjectRecord size_w/size_h must be > 0")
+        if self.orientation < 0 or self.orientation > 3:
+            raise ValueError("ObjectRecord.orientation must be 0..3")
+        if self.scale <= 0:
+            raise ValueError("ObjectRecord.scale must be > 0")
+        if self.height is not None and self.height <= 0:
+            raise ValueError("ObjectRecord.height must be > 0 when provided")
+
+
 @dataclass
 class WorldContext:
     """
@@ -106,6 +144,8 @@ class WorldContext:
     room_agents: Dict[RoomID, Set[AgentID]] = field(default_factory=dict)
     items_by_id: Dict[ItemID, ItemRecord] = field(default_factory=dict)
     room_items: Dict[RoomID, Set[ItemID]] = field(default_factory=dict)
+    objects_by_id: Dict[ObjectID, ObjectRecord] = field(default_factory=dict)
+    room_objects: Dict[RoomID, Set[ObjectID]] = field(default_factory=dict)
     # Doors: minimal boolean state map. Absent key means door unknown.
     door_open: Dict[DoorID, bool] = field(default_factory=dict)
 
@@ -244,6 +284,26 @@ class WorldContext:
         If the room has no items or is not yet in the index, returns an empty set.
         """
         return frozenset(self.room_items.get(room_id, set()))
+
+    # ---- Objects ----
+    def register_object(self, obj: ObjectRecord) -> None:
+        """
+        Register a new static object and index it by room.
+
+        Raises:
+            ValueError: if object.id already exists.
+            KeyError: if obj.room_id is unknown.
+        """
+        if obj.id in self.objects_by_id:
+            raise ValueError(f"Object ID already exists: {obj.id}")
+        if obj.room_id not in self.rooms_by_id:
+            raise KeyError(f"Unknown room_id for object placement: {obj.room_id}")
+        self.objects_by_id[obj.id] = obj
+        self.room_objects.setdefault(obj.room_id, set()).add(obj.id)
+
+    def get_room_objects(self, room_id: RoomID) -> FrozenSet[ObjectID]:
+        """Return an immutable view (frozenset) of object IDs placed in the room."""
+        return frozenset(self.room_objects.get(room_id, set()))
 
     # ---- Doors ----
     def register_door(self, door_id: DoorID, is_open: bool = False) -> None:

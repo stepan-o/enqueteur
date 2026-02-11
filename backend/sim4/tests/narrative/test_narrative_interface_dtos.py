@@ -12,6 +12,7 @@ from backend.sim4.snapshot.world_snapshot import (
     RoomSnapshot,
     AgentSnapshot,
     ItemSnapshot,
+    ObjectSnapshot,
     TransformSnapshot,
 )
 from backend.sim4.snapshot.episode_types import (
@@ -25,6 +26,7 @@ def make_min_world_snapshot(tick: int = 0, episode_id: int = 1) -> WorldSnapshot
     rooms: list[RoomSnapshot] = []
     agents: list[AgentSnapshot] = []
     items: list[ItemSnapshot] = []
+    objects: list[ObjectSnapshot] = []
     return WorldSnapshot(
         world_id=0,
         tick_index=tick,
@@ -33,6 +35,7 @@ def make_min_world_snapshot(tick: int = 0, episode_id: int = 1) -> WorldSnapshot
         rooms=rooms,
         agents=agents,
         items=items,
+        objects=objects,
         room_index=None,
         agent_index=None,
     )

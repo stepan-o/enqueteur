@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import FrozenSet, Iterable, Optional, Tuple
 
-from .context import WorldContext, RoomID, AgentID, ItemID, DoorID
+from .context import WorldContext, RoomID, AgentID, ItemID, DoorID, ObjectID
 
 
 @dataclass(frozen=True)
@@ -70,6 +70,11 @@ class WorldViews:
         """
 
         return self._world_ctx.get_room_items(room_id)
+
+    # --- Room objects ---
+    def get_room_objects(self, room_id: RoomID) -> FrozenSet[ObjectID]:
+        """Return an immutable set of objects present in the given room."""
+        return self._world_ctx.get_room_objects(room_id)
 
     # --- Door state ---
     def is_door_open(self, door_id: DoorID) -> bool:

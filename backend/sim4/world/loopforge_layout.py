@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Iterable, List
 
-from .context import WorldContext, RoomRecord, RoomBounds
+from .context import WorldContext, RoomRecord, RoomBounds, ObjectRecord
 
 
 class LoopforgeRoomId(IntEnum):
@@ -61,11 +61,28 @@ class LoopforgeRoomSpec:
     height: float
 
 
+@dataclass(frozen=True)
+class LoopforgeObjectSpec:
+    object_id: int
+    class_code: str
+    room_id: int
+    tile_x: int
+    tile_y: int
+    size_w: int
+    size_h: int
+    orientation: int = 0
+    scale: float = 1.0
+    height: float | None = None
+
+
 WORLD_BOUNDS = RoomBounds(min_x=0.0, min_y=0.0, max_x=35.0, max_y=25.0)
 
 _HEIGHT_BASE = 4.0
 _HEIGHT_CONTROL = 4.0
 _HEIGHT_CORE = 4.0
+
+_OBJ_HEIGHT_SPOOL = 1.4
+_OBJ_HEIGHT_MACHINE = 1.1
 
 
 def _specs() -> List[LoopforgeRoomSpec]:
@@ -227,6 +244,47 @@ def _door_specs() -> List[LoopforgeDoorSpec]:
     ]
 
 
+def _object_specs() -> List[LoopforgeObjectSpec]:
+    return [
+        LoopforgeObjectSpec(
+            object_id=2001,
+            class_code="RIBBON_SPOOL",
+            room_id=int(LoopforgeRoomId.WEAVING_GALLERY),
+            tile_x=1,
+            tile_y=1,
+            size_w=1,
+            size_h=1,
+            orientation=0,
+            scale=1.0,
+            height=_OBJ_HEIGHT_SPOOL,
+        ),
+        LoopforgeObjectSpec(
+            object_id=2002,
+            class_code="RIBBON_SPOOL",
+            room_id=int(LoopforgeRoomId.WEAVING_GALLERY),
+            tile_x=2,
+            tile_y=5,
+            size_w=1,
+            size_h=1,
+            orientation=0,
+            scale=1.0,
+            height=_OBJ_HEIGHT_SPOOL,
+        ),
+        LoopforgeObjectSpec(
+            object_id=2003,
+            class_code="WEAVING_MACHINE",
+            room_id=int(LoopforgeRoomId.WEAVING_GALLERY),
+            tile_x=4,
+            tile_y=3,
+            size_w=3,
+            size_h=2,
+            orientation=1,
+            scale=1.0,
+            height=_OBJ_HEIGHT_MACHINE,
+        ),
+    ]
+
+
 def _validate_layout(specs: Iterable[LoopforgeRoomSpec]) -> None:
     spec_list = list(specs)
     ids = {s.room_id for s in spec_list}
@@ -270,6 +328,40 @@ def _validate_doors(doors: Iterable[LoopforgeDoorSpec], specs: Iterable[Loopforg
             )
 
 
+def _validate_objects(objects: Iterable[LoopforgeObjectSpec], specs: Iterable[LoopforgeRoomSpec]) -> None:
+    obj_list = list(objects)
+    if not obj_list:
+        return
+    room_by_id = {s.room_id: s for s in specs}
+    obj_ids = {o.object_id for o in obj_list}
+    if len(obj_ids) != len(obj_list):
+        raise ValueError("Duplicate object_id detected in Loopforge layout")
+
+    for o in obj_list:
+        room = room_by_id.get(o.room_id)
+        if room is None:
+            raise ValueError(f"Object {o.object_id} references unknown room {o.room_id}")
+        if not o.class_code:
+            raise ValueError(f"Object {o.object_id} class_code must be non-empty")
+        if o.size_w <= 0 or o.size_h <= 0:
+            raise ValueError(f"Object {o.object_id} size_w/size_h must be > 0")
+        if o.orientation < 0 or o.orientation > 3:
+            raise ValueError(f"Object {o.object_id} orientation must be 0..3")
+        if o.scale <= 0:
+            raise ValueError(f"Object {o.object_id} scale must be > 0")
+        if o.height is not None and o.height <= 0:
+            raise ValueError(f"Object {o.object_id} height must be > 0 when provided")
+
+        room_w = room.bounds.max_x - room.bounds.min_x
+        room_h = room.bounds.max_y - room.bounds.min_y
+        foot_w = o.size_h if (o.orientation % 2 == 1) else o.size_w
+        foot_h = o.size_w if (o.orientation % 2 == 1) else o.size_h
+        if o.tile_x < 0 or o.tile_y < 0:
+            raise ValueError(f"Object {o.object_id} tile origin must be >= 0 within room")
+        if (o.tile_x + foot_w) > room_w or (o.tile_y + foot_h) > room_h:
+            raise ValueError(f"Object {o.object_id} footprint exceeds room bounds")
+
+
 def apply_loopforge_layout(world_ctx: WorldContext) -> None:
     """Register the canonical Loopforge layout into the WorldContext.
 
@@ -278,8 +370,10 @@ def apply_loopforge_layout(world_ctx: WorldContext) -> None:
     """
     specs = _specs()
     doors = _door_specs()
+    objects = _object_specs()
     _validate_layout(specs)
     _validate_doors(doors, specs)
+    _validate_objects(objects, specs)
     for s in specs:
         world_ctx.register_room(
             RoomRecord(
@@ -297,6 +391,21 @@ def apply_loopforge_layout(world_ctx: WorldContext) -> None:
         )
     for d in doors:
         world_ctx.register_door(d.door_id, is_open=d.is_open)
+    for o in objects:
+        world_ctx.register_object(
+            ObjectRecord(
+                id=o.object_id,
+                class_code=o.class_code,
+                room_id=o.room_id,
+                tile_x=o.tile_x,
+                tile_y=o.tile_y,
+                size_w=o.size_w,
+                size_h=o.size_h,
+                orientation=o.orientation,
+                scale=o.scale,
+                height=o.height,
+            )
+        )
 
 
 __all__ = [

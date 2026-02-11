@@ -3,6 +3,7 @@ from .world_snapshot import (
     RoomSnapshot,
     AgentSnapshot,
     ItemSnapshot,
+    ObjectSnapshot,
     TransformSnapshot,
 )
 
@@ -41,6 +42,7 @@ __all__ = [
     "RoomSnapshot",
     "AgentSnapshot",
     "ItemSnapshot",
+    "ObjectSnapshot",
     "TransformSnapshot",
     # episodes
     "EpisodeMeta",

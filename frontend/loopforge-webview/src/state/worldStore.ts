@@ -48,6 +48,19 @@ export type KvpItem = {
     label: string;
 };
 
+export type KvpObject = {
+    object_id: number;
+    class_code: string;
+    room_id: number;
+    tile_x: number;
+    tile_y: number;
+    size_w: number;
+    size_h: number;
+    orientation: number;
+    scale: number;
+    height: number | null;
+};
+
 export type KvpEvent = {
     tick: number;
     event_id: number;
@@ -59,6 +72,7 @@ export type KvpState = {
     rooms: KvpRoom[];
     agents: KvpAgent[];
     items: KvpItem[];
+    objects?: KvpObject[];
     events: KvpEvent[];
     debug?: unknown;
 };
@@ -77,6 +91,8 @@ export type DiffOp =
     | { op: "REMOVE_AGENT"; agent_id: number }
     | { op: "UPSERT_ITEM"; item: KvpItem }
     | { op: "REMOVE_ITEM"; item_id: number }
+    | { op: "UPSERT_OBJECT"; object: KvpObject }
+    | { op: "REMOVE_OBJECT"; object_id: number }
     | { op: "UPSERT_EVENT"; event: KvpEvent }
     | { op: "REMOVE_EVENT"; event_key: { tick: number; event_id: number } };
 
@@ -139,6 +155,7 @@ export type WorldState = {
     rooms: Map<number, KvpRoom>;
     agents: Map<number, KvpAgent>;
     items: Map<number, KvpItem>;
+    objects: Map<number, KvpObject>;
     events: Map<string, KvpEvent>;
     debug?: unknown;
 };
@@ -163,6 +180,7 @@ export class WorldStore {
             rooms: new Map(),
             agents: new Map(),
             items: new Map(),
+            objects: new Map(),
             events: new Map(),
             debug: undefined,
         };
@@ -229,6 +247,9 @@ export class WorldStore {
         const items = new Map<number, KvpItem>();
         for (const i of payload.state.items ?? []) items.set(i.item_id, i);
 
+        const objects = new Map<number, KvpObject>();
+        for (const o of payload.state.objects ?? []) objects.set(o.object_id, o);
+
         const events = new Map<string, KvpEvent>();
         for (const e of payload.state.events ?? []) events.set(eventKey(e), e);
 
@@ -241,6 +262,7 @@ export class WorldStore {
             rooms,
             agents,
             items,
+            objects,
             events,
             debug: payload.state.debug,
         };
@@ -268,6 +290,7 @@ export class WorldStore {
         const rooms = new Map(this.state.rooms);
         const agents = new Map(this.state.agents);
         const items = new Map(this.state.items);
+        const objects = new Map(this.state.objects);
         const events = new Map(this.state.events);
 
         for (const op of payload.ops) {
@@ -290,6 +313,12 @@ export class WorldStore {
                 case "REMOVE_ITEM":
                     items.delete(op.item_id);
                     break;
+                case "UPSERT_OBJECT":
+                    objects.set(op.object.object_id, op.object);
+                    break;
+                case "REMOVE_OBJECT":
+                    objects.delete(op.object_id);
+                    break;
                 case "UPSERT_EVENT":
                     events.set(eventKey(op.event), op.event);
                     break;
@@ -309,6 +338,7 @@ export class WorldStore {
             rooms,
             agents,
             items,
+            objects,
             events,
         };
 

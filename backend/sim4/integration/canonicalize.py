@@ -104,6 +104,10 @@ def sort_items(items: Iterable[Any]) -> List[Any]:
     return sort_by_key(list(items), key_fn=lambda i: _get_field(i, "item_id"))
 
 
+def sort_objects(objects: Iterable[Any]) -> List[Any]:
+    return sort_by_key(list(objects), key_fn=lambda o: _get_field(o, "object_id"))
+
+
 def sort_events(events: Iterable[Any]) -> List[Any]:
     return sort_by_key(
         list(events), key_fn=lambda e: (_get_field(e, "tick"), _get_field(e, "event_id"))
@@ -135,6 +139,7 @@ def canonicalize_state_obj(state_obj: dict) -> dict:
     _maybe_sort(result, "rooms", sort_rooms)
     _maybe_sort(result, "agents", sort_agents)
     _maybe_sort(result, "items", sort_items)
+    _maybe_sort(result, "objects", sort_objects)
     _maybe_sort(result, "events", sort_events)
 
     return result
@@ -149,6 +154,7 @@ __all__ = [
     "sort_rooms",
     "sort_agents",
     "sort_items",
+    "sort_objects",
     "sort_events",
     "canonicalize_state_obj",
 ]

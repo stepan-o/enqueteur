@@ -5,6 +5,7 @@ from backend.sim4.snapshot.world_snapshot import (
     RoomSnapshot,
     AgentSnapshot,
     ItemSnapshot,
+    ObjectSnapshot,
     TransformSnapshot,
 )
 from backend.sim4.snapshot.snapshot_diff import (
@@ -52,12 +53,15 @@ def make_world_snapshot(
     agents: list[AgentSnapshot],
     rooms: list[RoomSnapshot],
     items: list[ItemSnapshot] | None = None,
+    objects: list[ObjectSnapshot] | None = None,
     episode_id: int = 1,
 ) -> WorldSnapshot:
     agents_sorted = sorted(agents, key=lambda a: a.agent_id)
     rooms_sorted = sorted(rooms, key=lambda r: r.room_id)
     items_list = items or []
     items_sorted = sorted(items_list, key=lambda it: it.item_id)
+    objects_list = objects or []
+    objects_sorted = sorted(objects_list, key=lambda o: o.object_id)
     agent_index = {a.agent_id: i for i, a in enumerate(agents_sorted)}
     room_index = {r.room_id: i for i, r in enumerate(rooms_sorted)}
     return WorldSnapshot(
@@ -68,6 +72,7 @@ def make_world_snapshot(
         rooms=rooms_sorted,
         agents=agents_sorted,
         items=items_sorted,
+        objects=objects_sorted,
         room_index=room_index,
         agent_index=agent_index,
     )

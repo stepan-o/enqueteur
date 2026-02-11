@@ -101,6 +101,7 @@ class LiveKvpStateSink(TickOutputSink):
 
         if "WORLD" in self._channels:
             state["rooms"] = [_to_plain(r) for r in world_snapshot.rooms]
+            state["objects"] = [_to_plain(o) for o in world_snapshot.objects]
         if "AGENTS" in self._channels:
             state["agents"] = [_to_plain(a) for a in world_snapshot.agents]
         if "ITEMS" in self._channels:
