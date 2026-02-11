@@ -11,6 +11,7 @@ from pathlib import Path
 import argparse
 import math
 import random
+import shutil
 import sys
 
 # Ensure repository root is on sys.path so `backend` package imports work when run directly
@@ -253,6 +254,11 @@ def main() -> None:
     clock = TickClock(dt=1.0 / float(args.tick_rate))
 
     run_root = _REPO_ROOT / args.run_root
+    if run_root.exists():
+        if not run_root.is_dir():
+            raise ValueError(f"run_root exists but is not a directory: {run_root}")
+        shutil.rmtree(run_root)
+
     ui_events = build_ui_events(int(args.ticks), room_ids, agent_ids, int(args.seed))
     psycho_frames = build_psycho_frames(int(args.ticks), agent_ids, int(args.seed))
 
