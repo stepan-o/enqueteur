@@ -39,9 +39,9 @@ class WorkstationMovementSystem:
             cy = origin_y + placement.tile_y + foot_h * 0.5 + (foot_h * 0.5 + self.stand_offset)
             object_targets[oid] = (room_id, float(cx), float(cy))
 
-        agent_sig = QuerySignature(read=(WorkAssignment, Transform, RoomPresence), write=(Transform,))
+        agent_sig = QuerySignature(read=(WorkAssignment, RoomPresence), write=(Transform,))
         for row in ctx.world.query(agent_sig):
-            assignment, transform, presence = row.components
+            assignment, presence, transform = row.components
             oid = assignment.object_id
             if oid is None:
                 continue

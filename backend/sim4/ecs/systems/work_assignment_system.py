@@ -21,7 +21,7 @@ class WorkAssignmentSystem:
 
     def run(self, ctx: SystemContext) -> None:
         obj_sig = QuerySignature(
-            read=(ObjectRef, ObjectPlacement, ObjectStats, WorkstationState),
+            read=(ObjectRef, ObjectPlacement, ObjectStats),
             write=(WorkstationState,),
         )
 
@@ -46,7 +46,7 @@ class WorkAssignmentSystem:
             objects_by_room[room_id].sort()
 
         agent_sig = QuerySignature(
-            read=(WorkDesire, RoomPresence, WorkAssignment),
+            read=(WorkDesire, RoomPresence),
             write=(WorkAssignment,),
         )
 
