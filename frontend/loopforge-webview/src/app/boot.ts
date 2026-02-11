@@ -23,9 +23,19 @@ export type BootOpts = {
     wsUrl?: string;
     offlineBaseUrl?: string;
     mode?: BootMode;
+    autoStart?: boolean;
 };
 
-export function boot(opts: BootOpts): void {
+export type ViewerHandle = {
+    startOffline: (baseUrl?: string, speed?: number) => Promise<void>;
+    startLive: () => void;
+    stop: () => void;
+    setVisible: (visible: boolean) => void;
+    setDevControlsVisible: (visible: boolean) => void;
+    setHudVisible: (visible: boolean) => void;
+};
+
+export function boot(opts: BootOpts): ViewerHandle {
     const store = new WorldStore();
     const overlayStore = new OverlayStore();
     const viewerStore = new ViewerStore();
@@ -77,9 +87,12 @@ export function boot(opts: BootOpts): void {
 
     const env = (import.meta as any).env ?? {};
     const mode = (opts.mode ?? env.VITE_WEBVIEW_MODE ?? "offline") as BootMode;
+    const autoStart = opts.autoStart ?? true;
     let offlineHandle: OfflineRunHandle | null = null;
     let offlineBaseUrl = opts.offlineBaseUrl ?? env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min";
     let offlineSpeed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
+    let currentMode: BootMode = mode;
+    let client: KvpClient | null = null;
 
     const devControls = mountDevControls({
         store,
@@ -88,100 +101,134 @@ export function boot(opts: BootOpts): void {
         onCameraModeChange: (mode) => scene.setCameraMode(mode),
         onRotate: (delta) => scene.rotateView(delta),
         onPlaybackToggle: (paused) => {
-            if (mode !== "offline") return;
+            if (currentMode !== "offline") return;
             if (!offlineHandle) return;
             if (paused) offlineHandle.pause();
             else offlineHandle.resume();
         },
         onSpeedChange: (speed) => {
             offlineSpeed = speed;
-            if (mode !== "offline") return;
+            if (currentMode !== "offline") return;
             if (!offlineHandle) return;
             offlineHandle.setSpeed(speed);
         },
         onSeek: (tick) => {
-            if (mode !== "offline") return;
+            if (currentMode !== "offline") return;
             if (!offlineHandle) return;
             void offlineHandle.seekToTick(tick);
         },
         onRestart: () => {
-            if (mode !== "offline") return;
-            if (offlineHandle) offlineHandle.stop();
-            store.clearDesync();
-            startOfflineRun(store, { baseUrl: offlineBaseUrl, speed: offlineSpeed, overlayStore, viewerStore })
-                .then((handle) => {
-                    offlineHandle = handle;
-                })
-                .catch((err: unknown) => {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    store.markDesync(`Offline restart failed: ${msg}`);
-                });
+            if (currentMode !== "offline") return;
+            void startOffline(offlineBaseUrl, offlineSpeed);
         },
     });
     opts.mountEl.appendChild(devControls);
 
-    if (mode === "offline") {
-        const baseUrl = offlineBaseUrl;
-        const speed = offlineSpeed;
-
+    const startOffline = async (baseUrl?: string, speed?: number): Promise<void> => {
+        currentMode = "offline";
+        if (offlineHandle) offlineHandle.stop();
+        offlineBaseUrl = baseUrl ?? offlineBaseUrl;
+        if (speed && Number.isFinite(speed) && speed > 0) offlineSpeed = speed;
+        store.clearDesync();
         store.setMode("offline");
         store.setConnected(true);
 
-        startOfflineRun(store, { baseUrl, speed, overlayStore, viewerStore })
-            .then((handle) => {
-                console.info("[webview] offline run ready:", baseUrl);
-                offlineHandle = handle;
-            })
-            .catch((err: unknown) => {
-                const msg = err instanceof Error ? err.message : String(err);
-                console.error("[webview] offline run failed:", msg);
-                store.markDesync(`Offline load failed: ${msg}`);
+        try {
+            offlineHandle = await startOfflineRun(store, {
+                baseUrl: offlineBaseUrl,
+                speed: offlineSpeed,
+                overlayStore,
+                viewerStore,
+            });
+            console.info("[webview] offline run ready:", offlineBaseUrl);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error("[webview] offline run failed:", msg);
+            store.markDesync(`Offline load failed: ${msg}`);
+        }
+    };
+
+    const startLive = (): void => {
+        currentMode = "live";
+        store.setMode("live");
+        if (!client) {
+            client = new KvpClient(store, {
+                url: opts.wsUrl ?? env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp",
+                viewerName: "loopforge-webview-pixi",
+                viewerVersion: "0.1.0",
+                supportedSchemaVersions: ["1"],
+                defaultSubscribe: {
+                    stream: "LIVE",
+                    channels: ["WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"],
+                    diff_policy: "DIFF_ONLY",
+                    snapshot_policy: "ON_JOIN",
+                    compression: "NONE",
+                },
             });
 
-        return;
-    }
-
-    store.setMode("live");
-
-    // KVP client
-    const client = new KvpClient(store, {
-        url: opts.wsUrl ?? env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp",
-        viewerName: "loopforge-webview-pixi",
-        viewerVersion: "0.1.0",
-        supportedSchemaVersions: ["1"],
-        defaultSubscribe: {
-            stream: "LIVE",
-            channels: ["WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"],
-            diff_policy: "DIFF_ONLY",
-            snapshot_policy: "ON_JOIN",
-            compression: "NONE",
-        },
-    });
-
-    // Desync recovery hook (banner click → request fresh snapshot)
-    scene.onRequestFreshSnapshot(() => {
-        console.warn("[webview] desync banner: requesting fresh snapshot");
-        client.requestFreshSnapshot();
-    });
-
-    // DEV: render without a kernel
-    if (import.meta.env.DEV) {
-        const useMock = String(env.VITE_WEBVIEW_MOCK ?? "") === "1";
-        if (useMock) {
-            console.info("[webview] DEV mode: injecting mock snapshot");
-            injectMockSnapshot(store);
+            scene.onRequestFreshSnapshot(() => {
+                console.warn("[webview] desync banner: requesting fresh snapshot");
+                client?.requestFreshSnapshot();
+            });
         }
 
-        // --- DEBUG: optionally run webview without WS to avoid overwriting mock
-        // Set VITE_WEBVIEW_DISABLE_WS=1 to keep the mock state on screen.
-        const disableWs = String(env.VITE_WEBVIEW_DISABLE_WS ?? "") === "1";
-        if (disableWs) {
-            console.info("[webview] WS disabled (VITE_WEBVIEW_DISABLE_WS=1). Skipping client.connect().");
-            return;
+        if (import.meta.env.DEV) {
+            const useMock = String(env.VITE_WEBVIEW_MOCK ?? "") === "1";
+            if (useMock) {
+                console.info("[webview] DEV mode: injecting mock snapshot");
+                injectMockSnapshot(store);
+            }
+
+            const disableWs = String(env.VITE_WEBVIEW_DISABLE_WS ?? "") === "1";
+            if (disableWs) {
+                console.info("[webview] WS disabled (VITE_WEBVIEW_DISABLE_WS=1). Skipping client.connect().");
+                return;
+            }
+        }
+
+        console.info("[webview] connecting WS:", opts.wsUrl ?? env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp");
+        client.connect();
+    };
+
+    const stop = (): void => {
+        if (offlineHandle) {
+            offlineHandle.stop();
+            offlineHandle = null;
+        }
+        store.setConnected(false);
+    };
+
+    const setVisible = (visible: boolean): void => {
+        opts.mountEl.style.display = visible ? "block" : "none";
+        if (visible) {
+            requestAnimationFrame(() => {
+                scene.refreshLayout({ forceAutoFit: true });
+            });
+        }
+    };
+
+    const setDevControlsVisible = (visible: boolean): void => {
+        devControls.style.display = visible ? "block" : "none";
+    };
+
+    const setHudVisible = (visible: boolean): void => {
+        hud.style.display = visible ? "block" : "none";
+    };
+
+    if (autoStart) {
+        if (mode === "offline") {
+            void startOffline(offlineBaseUrl, offlineSpeed);
+        } else {
+            startLive();
         }
     }
 
-    // Connect!
-    console.info("[webview] connecting WS:", opts.wsUrl ?? env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp");
-    client.connect();
+    return {
+        startOffline,
+        startLive,
+        stop,
+        setVisible,
+        setDevControlsVisible,
+        setHudVisible,
+    };
 }

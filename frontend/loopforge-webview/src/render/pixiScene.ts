@@ -48,6 +48,9 @@ function normalizeQuarterTurns(turns: number): number {
 export class PixiScene {
     public readonly app: PIXI.Application;
 
+    private mountEl?: HTMLElement;
+    private lastKnownWidth = 0;
+    private lastKnownHeight = 0;
     private readonly root = new PIXI.Container();
     private readonly gridLayer = new PIXI.Container();
     private readonly pathsLayer = new PIXI.Container();
@@ -114,6 +117,7 @@ export class PixiScene {
     }
 
     private async init(mountEl: HTMLElement): Promise<void> {
+        this.mountEl = mountEl;
         await this.app.init({
             resizeTo: mountEl,
             antialias: true,
@@ -151,15 +155,8 @@ export class PixiScene {
             }
         });
 
-        const recenter = () => {
-            this.setCamera({
-                x: Math.floor(this.app.renderer.width * 0.5),
-                y: Math.floor(this.app.renderer.height * 0.45),
-                zoom: this.camZoom,
-            });
-        };
-        recenter();
-        this.app.renderer.on("resize", recenter);
+        this.recenterCamera();
+        this.app.renderer.on("resize", () => this.recenterCamera());
 
         this.enableWheelZoom();
         this.enableDragPan();
@@ -172,6 +169,25 @@ export class PixiScene {
             this.pendingState = undefined;
             this.renderFromState(s);
         }
+    }
+
+    /** Force Pixi to match the current container size, optionally re-auto-fit. */
+    refreshLayout(opts?: { forceAutoFit?: boolean }): void {
+        if (!this.ready || !this.mountEl) return;
+        const rect = this.mountEl.getBoundingClientRect();
+        const width = Math.max(1, Math.floor(rect.width));
+        const height = Math.max(1, Math.floor(rect.height));
+        if (width !== this.lastKnownWidth || height !== this.lastKnownHeight) {
+            this.lastKnownWidth = width;
+            this.lastKnownHeight = height;
+            this.app.renderer.resize(width, height);
+        }
+        this.recenterCamera();
+        if (opts?.forceAutoFit) {
+            this.autoFitLocked = false;
+            this.lastAutoFitKey = "";
+        }
+        if (this.lastState) this.renderFromState(this.lastState);
     }
 
     /** Hook: used by boot.ts to wire the desync banner click. */
@@ -217,6 +233,14 @@ export class PixiScene {
         this.cameraMode = "auto";
         this.autoDirectorNextSwitch = 0;
         this.autoFitLocked = true;
+    }
+
+    private recenterCamera(): void {
+        this.setCamera({
+            x: Math.floor(this.app.renderer.width * 0.5),
+            y: Math.floor(this.app.renderer.height * 0.45),
+            zoom: this.camZoom,
+        });
     }
 
     setViewRotation(turns: number): void {
@@ -1165,7 +1189,11 @@ export class PixiScene {
         if (this.autoFitLocked) return;
 
         const bounds = getWorldBounds(spec);
-        const key = `${bounds.min_x}:${bounds.min_y}:${bounds.max_x}:${bounds.max_y}:${this.lastIsoKey}`;
+        const viewW = Math.round(this.app.renderer.width);
+        const viewH = Math.round(this.app.renderer.height);
+        if (viewW <= 0 || viewH <= 0) return;
+
+        const key = `${bounds.min_x}:${bounds.min_y}:${bounds.max_x}:${bounds.max_y}:${viewW}x${viewH}:${this.lastIsoKey}`;
         if (key === this.lastAutoFitKey) return;
         this.lastAutoFitKey = key;
 
@@ -1183,9 +1211,7 @@ export class PixiScene {
         const maxFloor = Math.max(0, ...Array.from(this.roomFloors.values()));
         const elev = floorElevationPx(maxFloor, this.isoTileH);
         isoBounds.min_y -= elev;
-        const viewW = this.app.renderer.width;
-        const viewH = this.app.renderer.height;
-        if (viewW <= 0 || viewH <= 0) return;
+        // viewW/viewH already validated above
 
         const pad = 0.12;
         const usableW = viewW * (1 - pad * 2);
