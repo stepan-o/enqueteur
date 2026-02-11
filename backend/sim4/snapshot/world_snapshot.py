@@ -66,6 +66,7 @@ class RoomSnapshot:
     neighbors: list[int]
     tension_tier: str | None
     highlight: bool | None
+    height: float | None = None
     bounds: RoomBoundsSnapshot | None = None
     zone: str | None = None
     level: int | None = None

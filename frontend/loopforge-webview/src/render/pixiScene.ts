@@ -1230,6 +1230,10 @@ function computeIsoBounds(
 }
 
 function roomHeightPx(r: KvpRoom, isoTileH: number): number {
+    const raw = r.height;
+    if (raw !== null && raw !== undefined && Number.isFinite(raw) && raw > 0) {
+        return (raw / worldUnitsPerTile) * isoTileH;
+    }
     const base = Math.max(isoTileH * 0.9, 16);
     const zoneBoost = r.zone === "core" ? isoTileH * 0.35 : r.zone === "control" ? isoTileH * 0.2 : 0;
     return base + zoneBoost;

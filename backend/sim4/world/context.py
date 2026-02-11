@@ -60,6 +60,7 @@ class RoomRecord:
     neighbors: tuple[RoomID, ...] = ()
     tension_tier: Optional[str] = None
     highlight: Optional[bool] = None
+    height: Optional[float] = None
 
     def __post_init__(self) -> None:
         # Normalize neighbor list to a sorted, unique tuple for determinism.
@@ -69,6 +70,8 @@ class RoomRecord:
         # Ensure level is non-negative for simple multi-level layout.
         if self.level < 0:
             raise ValueError("RoomRecord.level must be >= 0")
+        if self.height is not None and self.height <= 0:
+            raise ValueError("RoomRecord.height must be > 0 when provided")
 
 
 @dataclass

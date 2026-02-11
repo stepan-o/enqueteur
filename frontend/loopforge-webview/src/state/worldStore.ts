@@ -9,6 +9,7 @@ export type KvpRoom = {
     neighbors: number[];
     tension_tier: string | null;
     highlight: boolean | null;
+    height?: number | null;
     bounds?: { min_x: number; min_y: number; max_x: number; max_y: number } | null;
     zone?: string | null;
     level?: number | null;

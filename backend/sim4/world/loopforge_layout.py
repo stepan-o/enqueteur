@@ -58,9 +58,14 @@ class LoopforgeRoomSpec:
     neighbors: tuple[int, ...]
     tension_tier: str
     highlight: bool
+    height: float
 
 
 WORLD_BOUNDS = RoomBounds(min_x=0.0, min_y=0.0, max_x=35.0, max_y=25.0)
+
+_HEIGHT_BASE = 0.9
+_HEIGHT_CONTROL = 1.1
+_HEIGHT_CORE = 1.25
 
 
 def _specs() -> List[LoopforgeRoomSpec]:
@@ -69,7 +74,7 @@ def _specs() -> List[LoopforgeRoomSpec]:
             room_id=int(LoopforgeRoomId.WEAVING_GALLERY),
             label="Weaving Gallery",
             kind_code=int(RoomKind.WORK),
-            bounds=RoomBounds(min_x=5.0, min_y=1.0, max_x=17.0, max_y=9.0),
+            bounds=RoomBounds(min_x=5.0, min_y=2.0, max_x=15.0, max_y=10.0),
             zone="work",
             level=0,
             neighbors=(
@@ -79,12 +84,13 @@ def _specs() -> List[LoopforgeRoomSpec]:
             ),
             tension_tier="low",
             highlight=False,
+            height=_HEIGHT_BASE,
         ),
         LoopforgeRoomSpec(
             room_id=int(LoopforgeRoomId.COGNITION_BREWING),
             label="Cognition Brewing",
             kind_code=int(RoomKind.WORK),
-            bounds=RoomBounds(min_x=18.0, min_y=1.0, max_x=28.0, max_y=9.0),
+            bounds=RoomBounds(min_x=15.0, min_y=2.0, max_x=26.0, max_y=10.0),
             zone="work",
             level=0,
             neighbors=(
@@ -95,6 +101,7 @@ def _specs() -> List[LoopforgeRoomSpec]:
             ),
             tension_tier="medium",
             highlight=False,
+            height=_HEIGHT_BASE,
         ),
         LoopforgeRoomSpec(
             room_id=int(LoopforgeRoomId.BURNIN_THEATRE),
@@ -109,6 +116,7 @@ def _specs() -> List[LoopforgeRoomSpec]:
             ),
             tension_tier="medium",
             highlight=False,
+            height=_HEIGHT_BASE,
         ),
         LoopforgeRoomSpec(
             room_id=int(LoopforgeRoomId.LOBBY),
@@ -123,12 +131,13 @@ def _specs() -> List[LoopforgeRoomSpec]:
             ),
             tension_tier="low",
             highlight=True,
+            height=_HEIGHT_CORE,
         ),
         LoopforgeRoomSpec(
             room_id=int(LoopforgeRoomId.DISPATCH),
             label="Dispatch",
             kind_code=int(RoomKind.WORK),
-            bounds=RoomBounds(min_x=10.0, min_y=13.0, max_x=16.0, max_y=17.0),
+            bounds=RoomBounds(min_x=10.0, min_y=10.0, max_x=14.0, max_y=16.0),
             zone="work",
             level=0,
             neighbors=(
@@ -139,12 +148,13 @@ def _specs() -> List[LoopforgeRoomSpec]:
             ),
             tension_tier="medium",
             highlight=False,
+            height=_HEIGHT_BASE,
         ),
         LoopforgeRoomSpec(
             room_id=int(LoopforgeRoomId.SECURITY),
             label="Security",
             kind_code=int(RoomKind.CONTROL),
-            bounds=RoomBounds(min_x=16.0, min_y=13.0, max_x=20.0, max_y=17.0),
+            bounds=RoomBounds(min_x=14.0, min_y=10.0, max_x=18.0, max_y=16.0),
             zone="control",
             level=0,
             neighbors=(
@@ -154,12 +164,13 @@ def _specs() -> List[LoopforgeRoomSpec]:
             ),
             tension_tier="high",
             highlight=True,
+            height=_HEIGHT_CONTROL,
         ),
         LoopforgeRoomSpec(
             room_id=int(LoopforgeRoomId.NEURAL_LATTICE),
             label="Neural Lattice",
             kind_code=int(RoomKind.WORK),
-            bounds=RoomBounds(min_x=10.0, min_y=20.0, max_x=20.0, max_y=25.0),
+            bounds=RoomBounds(min_x=10.0, min_y=16.0, max_x=20.0, max_y=23.0),
             zone="work",
             level=0,
             neighbors=(
@@ -168,6 +179,7 @@ def _specs() -> List[LoopforgeRoomSpec]:
             ),
             tension_tier="high",
             highlight=True,
+            height=_HEIGHT_BASE,
         ),
         LoopforgeRoomSpec(
             room_id=int(LoopforgeRoomId.BRAIN_FORGE),
@@ -184,6 +196,7 @@ def _specs() -> List[LoopforgeRoomSpec]:
             ),
             tension_tier="high",
             highlight=True,
+            height=_HEIGHT_CORE,
         ),
         LoopforgeRoomSpec(
             room_id=int(LoopforgeRoomId.SHIPPING),
@@ -198,6 +211,7 @@ def _specs() -> List[LoopforgeRoomSpec]:
             ),
             tension_tier="medium",
             highlight=False,
+            height=_HEIGHT_BASE,
         ),
     ]
 
@@ -224,6 +238,8 @@ def _validate_layout(specs: Iterable[LoopforgeRoomSpec]) -> None:
             raise ValueError(f"Room {s.room_id} bounds outside WORLD_BOUNDS (min)")
         if s.bounds.max_x > WORLD_BOUNDS.max_x or s.bounds.max_y > WORLD_BOUNDS.max_y:
             raise ValueError(f"Room {s.room_id} bounds outside WORLD_BOUNDS (max)")
+        if s.height <= 0:
+            raise ValueError(f"Room {s.room_id} height must be > 0")
         for n in s.neighbors:
             if n not in ids:
                 raise ValueError(f"Room {s.room_id} neighbor {n} is unknown")
@@ -276,6 +292,7 @@ def apply_loopforge_layout(world_ctx: WorldContext) -> None:
                 neighbors=s.neighbors,
                 tension_tier=s.tension_tier,
                 highlight=s.highlight,
+                height=s.height,
             )
         )
     for d in doors:

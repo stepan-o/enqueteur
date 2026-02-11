@@ -62,6 +62,7 @@ def _build_rooms(world_ctx: WorldContext) -> List[RoomSnapshot]:
                 neighbors=neighbors,
                 tension_tier=rec.tension_tier if rec.tension_tier is not None else "low",
                 highlight=rec.highlight if rec.highlight is not None else False,
+                height=float(rec.height) if rec.height is not None else None,
                 bounds=bounds,
                 zone=rec.zone,
                 level=int(rec.level),
