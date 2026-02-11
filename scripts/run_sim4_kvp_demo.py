@@ -34,6 +34,10 @@ from backend.sim4.host.kvp_defaults import (
     tick_rate_hz_from_clock,
 )
 from backend.sim4.world.loopforge_layout import apply_loopforge_layout
+from backend.sim4.runtime.object_bootstrap import (
+    spawn_object_entities,
+    ensure_factory_metrics_entity,
+)
 
 
 class DemoScheduler:
@@ -129,6 +133,9 @@ def build_world(num_rooms: int, num_agents: int) -> tuple[WorldContext, ECSWorld
         item_id = 100 + i
         room_id = room_ids[i % len(room_ids)]
         world_ctx.register_item(ItemRecord(id=item_id, room_id=room_id))
+
+    spawn_object_entities(ecs_world, world_ctx)
+    ensure_factory_metrics_entity(ecs_world)
 
     return world_ctx, ecs_world, agent_ids, door_ids, room_ids
 

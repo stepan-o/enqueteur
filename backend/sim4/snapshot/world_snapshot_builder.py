@@ -32,6 +32,15 @@ from backend.sim4.ecs.world import ECSWorld
 from backend.sim4.ecs.components.embodiment import Transform, RoomPresence
 from backend.sim4.ecs.components.intent_action import ActionState
 from backend.sim4.ecs.components.narrative_state import NarrativeState
+from backend.sim4.ecs.query import QuerySignature
+from backend.sim4.ecs.components.objects import (
+    ObjectRef,
+    ObjectClass,
+    ObjectPlacement,
+    ObjectStats,
+    WorkstationState,
+    FactoryMetrics,
+)
 
 
 def _build_rooms(world_ctx: WorldContext) -> List[RoomSnapshot]:
@@ -141,27 +150,48 @@ def _build_items(world_ctx: WorldContext) -> List[ItemSnapshot]:
     return items
 
 
-def _build_objects(world_ctx: WorldContext) -> List[ObjectSnapshot]:
+def _build_objects(ecs_world: ECSWorld) -> List[ObjectSnapshot]:
     objects: List[ObjectSnapshot] = []
-    object_ids = list(world_ctx.objects_by_id.keys())
-    object_ids.sort()
-    for oid in object_ids:
-        obj = world_ctx.objects_by_id[oid]
+    sig = QuerySignature(
+        read=(ObjectRef, ObjectClass, ObjectPlacement, ObjectStats, WorkstationState),
+        write=(),
+    )
+    rows = []
+    for row in ecs_world.query(sig):
+        oref, ocls, placement, stats, ws = row.components
+        rows.append((int(oref.object_id), ocls, placement, stats, ws))
+
+    rows.sort(key=lambda r: r[0])
+    for oid, ocls, placement, stats, ws in rows:
         objects.append(
             ObjectSnapshot(
                 object_id=oid,
-                class_code=obj.class_code,
-                room_id=obj.room_id,
-                tile_x=int(obj.tile_x),
-                tile_y=int(obj.tile_y),
-                size_w=int(obj.size_w),
-                size_h=int(obj.size_h),
-                orientation=int(obj.orientation),
-                scale=float(obj.scale),
-                height=float(obj.height) if obj.height is not None else None,
+                class_code=ocls.class_code,
+                room_id=int(placement.room_id),
+                tile_x=int(placement.tile_x),
+                tile_y=int(placement.tile_y),
+                size_w=int(placement.size_w),
+                size_h=int(placement.size_h),
+                orientation=int(placement.orientation),
+                scale=float(placement.scale),
+                height=float(placement.height) if placement.height is not None else None,
+                durability=float(stats.durability),
+                efficiency=float(stats.efficiency),
+                status_code=int(ws.status_code),
+                occupant_agent_id=int(ws.occupant_agent_id) if ws.occupant_agent_id is not None else None,
+                ticks_in_state=int(ws.ticks_in_state),
             )
         )
     return objects
+
+
+def _build_factory_input(ecs_world: ECSWorld) -> float:
+    sig = QuerySignature(read=(FactoryMetrics,), write=())
+    rows = list(ecs_world.query(sig))
+    if not rows:
+        return 0.0
+    metrics = rows[0].components[0]
+    return float(metrics.factory_input)
 
 
 def build_world_snapshot(
@@ -180,7 +210,8 @@ def build_world_snapshot(
     rooms = _build_rooms(world_ctx)
     agents = _build_agents(ecs_world)
     items = _build_items(world_ctx)
-    objects = _build_objects(world_ctx)
+    objects = _build_objects(ecs_world)
+    factory_input = _build_factory_input(ecs_world)
 
     # Indices mapping IDs to positional indices in the lists
     room_index: Dict[int, int] = {r.room_id: idx for idx, r in enumerate(rooms)}
@@ -203,6 +234,7 @@ def build_world_snapshot(
         tick_index=tick_index,
         episode_id=episode_id,
         time_seconds=time_seconds,
+        factory_input=factory_input,
         rooms=rooms,
         agents=agents,
         items=items,

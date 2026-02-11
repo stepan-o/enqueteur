@@ -69,6 +69,7 @@ def make_world_snapshot(
         tick_index=tick,
         episode_id=episode_id,
         time_seconds=float(tick),
+        factory_input=0.0,
         rooms=rooms_sorted,
         agents=agents_sorted,
         items=items_sorted,

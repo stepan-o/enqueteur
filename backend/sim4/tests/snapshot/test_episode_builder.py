@@ -16,6 +16,7 @@ def make_world_snapshot(tick: int, episode_id: int = 1) -> WorldSnapshot:
         tick_index=tick,
         episode_id=episode_id,
         time_seconds=float(tick),
+        factory_input=0.0,
         rooms=[],
         agents=[],
         items=[],

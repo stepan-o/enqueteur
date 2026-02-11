@@ -36,6 +36,16 @@ from .intent_action import (
 from .narrative_state import NarrativeState
 from .inventory import InventorySubstrate, ItemState
 from .meta import DebugFlags, SystemMarkers
+from .objects import (
+    WorkstationStatus,
+    ObjectRef,
+    ObjectClass,
+    ObjectPlacement,
+    ObjectStats,
+    WorkstationState,
+    ProductionProfile,
+    FactoryMetrics,
+)
 
 __all__ = [
     "AgentIdentity",
@@ -69,4 +79,12 @@ __all__ = [
     "ItemState",
     "DebugFlags",
     "SystemMarkers",
+    "WorkstationStatus",
+    "ObjectRef",
+    "ObjectClass",
+    "ObjectPlacement",
+    "ObjectStats",
+    "WorkstationState",
+    "ProductionProfile",
+    "FactoryMetrics",
 ]

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 Computes and applies ops between two canonical state dicts.
 Ops follow the KVP-0001 shape:
+  - {"op": "SET_WORLD", "world": {...}}
+  - {"op": "CLEAR_WORLD"}
   - {"op": "UPSERT_ROOM", "room": {...}}
   - {"op": "REMOVE_ROOM", "room_id": 1}
   - {"op": "UPSERT_AGENT", "agent": {...}}
@@ -16,7 +18,7 @@ Ops follow the KVP-0001 shape:
   - {"op": "REMOVE_EVENT", "event_key": {"tick": 1, "event_id": 5}}
 
 Ops are emitted in a deterministic order:
-  ROOMS → AGENTS → ITEMS → OBJECTS → EVENTS, with removals before upserts within each type.
+  WORLD → ROOMS → AGENTS → ITEMS → OBJECTS → EVENTS, with removals before upserts within each type.
 """
 
 from typing import Any, Dict, Iterable, List, Tuple
@@ -62,6 +64,15 @@ def compute_state_diff_ops(state_from: Dict[str, Any], state_to: Dict[str, Any])
         raise ValueError("state_from/state_to must be dicts")
 
     ops: List[Dict[str, Any]] = []
+
+    # World-level singleton (factory metrics, etc.)
+    world_from = state_from.get("world")
+    world_to = state_to.get("world")
+    if world_from != world_to:
+        if world_to is None:
+            ops.append({"op": "CLEAR_WORLD"})
+        else:
+            ops.append({"op": "SET_WORLD", "world": copy.deepcopy(world_to)})
 
     def _diff_group(
         items_from: Iterable[Any],
@@ -156,14 +167,24 @@ def apply_state_diff_ops(state: Dict[str, Any], ops: List[Dict[str, Any]]) -> Di
     objects = _index_by_id(new_state.get("objects", []), "object_id") if ("objects" in new_state) else {}
     events = {_event_key(ev): ev for ev in new_state.get("events", [])} if ("events" in new_state) else {}
 
-    touched = {"rooms": False, "agents": False, "items": False, "objects": False, "events": False}
+    touched = {"rooms": False, "agents": False, "items": False, "objects": False, "events": False, "world": False}
 
     for op in ops:
         if not isinstance(op, dict) or "op" not in op:
             raise ValueError("diff op must be a dict with an 'op' field")
         kind = op["op"]
 
-        if kind == "UPSERT_ROOM":
+        if kind == "SET_WORLD":
+            world = op.get("world")
+            if world is None:
+                raise ValueError("SET_WORLD missing world payload")
+            new_state["world"] = copy.deepcopy(world)
+            touched["world"] = True
+        elif kind == "CLEAR_WORLD":
+            if "world" in new_state:
+                del new_state["world"]
+            touched["world"] = True
+        elif kind == "UPSERT_ROOM":
             room = op.get("room")
             if room is None:
                 raise ValueError("UPSERT_ROOM missing room payload")

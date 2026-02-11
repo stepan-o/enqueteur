@@ -18,6 +18,7 @@ from .plan_resolution_system import PlanResolutionSystem
 from .social_update_system import SocialUpdateSystem
 from .intent_resolver_system import IntentResolverSystem
 from .movement_resolution_system import MovementResolutionSystem
+from .object_workstation_system import ObjectWorkstationSystem
 from .interaction_resolution_system import InteractionResolutionSystem
 from .inventory_system import InventorySystem
 from .action_execution_system import ActionExecutionSystem
@@ -41,6 +42,7 @@ PHASE_C_SYSTEMS = [
 PHASE_D_SYSTEMS = [
     IntentResolverSystem,
     MovementResolutionSystem,
+    ObjectWorkstationSystem,
     InteractionResolutionSystem,
     InventorySystem,
 ]

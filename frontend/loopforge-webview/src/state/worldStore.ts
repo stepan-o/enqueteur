@@ -59,6 +59,15 @@ export type KvpObject = {
     orientation: number;
     scale: number;
     height: number | null;
+    durability: number;
+    efficiency: number;
+    status_code: number;
+    occupant_agent_id: number | null;
+    ticks_in_state: number;
+};
+
+export type WorldMeta = {
+    factory_input: number;
 };
 
 export type KvpEvent = {
@@ -73,6 +82,7 @@ export type KvpState = {
     agents: KvpAgent[];
     items: KvpItem[];
     objects?: KvpObject[];
+    world?: WorldMeta;
     events: KvpEvent[];
     debug?: unknown;
 };
@@ -85,6 +95,8 @@ export type FullSnapshotPayload = {
 };
 
 export type DiffOp =
+    | { op: "SET_WORLD"; world: WorldMeta }
+    | { op: "CLEAR_WORLD" }
     | { op: "UPSERT_ROOM"; room: KvpRoom }
     | { op: "REMOVE_ROOM"; room_id: number }
     | { op: "UPSERT_AGENT"; agent: KvpAgent }
@@ -152,6 +164,7 @@ export type WorldState = {
     kernelHello?: KernelHello;
     runAnchors?: RunAnchors;
     renderSpec?: RenderSpec;
+    world: WorldMeta | null;
     rooms: Map<number, KvpRoom>;
     agents: Map<number, KvpAgent>;
     items: Map<number, KvpItem>;
@@ -177,6 +190,7 @@ export class WorldStore {
             kernelHello: undefined,
             runAnchors: undefined,
             renderSpec: undefined,
+            world: null,
             rooms: new Map(),
             agents: new Map(),
             items: new Map(),
@@ -259,6 +273,7 @@ export class WorldStore {
             stepHash: payload.step_hash,
             desynced: false,
             desyncReason: undefined,
+            world: payload.state.world ?? null,
             rooms,
             agents,
             items,
@@ -292,9 +307,16 @@ export class WorldStore {
         const items = new Map(this.state.items);
         const objects = new Map(this.state.objects);
         const events = new Map(this.state.events);
+        let world = this.state.world;
 
         for (const op of payload.ops) {
             switch (op.op) {
+                case "SET_WORLD":
+                    world = op.world;
+                    break;
+                case "CLEAR_WORLD":
+                    world = null;
+                    break;
                 case "UPSERT_ROOM":
                     rooms.set(op.room.room_id, op.room);
                     break;
@@ -335,6 +357,7 @@ export class WorldStore {
             ...this.state,
             tick: payload.to_tick,
             stepHash: payload.step_hash,
+            world,
             rooms,
             agents,
             items,

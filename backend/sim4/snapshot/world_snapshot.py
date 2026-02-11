@@ -125,6 +125,11 @@ class ObjectSnapshot:
     orientation: int
     scale: float
     height: float | None
+    durability: float
+    efficiency: float
+    status_code: int
+    occupant_agent_id: int | None
+    ticks_in_state: int
 
 
 @dataclass(frozen=True)
@@ -133,6 +138,7 @@ class WorldSnapshot:
     tick_index: int
     episode_id: int
     time_seconds: float
+    factory_input: float
     rooms: list[RoomSnapshot]
     agents: list[AgentSnapshot]
     items: list[ItemSnapshot]
