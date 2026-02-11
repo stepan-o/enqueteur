@@ -128,7 +128,7 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
   panel.appendChild(rotateRow);
 
   const cameraHint = document.createElement("div");
-  cameraHint.textContent = "Tip: click an agent to follow";
+  cameraHint.textContent = "Tip: double-click a room to focus it.";
   cameraHint.style.fontSize = "11px";
   cameraHint.style.opacity = "0.7";
   panel.appendChild(cameraHint);

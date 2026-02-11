@@ -30,6 +30,11 @@ const PALETTE = {
 type RoomCenter = { x: number; y: number };
 type RoomBounds = { min_x: number; min_y: number; max_x: number; max_y: number };
 type AgentMotion = { current: RoomCenter; target: RoomCenter; facing: number };
+type InspectSelection =
+    | { kind: "room"; id: number }
+    | { kind: "agent"; id: number }
+    | { kind: "object"; id: number }
+    | null;
 const DEFAULT_WORLD_UNITS_PER_TILE = 20;
 let worldUnitsPerTile = DEFAULT_WORLD_UNITS_PER_TILE;
 let worldRotationQuarterTurns = 0;
@@ -110,6 +115,9 @@ export class PixiScene {
     private lastAutoFitKey = "";
     private autoFitLocked = false;
     private roomLayout = new Map<number, RoomCenter>();
+    private inspectSelectionCb?: (sel: InspectSelection) => void;
+    private lastRoomClickAt = 0;
+    private lastRoomClickId?: number;
 
     constructor(mountEl: HTMLElement) {
         this.app = new PIXI.Application();
@@ -150,9 +158,7 @@ export class PixiScene {
 
         this.gridLayer.eventMode = "static";
         this.gridLayer.on("pointertap", () => {
-            if (this.selectedRoomId !== undefined) {
-                this.setSelectedRoom(undefined);
-            }
+            this.inspectSelectionCb?.(null);
         });
 
         this.recenterCamera();
@@ -193,6 +199,10 @@ export class PixiScene {
     /** Hook: used by boot.ts to wire the desync banner click. */
     onRequestFreshSnapshot(cb: () => void): void {
         this.requestFreshSnapshotCb = cb;
+    }
+
+    onInspectSelection(cb: (sel: InspectSelection) => void): void {
+        this.inspectSelectionCb = cb;
     }
 
     setFloorFilter(filter: "all" | 0 | 1): void {
@@ -378,6 +388,69 @@ export class PixiScene {
         }
     }
 
+    private isRoomFocused(roomId: number): boolean {
+        if (this.selectedRoomId !== roomId) return false;
+        const open = this.roomCutout.get(roomId) ?? 0;
+        return open > 0.45;
+    }
+
+    private handleRoomTap(roomId: number): void {
+        const now = performance.now();
+        const isDouble =
+            this.lastRoomClickId === roomId && now - this.lastRoomClickAt > 0 && now - this.lastRoomClickAt < 320;
+        this.lastRoomClickAt = now;
+        this.lastRoomClickId = roomId;
+        if (!isDouble) return;
+
+        if (this.selectedRoomId === roomId) {
+            this.exitRoomFocus();
+        } else {
+            this.focusRoom(roomId);
+        }
+    }
+
+    private focusRoom(roomId: number): void {
+        this.setSelectedRoom(roomId);
+        this.cameraMode = "free";
+        this.followAgentId = undefined;
+        this.autoFitLocked = true;
+
+        const room = this.lastState?.rooms.get(roomId);
+        const rb = room ? this.roomBounds.get(roomId) ?? roomBoundsFromRoom(room) : null;
+        if (!rb) return;
+        const center = boundsCenter(rb);
+        const map = new Map<number, RoomBounds>();
+        map.set(roomId, rb);
+        const centers = new Map<number, RoomCenter>();
+        centers.set(roomId, center);
+        const isoBounds = computeIsoBounds(rb, centers, map, []);
+        const viewW = this.app.renderer.width;
+        const viewH = this.app.renderer.height;
+        if (viewW <= 0 || viewH <= 0) return;
+        const pad = 0.16;
+        const usableW = viewW * (1 - pad * 2);
+        const usableH = viewH * (1 - pad * 2);
+        const worldW = Math.max(1, isoBounds.max_x - isoBounds.min_x);
+        const worldH = Math.max(1, isoBounds.max_y - isoBounds.min_y);
+        const zoom = clamp(Math.min(usableW / worldW, usableH / worldH), 0.6, 6);
+        const centerX = (isoBounds.min_x + isoBounds.max_x) * 0.5;
+        const centerY = (isoBounds.min_y + isoBounds.max_y) * 0.5;
+        const camX = Math.floor(viewW * 0.5 - centerX * zoom);
+        const camY = Math.floor(viewH * 0.5 - centerY * zoom);
+        this.setCamera({ x: camX, y: camY, zoom });
+        this.inspectSelectionCb?.({ kind: "room", id: roomId });
+    }
+
+    private exitRoomFocus(): void {
+        this.setSelectedRoom(undefined);
+        this.autoFitLocked = false;
+        this.lastAutoFitKey = "";
+        this.inspectSelectionCb?.(null);
+        if (this.lastState && this.lastCenters) {
+            this.autoFitCameraIfNeeded(this.lastState, this.lastState.renderSpec, this.lastCenters);
+        }
+    }
+
     /* --------------------------------------------------------------------------
      * Rooms
      * ------------------------------------------------------------------------ */
@@ -493,8 +566,9 @@ export class PixiScene {
                 this.roomsLayer.addChild(g);
                 g.eventMode = "static";
                 g.cursor = "pointer";
-                g.on("pointertap", () => {
-                    this.setSelectedRoom(this.selectedRoomId === r.room_id ? undefined : r.room_id);
+                g.on("pointertap", (ev) => {
+                    ev.stopPropagation();
+                    this.handleRoomTap(r.room_id);
                 });
             }
 
@@ -521,8 +595,15 @@ export class PixiScene {
 
     private renderObjects(s: WorldState): void {
         const objects = Array.from(s.objects.values()).sort((a, b) => a.object_id - b.object_id);
+        const focusedRoom = this.selectedRoomId;
+        const focusOpen = focusedRoom !== undefined && this.isRoomFocused(focusedRoom);
         for (const obj of objects) {
             if (!isRoomVisible(obj.room_id, this.roomFloors, this.floorFilter)) {
+                const existing = this.objectGfx.get(obj.object_id);
+                if (existing) existing.visible = false;
+                continue;
+            }
+            if (!focusOpen || focusedRoom !== obj.room_id) {
                 const existing = this.objectGfx.get(obj.object_id);
                 if (existing) existing.visible = false;
                 continue;
@@ -540,6 +621,14 @@ export class PixiScene {
                 g = new PIXI.Graphics();
                 this.objectGfx.set(obj.object_id, g);
                 this.objectsLayer.addChild(g);
+                g.eventMode = "static";
+                g.cursor = "pointer";
+                g.on("pointertap", (ev) => {
+                    ev.stopPropagation();
+                    const currentRoom = this.lastState?.objects.get(obj.object_id)?.room_id ?? obj.room_id;
+                    if (!this.isRoomFocused(currentRoom)) return;
+                    this.inspectSelectionCb?.({ kind: "object", id: obj.object_id });
+                });
             }
 
             const floor = this.roomFloors.get(obj.room_id) ?? 0;
@@ -778,6 +867,8 @@ export class PixiScene {
     private renderAgents(s: WorldState): void {
         const agents = Array.from(s.agents.values()).sort((a, b) => a.agent_id - b.agent_id);
         const localExtents = computeLocalExtents(agents, this.roomBounds);
+        const focusedRoom = this.selectedRoomId;
+        const focusOpen = focusedRoom !== undefined && this.isRoomFocused(focusedRoom);
 
         for (const a of agents) {
             if (!isRoomVisible(a.room_id, this.roomFloors, this.floorFilter)) {
@@ -790,8 +881,15 @@ export class PixiScene {
                 node = this.makeAgentNode(a);
                 node.eventMode = "static";
                 node.cursor = "pointer";
-                node.on("pointertap", () => {
-                    const next = this.followAgentId === a.agent_id ? undefined : a.agent_id;
+                node.on("pointertap", (ev) => {
+                    ev.stopPropagation();
+                    const agentId = a.agent_id;
+                    const currentRoom = this.lastState?.agents.get(agentId)?.room_id ?? a.room_id;
+                    if (this.isRoomFocused(currentRoom)) {
+                        this.inspectSelectionCb?.({ kind: "agent", id: agentId });
+                        return;
+                    }
+                    const next = this.followAgentId === agentId ? undefined : agentId;
                     this.followAgent(next);
                 });
                 this.agentNodes.set(a.agent_id, node);
@@ -811,6 +909,17 @@ export class PixiScene {
 
             this.updateAgentSignals(node, a);
             node.visible = true;
+
+            if (focusOpen && a.room_id === focusedRoom) {
+                node.eventMode = "static";
+                node.cursor = "pointer";
+            } else if (focusOpen) {
+                node.eventMode = "none";
+                node.cursor = "default";
+            } else {
+                node.eventMode = "static";
+                node.cursor = "pointer";
+            }
         }
 
         for (const id of Array.from(this.agentNodes.keys())) {

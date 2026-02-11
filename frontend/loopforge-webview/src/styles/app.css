@@ -426,6 +426,61 @@ button:focus-visible {
   box-shadow: 0 0 18px rgba(243, 199, 106, 0.2);
 }
 
+.inspect-root {
+  position: absolute;
+  top: 220px;
+  right: 24px;
+  z-index: 18;
+  pointer-events: none;
+  font-family: "Chivo Mono, JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+  font-size: 12px;
+  color: rgba(31, 36, 43, 0.95);
+}
+
+.inspect-panel {
+  pointer-events: auto;
+  display: none;
+  min-width: 260px;
+  max-width: 320px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(247, 242, 233, 0.88);
+  border: 2px solid rgba(31, 36, 43, 0.6);
+  box-shadow: 0 16px 36px rgba(24, 33, 40, 0.22);
+  backdrop-filter: blur(10px);
+}
+
+.inspect-title {
+  font-family: "Cinzel Decorative", serif;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  color: #1f242b;
+}
+
+.inspect-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.inspect-line:last-child {
+  margin-bottom: 0;
+}
+
+.inspect-label {
+  color: rgba(31, 36, 43, 0.65);
+}
+
+.inspect-value {
+  color: rgba(31, 36, 43, 0.95);
+  font-weight: 600;
+  text-align: right;
+}
+
 @keyframes logoReveal {
   0% {
     opacity: 0;

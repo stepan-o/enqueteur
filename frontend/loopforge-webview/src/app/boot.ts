@@ -8,6 +8,7 @@ import type { OfflineRunHandle } from "../kvp/offline";
 import { PixiScene } from "../render/pixiScene";
 import { mountHud } from "../ui/hud";
 import { mountDevControls } from "../ui/devControls";
+import { mountInspectPanel } from "../ui/inspectPanel";
 import { injectMockSnapshot } from "../debug/mockKernel";
 
 /**
@@ -52,9 +53,15 @@ export function boot(opts: BootOpts): ViewerHandle {
     const hud = mountHud(store, overlayStore);
     opts.mountEl.appendChild(hud);
 
+    // Inspector (DOM overlay)
+    const inspector = mountInspectPanel(store);
+    opts.mountEl.appendChild(inspector.root);
+
     overlayStore.subscribe((o) => {
         scene.ingestOverlayEvents(o.eventsAtTick);
     });
+
+    scene.onInspectSelection((sel) => inspector.setSelection(sel));
 
     // --- DEBUG: prove canvas exists + has size (Pixi v8 async init) -----------
     const debugCanvasProbe = () => {
