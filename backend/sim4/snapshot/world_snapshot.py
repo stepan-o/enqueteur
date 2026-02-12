@@ -138,6 +138,12 @@ class WorldSnapshot:
     tick_index: int
     episode_id: int
     time_seconds: float
+    day_index: int
+    ticks_per_day: int
+    tick_in_day: int
+    time_of_day: float
+    day_phase: str
+    phase_progress: float
     factory_input: float
     rooms: list[RoomSnapshot]
     agents: list[AgentSnapshot]

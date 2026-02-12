@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import FrozenSet, Iterable, Optional, Tuple
 
-from .context import WorldContext, RoomID, AgentID, ItemID, DoorID, ObjectID
+from .context import WorldContext, RoomID, AgentID, ItemID, DoorID, ObjectID, WorldTimeState
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,16 @@ class RoomView:
     room_id: RoomID
     agents: FrozenSet[AgentID]
     items: FrozenSet[ItemID]
+
+
+@dataclass(frozen=True)
+class WorldTimeView:
+    day_index: int
+    ticks_per_day: int
+    tick_in_day: int
+    time_of_day: float
+    day_phase: str
+    phase_progress: float
 
 
 class WorldViews:
@@ -105,6 +115,19 @@ class WorldViews:
         if rec is None:
             return None
         return rec.bounds
+
+    # --- World time ---
+    def get_time(self) -> WorldTimeView:
+        """Return a read-only view of world time state."""
+        t = getattr(self._world_ctx, "time", WorldTimeState())
+        return WorldTimeView(
+            day_index=int(getattr(t, "day_index", 1)),
+            ticks_per_day=int(getattr(t, "ticks_per_day", 0)),
+            tick_in_day=int(getattr(t, "tick_in_day", 0)),
+            time_of_day=float(getattr(t, "time_of_day", 0.0)),
+            day_phase=str(getattr(t, "day_phase", "dawn")),
+            phase_progress=float(getattr(t, "phase_progress", 0.0)),
+        )
 
     # --- Optional: neighbor/adjacency queries ---
     def iter_room_neighbors(self, room_id: RoomID) -> Iterable[RoomID]:

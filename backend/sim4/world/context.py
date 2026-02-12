@@ -148,7 +148,46 @@ class WorldContext:
     room_objects: Dict[RoomID, Set[ObjectID]] = field(default_factory=dict)
     # Doors: minimal boolean state map. Absent key means door unknown.
     door_open: Dict[DoorID, bool] = field(default_factory=dict)
+    # World time (deterministic, tick-derived).
+    time_seconds: float = 0.0
+    time: "WorldTimeState" = field(default_factory=lambda: WorldTimeState())
 
+    def update_time(self, *, tick_index: int, dt: float, ticks_per_day: int | None = None) -> None:
+        """
+        Advance deterministic day/night time state using tick index + dt.
+
+        Rules:
+        - Tick 1 is dawn of day 1 (time_of_day = 0.0).
+        - ticks_per_day defaults to 60 seconds of sim time if not set.
+        """
+        if ticks_per_day is not None and int(ticks_per_day) > 0:
+            self.time.ticks_per_day = int(ticks_per_day)
+
+        if self.time.ticks_per_day <= 0:
+            if dt <= 0:
+                self.time.ticks_per_day = 1
+            else:
+                self.time.ticks_per_day = max(1, int(round(60.0 / float(dt))))
+
+        tpd = int(self.time.ticks_per_day)
+        idx = int(tick_index)
+
+        if idx <= 0:
+            day_index = 1
+            tick_in_day = 0
+        else:
+            tick_in_day = (idx - 1) % tpd
+            day_index = 1 + ((idx - 1) // tpd)
+
+        time_of_day = 0.0 if tpd <= 0 else float(tick_in_day) / float(tpd)
+        day_phase, phase_progress = _resolve_day_phase(time_of_day)
+
+        self.time.day_index = int(day_index)
+        self.time.tick_in_day = int(tick_in_day)
+        self.time.time_of_day = float(time_of_day)
+        self.time.day_phase = day_phase
+        self.time.phase_progress = float(phase_progress)
+        self.time_seconds = float(idx) * float(dt)
     # ---- Room registry ----
     def register_room(self, room: RoomRecord) -> None:
         """
@@ -349,3 +388,32 @@ class WorldContext:
         """
         from .views import WorldViews  # local import to prevent circular import
         return WorldViews(self)
+
+
+@dataclass
+class WorldTimeState:
+    day_index: int = 1
+    ticks_per_day: int = 0
+    tick_in_day: int = 0
+    time_of_day: float = 0.0
+    day_phase: str = "dawn"
+    phase_progress: float = 0.0
+
+
+def _resolve_day_phase(time_of_day: float) -> tuple[str, float]:
+    t = max(0.0, min(1.0, float(time_of_day)))
+    hour = t * 24.0
+    # Night: 23:00 -> 06:00 (wraps midnight)
+    if hour >= 23.0 or hour < 6.0:
+        night_hour = (hour - 23.0) if hour >= 23.0 else (hour + 1.0)
+        return "night", night_hour / 7.0
+    # Dawn: 06:00 -> 09:00
+    if hour < 9.0:
+        return "dawn", (hour - 6.0) / 3.0
+    # Day: 09:00 -> 18:00
+    if hour < 18.0:
+        return "day", (hour - 9.0) / 9.0
+    # Dusk: 18:00 -> 23:00
+    if hour < 23.0:
+        return "dusk", (hour - 18.0) / 5.0
+    return "night", 0.0

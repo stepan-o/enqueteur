@@ -102,7 +102,15 @@ class LiveKvpStateSink(TickOutputSink):
         if "WORLD" in self._channels:
             state["rooms"] = [_to_plain(r) for r in world_snapshot.rooms]
             state["objects"] = [_to_plain(o) for o in world_snapshot.objects]
-            state["world"] = {"factory_input": float(world_snapshot.factory_input)}
+            state["world"] = {
+                "factory_input": float(world_snapshot.factory_input),
+                "day_index": int(world_snapshot.day_index),
+                "ticks_per_day": int(world_snapshot.ticks_per_day),
+                "tick_in_day": int(world_snapshot.tick_in_day),
+                "time_of_day": float(world_snapshot.time_of_day),
+                "day_phase": str(world_snapshot.day_phase),
+                "phase_progress": float(world_snapshot.phase_progress),
+            }
         if "AGENTS" in self._channels:
             state["agents"] = [_to_plain(a) for a in world_snapshot.agents]
         if "ITEMS" in self._channels:

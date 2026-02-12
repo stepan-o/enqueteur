@@ -68,6 +68,12 @@ export type KvpObject = {
 
 export type WorldMeta = {
     factory_input: number;
+    day_index?: number;
+    ticks_per_day?: number;
+    tick_in_day?: number;
+    time_of_day?: number;
+    day_phase?: string;
+    phase_progress?: number;
 };
 
 export type KvpEvent = {

@@ -141,6 +141,15 @@ function renderHud(
         lines.push("kernel:    -");
     }
 
+    const world = s.world;
+    if (world && (world.time_of_day !== undefined || world.day_phase !== undefined)) {
+        const timeOfDay = formatTimeOfDay(world.time_of_day);
+        lines.push("");
+        lines.push(`day:       ${world.day_index ?? 1}`);
+        lines.push(`phase:     ${world.day_phase ?? "-"}`);
+        lines.push(`time:      ${timeOfDay}`);
+    }
+
     if (desynced) {
         lines.push("");
         lines.push("DESYNC:    YES");
@@ -194,6 +203,17 @@ function truncateHash(h: string): string {
     if (!h) return "-";
     if (h.length <= 16) return h;
     return `${h.slice(0, 8)}…${h.slice(-8)}`;
+}
+
+function formatTimeOfDay(value: number | undefined): string {
+    if (value === undefined || !Number.isFinite(value)) return "-";
+    const clamped = Math.max(0, Math.min(1, value));
+    const totalMinutes = Math.floor(clamped * 24 * 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const hh = String(hours).padStart(2, "0");
+    const mm = String(minutes).padStart(2, "0");
+    return `${hh}:${mm}`;
 }
 
 function formatWorldEvent(ev: KvpEvent, rooms: Map<number, KvpRoom>): string {

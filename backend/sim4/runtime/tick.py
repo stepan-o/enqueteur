@@ -152,6 +152,10 @@ def tick(
     # Phase 2 — Update Clock (advance at start so all phases see current tick)
     clock.advance(1)
 
+    # Update world time (day/night cycle) for this tick.
+    if hasattr(world_ctx, "update_time"):
+        world_ctx.update_time(tick_index=clock.tick_index, dt=clock.dt)
+
     # Phase A — Input collection & pre-processing (stub)
     # TODO[RT-A]: integrate sanitized external inputs
     _ = previous_events  # explicitly unused in skeleton

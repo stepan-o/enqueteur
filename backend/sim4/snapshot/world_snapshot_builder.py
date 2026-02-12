@@ -217,9 +217,15 @@ def build_world_snapshot(
     room_index: Dict[int, int] = {r.room_id: idx for idx, r in enumerate(rooms)}
     agent_index: Dict[int, int] = {a.agent_id: idx for idx, a in enumerate(agents)}
 
-    # Fallbacks for world identity / time (not yet present in WorldContext)
+    # Fallbacks for world identity / time (use WorldContext if present)
     world_id = 0
     time_seconds = 0.0
+    day_index = 1
+    ticks_per_day = 0
+    tick_in_day = 0
+    time_of_day = 0.0
+    day_phase = "dawn"
+    phase_progress = 0.0
     # If the context is extended in future, use those values deterministically
     if hasattr(world_ctx, "identity") and getattr(world_ctx.identity, "world_id", None) is not None:
         try:
@@ -228,12 +234,26 @@ def build_world_snapshot(
             world_id = 0
     if hasattr(world_ctx, "time_seconds") and isinstance(world_ctx.time_seconds, (int, float)):
         time_seconds = float(world_ctx.time_seconds)  # type: ignore[attr-defined]
+    if hasattr(world_ctx, "time"):
+        t = getattr(world_ctx, "time")
+        day_index = int(getattr(t, "day_index", day_index))
+        ticks_per_day = int(getattr(t, "ticks_per_day", ticks_per_day))
+        tick_in_day = int(getattr(t, "tick_in_day", tick_in_day))
+        time_of_day = float(getattr(t, "time_of_day", time_of_day))
+        day_phase = str(getattr(t, "day_phase", day_phase))
+        phase_progress = float(getattr(t, "phase_progress", phase_progress))
 
     return WorldSnapshot(
         world_id=world_id,
         tick_index=tick_index,
         episode_id=episode_id,
         time_seconds=time_seconds,
+        day_index=day_index,
+        ticks_per_day=ticks_per_day,
+        tick_in_day=tick_in_day,
+        time_of_day=time_of_day,
+        day_phase=day_phase,
+        phase_progress=phase_progress,
         factory_input=factory_input,
         rooms=rooms,
         agents=agents,
