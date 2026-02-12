@@ -426,6 +426,17 @@ button:focus-visible {
   box-shadow: 0 0 18px rgba(243, 199, 106, 0.2);
 }
 
+.time-lighting {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 0.6s ease, background-color 0.6s ease;
+}
+
 .inspect-root {
   position: absolute;
   top: 220px;

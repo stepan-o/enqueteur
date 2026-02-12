@@ -9,6 +9,7 @@ import { PixiScene } from "../render/pixiScene";
 import { mountHud } from "../ui/hud";
 import { mountDevControls } from "../ui/devControls";
 import { mountInspectPanel } from "../ui/inspectPanel";
+import { mountTimeLighting } from "../ui/timeLighting";
 import { injectMockSnapshot } from "../debug/mockKernel";
 
 /**
@@ -48,6 +49,8 @@ export function boot(opts: BootOpts): ViewerHandle {
 
     // Renderer (PixiJS)
     const scene = new PixiScene(opts.mountEl);
+
+    const timeLighting = mountTimeLighting(opts.mountEl);
 
     // HUD (DOM overlay)
     const hud = mountHud(store, overlayStore);
@@ -89,6 +92,7 @@ export function boot(opts: BootOpts): ViewerHandle {
             stepHash: s.stepHash ?? null,
         });
 
+        timeLighting.update(s.world ?? null);
         scene.renderFromState(s);
     });
 

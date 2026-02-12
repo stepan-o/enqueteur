@@ -56,8 +56,6 @@ export class PixiScene {
     private mountEl?: HTMLElement;
     private lastKnownWidth = 0;
     private lastKnownHeight = 0;
-    private readonly skyLayer = new PIXI.Container();
-    private readonly skyGfx = new PIXI.Graphics();
     private readonly root = new PIXI.Container();
     private readonly gridLayer = new PIXI.Container();
     private readonly pathsLayer = new PIXI.Container();
@@ -120,7 +118,6 @@ export class PixiScene {
     private inspectSelectionCb?: (sel: InspectSelection) => void;
     private lastRoomClickAt = 0;
     private lastRoomClickId?: number;
-    private lastSkyKey = "";
 
     constructor(mountEl: HTMLElement) {
         this.app = new PIXI.Application();
@@ -139,7 +136,6 @@ export class PixiScene {
 
         // Layering
         this.root.addChild(
-            this.skyLayer,
             this.gridLayer,
             this.pathsLayer,
             this.roomsLayer,
@@ -150,8 +146,6 @@ export class PixiScene {
             this.uiLayer
         );
         this.app.stage.addChild(this.root);
-
-        this.skyLayer.addChild(this.skyGfx);
         this.gridLayer.addChild(this.gridGfx);
         this.pathsLayer.addChild(this.pathsGfx);
 
@@ -198,7 +192,6 @@ export class PixiScene {
             this.autoFitLocked = false;
             this.lastAutoFitKey = "";
         }
-        this.updateSkybox(this.lastState?.world ?? null);
         if (this.lastState) this.renderFromState(this.lastState);
     }
 
@@ -306,7 +299,6 @@ export class PixiScene {
         }
 
         this.applyRenderSpec(s.renderSpec);
-        this.updateSkybox(s.world);
         this.renderFloor(s.renderSpec);
 
         this.applyEventPings(s);
@@ -386,28 +378,6 @@ export class PixiScene {
         drawIsoHatch(g, bounds, 28, PALETTE.slate, 0.08);
     }
 
-    private updateSkybox(world: WorldState["world"] | null | undefined): void {
-        const t = world?.time_of_day;
-        if (t === undefined || !Number.isFinite(t)) {
-            this.skyGfx.clear();
-            this.lastSkyKey = "";
-            return;
-        }
-
-        const phase = (world?.day_phase ?? "day").toLowerCase();
-        const progress = Number.isFinite(world?.phase_progress) ? clamp(world?.phase_progress as number, 0, 1) : 0;
-        const { color, alpha } = skyFromPhase(phase, progress);
-        const w = Math.floor(this.app.renderer.width);
-        const h = Math.floor(this.app.renderer.height);
-        if (w <= 0 || h <= 0) return;
-        const key = `${color}:${alpha.toFixed(3)}:${w}x${h}`;
-        if (key === this.lastSkyKey) return;
-        this.lastSkyKey = key;
-
-        this.skyGfx.clear();
-        this.skyGfx.rect(0, 0, w, h);
-        this.skyGfx.fill({ color, alpha });
-    }
 
     private setSelectedRoom(roomId: number | undefined): void {
         this.selectedRoomId = roomId;
@@ -1538,60 +1508,6 @@ function roomHeightPx(r: KvpRoom, isoTileH: number): number {
     return base + zoneBoost;
 }
 
-function skyFromPhase(phase: string, progress: number): { color: number; alpha: number } {
-    const p = clamp(progress, 0, 1);
-    const NIGHT = 0x0b1118;
-    const DAWN = 0x2a3a45;
-    const DAY = 0xf3f7f9;
-    const DUSK = 0x3a2a35;
-    const NIGHT_A = 0.42;
-    const DAWN_A = 0.22;
-    const DAY_A = 0.06;
-    const DUSK_A = 0.26;
-
-    if (phase === "dawn") {
-        if (p < 0.5) {
-            return {
-                color: lerpColor(NIGHT, DAWN, p * 2),
-                alpha: lerp(NIGHT_A, DAWN_A, p * 2),
-            };
-        }
-        return {
-            color: lerpColor(DAWN, DAY, (p - 0.5) * 2),
-            alpha: lerp(DAWN_A, DAY_A, (p - 0.5) * 2),
-        };
-    }
-    if (phase === "dusk") {
-        if (p < 0.5) {
-            return {
-                color: lerpColor(DAY, DUSK, p * 2),
-                alpha: lerp(DAY_A, DUSK_A, p * 2),
-            };
-        }
-        return {
-            color: lerpColor(DUSK, NIGHT, (p - 0.5) * 2),
-            alpha: lerp(DUSK_A, NIGHT_A, (p - 0.5) * 2),
-        };
-    }
-    if (phase === "night") {
-        return { color: NIGHT, alpha: NIGHT_A };
-    }
-    return { color: DAY, alpha: DAY_A };
-}
-
-function lerpColor(a: number, b: number, t: number): number {
-    const clamped = clamp(t, 0, 1);
-    const ar = (a >> 16) & 0xff;
-    const ag = (a >> 8) & 0xff;
-    const ab = a & 0xff;
-    const br = (b >> 16) & 0xff;
-    const bg = (b >> 8) & 0xff;
-    const bb = b & 0xff;
-    const rr = Math.round(lerp(ar, br, clamped));
-    const rg = Math.round(lerp(ag, bg, clamped));
-    const rb = Math.round(lerp(ab, bb, clamped));
-    return (rr << 16) | (rg << 8) | rb;
-}
 
 function roomColors(
     r: KvpRoom
