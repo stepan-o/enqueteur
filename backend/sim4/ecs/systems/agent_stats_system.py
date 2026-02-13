@@ -26,7 +26,7 @@ class AgentStatsSystem:
     pay_amount: float = 20.0
 
     def run(self, ctx: SystemContext) -> None:
-        sig = QuerySignature(read=(AgentStats, WorkAssignment), write=(AgentStats,))
+        sig = QuerySignature(read=(AgentStats, WorkAssignment), write=())
         for row in ctx.world.query(sig):
             stats, assignment = row.components
             working = assignment.object_id is not None
