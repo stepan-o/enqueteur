@@ -26,10 +26,12 @@ from backend.sim4.ecs.systems.base import SystemContext
 from backend.sim4.ecs.components.embodiment import Transform, RoomPresence
 from backend.sim4.ecs.components.intent_action import ActionState
 from backend.sim4.ecs.components.work import WorkDesire, WorkAssignment
+from backend.sim4.ecs.components.agent_stats import AgentStats
 from backend.sim4.ecs.systems.work_desire_system import WorkDesireSystem
 from backend.sim4.ecs.systems.work_assignment_system import WorkAssignmentSystem
 from backend.sim4.ecs.systems.workstation_movement_system import WorkstationMovementSystem
 from backend.sim4.ecs.systems.object_workstation_system import ObjectWorkstationSystem
+from backend.sim4.ecs.systems.agent_stats_system import AgentStatsSystem
 from backend.sim4.world.context import WorldContext, ItemRecord
 from backend.sim4.world.commands import WorldCommand, WorldCommandKind
 from backend.sim4.host.sim_runner import SimRunner, OfflineExportConfig
@@ -135,6 +137,15 @@ def build_world(num_rooms: int, num_agents: int) -> tuple[WorldContext, ECSWorld
                     last_tick=0,
                 ),
                 WorkAssignment(object_id=None, load_band=0, ticks_working=0),
+                AgentStats(
+                    durability=random.uniform(0.75, 1.0),
+                    energy=random.uniform(0.5, 0.9),
+                    money=random.uniform(5.0, 35.0),
+                    smartness=random.uniform(0.4, 0.9),
+                    toughness=random.uniform(0.4, 0.9),
+                    obedience=random.uniform(0.3, 0.9),
+                    factory_goal_alignment=random.uniform(0.3, 0.9),
+                ),
             ]
         )
         agent_ids.append(entity_id)
@@ -302,7 +313,7 @@ def main() -> None:
         {
             "B": [WanderSystem, ActionPulseSystem],
             "C": [WorkDesireSystem],
-            "D": [WorkAssignmentSystem, WorkstationMovementSystem, ObjectWorkstationSystem],
+            "D": [WorkAssignmentSystem, WorkstationMovementSystem, ObjectWorkstationSystem, AgentStatsSystem],
         }
     )
 

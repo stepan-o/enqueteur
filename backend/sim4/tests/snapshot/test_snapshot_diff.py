@@ -30,6 +30,13 @@ def make_agent(agent_id: int, room_id: int | None, x: float, y: float) -> AgentS
         plan=None,
         transform=TransformSnapshot(room_id=room_id, x=x, y=y),
         action_state_code=0,
+        durability=1.0,
+        energy=1.0,
+        money=0.0,
+        smartness=0.5,
+        toughness=0.5,
+        obedience=0.5,
+        factory_goal_alignment=0.5,
         narrative_state_ref=None,
         cached_summary_ref=None,
     )

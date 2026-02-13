@@ -37,6 +37,7 @@ from .narrative_state import NarrativeState
 from .inventory import InventorySubstrate, ItemState
 from .meta import DebugFlags, SystemMarkers
 from .work import WorkDesire, WorkAssignment
+from .agent_stats import AgentStats
 from .objects import (
     WorkstationStatus,
     ObjectRef,
@@ -82,6 +83,7 @@ __all__ = [
     "SystemMarkers",
     "WorkDesire",
     "WorkAssignment",
+    "AgentStats",
     "WorkstationStatus",
     "ObjectRef",
     "ObjectClass",

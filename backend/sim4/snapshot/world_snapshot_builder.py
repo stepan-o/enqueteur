@@ -32,6 +32,7 @@ from backend.sim4.ecs.world import ECSWorld
 from backend.sim4.ecs.components.embodiment import Transform, RoomPresence
 from backend.sim4.ecs.components.intent_action import ActionState
 from backend.sim4.ecs.components.narrative_state import NarrativeState
+from backend.sim4.ecs.components.agent_stats import AgentStats
 from backend.sim4.ecs.query import QuerySignature
 from backend.sim4.ecs.components.objects import (
     ObjectRef,
@@ -95,6 +96,18 @@ def _build_agents(ecs_world: ECSWorld) -> List[AgentSnapshot]:
 
         act: ActionState | None = ecs_world.get_component(aid, ActionState)  # type: ignore[name-defined]
         narr: NarrativeState | None = ecs_world.get_component(aid, NarrativeState)  # type: ignore[name-defined]
+        stats: AgentStats | None = ecs_world.get_component(aid, AgentStats)  # type: ignore[name-defined]
+
+        if stats is None:
+            stats = AgentStats(
+                durability=1.0,
+                energy=1.0,
+                money=0.0,
+                smartness=0.5,
+                toughness=0.5,
+                obedience=0.5,
+                factory_goal_alignment=0.5,
+            )
 
         transform = TransformSnapshot(room_id=rp.room_id if rp else None, x=t.x, y=t.y)
         action_state_code = act.mode_code if act is not None else 0
@@ -121,6 +134,14 @@ def _build_agents(ecs_world: ECSWorld) -> List[AgentSnapshot]:
                 # Action & Embodiment
                 transform=transform,
                 action_state_code=action_state_code,
+                # Core Stats
+                durability=float(stats.durability),
+                energy=float(stats.energy),
+                money=float(stats.money),
+                smartness=float(stats.smartness),
+                toughness=float(stats.toughness),
+                obedience=float(stats.obedience),
+                factory_goal_alignment=float(stats.factory_goal_alignment),
                 # Narrative Overlay
                 narrative_state_ref=narrative_state_ref,
                 cached_summary_ref=cached_summary_ref,

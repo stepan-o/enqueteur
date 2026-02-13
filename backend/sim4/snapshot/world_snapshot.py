@@ -99,6 +99,15 @@ class AgentSnapshot:
     transform: TransformSnapshot
     action_state_code: int
 
+    # Core Stats
+    durability: float
+    energy: float
+    money: float
+    smartness: float
+    toughness: float
+    obedience: float
+    factory_goal_alignment: float
+
     # Narrative Overlay
     narrative_state_ref: int | None
     cached_summary_ref: int | None

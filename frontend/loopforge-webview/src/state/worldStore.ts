@@ -36,6 +36,13 @@ export type KvpAgent = {
     plan: unknown | null;
     transform: KvpTransform;
     action_state_code: number;
+    durability: number;
+    energy: number;
+    money: number;
+    smartness: number;
+    toughness: number;
+    obedience: number;
+    factory_goal_alignment: number;
     narrative_state_ref: string | null;
     cached_summary_ref: string | null;
 };

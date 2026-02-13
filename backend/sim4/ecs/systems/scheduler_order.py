@@ -22,6 +22,7 @@ from .movement_resolution_system import MovementResolutionSystem
 from .work_assignment_system import WorkAssignmentSystem
 from .workstation_movement_system import WorkstationMovementSystem
 from .object_workstation_system import ObjectWorkstationSystem
+from .agent_stats_system import AgentStatsSystem
 from .interaction_resolution_system import InteractionResolutionSystem
 from .inventory_system import InventorySystem
 from .action_execution_system import ActionExecutionSystem
@@ -49,6 +50,7 @@ PHASE_D_SYSTEMS = [
     WorkAssignmentSystem,
     WorkstationMovementSystem,
     ObjectWorkstationSystem,
+    AgentStatsSystem,
     InteractionResolutionSystem,
     InventorySystem,
 ]

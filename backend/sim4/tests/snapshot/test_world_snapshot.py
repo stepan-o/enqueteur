@@ -7,6 +7,7 @@ from backend.sim4.snapshot.world_snapshot import TransformSnapshot
 from backend.sim4.world.context import WorldContext, RoomRecord
 from backend.sim4.ecs.world import ECSWorld
 from backend.sim4.ecs.components.embodiment import Transform, RoomPresence
+from backend.sim4.ecs.components.agent_stats import AgentStats
 
 
 def test_world_snapshot_single_agent_single_room():
@@ -20,6 +21,18 @@ def test_world_snapshot_single_agent_single_room():
     eid = ecs.create_entity()
     ecs.add_component(eid, Transform(room_id=1, x=1.5, y=2.5, orientation=0.0))
     ecs.add_component(eid, RoomPresence(room_id=1, time_in_room=3.0))
+    ecs.add_component(
+        eid,
+        AgentStats(
+            durability=0.9,
+            energy=0.6,
+            money=12.5,
+            smartness=0.7,
+            toughness=0.8,
+            obedience=0.4,
+            factory_goal_alignment=0.55,
+        ),
+    )
 
     snap = build_world_snapshot(
         tick_index=5, episode_id=7, world_ctx=wc, ecs_world=ecs
@@ -58,3 +71,12 @@ def test_world_snapshot_single_agent_single_room():
     assert agent0.narrative_state_ref is None or isinstance(
         agent0.narrative_state_ref, int
     )
+
+    # Stats propagated from ECS
+    assert math.isclose(agent0.durability, 0.9)
+    assert math.isclose(agent0.energy, 0.6)
+    assert math.isclose(agent0.money, 12.5)
+    assert math.isclose(agent0.smartness, 0.7)
+    assert math.isclose(agent0.toughness, 0.8)
+    assert math.isclose(agent0.obedience, 0.4)
+    assert math.isclose(agent0.factory_goal_alignment, 0.55)
