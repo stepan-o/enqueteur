@@ -736,13 +736,30 @@ export class PixiScene {
         const cutHeight = height * (1 - open * 0.8);
         const wallTop = isoRectPoints(rb, cutHeight, elev);
 
-        // Right face (east)
-        g.poly(pointsToArray([base[1], base[2], wallTop[2], wallTop[1]]), true);
-        g.fill({ color: colors.sideA, alpha: wallAlphaA });
+        const faces = [
+            { a: 0, b: 1 },
+            { a: 1, b: 2 },
+            { a: 2, b: 3 },
+            { a: 3, b: 0 },
+        ];
+        const rankedFaces = faces
+            .map((f, idx) => {
+                const quad = [base[f.a], base[f.b], wallTop[f.b], wallTop[f.a]];
+                const avgY = quad.reduce((acc, p) => acc + p.y, 0) / quad.length;
+                return { idx, quad, avgY };
+            })
+            .sort((lhs, rhs) => rhs.avgY - lhs.avgY);
+        const faceA = rankedFaces[0]?.quad;
+        const faceB = rankedFaces[1]?.quad;
 
-        // Left face (south)
-        g.poly(pointsToArray([base[2], base[3], wallTop[3], wallTop[2]]), true);
-        g.fill({ color: colors.sideB, alpha: wallAlphaB });
+        if (faceA) {
+            g.poly(pointsToArray(faceA), true);
+            g.fill({ color: colors.sideA, alpha: wallAlphaA });
+        }
+        if (faceB) {
+            g.poly(pointsToArray(faceB), true);
+            g.fill({ color: colors.sideB, alpha: wallAlphaB });
+        }
 
         // Top face
         g.poly(pointsToArray(top), true);
@@ -1981,13 +1998,30 @@ function drawObjectPart(
     const sideB = shadeColor(baseColor, -0.22);
     const topColor = shadeColor(baseColor, 0.02);
 
-    // Right face (east)
-    g.poly(pointsToArray([base[1], base[2], top[2], top[1]]), true);
-    g.fill({ color: sideA, alpha: opacity });
+    const faces = [
+        { a: 0, b: 1 },
+        { a: 1, b: 2 },
+        { a: 2, b: 3 },
+        { a: 3, b: 0 },
+    ];
+    const rankedFaces = faces
+        .map((f, idx) => {
+            const quad = [base[f.a], base[f.b], top[f.b], top[f.a]];
+            const avgY = quad.reduce((acc, p) => acc + p.y, 0) / quad.length;
+            return { idx, quad, avgY };
+        })
+        .sort((lhs, rhs) => rhs.avgY - lhs.avgY);
+    const faceA = rankedFaces[0]?.quad;
+    const faceB = rankedFaces[1]?.quad;
 
-    // Left face (south)
-    g.poly(pointsToArray([base[2], base[3], top[3], top[2]]), true);
-    g.fill({ color: sideB, alpha: opacity });
+    if (faceA) {
+        g.poly(pointsToArray(faceA), true);
+        g.fill({ color: sideA, alpha: opacity });
+    }
+    if (faceB) {
+        g.poly(pointsToArray(faceB), true);
+        g.fill({ color: sideB, alpha: opacity });
+    }
 
     // Top face
     g.poly(pointsToArray(top), true);
