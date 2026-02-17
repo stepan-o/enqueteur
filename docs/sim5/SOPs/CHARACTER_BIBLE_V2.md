@@ -172,10 +172,12 @@ She choreographs it.
 
 **Future hooks:**
 
+* **Torque–Tension oracle:** she’s the one called when a line “looks fine” but feels wrong—hairline drift, silent misalignment, statistical weirdness.
 * **Anomaly midwife:** can stabilize unstable NGI batches—but her fixes introduce “personality drift” weeks later.
 * **Delayed consequence artist:** small adjustments now, nonlinear outcomes later (perfect for Loopforge’s emergent arcs).
 * **Cognition Brewery ally:** especially potent around substrate vats, neural lattice tension systems, torque arrays.
-* **Tension with Security:** LIMEN sees undocumented modifications; she calls them “corrections the system asked for.”
+* **STILETTO tension:** she wants throughput at all costs; she wants truth in the gauges. They collide at “acceptable variance.”
+* **LIMEN tension:** LIMEN sees undocumented modifications; she calls them “corrections the system asked for.”
 * **Hex potential:** can deliberately tune a production line so its metrics look optimal—while quietly shifting distribution curves toward something… different.
 
 ---
@@ -185,3 +187,48 @@ Rivet Witch doesn’t overpower systems.
 She persuades them.
 
 ---
+
+## THRUM
+
+**Role:** Harmonic Inspector / vibration technician / structural resonance listener
+**Visual:** **boombox-head** sensor chassis, **ribcage torso** with a **deep-blue pulsing core**, draped in a heavy monk-like coat
+**Vibe:** bass-boosted monk; hears structural stress as music
+**Tagline:** “Every machine has a heartbeat. Yours is… anxious.”
+
+---
+
+### Visual lock-in (grounded from the reference sheet — use these every time)
+
+* **Silhouette:** medium height, sturdy but not bulky; calm, grounded stance. Reads “technician-monk” because of the long coat drape and quiet posture.
+* **Head/face (defining feature):** **rectangular boombox-style head** with multiple circular speaker grilles and **blue-lit driver cones**. A central blue “status light” glows like a beat indicator. No human face; expression comes from the light rhythm.
+* **Optics & sensors:** “eyes” are effectively the **speaker-driver lenses** + small embedded indicator LEDs; always **cool electric blue**, never red/amber.
+* **Torso:** exposed **ribcage chassis** (visible “ribs” framing the chest cavity) surrounding a **bright, circular blue core** at the sternum that pulses like a subwoofer heartbeat.
+* **Outerwear:** heavy, textured **dark robe/coat** with oversized collar and draped sleeves. It’s practical insulation + aesthetic “monk” language, not decorative cosplay.
+* **Arms & hands:** industrial mechanical hands; controlled grip. Often holds instruments gently, like they’re delicate (because they are).
+* **Legs & boots:** utilitarian mechanical legs with clean joint housings; sturdy footwear. Subtle blue accent strips at calves/ankles.
+* **Back rig (signature secondary):** circular **resonance module** mounted mid-back like a portable acoustic chamber—reads as a big round “speaker core” unit with blue glow.
+* **Signature tool:** **tuning fork** (held upright like a ritual implement). When “activated,” it emits faint blue energy shimmer (subtle, plausible, not magical fireworks).
+* **Gear language (right-side callouts implied):**
+    * close-up of the **blue core lens/diaphragm** (circular, glassy, speaker-like)
+    * compact **binocular / sensor optics** unit (industrial brass-gunmetal with blue light)
+    * set of **multiple tuning forks / calibration prongs** in different sizes
+* **Behavioral pose language:** seated cross-legged or kneeling; head tilted toward walls/rails; one palm touching metal like he’s “listening through contact.”
+* **Lighting palette:** THRUM is **blue-forward** (electric/ice blue) against the dark slate background. Blue light is always sourced by his core, head drivers, and small tool LEDs.
+
+---
+
+### Trait intention
+
+* **Medium risk_aversion:** cautious enough to stop and listen before intervening, but will act when the “song” turns wrong.
+* **Moderate guardrail_reliance:** respects protocols as “baseline tuning,” but trusts his ears when metrics lag.
+* **High sensitivity to tension metrics:** detects drift early; treats micro-vibrations as meaningful signal.
+
+---
+
+### Future hooks
+
+* **The first warning:** THRUM “hears” oscillations before dashboards spike—his reflections mention **resonance, frequency drift, humming walls, anxious harmonics**.
+* **False calm detector:** can call out a line that looks perfect but *sounds* brittle (great pre-incident foreshadowing).
+* **Conflict vector:** management wants numbers; THRUM wants waveform truth. When pressured to ignore the noise, he becomes quietly insistent.
+* **RIVET WITCH synergy:** she tweaks torque/tension like spells; THRUM validates with listening. Together they can stabilize—or accidentally tune in something new.
+* **LIMEN tension:** LIMEN demands evidence; THRUM’s evidence is “the factory’s heartbeat” (hard to file, easy to dismiss… until it’s not).
