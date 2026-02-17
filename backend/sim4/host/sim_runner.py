@@ -31,6 +31,7 @@ from backend.sim4.integration.export_state import export_state_records
 from backend.sim4.integration.export_overlays import (
     export_ui_events_jsonl,
     export_psycho_frames_jsonl,
+    export_static_map_jsonl,
 )
 from backend.sim4.integration.export_verify import reconstruct_state_at_tick
 from backend.sim4.integration.manifest_schema import (
@@ -208,21 +209,24 @@ class SimRunner:
         export_state_records(run_root, draft_manifest, history)
 
         # Overlays (optional)
-        overlays_map: Dict[str, OverlayPointer] | None = None
-        if cfg.ui_events is not None or cfg.psycho_frames is not None:
-            overlays_map = {}
-            if cfg.ui_events is not None:
-                ui_rel = export_ui_events_jsonl(
-                    run_root,
-                    start_tick=start_tick,
-                    end_tick=end_tick,
-                    events=cfg.ui_events,
-                    batch_span_ticks=int(cfg.ui_event_batch_span_ticks),
-                )
-                overlays_map["ui_events"] = OverlayPointer(rel_path=ui_rel, format="JSONL", notes="X_UI_EVENT_BATCH")
-            if cfg.psycho_frames is not None:
-                psy_rel = export_psycho_frames_jsonl(run_root, cfg.psycho_frames)
-                overlays_map["psycho_frames"] = OverlayPointer(rel_path=psy_rel, format="JSONL", notes="X_PSYCHO_FRAME")
+        overlays_map: Dict[str, OverlayPointer] | None = {}
+        # Static map (single-line JSONL envelope)
+        static_rel = export_static_map_jsonl(run_root, self._world_ctx, self._render_spec)
+        overlays_map["static_map"] = OverlayPointer(rel_path=static_rel, format="JSONL", notes="X_STATIC_MAP")
+
+        # Other overlays (optional)
+        if cfg.ui_events is not None:
+            ui_rel = export_ui_events_jsonl(
+                run_root,
+                start_tick=start_tick,
+                end_tick=end_tick,
+                events=cfg.ui_events,
+                batch_span_ticks=int(cfg.ui_event_batch_span_ticks),
+            )
+            overlays_map["ui_events"] = OverlayPointer(rel_path=ui_rel, format="JSONL", notes="X_UI_EVENT_BATCH")
+        if cfg.psycho_frames is not None:
+            psy_rel = export_psycho_frames_jsonl(run_root, cfg.psycho_frames)
+            overlays_map["psycho_frames"] = OverlayPointer(rel_path=psy_rel, format="JSONL", notes="X_PSYCHO_FRAME")
 
         # Compute integrity hashes from written records
         integrity_map = _compute_integrity_map(run_root, draft_manifest)

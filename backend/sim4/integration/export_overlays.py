@@ -30,6 +30,8 @@ import uuid
 
 from .overlay_schemas import UIEventBatch, PsychoFrame
 from .kvp_envelope import make_envelope, validate_envelope
+from .render_spec import RenderSpec
+from backend.sim4.world.context import WorldContext
 
 
 def _write_jsonl(path: Path, envelopes: Iterable[Dict[str, Any]]) -> None:
@@ -139,7 +141,33 @@ def export_psycho_frames_jsonl(
     return rel_path
 
 
+def export_static_map_jsonl(
+    run_root: str | Path,
+    world_ctx: WorldContext,
+    render_spec: RenderSpec,
+    *,
+    rel_path: str = "overlays/static_map.jsonl",
+) -> str:
+    """Export static map as a single-line JSONL envelope (X_STATIC_MAP)."""
+    if world_ctx.static_map is None:
+        raise ValueError("WorldContext.static_map is None; cannot export static map")
+
+    units = float(render_spec.coord_system.units_per_tile)
+    if abs(units - float(world_ctx.static_map.units_per_tile)) > 1e-6:
+        raise ValueError("static_map.units_per_tile does not match render_spec.units_per_tile")
+
+    payload = world_ctx.static_map.to_dict()
+    ns = uuid.UUID("00000000-0000-5000-8000-000000000014")
+    msg_id = str(uuid.uuid5(ns, f"X_STATIC_MAP|{payload.get('schema_version','1')}"))
+    env = make_envelope("X_STATIC_MAP", payload, msg_id=msg_id, sent_at_ms=0)
+
+    out_path = Path(run_root) / rel_path
+    _write_jsonl(out_path, [env])
+    return rel_path
+
+
 __all__ = [
     "export_ui_events_jsonl",
     "export_psycho_frames_jsonl",
+    "export_static_map_jsonl",
 ]

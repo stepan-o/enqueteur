@@ -17,7 +17,10 @@ Mutation via WorldCommands and event emission will be added in later sub-sprints
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Set, Optional, FrozenSet
+from typing import Dict, Set, Optional, FrozenSet, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .static_map import StaticMapV1
 
 
 # --- Local world-layer ID aliases (do not import from ecs.*) ---
@@ -148,6 +151,10 @@ class WorldContext:
     room_objects: Dict[RoomID, Set[ObjectID]] = field(default_factory=dict)
     # Doors: minimal boolean state map. Absent key means door unknown.
     door_open: Dict[DoorID, bool] = field(default_factory=dict)
+    # Door endpoints (room_a, room_b) when known.
+    door_rooms: Dict[DoorID, Tuple[RoomID, RoomID]] = field(default_factory=dict)
+    # Static map snapshot for offline exports (optional).
+    static_map: "StaticMapV1 | None" = None
     # World time (deterministic, tick-derived).
     time_seconds: float = 0.0
     time: "WorldTimeState" = field(default_factory=lambda: WorldTimeState())
@@ -345,7 +352,13 @@ class WorldContext:
         return frozenset(self.room_objects.get(room_id, set()))
 
     # ---- Doors ----
-    def register_door(self, door_id: DoorID, is_open: bool = False) -> None:
+    def register_door(
+        self,
+        door_id: DoorID,
+        is_open: bool = False,
+        room_a: RoomID | None = None,
+        room_b: RoomID | None = None,
+    ) -> None:
         """Register a door with an initial open/closed state.
 
         Raises:
@@ -354,6 +367,8 @@ class WorldContext:
         if door_id in self.door_open:
             raise ValueError(f"Door ID already exists: {door_id}")
         self.door_open[door_id] = bool(is_open)
+        if room_a is not None and room_b is not None:
+            self.door_rooms[door_id] = (int(room_a), int(room_b))
 
     def set_door_open(self, door_id: DoorID, is_open: bool) -> None:
         """Set door state to open/closed.
@@ -374,6 +389,10 @@ class WorldContext:
         if door_id not in self.door_open:
             raise KeyError(f"Unknown door_id: {door_id}")
         return self.door_open[door_id]
+
+    def get_door_rooms(self, door_id: DoorID) -> Tuple[RoomID, RoomID] | None:
+        """Return (room_a, room_b) for a door if known; otherwise None."""
+        return self.door_rooms.get(door_id)
 
     # Optional thin shim to avoid import cycles for callers that prefer a method
     def apply_world_commands(self, commands):

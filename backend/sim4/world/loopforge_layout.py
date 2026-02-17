@@ -12,6 +12,15 @@ from enum import IntEnum
 from typing import Iterable, List
 
 from .context import WorldContext, RoomRecord, RoomBounds, ObjectRecord
+from .static_map import (
+    StaticMapV1,
+    RoomStatic,
+    TileRect,
+    LayersV1,
+    LayerStrGrid,
+    LayerBoolGrid,
+    DoorStatic,
+)
 
 
 class LoopforgeRoomId(IntEnum):
@@ -76,6 +85,8 @@ class LoopforgeObjectSpec:
 
 
 WORLD_BOUNDS = RoomBounds(min_x=0.0, min_y=0.0, max_x=35.0, max_y=25.0)
+# Keep in sync with host default_render_spec().units_per_tile (1.0).
+DEFAULT_UNITS_PER_TILE = 1.0
 
 _HEIGHT_BASE = 4.0
 _HEIGHT_CONTROL = 4.0
@@ -362,6 +373,150 @@ def _validate_objects(objects: Iterable[LoopforgeObjectSpec], specs: Iterable[Lo
             raise ValueError(f"Object {o.object_id} footprint exceeds room bounds")
 
 
+def _require_integral_tiles(value: float, label: str) -> int:
+    rounded = int(round(value))
+    if abs(value - rounded) > 1e-6:
+        raise ValueError(f"{label} must align to tile grid; got {value}")
+    return rounded
+
+
+def _bounds_to_tile_rect(bounds: RoomBounds, *, units_per_tile: float) -> TileRect:
+    x = (bounds.min_x - WORLD_BOUNDS.min_x) / units_per_tile
+    y = (bounds.min_y - WORLD_BOUNDS.min_y) / units_per_tile
+    w = (bounds.max_x - bounds.min_x) / units_per_tile
+    h = (bounds.max_y - bounds.min_y) / units_per_tile
+    return TileRect(
+        x=_require_integral_tiles(x, "room bounds min_x"),
+        y=_require_integral_tiles(y, "room bounds min_y"),
+        w=_require_integral_tiles(w, "room bounds width"),
+        h=_require_integral_tiles(h, "room bounds height"),
+    )
+
+
+def _grid_index(x: int, y: int, grid_w: int, grid_h: int) -> int:
+    if x < 0 or y < 0 or x >= grid_w or y >= grid_h:
+        raise ValueError(f"grid index out of bounds: ({x}, {y})")
+    return y * grid_w + x
+
+
+def _floor_key_for_room(room_id: int, kind_code: int) -> str:
+    # Room-specific overrides
+    if room_id == int(LoopforgeRoomId.SECURITY):
+        return "FLOOR/SECURITY/BASE"
+    if room_id == int(LoopforgeRoomId.SHIPPING):
+        return "FLOOR/SHIPPING/BASE"
+    if room_id == int(LoopforgeRoomId.LOBBY):
+        return "FLOOR/LOBBY/BASE"
+
+    # Kind-based defaults
+    if kind_code == int(RoomKind.WORK):
+        return "FLOOR/WORK/BASE"
+    if kind_code == int(RoomKind.CORE):
+        return "FLOOR/CORE/BASE"
+    if kind_code == int(RoomKind.SUPPORT):
+        return "FLOOR/SUPPORT/BASE"
+    if kind_code == int(RoomKind.CONTROL):
+        return "FLOOR/CONTROL/BASE"
+    if kind_code == int(RoomKind.PERIMETER):
+        return "FLOOR/PERIMETER/BASE"
+    if kind_code == int(RoomKind.RESIDENTIAL):
+        return "FLOOR/RESIDENTIAL/BASE"
+    return "FLOOR/GENERIC/BASE"
+
+
+def _footprint_dims(size_w: int, size_h: int, orientation: int) -> tuple[int, int]:
+    if int(orientation) % 2 == 1:
+        return int(size_h), int(size_w)
+    return int(size_w), int(size_h)
+
+
+def _build_static_map(
+    *,
+    room_specs: list[LoopforgeRoomSpec],
+    door_specs: list[LoopforgeDoorSpec],
+    object_specs: list[LoopforgeObjectSpec],
+    units_per_tile: float,
+) -> StaticMapV1:
+    width = (WORLD_BOUNDS.max_x - WORLD_BOUNDS.min_x) / units_per_tile
+    height = (WORLD_BOUNDS.max_y - WORLD_BOUNDS.min_y) / units_per_tile
+    grid_w = _require_integral_tiles(width, "WORLD_BOUNDS width")
+    grid_h = _require_integral_tiles(height, "WORLD_BOUNDS height")
+    if grid_w <= 0 or grid_h <= 0:
+        raise ValueError("Static map grid dimensions must be > 0")
+
+    total = grid_w * grid_h
+    floor_cells = ["FLOOR/VOID"] * total
+    blocked_cells = [True] * total
+
+    rooms: list[RoomStatic] = []
+    rooms_by_id = {r.room_id: r for r in room_specs}
+    for spec in sorted(room_specs, key=lambda r: r.room_id):
+        rect = _bounds_to_tile_rect(spec.bounds, units_per_tile=units_per_tile)
+        key = _floor_key_for_room(spec.room_id, spec.kind_code)
+        for y in range(rect.y, rect.y + rect.h):
+            for x in range(rect.x, rect.x + rect.w):
+                idx = _grid_index(x, y, grid_w, grid_h)
+                floor_cells[idx] = key
+                blocked_cells[idx] = False
+        rooms.append(
+            RoomStatic(
+                room_id=int(spec.room_id),
+                label=spec.label,
+                kind_code=int(spec.kind_code),
+                bounds=spec.bounds,
+                level=int(spec.level) if spec.level is not None else None,
+                zone=spec.zone,
+                tile_rect=rect,
+            )
+        )
+
+    # Blocked footprint for objects (MVP: everything blocks)
+    for obj in sorted(object_specs, key=lambda o: o.object_id):
+        room = rooms_by_id.get(obj.room_id)
+        if room is None:
+            raise ValueError(f"Object {obj.object_id} references unknown room {obj.room_id}")
+        room_bounds = room.bounds
+        base_x = room_bounds.min_x + (obj.tile_x * units_per_tile)
+        base_y = room_bounds.min_y + (obj.tile_y * units_per_tile)
+        gx = _require_integral_tiles((base_x - WORLD_BOUNDS.min_x) / units_per_tile, "object tile_x")
+        gy = _require_integral_tiles((base_y - WORLD_BOUNDS.min_y) / units_per_tile, "object tile_y")
+        foot_w, foot_h = _footprint_dims(obj.size_w, obj.size_h, obj.orientation)
+        for y in range(gy, gy + foot_h):
+            for x in range(gx, gx + foot_w):
+                idx = _grid_index(x, y, grid_w, grid_h)
+                blocked_cells[idx] = True
+
+    doors: list[DoorStatic] = []
+    for d in sorted(door_specs, key=lambda x: x.door_id):
+        doors.append(
+            DoorStatic(
+                door_id=int(d.door_id),
+                room_a=int(d.room_a),
+                room_b=int(d.room_b),
+                is_open=bool(d.is_open),
+                geometry=None,
+            )
+        )
+
+    layers = LayersV1(
+        floor=LayerStrGrid(encoding="RAW", cells=floor_cells),
+        blocked=LayerBoolGrid(encoding="RAW", cells=blocked_cells),
+        conveyor=None,
+    )
+
+    return StaticMapV1(
+        schema_version="1",
+        tile_vocab_version=None,
+        world_bounds=WORLD_BOUNDS,
+        units_per_tile=float(units_per_tile),
+        grid_w=int(grid_w),
+        grid_h=int(grid_h),
+        rooms=rooms,
+        layers=layers,
+        doors=doors,
+    )
+
+
 def apply_loopforge_layout(world_ctx: WorldContext) -> None:
     """Register the canonical Loopforge layout into the WorldContext.
 
@@ -390,7 +545,7 @@ def apply_loopforge_layout(world_ctx: WorldContext) -> None:
             )
         )
     for d in doors:
-        world_ctx.register_door(d.door_id, is_open=d.is_open)
+        world_ctx.register_door(d.door_id, is_open=d.is_open, room_a=d.room_a, room_b=d.room_b)
     for o in objects:
         world_ctx.register_object(
             ObjectRecord(
@@ -406,6 +561,14 @@ def apply_loopforge_layout(world_ctx: WorldContext) -> None:
                 height=o.height,
             )
         )
+
+    # Attach static map snapshot for offline exports.
+    world_ctx.static_map = _build_static_map(
+        room_specs=list(specs),
+        door_specs=list(doors),
+        object_specs=list(objects),
+        units_per_tile=float(DEFAULT_UNITS_PER_TILE),
+    )
 
 
 __all__ = [

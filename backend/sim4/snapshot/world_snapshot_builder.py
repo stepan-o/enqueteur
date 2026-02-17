@@ -25,6 +25,7 @@ from backend.sim4.snapshot.world_snapshot import (
     ItemSnapshot,
     ObjectSnapshot,
     TransformSnapshot,
+    DoorSnapshot,
 )
 from backend.sim4.world.context import WorldContext
 from backend.sim4.world.views import WorldViews
@@ -206,6 +207,24 @@ def _build_objects(ecs_world: ECSWorld) -> List[ObjectSnapshot]:
     return objects
 
 
+def _build_doors(world_ctx: WorldContext) -> List[DoorSnapshot]:
+    doors: List[DoorSnapshot] = []
+    door_ids = sorted(list(world_ctx.door_open.keys()))
+    for did in door_ids:
+        rooms = world_ctx.door_rooms.get(did)
+        room_a = rooms[0] if rooms is not None else None
+        room_b = rooms[1] if rooms is not None else None
+        doors.append(
+            DoorSnapshot(
+                door_id=int(did),
+                room_a=int(room_a) if room_a is not None else None,
+                room_b=int(room_b) if room_b is not None else None,
+                is_open=bool(world_ctx.door_open.get(did, False)),
+            )
+        )
+    return doors
+
+
 def _build_factory_input(ecs_world: ECSWorld) -> float:
     sig = QuerySignature(read=(FactoryMetrics,), write=())
     rows = list(ecs_world.query(sig))
@@ -232,6 +251,7 @@ def build_world_snapshot(
     agents = _build_agents(ecs_world)
     items = _build_items(world_ctx)
     objects = _build_objects(ecs_world)
+    doors = _build_doors(world_ctx)
     factory_input = _build_factory_input(ecs_world)
 
     # Indices mapping IDs to positional indices in the lists
@@ -280,6 +300,7 @@ def build_world_snapshot(
         agents=agents,
         items=items,
         objects=objects,
+        doors=doors,
         room_index=room_index,
         agent_index=agent_index,
     )

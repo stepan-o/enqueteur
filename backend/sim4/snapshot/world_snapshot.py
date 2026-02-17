@@ -142,6 +142,14 @@ class ObjectSnapshot:
 
 
 @dataclass(frozen=True)
+class DoorSnapshot:
+    door_id: int
+    room_a: int | None
+    room_b: int | None
+    is_open: bool
+
+
+@dataclass(frozen=True)
 class WorldSnapshot:
     world_id: int
     tick_index: int
@@ -158,6 +166,7 @@ class WorldSnapshot:
     agents: list[AgentSnapshot]
     items: list[ItemSnapshot]
     objects: list[ObjectSnapshot]
+    doors: list[DoorSnapshot]
     room_index: dict[int, int] | None
     agent_index: dict[int, int] | None
 
@@ -169,6 +178,7 @@ __all__ = [
     "AgentSnapshot",
     "ItemSnapshot",
     "ObjectSnapshot",
+    "DoorSnapshot",
     "AgentSocialSnapshot",
     "MotiveSnapshot",
     "PlanSnapshot",

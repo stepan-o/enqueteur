@@ -85,6 +85,7 @@ class KvpStateHistory(TickOutputSink, StateSource):
                 "time_of_day": float(world_snapshot.time_of_day),
                 "day_phase": str(world_snapshot.day_phase),
                 "phase_progress": float(world_snapshot.phase_progress),
+                "doors": [_to_plain(d) for d in world_snapshot.doors],
             }
         if "AGENTS" in self._channels:
             state["agents"] = [_to_plain(a) for a in world_snapshot.agents]

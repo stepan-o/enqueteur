@@ -30,6 +30,7 @@ ALLOWED_ARTIFACT_MSG_TYPES: Final[set[str]] = {
     # Overlay sidecars (out-of-protocol X_* streams; S14.7)
     "X_UI_EVENT_BATCH",
     "X_PSYCHO_FRAME",
+    "X_STATIC_MAP",
 }
 
 # Explicit forbidden prefixes (live/session)

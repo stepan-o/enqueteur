@@ -52,6 +52,15 @@ from .loopforge_layout import (
     LoopforgeDoorId,
     RoomKind,
 )
+from .static_map import (
+    StaticMapV1,
+    RoomStatic,
+    DoorStatic,
+    LayersV1,
+    LayerStrGrid,
+    LayerBoolGrid,
+    TileRect,
+)
 
 __all__ = [
     # IDs & records / context
@@ -89,4 +98,12 @@ __all__ = [
     "LoopforgeRoomId",
     "LoopforgeDoorId",
     "RoomKind",
+    # Static map
+    "StaticMapV1",
+    "RoomStatic",
+    "DoorStatic",
+    "LayersV1",
+    "LayerStrGrid",
+    "LayerBoolGrid",
+    "TileRect",
 ]
