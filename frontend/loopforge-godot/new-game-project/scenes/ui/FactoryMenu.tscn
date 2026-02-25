@@ -1,0 +1,83 @@
+[gd_scene format=3 uid="uid://cvkdbjs0btbbf"]
+
+[ext_resource type="Theme" uid="uid://bdf0t0ps5qd4c" path="res://themes/loopforge_menu.tres" id="1_lvhwt"]
+[ext_resource type="Texture2D" uid="uid://cw8cq3k4t5jqu" path="res://assets/ui/backgrounds/loopforge_factory_entrance_1.png" id="1_t3bfb"]
+
+[sub_resource type="Gradient" id="Gradient_bw1q1"]
+colors = PackedColorArray(0, 0, 0, 1, 0.012617188, 0.012617188, 0.012617188, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_kyk18"]
+gradient = SubResource("Gradient_bw1q1")
+fill_from = Vector2(1, 1)
+
+[node name="FactoryMenu" type="Control" unique_id=984531193]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 6
+size_flags_vertical = 6
+theme = ExtResource("1_lvhwt")
+
+[node name="Bg" type="TextureRect" parent="." unique_id=1795999418]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("1_t3bfb")
+expand_mode = 2
+stretch_mode = 6
+
+[node name="BottomOverlay" type="Control" parent="." unique_id=1215704931]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="Fade" type="TextureRect" parent="BottomOverlay" unique_id=933008673]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -252.0
+offset_bottom = 32.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("GradientTexture2D_kyk18")
+
+[node name="Menu" type="HBoxContainer" parent="BottomOverlay" unique_id=403077712]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -460.5
+offset_top = -40.0
+offset_right = 460.5
+offset_bottom = 32.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/separation = 30
+
+[node name="CinematicMode" type="MenuButton" parent="BottomOverlay/Menu" unique_id=451792851]
+layout_mode = 2
+theme_override_font_sizes/font_size = 48
+text = "Cinematic mode"
+
+[node name="DevMode" type="MenuButton" parent="BottomOverlay/Menu" unique_id=1351313091]
+layout_mode = 2
+theme_override_font_sizes/font_size = 48
+text = "Dev Mode"
+
+[node name="Back" type="MenuButton" parent="BottomOverlay/Menu" unique_id=1757729552]
+layout_mode = 2
+theme_override_font_sizes/font_size = 48
+text = "Back"

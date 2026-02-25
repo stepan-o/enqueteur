@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://d3bouwmm48uqn"]
+
+[ext_resource type="TileSet" uid="uid://s3mtrc311lpi" path="res://assets/tilesets/floor_tileset.tres" id="1_lvwko"]
+[ext_resource type="TileSet" uid="uid://c3guj4nn7lp5j" path="res://assets/tilesets/wall_tileset.tres" id="2_mxyh7"]
+
+[node name="CinematicView" type="Node2D" unique_id=1623943120]
+
+[node name="WorldRoot" type="Node2D" parent="." unique_id=190789117]
+
+[node name="Floor" type="TileMapLayer" parent="WorldRoot" unique_id=1514091805]
+tile_set = ExtResource("1_lvwko")
+
+[node name="Walls" type="TileMapLayer" parent="WorldRoot" unique_id=1508900852]
+tile_set = ExtResource("2_mxyh7")
+
+[node name="Decals" type="TileMapLayer" parent="WorldRoot" unique_id=1620506281]
+
+[node name="Props" type="Node2D" parent="WorldRoot" unique_id=2118168982]
+
+[node name="Agents" type="Node2D" parent="WorldRoot" unique_id=1092979387]
+
+[node name="Cam" type="Camera2D" parent="WorldRoot" unique_id=1022496206]
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=1369539044]
