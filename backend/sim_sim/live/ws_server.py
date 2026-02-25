@@ -3,6 +3,7 @@ from __future__ import annotations
 """WebSocket server for sim_sim LIVE KVP endpoint (/kvp)."""
 
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -56,16 +57,38 @@ class SimSimWsServer:
             await websocket.close(code=1008, reason=f"Expected {self._route_path}")
             return
 
+        def _extract_msg_type_from_text(text: str) -> str:
+            try:
+                obj = json.loads(text)
+            except Exception:
+                return "UNKNOWN"
+            if not isinstance(obj, dict):
+                return "UNKNOWN"
+            msg_type = obj.get("msg_type")
+            return str(msg_type) if isinstance(msg_type, str) and msg_type else "UNKNOWN"
+
         async def _send_bytes(data: bytes) -> None:
-            await websocket.send(data)
+            # Webview client expects text JSON envelopes; never send binary KVP frames.
+            text = data.decode("utf-8")
+            msg_type = _extract_msg_type_from_text(text)
+            logger.info("[live] outbound msg_type=%s frame=text", msg_type)
+            await websocket.send(text)
 
         ctx: ConnectionContext = await self._session_host.register_connection(send_bytes=_send_bytes)
         try:
             async for message in websocket:
                 if isinstance(message, bytes):
                     raw = message
+                    frame_kind = "binary"
                 else:
                     raw = str(message).encode("utf-8")
+                    frame_kind = "text"
+                try:
+                    inbound_obj = json.loads(raw.decode("utf-8"))
+                    inbound_type = str(inbound_obj.get("msg_type", "UNKNOWN")) if isinstance(inbound_obj, dict) else "UNKNOWN"
+                except Exception:
+                    inbound_type = "UNKNOWN"
+                logger.info("[live] inbound msg_type=%s frame=%s", inbound_type, frame_kind)
                 await self._session_host.handle_client_message(ctx, raw)
         except asyncio.CancelledError:
             raise
@@ -73,4 +96,3 @@ class SimSimWsServer:
             logger.exception("[live] websocket handler error")
         finally:
             await self._session_host.unregister_connection(ctx)
-

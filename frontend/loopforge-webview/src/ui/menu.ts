@@ -10,6 +10,8 @@ export type MenuRun = {
 
 export type MenuAction =
     | { type: "GO_FACTORY" }
+    | { type: "OPEN_LIVE_SIM4" }
+    | { type: "OPEN_LIVE_SIM_SIM" }
     | { type: "OPEN_DEV" }
     | { type: "OPEN_CINEMATIC" }
     | { type: "BACK_MAIN" }
@@ -172,6 +174,8 @@ function buildFactoryScreen(onAction: (action: MenuAction) => void): HTMLElement
 
     const list = document.createElement("div");
     list.className = "menu-list";
+    list.appendChild(makeMenuButton("LIVE (sim4)", () => onAction({ type: "OPEN_LIVE_SIM4" })));
+    list.appendChild(makeMenuButton("LIVE (sim_sim)", () => onAction({ type: "OPEN_LIVE_SIM_SIM" })));
     list.appendChild(makeMenuButton("Cinematic view", () => onAction({ type: "OPEN_CINEMATIC" })));
     list.appendChild(makeMenuButton("Dev view", () => onAction({ type: "OPEN_DEV" })));
     list.appendChild(makeMenuButton("Back to main menu", () => onAction({ type: "BACK_MAIN" })));
@@ -275,4 +279,3 @@ function buildSoundToggle(onAction: (action: MenuAction) => void): HTMLElement {
     });
     return btn;
 }
-

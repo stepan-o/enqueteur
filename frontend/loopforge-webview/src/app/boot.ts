@@ -2,6 +2,7 @@
 import { WorldStore } from "../state/worldStore";
 import { OverlayStore } from "../state/overlayStore";
 import { ViewerStore } from "../state/viewerStore";
+import type { LiveKernelKind } from "../state/viewerStore";
 import { KvpClient } from "../kvp/client";
 import { startOfflineRun } from "../kvp/offline";
 import type { OfflineRunHandle } from "../kvp/offline";
@@ -22,15 +23,23 @@ export type BootMode = "live" | "offline";
 
 export type BootOpts = {
     mountEl: HTMLElement;
+    // Backward-compatible alias for sim4 live endpoint.
     wsUrl?: string;
+    sim4WsUrl?: string;
+    simSimWsUrl?: string;
     offlineBaseUrl?: string;
     mode?: BootMode;
     autoStart?: boolean;
 };
 
+export type LiveStartOpts = {
+    kernelKind?: LiveKernelKind;
+    wsUrl?: string;
+};
+
 export type ViewerHandle = {
     startOffline: (baseUrl?: string, speed?: number) => Promise<void>;
-    startLive: () => void;
+    startLive: (opts?: LiveStartOpts) => void;
     stop: () => void;
     setVisible: (visible: boolean) => void;
     setDevControlsVisible: (visible: boolean) => void;
@@ -104,6 +113,38 @@ export function boot(opts: BootOpts): ViewerHandle {
     let offlineSpeed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
     let currentMode: BootMode = mode;
     let client: KvpClient | null = null;
+    let activeLiveWsUrl: string | null = null;
+
+    const resolveLiveWsUrl = (kernelKind: LiveKernelKind): string => {
+        if (kernelKind === "sim_sim") {
+            return opts.simSimWsUrl ?? env.VITE_KVP_WS_URL_SIM_SIM ?? "ws://localhost:7777/kvp";
+        }
+        return opts.sim4WsUrl ?? opts.wsUrl ?? env.VITE_KVP_WS_URL_SIM4 ?? env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp";
+    };
+
+    const ensureLiveClient = (wsUrl: string): KvpClient => {
+        if (client && activeLiveWsUrl === wsUrl) return client;
+        if (client) client.disconnect();
+        client = new KvpClient(store, {
+            url: wsUrl,
+            viewerName: "loopforge-webview-pixi",
+            viewerVersion: "0.1.0",
+            supportedSchemaVersions: ["1"],
+            defaultSubscribe: {
+                stream: "LIVE",
+                channels: ["WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"],
+                diff_policy: "DIFF_ONLY",
+                snapshot_policy: "ON_JOIN",
+                compression: "NONE",
+            },
+        });
+        activeLiveWsUrl = wsUrl;
+        scene.onRequestFreshSnapshot(() => {
+            console.warn("[webview] desync banner: requesting fresh snapshot");
+            client?.requestFreshSnapshot();
+        });
+        return client;
+    };
 
     const devControls = mountDevControls({
         store,
@@ -138,6 +179,7 @@ export function boot(opts: BootOpts): ViewerHandle {
     const startOffline = async (baseUrl?: string, speed?: number): Promise<void> => {
         currentMode = "offline";
         if (offlineHandle) offlineHandle.stop();
+        if (client) client.disconnect();
         offlineBaseUrl = baseUrl ?? offlineBaseUrl;
         if (speed && Number.isFinite(speed) && speed > 0) offlineSpeed = speed;
         store.clearDesync();
@@ -159,29 +201,19 @@ export function boot(opts: BootOpts): ViewerHandle {
         }
     };
 
-    const startLive = (): void => {
+    const startLive = (liveOpts?: LiveStartOpts): void => {
+        const kernelKind = liveOpts?.kernelKind ?? "sim4";
+        const targetWsUrl = liveOpts?.wsUrl ?? resolveLiveWsUrl(kernelKind);
         currentMode = "live";
-        store.setMode("live");
-        if (!client) {
-            client = new KvpClient(store, {
-                url: opts.wsUrl ?? env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp",
-                viewerName: "loopforge-webview-pixi",
-                viewerVersion: "0.1.0",
-                supportedSchemaVersions: ["1"],
-                defaultSubscribe: {
-                    stream: "LIVE",
-                    channels: ["WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"],
-                    diff_policy: "DIFF_ONLY",
-                    snapshot_policy: "ON_JOIN",
-                    compression: "NONE",
-                },
-            });
-
-            scene.onRequestFreshSnapshot(() => {
-                console.warn("[webview] desync banner: requesting fresh snapshot");
-                client?.requestFreshSnapshot();
-            });
+        if (offlineHandle) {
+            offlineHandle.stop();
+            offlineHandle = null;
         }
+        viewerStore.setLiveKernelKind(kernelKind);
+        store.clearDesync();
+        store.setMode("live");
+        store.setConnected(false);
+        const liveClient = ensureLiveClient(targetWsUrl);
 
         if (import.meta.env.DEV) {
             const useMock = String(env.VITE_WEBVIEW_MOCK ?? "") === "1";
@@ -197,8 +229,8 @@ export function boot(opts: BootOpts): ViewerHandle {
             }
         }
 
-        console.info("[webview] connecting WS:", opts.wsUrl ?? env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp");
-        client.connect();
+        console.info("[webview] connecting WS:", targetWsUrl, `kernel=${kernelKind}`);
+        liveClient.connect();
     };
 
     const stop = (): void => {
@@ -206,6 +238,7 @@ export function boot(opts: BootOpts): ViewerHandle {
             offlineHandle.stop();
             offlineHandle = null;
         }
+        if (client) client.disconnect();
         store.setConnected(false);
     };
 

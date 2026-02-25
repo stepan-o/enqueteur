@@ -1,10 +1,13 @@
 // src/state/viewerStore.ts
 
+export type LiveKernelKind = "sim4" | "sim_sim";
+
 export type ViewerState = {
     playbackStartTick: number;
     playbackEndTick: number;
     keyframeTicks: number[];
     highlights: Array<{ tick: number; label: string }>;
+    liveKernelKind: LiveKernelKind;
 };
 
 export type ViewerStoreSubscriber = (s: ViewerState) => void;
@@ -19,6 +22,7 @@ export class ViewerStore {
             playbackEndTick: 0,
             keyframeTicks: [],
             highlights: [],
+            liveKernelKind: "sim4",
         };
     }
 
@@ -55,6 +59,12 @@ export class ViewerStore {
             .map((h) => ({ tick: Math.floor(h.tick), label: h.label ?? `Tick ${h.tick}` }))
             .filter((h) => h.tick >= 0);
         this.state = { ...this.state, highlights: filtered };
+        this.emit();
+    }
+
+    setLiveKernelKind(kind: LiveKernelKind): void {
+        if (this.state.liveKernelKind === kind) return;
+        this.state = { ...this.state, liveKernelKind: kind };
         this.emit();
     }
 

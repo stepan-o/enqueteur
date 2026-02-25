@@ -6,6 +6,8 @@ const app = document.getElementById("app");
 if (!app) throw new Error("#app not found");
 
 const env = (import.meta as any).env ?? {};
+const sim4WsUrl = env.VITE_KVP_WS_URL_SIM4 ?? env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp";
+const simSimWsUrl = env.VITE_KVP_WS_URL_SIM_SIM ?? "ws://localhost:7777/kvp";
 
 const menuRoot = document.createElement("div");
 const viewerRoot = document.createElement("div");
@@ -20,7 +22,9 @@ app.appendChild(fadeLayer);
 
 const viewer = boot({
     mountEl: viewerRoot,
-    wsUrl: env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp",
+    wsUrl: sim4WsUrl,
+    sim4WsUrl,
+    simSimWsUrl,
     offlineBaseUrl: env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min",
     mode: "offline",
     autoStart: false,
@@ -83,6 +87,22 @@ function handleMenuAction(action: MenuAction): void {
         case "OPEN_CINEMATIC": {
             void transitionTo(() => {
                 menu.setScreen("cinematic");
+            });
+            return;
+        }
+        case "OPEN_LIVE_SIM4": {
+            void transitionTo(() => {
+                viewer.setVisible(true);
+                menuRoot.style.display = "none";
+                viewer.startLive({ kernelKind: "sim4" });
+            });
+            return;
+        }
+        case "OPEN_LIVE_SIM_SIM": {
+            void transitionTo(() => {
+                viewer.setVisible(true);
+                menuRoot.style.display = "none";
+                viewer.startLive({ kernelKind: "sim_sim" });
             });
             return;
         }
