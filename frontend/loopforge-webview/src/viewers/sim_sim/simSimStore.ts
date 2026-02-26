@@ -4,6 +4,7 @@ export const SIM_SIM_SCHEMA_VERSION = "sim_sim_1";
 
 export type SimSimWorldMeta = {
     day: number;
+    tick: number;
     phase: string;
     time: string;
     tick_hz: number;
@@ -14,8 +15,8 @@ export type SimSimWorldMeta = {
 };
 
 export type SimSimWorkers = {
-    dumb: number;
-    smart: number;
+    dumb: number | null;
+    smart: number | null;
 };
 
 export type SimSimOutputToday = {
@@ -35,14 +36,15 @@ export type SimSimAccidents = {
 export type SimSimRoom = {
     room_id: number;
     name: string;
+    unlocked_day: number;
     locked: boolean;
     supervisor: string | null;
     workers_assigned: SimSimWorkers;
     workers_present: SimSimWorkers;
-    equipment_condition: number;
-    stress: number;
-    discipline: number;
-    alignment: number;
+    equipment_condition: number | null;
+    stress: number | null;
+    discipline: number | null;
+    alignment: number | null;
     output_today: SimSimOutputToday;
     accidents_today: SimSimAccidents;
     bounds?: { min_x: number; min_y: number; max_x: number; max_y: number } | null;
@@ -51,6 +53,9 @@ export type SimSimRoom = {
 
 export type SimSimSupervisor = {
     code: string;
+    name: string;
+    unlocked_day: number;
+    native_room: number;
     assigned_room: number | null;
     loyalty: number;
     confidence: number;

@@ -165,20 +165,21 @@ def _project_rooms(domain_state: SimSimState) -> List[Dict[str, Any]]:
             {
                 "room_id": int(room.room_id),
                 "name": str(room.name),
+                "unlocked_day": int(room.unlocked_day),
                 "locked": bool(room.locked),
                 "supervisor": room.supervisor,
                 "workers_assigned": {
-                    "dumb": int(room.workers_assigned_dumb),
-                    "smart": int(room.workers_assigned_smart),
+                    "dumb": _maybe_int(room.workers_assigned_dumb),
+                    "smart": _maybe_int(room.workers_assigned_smart),
                 },
                 "workers_present": {
-                    "dumb": int(room.workers_present_dumb),
-                    "smart": int(room.workers_present_smart),
+                    "dumb": _maybe_int(room.workers_present_dumb),
+                    "smart": _maybe_int(room.workers_present_smart),
                 },
-                "equipment_condition": float(room.equipment_condition),
-                "stress": float(room.stress),
-                "discipline": float(room.discipline),
-                "alignment": float(room.alignment),
+                "equipment_condition": _maybe_float(room.equipment_condition),
+                "stress": _maybe_float(room.stress),
+                "discipline": _maybe_float(room.discipline),
+                "alignment": _maybe_float(room.alignment),
                 "output_today": {key: int(room.output_today.get(key, 0)) for key in RESOURCE_KEYS},
                 "accidents_today": {
                     "count": int(room.accidents_count),
@@ -198,6 +199,9 @@ def _project_supervisors(domain_state: SimSimState) -> List[Dict[str, Any]]:
         out.append(
             {
                 "code": supervisor.code,
+                "name": supervisor.name,
+                "unlocked_day": int(supervisor.unlocked_day),
+                "native_room": int(supervisor.native_room),
                 "assigned_room": supervisor.assigned_room,
                 "loyalty": float(supervisor.loyalty),
                 "confidence": float(supervisor.confidence),
@@ -211,6 +215,7 @@ def _project_supervisors(domain_state: SimSimState) -> List[Dict[str, Any]]:
 def _project_world_meta(domain_state: SimSimState, *, run_context: Mapping[str, Any]) -> Dict[str, Any]:
     return {
         "day": int(domain_state.day_tick),
+        "tick": int(domain_state.day_tick),
         "phase": str(domain_state.phase),
         "time": str(domain_state.time_label),
         "tick_hz": int(run_context.get("tick_hz", 1)),
@@ -290,3 +295,15 @@ def _diff_events_append(*, from_events: Any, to_events: Any) -> List[Dict[str, A
             appended.append(item)
     appended.sort(key=lambda event: (int(event.get("tick", 0)), int(event.get("event_id", 0))))
     return appended
+
+
+def _maybe_int(value: int | None) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def _maybe_float(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return float(value)

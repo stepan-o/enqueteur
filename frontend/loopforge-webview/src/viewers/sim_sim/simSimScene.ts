@@ -218,7 +218,7 @@ export class SimSimScene {
             this.supervisorLayer.addChild(node);
 
             const label = new PIXI.Text({
-                text: supervisor.code.replace("SUP-", "S"),
+                text: supervisor.code,
                 style: {
                     fontFamily: "Chivo Mono, monospace",
                     fontSize: 10,
@@ -342,13 +342,19 @@ export class SimSimScene {
             if (regime.weaving_boost_next_day) activeFlags.push("weaving_boost_next_day");
             if (regime.global_accident_bonus > 0) activeFlags.push(`accident_bonus=${pct(regime.global_accident_bonus)}`);
         }
+        const supervisorByCode = state.supervisors;
+        const supervisorSummary = Array.from(supervisorByCode.values())
+            .sort((a, b) => a.code.localeCompare(b.code))
+            .map((supervisor) => `${supervisor.code} ${supervisor.name} @ ${supervisor.assigned_room ?? "-"}`)
+            .join(" • ");
 
         this.hudEl.innerHTML = [
             `<div style="font-size:13px;font-weight:700;letter-spacing:0.03em;margin-bottom:4px;">sim_sim LIVE</div>`,
-            `<div>day <strong>${wm?.day ?? "-"}</strong> • tick <strong>${state.tick}</strong> • ${wm?.phase ?? "-"} @ ${wm?.time ?? "-"}</div>`,
+            `<div>day <strong>${wm?.day ?? "-"}</strong> • tick <strong>${wm?.tick ?? state.tick}</strong> • ${wm?.phase ?? "-"} @ ${wm?.time ?? "-"}</div>`,
             `<div>cash <strong>${inv?.cash ?? "-"}</strong> • raw ${inv?.inventories.raw_brains_dumb ?? 0}/${inv?.inventories.raw_brains_smart ?? 0} • washed ${inv?.inventories.washed_dumb ?? 0}/${inv?.inventories.washed_smart ?? 0}</div>`,
             `<div>substrate ${inv?.inventories.substrate_gallons ?? 0} • ribbon ${inv?.inventories.ribbon_yards ?? 0}</div>`,
             `<div>security lead <strong>${wm?.security_lead ?? "-"}</strong></div>`,
+            `<div>supervisors: ${supervisorSummary || "none unlocked"}</div>`,
             `<div>regime: ${activeFlags.length ? activeFlags.join(", ") : "none"}</div>`,
         ].join("");
 
@@ -356,12 +362,14 @@ export class SimSimScene {
         this.roomCardsEl.innerHTML = rooms
             .map((room) => {
                 const acc = room.accidents_today ?? { count: 0, casualties: 0 };
+                const supervisor = room.supervisor ? supervisorByCode.get(room.supervisor) : undefined;
+                const supervisorLabel = supervisor ? `${supervisor.code} ${supervisor.name}` : room.supervisor ?? "—";
                 return [
                     `<div style="pointer-events:none;border:1px solid ${room.locked ? "rgba(232,159,143,0.45)" : "rgba(140,214,200,0.34)"};`,
                     `background:${room.locked ? "rgba(44,23,23,0.80)" : "rgba(13,20,28,0.82)"};border-radius:10px;padding:8px 10px;">`,
                     `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;">`,
-                    `<span>${room.name}</span><span>${room.supervisor ?? "—"}</span></div>`,
-                    `<div style="font-size:11px;opacity:0.95;">assigned ${room.workers_assigned.dumb}/${room.workers_assigned.smart} • present ${room.workers_present.dumb}/${room.workers_present.smart}</div>`,
+                    `<span>${room.name} (unlock day ${room.unlocked_day >= 0 ? room.unlocked_day : "never"})</span><span>${supervisorLabel}</span></div>`,
+                    `<div style="font-size:11px;opacity:0.95;">assigned ${fmtPair(room.workers_assigned.dumb, room.workers_assigned.smart)} • present ${fmtPair(room.workers_present.dumb, room.workers_present.smart)}</div>`,
                     `<div style="font-size:11px;opacity:0.95;">equip ${pct(room.equipment_condition)} • S ${pct(room.stress)} • D ${pct(room.discipline)} • A ${pct(room.alignment)}</div>`,
                     `<div style="font-size:11px;opacity:0.95;">out rb ${room.output_today.raw_brains_dumb}/${room.output_today.raw_brains_smart} • w ${room.output_today.washed_dumb}/${room.output_today.washed_smart} • sub ${room.output_today.substrate_gallons} • rib ${room.output_today.ribbon_yards}</div>`,
                     `<div style="font-size:11px;opacity:0.95;">accidents ${acc.count} • casualties ${acc.casualties}</div>`,
@@ -392,6 +400,13 @@ function sortedEvents(events: Map<string, SimSimEvent>): SimSimEvent[] {
     return Array.from(events.values()).sort((a, b) => (a.tick - b.tick) || (a.event_id - b.event_id));
 }
 
-function pct(value: number): string {
+function pct(value: number | null | undefined): string {
+    if (value === null || value === undefined || !Number.isFinite(value)) return "--";
     return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+}
+
+function fmtPair(a: number | null | undefined, b: number | null | undefined): string {
+    const left = a === null || a === undefined ? "--" : String(a);
+    const right = b === null || b === undefined ? "--" : String(b);
+    return `${left}/${right}`;
 }

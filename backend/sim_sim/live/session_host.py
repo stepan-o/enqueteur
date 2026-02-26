@@ -21,6 +21,7 @@ from backend.sim_sim.kernel.state import (
     SimSimState,
     SupervisorSwap,
     format_state_for_cli,
+    resolve_supervisor_code,
 )
 from backend.sim_sim.projection.kvp_schema1 import (
     SIM_SIM_SCHEMA_VERSION,
@@ -348,9 +349,14 @@ class SessionHost:
             if not isinstance(entry, dict):
                 continue
             try:
+                supervisor_code = resolve_supervisor_code(entry.get("supervisor_code"))
+                if supervisor_code is None:
+                    supervisor_code = resolve_supervisor_code(entry.get("supervisor_id"))
+                if supervisor_code is None:
+                    raise ValueError("unknown supervisor")
                 swaps.append(
                     SupervisorSwap(
-                        supervisor_id=int(entry.get("supervisor_id")),
+                        supervisor_code=supervisor_code,
                         room_id=int(entry.get("room_id")),
                     )
                 )

@@ -46,18 +46,18 @@
 
 ### FULL_SNAPSHOT payload (`msg_type = FULL_SNAPSHOT`)
 
-| Field | Type | Notes |
-|---|---|---|
-| `schema_version` | string | MUST be `"sim_sim_1"` |
-| `tick` | int | current day tick |
-| `step_hash` | string | canonical hash over projected subscribed state |
-| `state.world_meta` | object | `{day,phase,time,tick_hz,seed,run_id,world_id,security_lead}` |
-| `state.rooms[]` | array | room metrics for room_id 1..6 |
-| `state.supervisors[]` | array | `{code,assigned_room,loyalty,confidence,influence,cooldown_days}` |
-| `state.inventory` | object | `{cash,inventories{raw/washed/substrate/ribbon}}` |
-| `state.regime` | object | regime flags/modifiers |
-| `state.events[]` | array | `{tick,event_id,kind,room_id?,supervisor?,details?}` |
-| `state.debug` | object (optional) | debug-only info |
+| Field                 | Type              | Notes                                                             |
+|-----------------------|-------------------|-------------------------------------------------------------------|
+| `schema_version`      | string            | MUST be `"sim_sim_1"`                                             |
+| `tick`                | int               | current day tick                                                  |
+| `step_hash`           | string            | canonical hash over projected subscribed state                    |
+| `state.world_meta`    | object            | `{day,phase,time,tick_hz,seed,run_id,world_id,security_lead}`     |
+| `state.rooms[]`       | array             | room metrics for room_id 1..6                                     |
+| `state.supervisors[]` | array             | `{code,assigned_room,loyalty,confidence,influence,cooldown_days}` |
+| `state.inventory`     | object            | `{cash,inventories{raw/washed/substrate/ribbon}}`                 |
+| `state.regime`        | object            | regime flags/modifiers                                            |
+| `state.events[]`      | array             | `{tick,event_id,kind,room_id?,supervisor?,details?}`              |
+| `state.debug`         | object (optional) | debug-only info                                                   |
 
 ### Room shape (`state.rooms[]`)
 - `room_id`, `name`, `locked`, `supervisor`
@@ -71,19 +71,19 @@
 
 Structured updates by collection (only changed parts emitted):
 
-| Field | Type | Notes |
-|---|---|---|
-| `schema_version` | string | MUST be `"sim_sim_1"` |
-| `from_tick` | int | previous tick |
-| `to_tick` | int | MUST equal `from_tick + 1` |
-| `prev_step_hash` | string | hash chain guard |
-| `world_meta_update` | object (optional) | replace world_meta |
-| `room_updates[]` | array (optional) | changed room objects (by `room_id`) |
-| `supervisor_updates[]` | array (optional) | changed supervisors (by `code`) |
-| `inventory_update` | object (optional) | replace inventory |
-| `regime_update` | object (optional) | replace regime |
-| `events_append[]` | array (optional) | append-only event rows |
-| `step_hash` | string | resulting state hash at `to_tick` |
+| Field                  | Type              | Notes                               |
+|------------------------|-------------------|-------------------------------------|
+| `schema_version`       | string            | MUST be `"sim_sim_1"`               |
+| `from_tick`            | int               | previous tick                       |
+| `to_tick`              | int               | MUST equal `from_tick + 1`          |
+| `prev_step_hash`       | string            | hash chain guard                    |
+| `world_meta_update`    | object (optional) | replace world_meta                  |
+| `room_updates[]`       | array (optional)  | changed room objects (by `room_id`) |
+| `supervisor_updates[]` | array (optional)  | changed supervisors (by `code`)     |
+| `inventory_update`     | object (optional) | replace inventory                   |
+| `regime_update`        | object (optional) | replace regime                      |
+| `events_append[]`      | array (optional)  | append-only event rows              |
+| `step_hash`            | string            | resulting state hash at `to_tick`   |
 
 Determinism guarantees:
 - Rooms sorted by `room_id`
@@ -108,3 +108,53 @@ Determinism guarantees:
    - confirm HUD tick/day, at least one room metric/inventory number, and live feed update
 6. Click `Exit to menu`:
    - confirm socket closes cleanly
+
+Milestone 1 checklist:
+- Day0 snapshot:
+  - only Room1 is unlocked
+  - only supervisor `L` (LIMEN) appears
+  - Room1 shows no worker assignment/presence and no production/accident activity
+- After one `next` (Day1):
+  - Room2 unlocks
+  - supervisor `S` (STILETTO) appears
+- After stepping to Day4:
+  - Room5 unlocks
+  - supervisor `T` (THRUM) appears
+- Across all days:
+  - Room6 remains locked/inactive
+  - Room1 remains security-only (no worker metrics)
+
+---
+
+## Milestone 1 update: canon + unlock pacing implemented
+
+This repo now enforces the canonical Floor 1 identity/unlock contract while keeping `schema_version = "sim_sim_1"`:
+
+- Canon supervisors:
+  - `L` = LIMEN (native room 1)
+  - `S` = STILETTO (native room 2)
+  - `C` = CATHEXIS (native room 3)
+  - `W` = RIVET WITCH (native room 4)
+  - `T` = THRUM (native room 5)
+- Unlock pacing:
+  - Day0: room1 + LIMEN
+  - Day1: room2 + STILETTO
+  - Day2: room3 + CATHEXIS
+  - Day3: room4 + RIVET WITCH
+  - Day4: room5 + THRUM
+  - Room6: always locked
+- Room hard rules:
+  - Room1 (Security): no worker assignment/presence metrics, no production, no accidents, static equipment (no decay)
+  - Room6 (Cortex Assembly Line): always locked/inactive (no assignment/production/decay/accidents)
+
+Schema additions in `sim_sim_1` used by viewer:
+- `world_meta.tick`
+- `rooms[].unlocked_day`
+- `supervisors[].unlocked_day`
+- `supervisors[].name`, `supervisors[].native_room`
+
+Constants/config location:
+- `backend/sim_sim/kernel/state.py`
+  - `ROOM_NAMES`
+  - `ROOM_UNLOCK_DAY`
+  - `SUPERVISOR_PROFILES`
