@@ -123,6 +123,12 @@ class SessionHost:
             tick_rate_hz=1,
             time_origin_ms=0,
         )
+        self._projection_run_context = {
+            "seed": int(self._run_anchors.seed),
+            "run_id": str(self._run_anchors.run_id),
+            "world_id": str(self._run_anchors.world_id),
+            "tick_hz": int(self._run_anchors.tick_rate_hz),
+        }
         self._render_spec = default_render_spec(
             bounds=Bounds(min_x=0.0, min_y=0.0, max_x=36.0, max_y=16.0),
             units_per_tile=1.0,
@@ -246,6 +252,7 @@ class SessionHost:
             tick=tick,
             domain_state=domain_state,
             channels=channels,
+            run_context=self._projection_run_context,
         )
         ctx.session.publish_full_snapshot(payload)
         ctx.last_tick = int(tick)
@@ -272,7 +279,11 @@ class SessionHost:
             await self._send_snapshot(ctx, previous_state, tick=from_tick)
 
         channels = normalize_channels(ctx.effective_channels)
-        prev_hash = ctx.last_step_hash or compute_step_hash_for_channels(previous_state, channels)
+        prev_hash = ctx.last_step_hash or compute_step_hash_for_channels(
+            previous_state,
+            channels,
+            run_context=self._projection_run_context,
+        )
         payload = make_diff_payload(
             from_tick=from_tick,
             to_tick=to_tick,
@@ -280,6 +291,7 @@ class SessionHost:
             next_state=current_state,
             prev_step_hash=prev_hash,
             channels=channels,
+            run_context=self._projection_run_context,
         )
         ctx.session.publish_frame_diff(payload)
         ctx.last_tick = to_tick

@@ -1,5 +1,5 @@
 import * as PIXI from "pixi.js";
-import type { SimSimAgent, SimSimRoom, SimSimViewerState } from "./simSimStore";
+import type { SimSimEvent, SimSimRoom, SimSimSupervisor, SimSimViewerState } from "./simSimStore";
 
 type Vec2 = { x: number; y: number };
 type Bounds = { min_x: number; min_y: number; max_x: number; max_y: number };
@@ -22,8 +22,14 @@ export class SimSimScene {
     private pendingState?: SimSimViewerState;
     private readonly root = new PIXI.Container();
     private readonly roomLayer = new PIXI.Container();
-    private readonly agentLayer = new PIXI.Container();
+    private readonly supervisorLayer = new PIXI.Container();
     private readonly uiLayer = new PIXI.Container();
+    private overlayRoot?: HTMLDivElement;
+    private hudEl?: HTMLDivElement;
+    private roomCardsEl?: HTMLDivElement;
+    private eventsEl?: HTMLDivElement;
+    private debugPanelEl?: HTMLDivElement;
+    private debugVisible = true;
     private lastState?: SimSimViewerState;
 
     constructor(mountEl: HTMLElement) {
@@ -40,8 +46,9 @@ export class SimSimScene {
         });
 
         mountEl.appendChild(this.app.canvas);
-        this.root.addChild(this.roomLayer, this.agentLayer, this.uiLayer);
+        this.root.addChild(this.roomLayer, this.supervisorLayer, this.uiLayer);
         this.app.stage.addChild(this.root);
+        this.installOverlay(mountEl);
         this.ready = true;
         this.setVisible(this.visible);
 
@@ -56,6 +63,7 @@ export class SimSimScene {
         this.visible = visible;
         if (!this.ready) return;
         this.app.canvas.style.display = visible ? "block" : "none";
+        if (this.overlayRoot) this.overlayRoot.style.display = visible ? "block" : "none";
     }
 
     refreshLayout(opts?: { forceAutoFit?: boolean }): void {
@@ -75,7 +83,7 @@ export class SimSimScene {
         this.lastState = state;
 
         this.roomLayer.removeChildren();
-        this.agentLayer.removeChildren();
+        this.supervisorLayer.removeChildren();
         this.uiLayer.removeChildren();
 
         const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
@@ -92,14 +100,11 @@ export class SimSimScene {
             roomCenters.set(room.room_id, toScreen((b.min_x + b.max_x) * 0.5, (b.min_y + b.max_y) * 0.5));
         }
 
-        const agents = Array.from(state.agents.values()).sort((a, b) => a.agent_id - b.agent_id);
-        for (const agent of agents) this.drawAgent(agent, roomCenters, toScreen);
+        const supervisors = Array.from(state.supervisors.values()).sort((a, b) => a.code.localeCompare(b.code));
+        this.drawSupervisors(supervisors, roomCenters);
 
-        const events = Array.from(state.events.values()).sort((a, b) => (a.tick - b.tick) || (a.event_id - b.event_id));
-        const eventLines = events.slice(-4).map((ev) => {
-            const kind = (ev.payload?.kind as string | undefined) ?? "event";
-            return `t${ev.tick} #${ev.event_id} ${kind}`;
-        });
+        const events = sortedEvents(state.events);
+        const eventLines = events.slice(-3).map((ev) => `t${ev.tick} #${ev.event_id} ${ev.kind}`);
         const caption = new PIXI.Text({
             text: `sim_sim   tick=${state.tick}\n${eventLines.join("\n")}`,
             style: {
@@ -127,6 +132,8 @@ export class SimSimScene {
             banner.y = this.app.renderer.height - 38;
             this.uiLayer.addChild(banner);
         }
+
+        this.renderOverlay(state, events);
     }
 
     private computeStageBounds(rooms: SimSimRoom[]): Bounds {
@@ -167,17 +174,17 @@ export class SimSimScene {
         const bottomRight = toScreen(b.max_x, b.max_y);
         const width = Math.max(8, bottomRight.x - topLeft.x);
         const height = Math.max(8, bottomRight.y - topLeft.y);
-        const locked = (room.zone ?? "").toLowerCase() === "locked";
+        const locked = room.locked;
         const fill = locked ? 0x402d2d : 0x223644;
         const line = locked ? 0xe89f8f : 0x8cd6c8;
         const rect = new PIXI.Graphics();
         rect.roundRect(topLeft.x, topLeft.y, width, height, 10);
-        rect.fill({ color: fill, alpha: room.highlight ? 0.9 : 0.8 });
-        rect.stroke({ width: room.highlight ? 3 : 2, color: line, alpha: 0.95 });
+        rect.fill({ color: fill, alpha: locked ? 0.92 : 0.82 });
+        rect.stroke({ width: locked ? 3 : 2, color: line, alpha: 0.95 });
         this.roomLayer.addChild(rect);
 
         const label = new PIXI.Text({
-            text: room.label ?? `Room ${room.room_id}`,
+            text: room.name ?? `Room ${room.room_id}`,
             style: {
                 fontFamily: "Bricolage Grotesque, sans-serif",
                 fontSize: 13,
@@ -190,33 +197,201 @@ export class SimSimScene {
         this.roomLayer.addChild(label);
     }
 
-    private drawAgent(agent: SimSimAgent, roomCenters: Map<number, Vec2>, toScreen: (x: number, y: number) => Vec2): void {
-        const pos =
-            agent.transform && Number.isFinite(agent.transform.x) && Number.isFinite(agent.transform.y)
-                ? toScreen(agent.transform.x, agent.transform.y)
-                : roomCenters.get(agent.room_id) ?? { x: 32, y: 32 };
-        const color = 0xf3c76a;
-        const node = new PIXI.Graphics();
-        node.circle(pos.x, pos.y, 7);
-        node.fill({ color, alpha: 0.98 });
-        node.stroke({ width: 2, color: 0x1a2128, alpha: 0.95 });
-        this.agentLayer.addChild(node);
+    private drawSupervisors(supervisors: SimSimSupervisor[], roomCenters: Map<number, Vec2>): void {
+        const roomSlots = new Map<number, number>();
+        for (const supervisor of supervisors) {
+            if (!Number.isFinite(supervisor.assigned_room ?? NaN)) continue;
+            const roomId = supervisor.assigned_room ?? -1;
+            const center = roomCenters.get(roomId);
+            if (!center) continue;
+            const slot = roomSlots.get(roomId) ?? 0;
+            roomSlots.set(roomId, slot + 1);
+            const offsetX = (slot % 2 === 0 ? -1 : 1) * (10 + (slot % 3) * 4);
+            const offsetY = Math.floor(slot / 2) * 10;
+            const x = center.x + offsetX;
+            const y = center.y + offsetY;
 
-        const label = new PIXI.Text({
-            text: String(agent.agent_id),
-            style: {
-                fontFamily: "Chivo Mono, monospace",
-                fontSize: 10,
-                fill: 0x161b20,
-            },
-        });
-        label.x = pos.x - label.width * 0.5;
-        label.y = pos.y - 5;
-        this.agentLayer.addChild(label);
+            const node = new PIXI.Graphics();
+            node.circle(x, y, 7);
+            node.fill({ color: 0xf3c76a, alpha: 0.98 });
+            node.stroke({ width: 2, color: 0x1a2128, alpha: 0.95 });
+            this.supervisorLayer.addChild(node);
+
+            const label = new PIXI.Text({
+                text: supervisor.code.replace("SUP-", "S"),
+                style: {
+                    fontFamily: "Chivo Mono, monospace",
+                    fontSize: 10,
+                    fill: 0x161b20,
+                },
+            });
+            label.x = x - label.width * 0.5;
+            label.y = y - 5;
+            this.supervisorLayer.addChild(label);
+        }
     }
 
     private roomBounds(room: SimSimRoom): Bounds {
         if (room.bounds) return room.bounds;
         return FALLBACK_LAYOUT[room.room_id] ?? { min_x: 0, min_y: 0, max_x: 10, max_y: 6 };
     }
+
+    private installOverlay(mountEl: HTMLElement): void {
+        const root = document.createElement("div");
+        root.style.position = "absolute";
+        root.style.inset = "0";
+        root.style.pointerEvents = "none";
+        root.style.zIndex = "22";
+        root.style.fontFamily = "\"Bricolage Grotesque\", sans-serif";
+        root.style.color = "#f3efe3";
+
+        const hud = document.createElement("div");
+        hud.style.position = "absolute";
+        hud.style.left = "14px";
+        hud.style.top = "12px";
+        hud.style.padding = "10px 12px";
+        hud.style.borderRadius = "10px";
+        hud.style.background = "rgba(10, 13, 18, 0.76)";
+        hud.style.border = "1px solid rgba(140, 214, 200, 0.36)";
+        hud.style.fontSize = "12px";
+        hud.style.lineHeight = "1.45";
+        root.appendChild(hud);
+
+        const roomCards = document.createElement("div");
+        roomCards.style.position = "absolute";
+        roomCards.style.right = "14px";
+        roomCards.style.top = "12px";
+        roomCards.style.width = "min(460px, 34vw)";
+        roomCards.style.maxHeight = "66vh";
+        roomCards.style.overflowY = "auto";
+        roomCards.style.display = "grid";
+        roomCards.style.gap = "8px";
+        roomCards.style.padding = "2px";
+        root.appendChild(roomCards);
+
+        const events = document.createElement("div");
+        events.style.position = "absolute";
+        events.style.left = "14px";
+        events.style.bottom = "14px";
+        events.style.width = "min(540px, 46vw)";
+        events.style.maxHeight = "28vh";
+        events.style.overflow = "hidden";
+        events.style.padding = "10px 12px";
+        events.style.borderRadius = "10px";
+        events.style.background = "rgba(10, 13, 18, 0.78)";
+        events.style.border = "1px solid rgba(243, 199, 106, 0.34)";
+        events.style.fontSize = "12px";
+        events.style.lineHeight = "1.35";
+        root.appendChild(events);
+
+        const debugToggle = document.createElement("button");
+        debugToggle.type = "button";
+        debugToggle.textContent = "Schema Debug";
+        debugToggle.style.position = "absolute";
+        debugToggle.style.right = "14px";
+        debugToggle.style.bottom = "14px";
+        debugToggle.style.pointerEvents = "auto";
+        debugToggle.style.border = "1px solid rgba(140, 214, 200, 0.5)";
+        debugToggle.style.background = "rgba(10, 13, 18, 0.84)";
+        debugToggle.style.color = "#e9e2cf";
+        debugToggle.style.borderRadius = "8px";
+        debugToggle.style.padding = "6px 10px";
+        debugToggle.style.fontSize = "11px";
+        debugToggle.style.letterSpacing = "0.06em";
+        debugToggle.style.textTransform = "uppercase";
+        debugToggle.addEventListener("click", () => {
+            this.debugVisible = !this.debugVisible;
+            if (this.debugPanelEl) this.debugPanelEl.style.display = this.debugVisible ? "block" : "none";
+        });
+        root.appendChild(debugToggle);
+
+        const debugPanel = document.createElement("div");
+        debugPanel.style.position = "absolute";
+        debugPanel.style.right = "14px";
+        debugPanel.style.bottom = "46px";
+        debugPanel.style.pointerEvents = "none";
+        debugPanel.style.padding = "8px 10px";
+        debugPanel.style.borderRadius = "9px";
+        debugPanel.style.border = "1px solid rgba(232, 159, 143, 0.45)";
+        debugPanel.style.background = "rgba(34, 16, 16, 0.88)";
+        debugPanel.style.fontFamily = "\"Chivo Mono\", monospace";
+        debugPanel.style.fontSize = "11px";
+        debugPanel.style.lineHeight = "1.4";
+        root.appendChild(debugPanel);
+
+        this.overlayRoot = root;
+        this.hudEl = hud;
+        this.roomCardsEl = roomCards;
+        this.eventsEl = events;
+        this.debugPanelEl = debugPanel;
+
+        mountEl.appendChild(root);
+    }
+
+    private renderOverlay(state: SimSimViewerState, events: SimSimEvent[]): void {
+        if (!this.hudEl || !this.roomCardsEl || !this.eventsEl || !this.debugPanelEl) return;
+        const wm = state.worldMeta;
+        const inv = state.inventory;
+        const regime = state.regime;
+
+        const activeFlags: string[] = [];
+        if (regime) {
+            if (regime.refactor_days > 0) activeFlags.push(`refactor(${regime.refactor_days})`);
+            if (regime.inversion_days > 0) activeFlags.push(`inversion(${regime.inversion_days})`);
+            if (regime.shutdown_except_brewery_today) activeFlags.push("shutdown_except_brewery");
+            if (regime.weaving_boost_next_day) activeFlags.push("weaving_boost_next_day");
+            if (regime.global_accident_bonus > 0) activeFlags.push(`accident_bonus=${pct(regime.global_accident_bonus)}`);
+        }
+
+        this.hudEl.innerHTML = [
+            `<div style="font-size:13px;font-weight:700;letter-spacing:0.03em;margin-bottom:4px;">sim_sim LIVE</div>`,
+            `<div>day <strong>${wm?.day ?? "-"}</strong> • tick <strong>${state.tick}</strong> • ${wm?.phase ?? "-"} @ ${wm?.time ?? "-"}</div>`,
+            `<div>cash <strong>${inv?.cash ?? "-"}</strong> • raw ${inv?.inventories.raw_brains_dumb ?? 0}/${inv?.inventories.raw_brains_smart ?? 0} • washed ${inv?.inventories.washed_dumb ?? 0}/${inv?.inventories.washed_smart ?? 0}</div>`,
+            `<div>substrate ${inv?.inventories.substrate_gallons ?? 0} • ribbon ${inv?.inventories.ribbon_yards ?? 0}</div>`,
+            `<div>security lead <strong>${wm?.security_lead ?? "-"}</strong></div>`,
+            `<div>regime: ${activeFlags.length ? activeFlags.join(", ") : "none"}</div>`,
+        ].join("");
+
+        const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
+        this.roomCardsEl.innerHTML = rooms
+            .map((room) => {
+                const acc = room.accidents_today ?? { count: 0, casualties: 0 };
+                return [
+                    `<div style="pointer-events:none;border:1px solid ${room.locked ? "rgba(232,159,143,0.45)" : "rgba(140,214,200,0.34)"};`,
+                    `background:${room.locked ? "rgba(44,23,23,0.80)" : "rgba(13,20,28,0.82)"};border-radius:10px;padding:8px 10px;">`,
+                    `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;">`,
+                    `<span>${room.name}</span><span>${room.supervisor ?? "—"}</span></div>`,
+                    `<div style="font-size:11px;opacity:0.95;">assigned ${room.workers_assigned.dumb}/${room.workers_assigned.smart} • present ${room.workers_present.dumb}/${room.workers_present.smart}</div>`,
+                    `<div style="font-size:11px;opacity:0.95;">equip ${pct(room.equipment_condition)} • S ${pct(room.stress)} • D ${pct(room.discipline)} • A ${pct(room.alignment)}</div>`,
+                    `<div style="font-size:11px;opacity:0.95;">out rb ${room.output_today.raw_brains_dumb}/${room.output_today.raw_brains_smart} • w ${room.output_today.washed_dumb}/${room.output_today.washed_smart} • sub ${room.output_today.substrate_gallons} • rib ${room.output_today.ribbon_yards}</div>`,
+                    `<div style="font-size:11px;opacity:0.95;">accidents ${acc.count} • casualties ${acc.casualties}</div>`,
+                    `</div>`,
+                ].join("");
+            })
+            .join("");
+
+        const eventRows = events.slice(-10).map((event) => {
+            const room = event.room_id ? ` room=${event.room_id}` : "";
+            const sup = event.supervisor ? ` ${event.supervisor}` : "";
+            const details = event.details ? ` ${JSON.stringify(event.details)}` : "";
+            return `<div>t${event.tick} #${event.event_id} <strong>${event.kind}</strong>${room}${sup}${details}</div>`;
+        });
+        this.eventsEl.innerHTML = `<div style="font-size:12px;font-weight:700;margin-bottom:4px;">Live Feed</div>${eventRows.join("")}`;
+
+        this.debugPanelEl.style.display = this.debugVisible ? "block" : "none";
+        this.debugPanelEl.innerHTML = [
+            `<div>schema_version: ${state.schemaVersion ?? state.kernelHello?.schema_version ?? "-"}</div>`,
+            `<div>last_msg_type: ${state.lastMsgType ?? "-"}</div>`,
+            `<div>last_applied_diff_count: ${state.lastAppliedDiffCount}</div>`,
+            `<div>diffs_applied_total: ${state.diffsAppliedTotal}</div>`,
+        ].join("");
+    }
+}
+
+function sortedEvents(events: Map<string, SimSimEvent>): SimSimEvent[] {
+    return Array.from(events.values()).sort((a, b) => (a.tick - b.tick) || (a.event_id - b.event_id));
+}
+
+function pct(value: number): string {
+    return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }

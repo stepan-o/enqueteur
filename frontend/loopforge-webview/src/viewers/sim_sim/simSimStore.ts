@@ -2,68 +2,132 @@ import type { KernelHello } from "../../state/worldStore";
 
 export const SIM_SIM_SCHEMA_VERSION = "sim_sim_1";
 
-export type SimSimRoom = {
-    room_id: number;
-    label?: string;
-    occupants?: number[];
-    bounds?: { min_x: number; min_y: number; max_x: number; max_y: number } | null;
-    zone?: string | null;
-    highlight?: boolean | null;
+export type SimSimWorldMeta = {
+    day: number;
+    phase: string;
+    time: string;
+    tick_hz: number;
+    seed: number;
+    run_id: string;
+    world_id: string;
+    security_lead?: string;
 };
 
-export type SimSimAgent = {
-    agent_id: number;
+export type SimSimWorkers = {
+    dumb: number;
+    smart: number;
+};
+
+export type SimSimOutputToday = {
+    raw_brains_dumb: number;
+    raw_brains_smart: number;
+    washed_dumb: number;
+    washed_smart: number;
+    substrate_gallons: number;
+    ribbon_yards: number;
+};
+
+export type SimSimAccidents = {
+    count: number;
+    casualties: number;
+};
+
+export type SimSimRoom = {
     room_id: number;
-    transform?: { room_id: number; x: number; y: number } | null;
+    name: string;
+    locked: boolean;
+    supervisor: string | null;
+    workers_assigned: SimSimWorkers;
+    workers_present: SimSimWorkers;
+    equipment_condition: number;
+    stress: number;
+    discipline: number;
+    alignment: number;
+    output_today: SimSimOutputToday;
+    accidents_today: SimSimAccidents;
+    bounds?: { min_x: number; min_y: number; max_x: number; max_y: number } | null;
+    neighbors?: number[];
+};
+
+export type SimSimSupervisor = {
+    code: string;
+    assigned_room: number | null;
+    loyalty: number;
+    confidence: number;
+    influence: number;
+    cooldown_days: number;
 };
 
 export type SimSimEvent = {
     tick: number;
     event_id: number;
-    origin?: string;
-    payload?: Record<string, unknown>;
+    kind: string;
+    room_id?: number;
+    supervisor?: string;
+    details?: Record<string, unknown>;
 };
 
-export type SimSimWorld = Record<string, unknown>;
+export type SimSimInventory = {
+    cash: number;
+    inventories: {
+        raw_brains_dumb: number;
+        raw_brains_smart: number;
+        washed_dumb: number;
+        washed_smart: number;
+        substrate_gallons: number;
+        ribbon_yards: number;
+    };
+};
+
+export type SimSimRegime = {
+    refactor_days: number;
+    inversion_days: number;
+    shutdown_except_brewery_today: boolean;
+    weaving_boost_next_day: boolean;
+    global_accident_bonus: number;
+};
 
 export type SimSimSnapshotPayload = {
     schema_version: string;
     tick: number;
     state: {
+        world_meta?: SimSimWorldMeta;
         rooms?: SimSimRoom[];
-        agents?: SimSimAgent[];
+        supervisors?: SimSimSupervisor[];
+        inventory?: SimSimInventory;
+        regime?: SimSimRegime;
         events?: SimSimEvent[];
-        world?: SimSimWorld;
     };
     step_hash: string;
 };
-
-export type SimSimDiffOp =
-    | { op: "SET_WORLD"; world: SimSimWorld }
-    | { op: "CLEAR_WORLD" }
-    | { op: "UPSERT_ROOM"; room: SimSimRoom }
-    | { op: "REMOVE_ROOM"; room_id: number }
-    | { op: "UPSERT_AGENT"; agent: SimSimAgent }
-    | { op: "REMOVE_AGENT"; agent_id: number }
-    | { op: "UPSERT_EVENT"; event: SimSimEvent }
-    | { op: "REMOVE_EVENT"; event_key: { tick: number; event_id: number } };
 
 export type SimSimFrameDiffPayload = {
     schema_version: string;
     from_tick: number;
     to_tick: number;
     prev_step_hash?: string | null;
-    ops: SimSimDiffOp[];
+    world_meta_update?: SimSimWorldMeta;
+    room_updates?: SimSimRoom[];
+    supervisor_updates?: SimSimSupervisor[];
+    inventory_update?: SimSimInventory;
+    regime_update?: SimSimRegime;
+    events_append?: SimSimEvent[];
     step_hash: string;
 };
 
 export type SimSimViewerState = {
     tick: number;
     stepHash?: string;
+    schemaVersion?: string;
+    lastMsgType?: string;
+    lastAppliedDiffCount: number;
+    diffsAppliedTotal: number;
     kernelHello?: KernelHello;
-    world: SimSimWorld | null;
+    worldMeta: SimSimWorldMeta | null;
+    inventory: SimSimInventory | null;
+    regime: SimSimRegime | null;
     rooms: Map<number, SimSimRoom>;
-    agents: Map<number, SimSimAgent>;
+    supervisors: Map<string, SimSimSupervisor>;
     events: Map<string, SimSimEvent>;
     desynced: boolean;
     desyncReason?: string;
@@ -79,10 +143,16 @@ export class SimSimStore {
         this.state = {
             tick: 0,
             stepHash: undefined,
+            schemaVersion: undefined,
+            lastMsgType: undefined,
+            lastAppliedDiffCount: 0,
+            diffsAppliedTotal: 0,
             kernelHello: undefined,
-            world: null,
+            worldMeta: null,
+            inventory: null,
+            regime: null,
             rooms: new Map(),
-            agents: new Map(),
+            supervisors: new Map(),
             events: new Map(),
             desynced: false,
             desyncReason: undefined,
@@ -96,7 +166,12 @@ export class SimSimStore {
     }
 
     setKernelHello(hello: KernelHello): void {
-        this.state = { ...this.state, kernelHello: hello };
+        this.state = {
+            ...this.state,
+            kernelHello: hello,
+            schemaVersion: hello.schema_version,
+            lastMsgType: "KERNEL_HELLO",
+        };
         this.emit();
     }
 
@@ -124,8 +199,8 @@ export class SimSimStore {
         const rooms = new Map<number, SimSimRoom>();
         for (const room of payload.state.rooms ?? []) rooms.set(room.room_id, room);
 
-        const agents = new Map<number, SimSimAgent>();
-        for (const agent of payload.state.agents ?? []) agents.set(agent.agent_id, agent);
+        const supervisors = new Map<string, SimSimSupervisor>();
+        for (const supervisor of payload.state.supervisors ?? []) supervisors.set(supervisor.code, supervisor);
 
         const events = new Map<string, SimSimEvent>();
         for (const ev of payload.state.events ?? []) events.set(eventKey(ev), ev);
@@ -134,9 +209,14 @@ export class SimSimStore {
             ...this.state,
             tick: payload.tick,
             stepHash: payload.step_hash,
-            world: payload.state.world ?? null,
+            schemaVersion: payload.schema_version,
+            lastMsgType: "FULL_SNAPSHOT",
+            lastAppliedDiffCount: 0,
+            worldMeta: payload.state.world_meta ?? null,
+            inventory: payload.state.inventory ?? null,
+            regime: payload.state.regime ?? null,
             rooms,
-            agents,
+            supervisors,
             events,
             desynced: false,
             desyncReason: undefined,
@@ -146,7 +226,7 @@ export class SimSimStore {
 
     applyDiff(payload: SimSimFrameDiffPayload): void {
         if (this.state.desynced) return;
-        if (!payload || !Array.isArray(payload.ops)) {
+        if (!payload) {
             this.markDesync("Invalid sim_sim diff payload");
             return;
         }
@@ -158,55 +238,57 @@ export class SimSimStore {
             this.markDesync("sim_sim step hash mismatch");
             return;
         }
-        if (this.state.tick && payload.from_tick !== this.state.tick) {
+        if (payload.from_tick !== this.state.tick) {
             this.markDesync(`sim_sim tick mismatch (expected ${this.state.tick}, got ${payload.from_tick})`);
             return;
         }
 
         const rooms = new Map(this.state.rooms);
-        const agents = new Map(this.state.agents);
+        const supervisors = new Map(this.state.supervisors);
         const events = new Map(this.state.events);
-        let world = this.state.world;
+        let worldMeta = this.state.worldMeta;
+        let inventory = this.state.inventory;
+        let regime = this.state.regime;
+        let appliedCount = 0;
 
-        for (const op of payload.ops) {
-            switch (op.op) {
-                case "SET_WORLD":
-                    world = op.world;
-                    break;
-                case "CLEAR_WORLD":
-                    world = null;
-                    break;
-                case "UPSERT_ROOM":
-                    rooms.set(op.room.room_id, op.room);
-                    break;
-                case "REMOVE_ROOM":
-                    rooms.delete(op.room_id);
-                    break;
-                case "UPSERT_AGENT":
-                    agents.set(op.agent.agent_id, op.agent);
-                    break;
-                case "REMOVE_AGENT":
-                    agents.delete(op.agent_id);
-                    break;
-                case "UPSERT_EVENT":
-                    events.set(eventKey(op.event), op.event);
-                    break;
-                case "REMOVE_EVENT":
-                    events.delete(`${op.event_key.tick}:${op.event_key.event_id}`);
-                    break;
-                default:
-                    this.markDesync(`Unknown sim_sim diff op: ${(op as { op?: string }).op ?? "?"}`);
-                    return;
-            }
+        if (payload.world_meta_update) {
+            worldMeta = payload.world_meta_update;
+            appliedCount += 1;
+        }
+        for (const room of payload.room_updates ?? []) {
+            rooms.set(room.room_id, room);
+            appliedCount += 1;
+        }
+        for (const supervisor of payload.supervisor_updates ?? []) {
+            supervisors.set(supervisor.code, supervisor);
+            appliedCount += 1;
+        }
+        if (payload.inventory_update) {
+            inventory = payload.inventory_update;
+            appliedCount += 1;
+        }
+        if (payload.regime_update) {
+            regime = payload.regime_update;
+            appliedCount += 1;
+        }
+        for (const event of payload.events_append ?? []) {
+            events.set(eventKey(event), event);
+            appliedCount += 1;
         }
 
         this.state = {
             ...this.state,
             tick: payload.to_tick,
             stepHash: payload.step_hash,
-            world,
+            schemaVersion: payload.schema_version,
+            lastMsgType: "FRAME_DIFF",
+            lastAppliedDiffCount: appliedCount,
+            diffsAppliedTotal: this.state.diffsAppliedTotal + 1,
+            worldMeta,
+            inventory,
+            regime,
             rooms,
-            agents,
+            supervisors,
             events,
         };
         this.emit();
@@ -220,4 +302,3 @@ export class SimSimStore {
 function eventKey(ev: SimSimEvent): string {
     return `${ev.tick}:${ev.event_id}`;
 }
-

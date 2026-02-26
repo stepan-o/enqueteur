@@ -117,10 +117,13 @@ export function boot(opts: BootOpts): ViewerHandle {
         console.debug("[webview] sim_sim state", {
             tick: s.tick,
             rooms: s.rooms.size,
-            agents: s.agents.size,
+            supervisors: s.supervisors.size,
+            cash: s.inventory?.cash ?? null,
             desynced: s.desynced,
             reason: s.desyncReason ?? null,
             stepHash: s.stepHash ?? null,
+            lastMsgType: s.lastMsgType ?? null,
+            lastAppliedDiffCount: s.lastAppliedDiffCount,
         });
         simSimScene?.renderFromState(s);
     });
