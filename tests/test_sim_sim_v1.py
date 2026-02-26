@@ -6,7 +6,7 @@ import json
 import pytest
 
 from backend.sim_sim.config import ConfigValidationError, load_sim_sim_config
-from backend.sim_sim.kernel.state import DayInput, PromptResponse, PromptState, SimSimKernel
+from backend.sim_sim.kernel.state import DayInput, PromptResponse, PromptState, SimSimKernel, WorkerAssignment
 from backend.sim_sim.projection.kvp_schema1 import compute_step_hash_for_channels, make_snapshot_payload
 
 
@@ -48,6 +48,12 @@ def _advance_one_tick(
     assert int(current.day_tick) == int(tick_target)
     assert current.phase == "planning"
     assert not kernel.unresolved_prompts
+
+
+def _write_config(tmp_path, raw: dict, name: str) -> str:
+    config_path = tmp_path / name
+    config_path.write_text(json.dumps(raw), encoding="utf-8")
+    return str(config_path)
 
 
 def _run_hashes(seed: int, days: int) -> list[str]:
@@ -290,6 +296,99 @@ def test_deferred_critical_prompt_blocks_advance_until_resolved(tmp_path) -> Non
         event.get("kind") == "prompt_resolved" and event.get("details", {}).get("kind") == "critical"
         for event in advanced.events
     )
+
+
+def test_factory_deltas_from_conflict_choice_affect_room_state(tmp_path) -> None:
+    base_kernel = SimSimKernel(seed=7)
+    config_raw = copy.deepcopy(base_kernel.loaded_config.raw)
+    config_raw["guardrails"]["prevent_critical_before_day"] = 999
+    config_raw["confidence"]["threshold_tension"] = 2.0
+    for key in list(config_raw["worker_equations"].keys()):
+        config_raw["worker_equations"][key] = 0.0
+
+    config_path = _write_config(tmp_path, config_raw, "conflict_deltas_config.json")
+
+    def _run(choice: str) -> SimSimKernel:
+        kernel = SimSimKernel(seed=7, config_path=config_path)
+        _advance_one_tick(kernel, tick_target=1)
+        day2_input = DayInput(tick_target=2, advance=True)
+        valid, reason = kernel.validate_day_input(day2_input, expected_tick_target=2)
+        assert valid, reason
+        _, blocked = kernel.step(day2_input)
+        assert blocked.phase == "awaiting_prompts"
+        prompt = next(p for p in kernel.unresolved_prompts if p.kind == "conflict")
+        resolve_input = DayInput(
+            tick_target=2,
+            advance=True,
+            prompt_responses=(PromptResponse(prompt_id=prompt.prompt_id, choice=choice),),
+        )
+        valid, reason = kernel.validate_day_input(resolve_input, expected_tick_target=2)
+        assert valid, reason
+        _, advanced = kernel.step(resolve_input)
+        assert advanced.day_tick == 2
+        return kernel
+
+    state_support_a = _run("support_A").state
+    state_support_b = _run("support_B").state
+
+    room2_a = state_support_a.rooms[2]
+    room2_b = state_support_b.rooms[2]
+    assert float(room2_b.stress or 0.0) > float(room2_a.stress or 0.0)
+    assert float(room2_a.discipline or 0.0) > float(room2_b.discipline or 0.0)
+    assert float(room2_a.alignment or 0.0) > float(room2_b.alignment or 0.0)
+
+
+def test_factory_global_accident_bonus_delta_affects_accident_outcome(tmp_path) -> None:
+    base_kernel = SimSimKernel(seed=2)
+
+    def _run_with_bonus(global_bonus: float) -> SimSimKernel:
+        config_raw = copy.deepcopy(base_kernel.loaded_config.raw)
+        config_raw["guardrails"]["prevent_critical_before_day"] = 999
+        config_raw["conflicts"]["hostile_pairs"] = []
+        config_raw["formulas"]["accident"] = {
+            "base": 0.0,
+            "low_discipline_coeff": 0.0,
+            "high_stress_coeff": 0.0,
+            "low_equipment_coeff": 0.0,
+        }
+        config_raw["formulas"]["absenteeism"] = {
+            "base": 0.0,
+            "stress_coeff": 0.0,
+            "discipline_coeff": 0.0,
+        }
+        config_raw["confidence"]["threshold_tension"] = 0.0
+        config_raw["confidence"]["tension_passives"] = {
+            "L": {"global_accident_bonus": float(global_bonus)},
+            "S": {},
+            "C": {},
+            "W": {},
+            "T": {},
+        }
+        config_raw["unlock_schedule"]["rooms"]["2"] = 0
+        config_raw["unlock_schedule"]["supervisors"]["S"] = 999
+        config_raw["unlock_schedule"]["supervisors"]["C"] = 999
+        config_raw["unlock_schedule"]["supervisors"]["W"] = 999
+        config_raw["unlock_schedule"]["supervisors"]["T"] = 999
+
+        config_path = _write_config(
+            tmp_path,
+            config_raw,
+            f"accident_bonus_{str(global_bonus).replace('.', '_')}.json",
+        )
+        kernel = SimSimKernel(seed=2, config_path=config_path)
+        day_input = DayInput(
+            tick_target=1,
+            advance=True,
+            set_workers={2: WorkerAssignment(dumb=1, smart=0)},
+        )
+        _advance_one_tick(kernel, tick_target=1, day_input=day_input)
+        return kernel
+
+    without_bonus = _run_with_bonus(0.0).state
+    with_bonus = _run_with_bonus(0.5).state
+
+    assert without_bonus.rooms[2].accidents_count == 0
+    assert with_bonus.rooms[2].accidents_count >= 1
 
 
 def test_sim_sim_config_loader_missing_fields_fails(tmp_path) -> None:

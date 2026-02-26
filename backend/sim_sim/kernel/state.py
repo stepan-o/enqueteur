@@ -249,6 +249,12 @@ class PipelineRoomRuntime:
     output_today: Dict[str, int] = field(default_factory=lambda: _resource_zeroes())
 
 
+@dataclass
+class PipelineRuntimeState:
+    rooms: Dict[int, PipelineRoomRuntime]
+    regime: RegimeState
+
+
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
@@ -846,7 +852,23 @@ class SimSimKernel:
             "alignment": 0.0,
             "global_accident_bonus": 0.0,
             "equipment_damage_multiplier": 1.0,
+            "global_non_weaving_output_multiplier_mult": 1.0,
+            "global_non_weaving_output_multiplier_add": 0.0,
+            "pending_accident_bonus_next_day_delta": 0.0,
+            "refactor_days_delta": 0.0,
+            "inversion_days_delta": 0.0,
+            "shutdown_except_brewery_today": 0.0,
+            "lockdown_today": 0.0,
+            "weaving_boost_next_day": 0.0,
+            "weaving_boost_multiplier_mult": 1.0,
         }
+        conflict_side_effects = conflict_resolution.get("factory_side_effects", {})
+        if isinstance(conflict_side_effects, Mapping):
+            factory_deltas["stress"] += float(conflict_side_effects.get("stress", 0.0))
+            factory_deltas["discipline"] += float(conflict_side_effects.get("discipline", 0.0))
+            factory_deltas["alignment"] += float(conflict_side_effects.get("alignment", 0.0))
+            factory_deltas["global_accident_bonus"] += float(conflict_side_effects.get("global_accident_bonus", 0.0))
+
         outcome_by_supervisor: Dict[str, str] = {}
         self._resolve_supervisor_outcomes(
             runtime_rooms=runtime_rooms,
@@ -856,6 +878,19 @@ class SimSimKernel:
             factory_deltas=factory_deltas,
             outcome_by_supervisor=outcome_by_supervisor,
         )
+        self._accumulate_tension_passive_deltas(
+            start=start,
+            day=day,
+            emit=emit,
+            factory_deltas=factory_deltas,
+        )
+        runtime_state = self._apply_factory_deltas(
+            start_state=start,
+            runtime_state=PipelineRuntimeState(rooms=runtime_rooms, regime=regime),
+            factory_deltas=factory_deltas,
+        )
+        runtime_rooms = runtime_state.rooms
+        regime = runtime_state.regime
 
         # 14) Generic accidents for non-overridden rooms.
         self._apply_generic_accidents(runtime_rooms=runtime_rooms, day=day, regime=regime, emit=emit)
@@ -906,8 +941,6 @@ class SimSimKernel:
             assignments=assignments,
             outcomes=outcome_by_supervisor,
             conflict_resolution=conflict_resolution,
-            factory_deltas=factory_deltas,
-            emit=emit,
         )
 
         # 25) Critical event eligibility + prompt allow/suppress.
@@ -1874,6 +1907,145 @@ class SimSimKernel:
             if rr.supervisor:
                 outcome_by_supervisor[rr.supervisor] = rr.outcome_label
 
+    def _accumulate_tension_passive_deltas(
+        self,
+        *,
+        start: SimSimState,
+        day: int,
+        emit: Any,
+        factory_deltas: MutableMapping[str, float],
+    ) -> None:
+        threshold = float(self._config.confidence.threshold_tension)
+        passives_table = self._loaded_config.raw.get("confidence", {}).get("tension_passives", {})
+
+        for profile in SUPERVISOR_PROFILES:
+            if not self._is_supervisor_unlocked(profile.code, day):
+                continue
+            prev = start.supervisors.get(profile.code)
+            if prev is None:
+                continue
+            if prev.cooldown_days > 0 or prev.confidence < threshold:
+                continue
+
+            passives = passives_table.get(profile.code, {})
+            if not isinstance(passives, Mapping):
+                continue
+
+            factory_deltas["stress"] += float(passives.get("stress", 0.0))
+            factory_deltas["discipline"] += float(passives.get("discipline", 0.0))
+            factory_deltas["alignment"] += float(passives.get("alignment", 0.0))
+            factory_deltas["global_accident_bonus"] += float(passives.get("global_accident_bonus", 0.0))
+            if "equipment_damage_multiplier" in passives:
+                factory_deltas["equipment_damage_multiplier"] *= max(0.0, float(passives.get("equipment_damage_multiplier", 1.0)))
+            if "global_non_weaving_output_multiplier_today" in passives:
+                factory_deltas["global_non_weaving_output_multiplier_mult"] *= max(
+                    0.0,
+                    float(passives.get("global_non_weaving_output_multiplier_today", 1.0)),
+                )
+            if "pending_accident_bonus_next_day_delta" in passives:
+                factory_deltas["pending_accident_bonus_next_day_delta"] += float(
+                    passives.get("pending_accident_bonus_next_day_delta", 0.0)
+                )
+            if "refactor_days_delta" in passives:
+                factory_deltas["refactor_days_delta"] += float(passives.get("refactor_days_delta", 0.0))
+            if "inversion_days_delta" in passives:
+                factory_deltas["inversion_days_delta"] += float(passives.get("inversion_days_delta", 0.0))
+            if bool(passives.get("shutdown_except_brewery_today", False)):
+                factory_deltas["shutdown_except_brewery_today"] = 1.0
+            if bool(passives.get("lockdown_today", False)):
+                factory_deltas["lockdown_today"] = 1.0
+            if bool(passives.get("weaving_boost_next_day", False)):
+                factory_deltas["weaving_boost_next_day"] = 1.0
+            if "weaving_boost_multiplier_today" in passives:
+                factory_deltas["weaving_boost_multiplier_mult"] *= max(
+                    0.0,
+                    float(passives.get("weaving_boost_multiplier_today", 1.0)),
+                )
+
+            emit("tension_zone", supervisor=profile.code, details={"confidence": round(prev.confidence, 3)})
+
+    def _apply_factory_deltas(
+        self,
+        start_state: SimSimState,
+        runtime_state: PipelineRuntimeState,
+        factory_deltas: Mapping[str, float],
+    ) -> PipelineRuntimeState:
+        active_rooms: List[PipelineRoomRuntime] = []
+        for room_id, rr in runtime_state.rooms.items():
+            if room_id in (1, 6):
+                continue
+            room = start_state.rooms.get(room_id)
+            if room is not None and room.locked:
+                continue
+            active_rooms.append(rr)
+
+        if active_rooms:
+            total_weight = float(
+                sum(max(0, rr.present_dumb + rr.present_smart) for rr in active_rooms)
+            )
+            if total_weight <= 0.0:
+                weights = {rr.room_id: 1.0 / float(len(active_rooms)) for rr in active_rooms}
+            else:
+                weights = {
+                    rr.room_id: float(max(0, rr.present_dumb + rr.present_smart)) / total_weight
+                    for rr in active_rooms
+                }
+
+            for field_name, attr_name in (
+                ("stress", "stress_old"),
+                ("discipline", "discipline_old"),
+                ("alignment", "alignment_old"),
+            ):
+                delta_total = float(factory_deltas.get(field_name, 0.0))
+                if delta_total == 0.0:
+                    continue
+                for rr in active_rooms:
+                    weight = float(weights.get(rr.room_id, 0.0))
+                    current_value = float(getattr(rr, attr_name))
+                    setattr(rr, attr_name, _clamp01(current_value + delta_total * weight))
+
+            accident_bonus_delta = float(factory_deltas.get("global_accident_bonus", 0.0))
+            if accident_bonus_delta != 0.0:
+                for rr in active_rooms:
+                    rr.accident_chance = _clamp01(float(rr.accident_chance) + accident_bonus_delta)
+        else:
+            accident_bonus_delta = float(factory_deltas.get("global_accident_bonus", 0.0))
+
+        regime = runtime_state.regime
+        next_regime = RegimeState(
+            refactor_days=max(0, int(round(regime.refactor_days + float(factory_deltas.get("refactor_days_delta", 0.0))))),
+            inversion_days=max(0, int(round(regime.inversion_days + float(factory_deltas.get("inversion_days_delta", 0.0))))),
+            shutdown_except_brewery_today=bool(
+                regime.shutdown_except_brewery_today
+                or float(factory_deltas.get("shutdown_except_brewery_today", 0.0)) > 0.0
+            ),
+            weaving_boost_next_day=bool(
+                regime.weaving_boost_next_day
+                or float(factory_deltas.get("weaving_boost_next_day", 0.0)) > 0.0
+            ),
+            weaving_boost_multiplier_today=max(
+                0.0,
+                float(regime.weaving_boost_multiplier_today)
+                * max(0.0, float(factory_deltas.get("weaving_boost_multiplier_mult", 1.0))),
+            ),
+            global_accident_bonus=max(0.0, float(regime.global_accident_bonus) + accident_bonus_delta),
+            pending_accident_bonus_next_day=max(
+                0.0,
+                float(regime.pending_accident_bonus_next_day)
+                + float(factory_deltas.get("pending_accident_bonus_next_day_delta", 0.0)),
+            ),
+            global_non_weaving_output_multiplier_today=max(
+                0.0,
+                (
+                    float(regime.global_non_weaving_output_multiplier_today)
+                    * max(0.0, float(factory_deltas.get("global_non_weaving_output_multiplier_mult", 1.0)))
+                )
+                + float(factory_deltas.get("global_non_weaving_output_multiplier_add", 0.0)),
+            ),
+            lockdown_today=bool(regime.lockdown_today or float(factory_deltas.get("lockdown_today", 0.0)) > 0.0),
+        )
+        return PipelineRuntimeState(rooms=runtime_state.rooms, regime=next_regime)
+
     def _choose_outcome(
         self,
         rows: Sequence[Mapping[str, Any]],
@@ -2108,8 +2280,6 @@ class SimSimKernel:
         assignments: Mapping[str, int | None],
         outcomes: Mapping[str, str],
         conflict_resolution: Mapping[str, Any],
-        factory_deltas: MutableMapping[str, float],
-        emit: Any,
     ) -> Dict[str, SupervisorState]:
         out: Dict[str, SupervisorState] = {}
         supervisor_deltas = conflict_resolution.get("supervisor_deltas", {})
@@ -2163,16 +2333,6 @@ class SimSimKernel:
             new_conf = _clamp01(prev.confidence + delta_conf)
             new_loyalty = _clamp01(prev.loyalty + delta_loyalty)
             new_influence = _clamp01(prev.influence + delta_influence + (new_conf - prev.confidence) * 0.2)
-
-            if in_tension_zone:
-                passives = self._loaded_config.raw.get("confidence", {}).get("tension_passives", {}).get(profile.code, {})
-                factory_deltas["stress"] += float(passives.get("stress", 0.0))
-                factory_deltas["discipline"] += float(passives.get("discipline", 0.0))
-                factory_deltas["alignment"] += float(passives.get("alignment", 0.0))
-                factory_deltas["global_accident_bonus"] += float(passives.get("global_accident_bonus", 0.0))
-                if "equipment_damage_multiplier" in passives:
-                    factory_deltas["equipment_damage_multiplier"] *= float(passives.get("equipment_damage_multiplier", 1.0))
-                emit("tension_zone", supervisor=profile.code, details={"confidence": round(new_conf, 3)})
 
             out[profile.code] = SupervisorState(
                 code=profile.code,
