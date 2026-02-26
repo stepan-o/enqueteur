@@ -12,12 +12,16 @@ import { mountDevControls } from "../ui/devControls";
 import { mountInspectPanel } from "../ui/inspectPanel";
 import { mountTimeLighting } from "../ui/timeLighting";
 import { injectMockSnapshot } from "../debug/mockKernel";
+import { ViewerPluginRegistry } from "../viewers/core/viewerPlugin";
+import { createSim4ViewerPlugin } from "../viewers/sim4/sim4Plugin";
+import { createSimSimViewerPlugin } from "../viewers/sim_sim/simSimPlugin";
+import { SimSimScene } from "../viewers/sim_sim/simSimScene";
+import { SimSimStore } from "../viewers/sim_sim/simSimStore";
 
 /**
  * Boot the Loopforge Web Viewer (WEBVIEW-0001).
- * - Protocol-first (KVP-0001)
- * - No simulation logic
- * - Web viewer is a client: snapshot + diff → render
+ * - Protocol-first (KVP-0001 transport)
+ * - Engine/plugin-routed rendering pipelines
  */
 export type BootMode = "live" | "offline";
 
@@ -50,14 +54,17 @@ export function boot(opts: BootOpts): ViewerHandle {
     const store = new WorldStore();
     const overlayStore = new OverlayStore();
     const viewerStore = new ViewerStore();
+    const simSimStore = new SimSimStore();
 
     // Mount container should be positioning context for HUD overlays.
     opts.mountEl.style.position = "relative";
     opts.mountEl.style.width = "100%";
     opts.mountEl.style.height = "100%";
 
-    // Renderer (PixiJS)
-    const scene = new PixiScene(opts.mountEl);
+    // Renderers
+    const sim4Scene = new PixiScene(opts.mountEl);
+    let simSimScene: SimSimScene | null = null;
+    sim4Scene.setVisible(true);
 
     const timeLighting = mountTimeLighting(opts.mountEl);
 
@@ -70,28 +77,31 @@ export function boot(opts: BootOpts): ViewerHandle {
     opts.mountEl.appendChild(inspector.root);
 
     overlayStore.subscribe((o) => {
-        scene.ingestOverlayEvents(o.eventsAtTick);
+        sim4Scene.ingestOverlayEvents(o.eventsAtTick);
     });
 
-    scene.onInspectSelection((sel) => inspector.setSelection(sel));
+    sim4Scene.onInspectSelection((sel) => inspector.setSelection(sel));
+    sim4Scene.onRequestFreshSnapshot(() => {
+        console.warn("[webview] desync banner: requesting fresh snapshot");
+        client?.requestFreshSnapshot();
+    });
 
-    // --- DEBUG: prove canvas exists + has size (Pixi v8 async init) -----------
+    // --- DEBUG: prove canvases exist + have size (Pixi v8 async init) ----------
     const debugCanvasProbe = () => {
-        const canvas = opts.mountEl.querySelector("canvas") as HTMLCanvasElement | null;
-        const rect = canvas?.getBoundingClientRect();
-        console.debug("[webview] canvas probe", {
-            hasCanvas: !!canvas,
-            rect: rect ? { w: Math.round(rect.width), h: Math.round(rect.height) } : null,
+        const canvases = Array.from(opts.mountEl.querySelectorAll("canvas"));
+        const rects = canvases.map((canvas) => {
+            const rect = canvas.getBoundingClientRect();
+            return { w: Math.round(rect.width), h: Math.round(rect.height) };
         });
+        console.debug("[webview] canvas probe", { count: canvases.length, rects });
     };
-    // Probe immediately and again after a tick, since Pixi init is async.
     debugCanvasProbe();
     setTimeout(debugCanvasProbe, 0);
     setTimeout(debugCanvasProbe, 250);
 
-    // Render on state changes (simple + correct; later you can batch)
+    // Render on state changes.
     store.subscribe((s) => {
-        console.debug("[webview] state", {
+        console.debug("[webview] sim4 state", {
             tick: s.tick,
             rooms: s.rooms.size,
             agents: s.agents.size,
@@ -100,9 +110,19 @@ export function boot(opts: BootOpts): ViewerHandle {
             reason: s.desyncReason ?? null,
             stepHash: s.stepHash ?? null,
         });
-
         timeLighting.update(s.world ?? null);
-        scene.renderFromState(s);
+        sim4Scene.renderFromState(s);
+    });
+    simSimStore.subscribe((s) => {
+        console.debug("[webview] sim_sim state", {
+            tick: s.tick,
+            rooms: s.rooms.size,
+            agents: s.agents.size,
+            desynced: s.desynced,
+            reason: s.desyncReason ?? null,
+            stepHash: s.stepHash ?? null,
+        });
+        simSimScene?.renderFromState(s);
     });
 
     const env = (import.meta as any).env ?? {};
@@ -114,6 +134,61 @@ export function boot(opts: BootOpts): ViewerHandle {
     let currentMode: BootMode = mode;
     let client: KvpClient | null = null;
     let activeLiveWsUrl: string | null = null;
+
+    let activeRenderer: LiveKernelKind = "sim4";
+    let hudVisibleRequested = true;
+    let devControlsVisibleRequested = true;
+
+    const applyViewerUiVisibility = (): void => {
+        const sim4Active = activeRenderer === "sim4";
+        devControls.style.display = sim4Active && devControlsVisibleRequested ? "block" : "none";
+        hud.style.display = sim4Active && hudVisibleRequested ? "block" : "none";
+        inspector.root.style.display = sim4Active ? "block" : "none";
+        if (!sim4Active) timeLighting.update(null);
+    };
+
+    const ensureSimSimScene = (): SimSimScene => {
+        if (simSimScene) return simSimScene;
+        simSimScene = new SimSimScene(opts.mountEl);
+        simSimScene.setVisible(false);
+        return simSimScene;
+    };
+
+    const activateSim4Viewer = (): void => {
+        activeRenderer = "sim4";
+        sim4Scene.setVisible(true);
+        simSimScene?.setVisible(false);
+        applyViewerUiVisibility();
+    };
+
+    const activateSimSimViewer = (): void => {
+        activeRenderer = "sim_sim";
+        const simSim = ensureSimSimScene();
+        sim4Scene.setVisible(false);
+        simSim.setVisible(true);
+        applyViewerUiVisibility();
+    };
+
+    const pluginRegistry = new ViewerPluginRegistry();
+    pluginRegistry.register(
+        createSim4ViewerPlugin({
+            store,
+            onActivate: activateSim4Viewer,
+        })
+    );
+    pluginRegistry.register(
+        createSim4ViewerPlugin({
+            store,
+            engineName: "sim4",
+            onActivate: activateSim4Viewer,
+        })
+    );
+    pluginRegistry.register(
+        createSimSimViewerPlugin({
+            store: simSimStore,
+            onActivate: activateSimSimViewer,
+        })
+    );
 
     const resolveLiveWsUrl = (kernelKind: LiveKernelKind): string => {
         if (kernelKind === "sim_sim") {
@@ -129,7 +204,7 @@ export function boot(opts: BootOpts): ViewerHandle {
             url: wsUrl,
             viewerName: "loopforge-webview-pixi",
             viewerVersion: "0.1.0",
-            supportedSchemaVersions: ["1"],
+            supportedSchemaVersions: pluginRegistry.supportedSchemaVersions(),
             defaultSubscribe: {
                 stream: "LIVE",
                 channels: ["WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"],
@@ -137,21 +212,27 @@ export function boot(opts: BootOpts): ViewerHandle {
                 snapshot_policy: "ON_JOIN",
                 compression: "NONE",
             },
+            pluginRegistry,
+            onPluginSelected: (plugin, hello) => {
+                console.info(
+                    "[webview] viewer plugin selected",
+                    plugin.id,
+                    `engine=${hello.engine_name}`,
+                    `schema=${hello.schema_version}`
+                );
+                viewerStore.setLiveKernelKind(hello.engine_name === "sim_sim" ? "sim_sim" : "sim4");
+            },
         });
         activeLiveWsUrl = wsUrl;
-        scene.onRequestFreshSnapshot(() => {
-            console.warn("[webview] desync banner: requesting fresh snapshot");
-            client?.requestFreshSnapshot();
-        });
         return client;
     };
 
     const devControls = mountDevControls({
         store,
         viewerStore,
-        onFloorChange: (floor) => scene.setFloorFilter(floor),
-        onCameraModeChange: (mode) => scene.setCameraMode(mode),
-        onRotate: (delta) => scene.rotateView(delta),
+        onFloorChange: (floor) => sim4Scene.setFloorFilter(floor),
+        onCameraModeChange: (cameraMode) => sim4Scene.setCameraMode(cameraMode),
+        onRotate: (delta) => sim4Scene.rotateView(delta),
         onPlaybackToggle: (paused) => {
             if (currentMode !== "offline") return;
             if (!offlineHandle) return;
@@ -175,11 +256,13 @@ export function boot(opts: BootOpts): ViewerHandle {
         },
     });
     opts.mountEl.appendChild(devControls);
+    applyViewerUiVisibility();
 
     const startOffline = async (baseUrl?: string, speed?: number): Promise<void> => {
         currentMode = "offline";
         if (offlineHandle) offlineHandle.stop();
         if (client) client.disconnect();
+        activateSim4Viewer();
         offlineBaseUrl = baseUrl ?? offlineBaseUrl;
         if (speed && Number.isFinite(speed) && speed > 0) offlineSpeed = speed;
         store.clearDesync();
@@ -210,6 +293,8 @@ export function boot(opts: BootOpts): ViewerHandle {
             offlineHandle = null;
         }
         viewerStore.setLiveKernelKind(kernelKind);
+        if (kernelKind === "sim_sim") activateSimSimViewer();
+        else activateSim4Viewer();
         store.clearDesync();
         store.setMode("live");
         store.setConnected(false);
@@ -246,17 +331,20 @@ export function boot(opts: BootOpts): ViewerHandle {
         opts.mountEl.style.display = visible ? "block" : "none";
         if (visible) {
             requestAnimationFrame(() => {
-                scene.refreshLayout({ forceAutoFit: true });
+                sim4Scene.refreshLayout({ forceAutoFit: true });
+                simSimScene?.refreshLayout({ forceAutoFit: true });
             });
         }
     };
 
     const setDevControlsVisible = (visible: boolean): void => {
-        devControls.style.display = visible ? "block" : "none";
+        devControlsVisibleRequested = visible;
+        applyViewerUiVisibility();
     };
 
     const setHudVisible = (visible: boolean): void => {
-        hud.style.display = visible ? "block" : "none";
+        hudVisibleRequested = visible;
+        applyViewerUiVisibility();
     };
 
     if (autoStart) {

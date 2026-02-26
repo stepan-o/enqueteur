@@ -105,6 +105,7 @@ export class PixiScene {
 
     // Pixi v8 init is async; gate rendering & input until ready.
     private ready = false;
+    private visible = true;
 
     // Optional: stash latest state so we can render immediately after init completes.
     private pendingState?: WorldState;
@@ -122,6 +123,12 @@ export class PixiScene {
     constructor(mountEl: HTMLElement) {
         this.app = new PIXI.Application();
         void this.init(mountEl);
+    }
+
+    setVisible(visible: boolean): void {
+        this.visible = visible;
+        if (!this.ready) return;
+        this.app.canvas.style.display = visible ? "block" : "none";
     }
 
     private async init(mountEl: HTMLElement): Promise<void> {
@@ -168,6 +175,7 @@ export class PixiScene {
         this.enableMotionTicker();
 
         this.ready = true;
+        this.setVisible(this.visible);
 
         if (this.pendingState) {
             const s = this.pendingState;

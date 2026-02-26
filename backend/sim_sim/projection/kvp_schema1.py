@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-"""Project sim_sim domain state to KVP schema_version='1' viewer state."""
+"""Project sim_sim domain state to KVP sim_sim_1 viewer state."""
 
 from typing import Any, Dict, Iterable, List, Sequence
 
 from backend.sim4.integration.canonicalize import canonicalize_state_obj
 from backend.sim4.integration.diff_ops import compute_state_diff_ops
 from backend.sim4.integration.manifest_schema import ALLOWED_CHANNELS
-from backend.sim4.integration.schema_version import INTEGRATION_SCHEMA_VERSION
 from backend.sim4.integration.step_hash import compute_step_hash
 
 from backend.sim_sim.kernel.state import ROOM_IDS, SimSimState, SUPERVISOR_IDS
@@ -30,6 +29,8 @@ ROOM_NEIGHBORS: Dict[int, List[int]] = {
     5: [2, 4, 6],
     6: [3, 5],
 }
+
+SIM_SIM_SCHEMA_VERSION = "sim_sim_1"
 
 
 def normalize_channels(channels: Sequence[str] | None) -> List[str]:
@@ -84,7 +85,7 @@ def make_snapshot_payload(
     state = project_state_schema1(domain_state, channels)
     step_hash = compute_step_hash(state)
     return {
-        "schema_version": INTEGRATION_SCHEMA_VERSION,
+        "schema_version": SIM_SIM_SCHEMA_VERSION,
         "tick": int(tick),
         "state": state,
         "step_hash": step_hash,
@@ -107,7 +108,7 @@ def make_diff_payload(
     ops = compute_state_diff_ops(can_from, can_to)
     step_hash = compute_step_hash(can_to)
     return {
-        "schema_version": INTEGRATION_SCHEMA_VERSION,
+        "schema_version": SIM_SIM_SCHEMA_VERSION,
         "from_tick": int(from_tick),
         "to_tick": int(to_tick),
         "prev_step_hash": str(prev_step_hash),
@@ -198,4 +199,3 @@ def _agent_position(*, room_id: int, supervisor_id: int) -> Dict[str, float]:
         "x": bounds["min_x"] + span_x * offset_x,
         "y": bounds["min_y"] + span_y * offset_y,
     }
-

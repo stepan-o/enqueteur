@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Sequence
 
-from backend.sim4.host.kvp_defaults import default_render_spec, default_run_anchors
+from backend.sim4.host.kvp_defaults import default_render_spec
 from backend.sim4.integration.live_envelope import make_live_envelope, validate_live_envelope
 from backend.sim4.integration.live_session import LiveSession
 from backend.sim4.integration.manifest_schema import ALLOWED_CHANNELS
@@ -23,6 +23,7 @@ from backend.sim_sim.kernel.state import (
     format_state_for_cli,
 )
 from backend.sim_sim.projection.kvp_schema1 import (
+    SIM_SIM_SCHEMA_VERSION,
     compute_step_hash_for_channels,
     make_diff_payload,
     make_snapshot_payload,
@@ -30,6 +31,18 @@ from backend.sim_sim.projection.kvp_schema1 import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SimSimRunAnchors:
+    engine_name: str
+    engine_version: str
+    schema_version: str
+    world_id: str
+    run_id: str
+    seed: int
+    tick_rate_hz: int
+    time_origin_ms: int
 
 
 class JsonLiveCodec:
@@ -100,12 +113,15 @@ class SessionHost:
         self._connections: Dict[str, ConnectionContext] = {}
         self._lock = asyncio.Lock()
 
-        self._run_anchors = default_run_anchors(
-            seed=seed,
-            tick_rate_hz=1,
-            time_origin_ms=0,
+        self._run_anchors = SimSimRunAnchors(
             engine_name="sim_sim",
             engine_version="0.1.0",
+            schema_version=SIM_SIM_SCHEMA_VERSION,
+            world_id=str(uuid.uuid4()),
+            run_id=str(uuid.uuid4()),
+            seed=int(seed),
+            tick_rate_hz=1,
+            time_origin_ms=0,
         )
         self._render_spec = default_render_spec(
             bounds=Bounds(min_x=0.0, min_y=0.0, max_x=36.0, max_y=16.0),

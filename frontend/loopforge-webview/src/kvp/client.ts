@@ -5,6 +5,7 @@ import type {
     KernelHello,
     WorldStore,
 } from "../state/worldStore";
+import type { ViewerPlugin, ViewerPluginRegistry } from "../viewers/core/viewerPlugin";
 
 /**
  * KVP-0001 WebSocket client (WEBVIEW-0001).
@@ -76,6 +77,8 @@ export type KvpClientOpts = {
     viewerVersion: string;
     supportedSchemaVersions: string[];
     defaultSubscribe: Subscribe;
+    pluginRegistry: ViewerPluginRegistry;
+    onPluginSelected?: (plugin: ViewerPlugin, hello: KernelHello) => void;
 };
 
 export class KvpClient {
@@ -85,6 +88,7 @@ export class KvpClient {
 
     private didHello = false;
     private didSubscribe = false;
+    private activePlugin: ViewerPlugin | null = null;
 
     constructor(store: WorldStore, opts: KvpClientOpts) {
         this.store = store;
@@ -97,6 +101,7 @@ export class KvpClient {
 
         this.didHello = false;
         this.didSubscribe = false;
+        this.activePlugin = null;
 
         const ws = new WebSocket(this.opts.url);
         this.ws = ws;
@@ -110,6 +115,8 @@ export class KvpClient {
             this.store.setConnected(false);
             this.didHello = false;
             this.didSubscribe = false;
+            this.activePlugin?.deactivate();
+            this.activePlugin = null;
         };
 
         ws.onerror = () => {
@@ -128,6 +135,8 @@ export class KvpClient {
                 // ignore
             }
         }
+        this.activePlugin?.deactivate();
+        this.activePlugin = null;
         this.ws = undefined;
     }
 
@@ -204,7 +213,22 @@ export class KvpClient {
         switch (env.msg_type) {
             case "KERNEL_HELLO": {
                 const hello = env.payload as KernelHello;
-                this.store.setKernelHello(hello);
+                const plugin = this.opts.pluginRegistry.resolve(hello.engine_name, hello.schema_version);
+                if (!plugin) {
+                    const mappings = this.opts.pluginRegistry.describeMappings();
+                    this.store.markDesync(
+                        `No viewer plugin for engine=${hello.engine_name} schema=${hello.schema_version}. Available: ${mappings || "none"}`
+                    );
+                    return;
+                }
+
+                if (this.activePlugin !== plugin) {
+                    this.activePlugin?.deactivate();
+                    this.activePlugin = plugin;
+                    this.activePlugin.activate();
+                }
+                this.opts.onPluginSelected?.(plugin, hello);
+                this.activePlugin.onKernelHello(hello);
 
                 // Subscribe immediately after hello.
                 if (!this.didSubscribe) {
@@ -221,13 +245,31 @@ export class KvpClient {
 
             case "FULL_SNAPSHOT": {
                 const snap = env.payload as FullSnapshotPayload;
-                this.store.applySnapshot(snap);
+                if (!this.activePlugin) {
+                    this.store.markDesync("FULL_SNAPSHOT received before KERNEL_HELLO/plugin selection");
+                    return;
+                }
+                try {
+                    this.activePlugin.onFullSnapshot(snap);
+                } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    this.store.markDesync(`Plugin snapshot error: ${msg}`);
+                }
                 break;
             }
 
             case "FRAME_DIFF": {
                 const diff = env.payload as FrameDiffPayload;
-                this.store.applyDiff(diff);
+                if (!this.activePlugin) {
+                    this.store.markDesync("FRAME_DIFF received before KERNEL_HELLO/plugin selection");
+                    return;
+                }
+                try {
+                    this.activePlugin.onFrameDiff(diff);
+                } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    this.store.markDesync(`Plugin diff error: ${msg}`);
+                }
                 break;
             }
 

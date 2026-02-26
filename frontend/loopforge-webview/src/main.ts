@@ -1,5 +1,6 @@
 import "./styles/app.css";
 import { boot } from "./app/boot";
+import type { ViewerHandle } from "./app/boot";
 import { createMenu, type MenuAction, type MenuRun } from "./ui/menu";
 
 const app = document.getElementById("app");
@@ -20,15 +21,45 @@ app.appendChild(menuRoot);
 app.appendChild(viewerRoot);
 app.appendChild(fadeLayer);
 
-const viewer = boot({
-    mountEl: viewerRoot,
-    wsUrl: sim4WsUrl,
-    sim4WsUrl,
-    simSimWsUrl,
-    offlineBaseUrl: env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min",
-    mode: "offline",
-    autoStart: false,
-});
+const fallbackViewer: ViewerHandle = {
+    startOffline: async () => {},
+    startLive: () => {},
+    stop: () => {},
+    setVisible: () => {},
+    setDevControlsVisible: () => {},
+    setHudVisible: () => {},
+};
+
+let viewer: ViewerHandle = fallbackViewer;
+try {
+    viewer = boot({
+        mountEl: viewerRoot,
+        wsUrl: sim4WsUrl,
+        sim4WsUrl,
+        simSimWsUrl,
+        offlineBaseUrl: env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min",
+        mode: "offline",
+        autoStart: false,
+    });
+} catch (err) {
+    const msg = err instanceof Error ? err.stack ?? err.message : String(err);
+    console.error("[webview] boot failed", msg);
+    const crash = document.createElement("div");
+    crash.style.position = "absolute";
+    crash.style.left = "16px";
+    crash.style.top = "16px";
+    crash.style.zIndex = "9999";
+    crash.style.maxWidth = "min(90vw, 720px)";
+    crash.style.padding = "10px 12px";
+    crash.style.borderRadius = "10px";
+    crash.style.background = "rgba(46, 12, 12, 0.92)";
+    crash.style.color = "#ffd9cf";
+    crash.style.fontFamily = "monospace";
+    crash.style.fontSize = "12px";
+    crash.style.whiteSpace = "pre-wrap";
+    crash.textContent = `[webview] boot failed\n${msg}`;
+    app.appendChild(crash);
+}
 
 viewer.setVisible(false);
 viewer.setDevControlsVisible(true);

@@ -174,7 +174,7 @@ function buildFactoryScreen(onAction: (action: MenuAction) => void): HTMLElement
 
     const list = document.createElement("div");
     list.className = "menu-list";
-    list.appendChild(makeMenuButton("LIVE (sim4)", () => onAction({ type: "OPEN_LIVE_SIM4" })));
+    list.appendChild(makeMenuButton("LIVE (sim4 dev)", () => onAction({ type: "OPEN_LIVE_SIM4" })));
     list.appendChild(makeMenuButton("LIVE (sim_sim)", () => onAction({ type: "OPEN_LIVE_SIM_SIM" })));
     list.appendChild(makeMenuButton("Cinematic view", () => onAction({ type: "OPEN_CINEMATIC" })));
     list.appendChild(makeMenuButton("Dev view", () => onAction({ type: "OPEN_DEV" })));
