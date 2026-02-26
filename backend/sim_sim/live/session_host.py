@@ -338,6 +338,12 @@ class SessionHost:
             # If the connection drifted, reset with authoritative baseline first.
             await self._send_snapshot(ctx, previous_state, tick=from_tick)
 
+        if to_tick == from_tick:
+            # Deferred prompt resolution path: state changed at same tick, so emit a fresh snapshot.
+            await self._send_snapshot(ctx, current_state, tick=to_tick)
+            logger.info("[live] snapshot id=%s tick=%s (same-tick state update)", ctx.connection_id, to_tick)
+            return
+
         channels = normalize_channels(ctx.effective_channels)
         prev_hash = ctx.last_step_hash or compute_step_hash_for_channels(
             previous_state,

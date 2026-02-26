@@ -1,19 +1,60 @@
 from __future__ import annotations
 
+import copy
 import json
 
 import pytest
 
 from backend.sim_sim.config import ConfigValidationError, load_sim_sim_config
-from backend.sim_sim.kernel.state import DayInput, SimSimKernel
+from backend.sim_sim.kernel.state import DayInput, PromptResponse, PromptState, SimSimKernel
 from backend.sim_sim.projection.kvp_schema1 import compute_step_hash_for_channels, make_snapshot_payload
+
+
+def _default_prompt_choice(prompt: PromptState) -> str:
+    return str(prompt.choices[0])
+
+
+def _advance_one_tick(
+    kernel: SimSimKernel,
+    tick_target: int,
+    *,
+    day_input: DayInput | None = None,
+) -> None:
+    active_input = day_input or DayInput(tick_target=tick_target, advance=True)
+    valid, reason = kernel.validate_day_input(active_input, expected_tick_target=tick_target)
+    assert valid, reason
+
+    _, current = kernel.step(active_input)
+    while int(current.day_tick) < int(tick_target):
+        assert current.phase == "awaiting_prompts"
+        unresolved = list(kernel.unresolved_prompts)
+        assert unresolved, "awaiting_prompts must expose unresolved prompts"
+        responses = tuple(
+            PromptResponse(
+                prompt_id=prompt.prompt_id,
+                choice=_default_prompt_choice(prompt),
+            )
+            for prompt in unresolved
+        )
+        resolve_input = DayInput(
+            tick_target=tick_target,
+            advance=True,
+            prompt_responses=responses,
+        )
+        valid, reason = kernel.validate_day_input(resolve_input, expected_tick_target=tick_target)
+        assert valid, reason
+        _, current = kernel.step(resolve_input)
+
+    assert int(current.day_tick) == int(tick_target)
+    assert current.phase == "planning"
+    assert not kernel.unresolved_prompts
 
 
 def _run_hashes(seed: int, days: int) -> list[str]:
     kernel = SimSimKernel(seed=seed)
     hashes: list[str] = []
     for day in range(1, days + 1):
-        kernel.step(DayInput(tick_target=day, advance=True))
+        _advance_one_tick(kernel, tick_target=day)
         hashes.append(
             compute_step_hash_for_channels(
                 kernel.state,
@@ -78,9 +119,8 @@ def test_sim_sim_snapshot_hash_chain_matches_across_separate_runs() -> None:
 
     # Advance 5 ticks with identical day inputs.
     for day in range(1, 6):
-        day_input = DayInput(tick_target=day, advance=True)
-        kernel_a.step(day_input)
-        kernel_b.step(day_input)
+        _advance_one_tick(kernel_a, tick_target=day)
+        _advance_one_tick(kernel_b, tick_target=day)
         snap_a = make_snapshot_payload(
             tick=kernel_a.state.day_tick,
             domain_state=kernel_a.state,
@@ -111,7 +151,7 @@ def test_sim_sim_invariants_and_unlock_pacing() -> None:
     assert set(state0.supervisors.keys()) == {"L"}
 
     for day in range(1, 8):
-        kernel.step(DayInput(tick_target=day, advance=True))
+        _advance_one_tick(kernel, tick_target=day)
         state = kernel.state
 
         # Room 1 hard rule.
@@ -167,6 +207,89 @@ def test_sim_sim_invariants_and_unlock_pacing() -> None:
         events_today = [e for e in state.events if int(e.get("tick", -1)) == day]
         assert sum(1 for e in events_today if e.get("kind") == "conflict_event") <= 1
         assert sum(1 for e in events_today if e.get("kind") == "critical_triggered") <= 1
+
+
+def test_deferred_conflict_prompt_blocks_advance_until_resolved() -> None:
+    kernel = SimSimKernel(seed=7)
+
+    # Day 1 advances (conflict discovery may occur, but no unresolved prompt should remain).
+    _advance_one_tick(kernel, tick_target=1)
+
+    # Day 2 should produce a conflict prompt and stop at tick=1 awaiting resolution.
+    day2_input = DayInput(tick_target=2, advance=True)
+    valid, reason = kernel.validate_day_input(day2_input, expected_tick_target=2)
+    assert valid, reason
+    _, blocked = kernel.step(day2_input)
+    assert blocked.day_tick == 1
+    assert blocked.phase == "awaiting_prompts"
+    unresolved = list(kernel.unresolved_prompts)
+    assert unresolved
+    assert any(prompt.kind == "conflict" for prompt in unresolved)
+
+    # Attempting to advance without prompt responses is rejected.
+    valid, reason = kernel.validate_day_input(DayInput(tick_target=2, advance=True), expected_tick_target=2)
+    assert not valid
+    assert "prompt_responses are required" in reason
+
+    responses = tuple(
+        PromptResponse(prompt_id=prompt.prompt_id, choice=_default_prompt_choice(prompt))
+        for prompt in unresolved
+    )
+    resolve_input = DayInput(tick_target=2, advance=True, prompt_responses=responses)
+    valid, reason = kernel.validate_day_input(resolve_input, expected_tick_target=2)
+    assert valid, reason
+    _, advanced = kernel.step(resolve_input)
+    assert advanced.day_tick == 2
+    assert advanced.phase == "planning"
+    assert not kernel.unresolved_prompts
+    assert any(
+        event.get("kind") == "prompt_resolved" and event.get("details", {}).get("kind") == "conflict"
+        for event in advanced.events
+    )
+
+
+def test_deferred_critical_prompt_blocks_advance_until_resolved(tmp_path) -> None:
+    default_kernel = SimSimKernel(seed=5)
+    config_raw = copy.deepcopy(default_kernel.loaded_config.raw)
+    config_raw["conflicts"]["hostile_pairs"] = []
+    config_raw["guardrails"]["prevent_critical_before_day"] = 0
+    config_raw["confidence"]["threshold_critical"] = 0.0
+
+    config_path = tmp_path / "critical_prompt_config.json"
+    config_path.write_text(json.dumps(config_raw), encoding="utf-8")
+
+    kernel = SimSimKernel(seed=5, config_path=str(config_path))
+    day1_input = DayInput(tick_target=1, advance=True)
+    valid, reason = kernel.validate_day_input(day1_input, expected_tick_target=1)
+    assert valid, reason
+    _, blocked = kernel.step(day1_input)
+
+    assert blocked.day_tick == 0
+    assert blocked.phase == "awaiting_prompts"
+    unresolved = list(kernel.unresolved_prompts)
+    assert unresolved
+    assert any(prompt.kind == "critical" for prompt in unresolved)
+
+    valid, reason = kernel.validate_day_input(DayInput(tick_target=1, advance=True), expected_tick_target=1)
+    assert not valid
+    assert "prompt_responses are required" in reason
+
+    responses = tuple(
+        PromptResponse(prompt_id=prompt.prompt_id, choice=_default_prompt_choice(prompt))
+        for prompt in unresolved
+    )
+    resolve_input = DayInput(tick_target=1, advance=True, prompt_responses=responses)
+    valid, reason = kernel.validate_day_input(resolve_input, expected_tick_target=1)
+    assert valid, reason
+    _, advanced = kernel.step(resolve_input)
+
+    assert advanced.day_tick == 1
+    assert advanced.phase == "planning"
+    assert not kernel.unresolved_prompts
+    assert any(
+        event.get("kind") == "prompt_resolved" and event.get("details", {}).get("kind") == "critical"
+        for event in advanced.events
+    )
 
 
 def test_sim_sim_config_loader_missing_fields_fails(tmp_path) -> None:

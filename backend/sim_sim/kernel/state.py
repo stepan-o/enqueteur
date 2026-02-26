@@ -10,7 +10,7 @@ from backend.sim_sim.config import LoadedSimSimConfig, load_sim_sim_config
 
 
 ROOM_IDS: Tuple[int, ...] = (1, 2, 3, 4, 5, 6)
-PHASES: Tuple[str, ...] = ("planning", "production", "audit", "close")
+PHASES: Tuple[str, ...] = ("planning", "awaiting_prompts", "production", "audit", "close")
 RESOURCE_KEYS: Tuple[str, ...] = (
     "raw_brains_dumb",
     "raw_brains_smart",
@@ -204,6 +204,7 @@ class SimSimState:
     security_lead: str
     events: List[dict]
     prompts: List[PromptState]
+    pending_day_input: DayInput | None
     conflict: ConflictState
     hidden_accumulators: HiddenAccumulatorState
     next_event_id: int
@@ -370,6 +371,7 @@ class SimSimKernel:
             security_lead="L",
             events=[bootstrap_event],
             prompts=[],
+            pending_day_input=None,
             conflict=ConflictState(discovered={}),
             hidden_accumulators=HiddenAccumulatorState(
                 rigidity=0.0,
@@ -386,6 +388,10 @@ class SimSimKernel:
     @property
     def state(self) -> SimSimState:
         return self._state
+
+    @property
+    def unresolved_prompts(self) -> Tuple[PromptState, ...]:
+        return tuple(prompt for prompt in self._state.prompts if prompt.status != "resolved")
 
     @property
     def loaded_config(self) -> LoadedSimSimConfig:
@@ -427,6 +433,7 @@ class SimSimKernel:
             security_lead=self._state.security_lead,
             events=self._state.events + [event],
             prompts=list(self._state.prompts),
+            pending_day_input=self._state.pending_day_input,
             conflict=self._state.conflict,
             hidden_accumulators=self._state.hidden_accumulators,
             next_event_id=self._state.next_event_id + 1,
@@ -577,8 +584,53 @@ class SimSimKernel:
         if not day_input.advance:
             return False, "advance must be true"
 
+        unresolved = [prompt for prompt in self._state.prompts if prompt.status != "resolved"]
+        if self._state.phase == "awaiting_prompts":
+            if not unresolved:
+                return False, "phase awaiting_prompts requires unresolved prompts"
+            if day_input.supervisor_swaps or day_input.set_supervisors or day_input.set_workers:
+                return False, "while awaiting prompts, only prompt_responses are accepted"
+            eod = day_input.end_of_day
+            if any(
+                int(value) != 0
+                for value in (
+                    eod.sell_washed_dumb,
+                    eod.sell_washed_smart,
+                    eod.convert_workers_dumb,
+                    eod.convert_workers_smart,
+                    eod.upgrade_brains,
+                )
+            ):
+                return False, "while awaiting prompts, end_of_day actions are not accepted"
+            if not day_input.prompt_responses:
+                return False, "while awaiting prompts, prompt_responses are required"
+
+            expected_prompt_ids = {prompt.prompt_id for prompt in unresolved}
+            seen_prompt_ids: set[str] = set()
+            for response in day_input.prompt_responses:
+                if not response.prompt_id:
+                    return False, "prompt_responses.prompt_id cannot be empty"
+                if not response.choice:
+                    return False, "prompt_responses.choice cannot be empty"
+                if response.prompt_id in seen_prompt_ids:
+                    return False, f"duplicate response for prompt_id={response.prompt_id}"
+                seen_prompt_ids.add(response.prompt_id)
+                prompt = next((p for p in unresolved if p.prompt_id == response.prompt_id), None)
+                if prompt is None:
+                    return False, f"unknown unresolved prompt_id={response.prompt_id}"
+                if response.choice not in prompt.choices:
+                    return False, f"invalid choice for prompt_id={response.prompt_id}"
+            if seen_prompt_ids != expected_prompt_ids:
+                missing = sorted(expected_prompt_ids - seen_prompt_ids)
+                return False, f"missing prompt responses for: {','.join(missing)}"
+            return True, "ok"
+
         if self._state.phase not in ("planning", "close"):
             return False, f"inputs only accepted during planning/close; current phase={self._state.phase}"
+        if unresolved:
+            return False, "cannot advance while unresolved prompts exist"
+        if day_input.prompt_responses:
+            return False, "prompt_responses only accepted while awaiting prompts"
 
         # Supervisor assignments.
         set_supervisors = self._normalize_supervisor_input(day_input)
@@ -620,12 +672,6 @@ class SimSimKernel:
             if int(value) < 0:
                 return False, f"{label} must be >= 0"
 
-        for response in day_input.prompt_responses:
-            if not response.prompt_id:
-                return False, "prompt_responses.prompt_id cannot be empty"
-            if not response.choice:
-                return False, "prompt_responses.choice cannot be empty"
-
         return True, "ok"
 
     def _normalize_supervisor_input(self, day_input: DayInput) -> Dict[int, str | None]:
@@ -646,6 +692,33 @@ class SimSimKernel:
     def step(self, day_input: DayInput) -> tuple[SimSimState, SimSimState]:
         previous = self._state
         day = previous.day_tick + 1
+        start = previous
+
+        if previous.phase == "awaiting_prompts":
+            pending_input = previous.pending_day_input
+            if pending_input is None:
+                raise ValueError("phase awaiting_prompts requires pending_day_input")
+            effective_input = DayInput(
+                tick_target=int(pending_input.tick_target),
+                advance=True,
+                supervisor_swaps=tuple(pending_input.supervisor_swaps),
+                set_supervisors=dict(pending_input.set_supervisors),
+                set_workers=dict(pending_input.set_workers),
+                end_of_day=pending_input.end_of_day,
+                prompt_responses=tuple(day_input.prompt_responses),
+            )
+        else:
+            effective_input = day_input
+
+        pending_input_for_awaiting = DayInput(
+            tick_target=int(effective_input.tick_target),
+            advance=True,
+            supervisor_swaps=tuple(effective_input.supervisor_swaps),
+            set_supervisors=dict(effective_input.set_supervisors),
+            set_workers=dict(effective_input.set_workers),
+            end_of_day=effective_input.end_of_day,
+            prompt_responses=tuple(),
+        )
 
         runtime_events: List[dict] = []
         runtime_prompts: List[PromptState] = []
@@ -663,14 +736,44 @@ class SimSimKernel:
             runtime_events.append(event)
             next_event_id += 1
 
+        def enter_awaiting_prompts(*, prompts: Sequence[PromptState]) -> tuple[SimSimState, SimSimState]:
+            self._state = SimSimState(
+                day_tick=start.day_tick,
+                phase="awaiting_prompts",
+                time_label=start.time_label,
+                config_hash=start.config_hash,
+                config_id=start.config_id,
+                assignments=dict(start.assignments),
+                assignment_template=dict(start.assignment_template),
+                rooms=dict(start.rooms),
+                supervisors=dict(start.supervisors),
+                inventory=start.inventory,
+                worker_pools=start.worker_pools,
+                regime=start.regime,
+                security_lead=start.security_lead,
+                events=start.events + runtime_events,
+                prompts=list(prompts),
+                pending_day_input=pending_input_for_awaiting,
+                conflict=start.conflict,
+                hidden_accumulators=start.hidden_accumulators,
+                next_event_id=next_event_id,
+            )
+            return previous, self._state
+
         # 1) Load start state.
         start = previous
 
         # 2) Validate supervisor assignments.
-        assignments = self._compute_assignments(start, day_input=day_input, day=day, emit=emit)
+        assignments = self._compute_assignments(start, day_input=effective_input, day=day, emit=emit)
 
         # 3) Validate worker proposal capacities + availability.
-        proposed_workers = self._compute_worker_proposal(start, day_input=day_input, assignments=assignments, day=day, emit=emit)
+        proposed_workers = self._compute_worker_proposal(
+            start,
+            day_input=effective_input,
+            assignments=assignments,
+            day=day,
+            emit=emit,
+        )
 
         # 4) Determine security lead.
         security_lead = self._determine_security_lead(assignments)
@@ -710,11 +813,13 @@ class SimSimKernel:
         conflict_resolution = self._resolve_conflict_or_discovery(
             start,
             plan=conflict_plan,
-            day_input=day_input,
+            day_input=effective_input,
             day=day,
             emit=emit,
             prompts=runtime_prompts,
         )
+        if bool(conflict_resolution.get("awaiting_prompt", False)):
+            return enter_awaiting_prompts(prompts=runtime_prompts)
 
         # 11) Compute base L/I/Rsup.
         runtime_rooms = self._build_runtime_rooms(
@@ -810,12 +915,14 @@ class SimSimKernel:
             day=day,
             supervisors=supervisors_next,
             assignments=assignments,
-            day_input=day_input,
+            day_input=effective_input,
             regime=regime,
             hidden=start.hidden_accumulators,
             prompts=runtime_prompts,
             emit=emit,
         )
+        if bool(critical_effects.get("awaiting_prompt", False)):
+            return enter_awaiting_prompts(prompts=runtime_prompts)
         hidden_after_critical = critical_effects["hidden"]
         regime = critical_effects["regime"]
         supervisors_next = critical_effects["supervisors"]
@@ -833,7 +940,7 @@ class SimSimKernel:
         inventory_after_eod, worker_pools = self._apply_end_of_day_actions(
             inventory=inventory_after_units,
             worker_pools=worker_pools,
-            actions=day_input.end_of_day,
+            actions=effective_input.end_of_day,
             day=day,
             emit=emit,
         )
@@ -848,7 +955,7 @@ class SimSimKernel:
             runtime_rooms=runtime_rooms,
             security_lead=security_lead,
             output_by_room=output_by_room,
-            upgrade_count=day_input.end_of_day.upgrade_brains,
+            upgrade_count=effective_input.end_of_day.upgrade_brains,
             casualties=casualties_total,
         )
 
@@ -951,7 +1058,8 @@ class SimSimKernel:
             regime=regime_next,
             security_lead=security_lead,
             events=start.events + runtime_events,
-            prompts=runtime_prompts,
+            prompts=[],
+            pending_day_input=None,
             conflict=conflict_next,
             hidden_accumulators=hidden_next,
             next_event_id=next_event_id,
@@ -1427,6 +1535,7 @@ class SimSimKernel:
                 "room_i_delta": conflict_room_i_delta,
                 "supervisor_deltas": supervisor_deltas,
                 "conflict_winner": None,
+                "awaiting_prompt": False,
                 "factory_side_effects": {"stress": 0.0, "discipline": 0.0, "alignment": 0.0, "global_accident_bonus": 0.0},
             }
 
@@ -1454,6 +1563,7 @@ class SimSimKernel:
                 "room_i_delta": conflict_room_i_delta,
                 "supervisor_deltas": supervisor_deltas,
                 "conflict_winner": None,
+                "awaiting_prompt": False,
                 "factory_side_effects": {"stress": 0.0, "discipline": self._config.conflicts.discovered_discipline_delta, "alignment": 0.0, "global_accident_bonus": 0.0},
             }
 
@@ -1461,11 +1571,29 @@ class SimSimKernel:
         prompt_id = f"prompt_conflict_{day}_{edge_sup.replace('-', '_')}"
         choices = ("support_A", "support_B", "suppress")
 
-        selected = None
         responses = {r.prompt_id: r.choice for r in day_input.prompt_responses}
         selected = responses.get(prompt_id)
         if selected not in choices:
-            selected = "support_A"
+            prompts.append(
+                PromptState(
+                    prompt_id=prompt_id,
+                    kind="conflict",
+                    tick=day,
+                    choices=choices,
+                    status="pending",
+                    selected_choice=None,
+                    payload={"pair": list(pair), "room_pair": list(room_pair)},
+                )
+            )
+            return {
+                "discovered_next": discovered,
+                "room_l_delta": conflict_room_l_delta,
+                "room_i_delta": conflict_room_i_delta,
+                "supervisor_deltas": supervisor_deltas,
+                "conflict_winner": None,
+                "awaiting_prompt": True,
+                "factory_side_effects": {"stress": 0.0, "discipline": 0.0, "alignment": 0.0, "global_accident_bonus": 0.0},
+            }
 
         prompts.append(
             PromptState(
@@ -1477,6 +1605,14 @@ class SimSimKernel:
                 selected_choice=selected,
                 payload={"pair": list(pair), "room_pair": list(room_pair)},
             )
+        )
+        emit(
+            "prompt_resolved",
+            details={
+                "prompt_id": prompt_id,
+                "kind": "conflict",
+                "choice": selected,
+            },
         )
 
         if selected == "support_B":
@@ -1544,6 +1680,7 @@ class SimSimKernel:
             "room_i_delta": conflict_room_i_delta,
             "supervisor_deltas": supervisor_deltas,
             "conflict_winner": winner,
+            "awaiting_prompt": False,
             "factory_side_effects": side_fx,
         }
 
@@ -2064,7 +2201,7 @@ class SimSimKernel:
         emit: Any,
     ) -> Dict[str, Any]:
         if day < self._config.guardrails.prevent_critical_before_day:
-            return {"supervisors": supervisors, "regime": regime, "hidden": hidden}
+            return {"supervisors": supervisors, "regime": regime, "hidden": hidden, "awaiting_prompt": False}
 
         candidates: List[SupervisorState] = []
         for sup in supervisors.values():
@@ -2077,7 +2214,7 @@ class SimSimKernel:
             candidates.append(sup)
 
         if not candidates:
-            return {"supervisors": supervisors, "regime": regime, "hidden": hidden}
+            return {"supervisors": supervisors, "regime": regime, "hidden": hidden, "awaiting_prompt": False}
 
         chosen = sorted(candidates, key=lambda s: (-s.confidence, s.code))[0]
         prompt_id = f"prompt_critical_{day}_{chosen.code}"
@@ -2085,7 +2222,18 @@ class SimSimKernel:
         responses = {r.prompt_id: r.choice for r in day_input.prompt_responses}
         selected = responses.get(prompt_id)
         if selected not in choices:
-            selected = "allow"
+            prompts.append(
+                PromptState(
+                    prompt_id=prompt_id,
+                    kind="critical",
+                    tick=day,
+                    choices=choices,
+                    status="pending",
+                    selected_choice=None,
+                    payload={"supervisor": chosen.code, "room_id": chosen.assigned_room},
+                )
+            )
+            return {"supervisors": supervisors, "regime": regime, "hidden": hidden, "awaiting_prompt": True}
 
         prompts.append(
             PromptState(
@@ -2097,6 +2245,15 @@ class SimSimKernel:
                 selected_choice=selected,
                 payload={"supervisor": chosen.code, "room_id": chosen.assigned_room},
             )
+        )
+        emit(
+            "prompt_resolved",
+            supervisor=chosen.code,
+            details={
+                "prompt_id": prompt_id,
+                "kind": "critical",
+                "choice": selected,
+            },
         )
 
         if selected == "suppress":
@@ -2113,7 +2270,7 @@ class SimSimKernel:
                 cooldown_days=sup.cooldown_days,
             )
             emit("critical_suppressed", supervisor=chosen.code)
-            return {"supervisors": supervisors, "regime": regime, "hidden": hidden}
+            return {"supervisors": supervisors, "regime": regime, "hidden": hidden, "awaiting_prompt": False}
 
         event_cfg = self._config.critical_events.get(chosen.code, {})
         emit("critical_triggered", supervisor=chosen.code, details={"name": event_cfg.get("name", chosen.code)})
@@ -2246,7 +2403,7 @@ class SimSimKernel:
             cooldown_days=max(0, reset_cd),
         )
 
-        return {"supervisors": supervisors, "regime": next_regime, "hidden": next_hidden}
+        return {"supervisors": supervisors, "regime": next_regime, "hidden": next_hidden, "awaiting_prompt": False}
 
     def _apply_end_of_day_actions(
         self,
