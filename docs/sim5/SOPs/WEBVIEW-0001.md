@@ -111,11 +111,16 @@ On load:
 1. Viewer opens WebSocket
 2. Sends `VIEWER_HELLO`
 3. Receives `KERNEL_HELLO`
-4. Negotiates schema + features
+4. Selects viewer plugin/store by `engine_name + schema_version` from `KERNEL_HELLO`
 5. Subscribes to channels
 
 Failure at any step must be surfaced
 in the UI immediately.
+
+Handshake + routing notes:
+- `VIEWER_HELLO.supported_schema_versions` may include multiple schemas (for example `["1", "sim_sim_1"]`).
+- `KERNEL_HELLO` selects one schema for the session and carries engine identity.
+- LIVE WebSocket KVP envelopes are UTF-8 JSON text frames.
 
 ---
 
@@ -1054,7 +1059,7 @@ export function bootWebView(opts: BootOpts): void {
     url: opts.wsUrl ?? import.meta.env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp",
     viewerName: "loopforge-webview-pixi",
     viewerVersion: "0.1.0",
-    supportedSchemaVersions: ["1"],
+    supportedSchemaVersions: ["1", "sim_sim_1"],
     defaultSubscribe: {
       stream: "LIVE",
       channels: ["WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"],

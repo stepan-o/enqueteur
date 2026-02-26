@@ -47,6 +47,10 @@ Build order checklist (names match schema):
 - overlays: map of overlay type -> OverlayPointer (paths + format)
 - integrity: records_sha256 map (or inline content hashes)
 
+Routing rule:
+- `run_anchors.engine_name + run_anchors.schema_version` chooses the viewer/schema handler.
+- `schema_version` is not globally fixed to `"1"`; examples in use include `"1"` (sim4 legacy) and `"sim_sim_1"` (sim_sim).
+
 Field → What UI needs it for
 - run_anchors → Show run identity; derive ms per tick; clock displays
 - render_spec → Configure camera/coord system; draw order; Z-layer stability
@@ -154,6 +158,18 @@ Diff envelope snippet:
 {
   "msg_type": "FRAME_DIFF",
   "payload": {"schema_version": "1", "from_tick": 0, "to_tick": 1, "prev_step_hash": "…", "ops": [{"op": "UPSERT_AGENT", "agent": {"agent_id": 1}}], "step_hash": "…"}
+}
+
+sim_sim snapshot envelope snippet:
+{
+  "msg_type": "FULL_SNAPSHOT",
+  "payload": {"schema_version": "sim_sim_1", "tick": 0, "state": {"rooms": [], "agents": [], "objects": [], "events": []}, "step_hash": "sim_sim_hash_0000"}
+}
+
+sim_sim diff envelope snippet:
+{
+  "msg_type": "FRAME_DIFF",
+  "payload": {"schema_version": "sim_sim_1", "from_tick": 0, "to_tick": 1, "prev_step_hash": "sim_sim_hash_0000", "ops": [{"op": "UPSERT_AGENT", "agent": {"agent_id": 101, "room_id": 3}}], "step_hash": "sim_sim_hash_0001"}
 }
 
 Overlay JSONL line snippet (UI events):

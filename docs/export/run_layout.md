@@ -2,6 +2,7 @@
 
 Purpose
 - Document the **implemented** KVP-0001 v0.1 export layout used by Sim4.
+- The same artifact structure is reusable across engines (for example, sim4 + sim_sim); schema selection is carried by run anchors, not by folder name.
 - Make it easy for viewers/tools to locate snapshots/diffs via the manifest.
 
 Locked Constraints
@@ -28,6 +29,8 @@ Rules
 - No implicit directory scanning by viewers.
 - File names are stable and deterministic; tick numbers are zero-padded to 10 digits.
 - Overlays are optional and referenced from `manifest.kvp.json` via `overlays`.
+- `run_anchors.engine_name` + `run_anchors.schema_version` identifies which viewer/schema handler should consume records.
+  - Example schema values in use: `"1"` (sim4 legacy), `"sim_sim_1"` (sim_sim).
 
 KVP vs Artifact Classification
 
