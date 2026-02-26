@@ -172,6 +172,39 @@ def _trigger_critical_allow(kernel: SimSimKernel, *, tick_target: int, day_input
     assert advanced.phase == "planning"
 
 
+def _outcome_row_test_kernel(tmp_path, *, seed: int = 11) -> SimSimKernel:
+    base = SimSimKernel(seed=seed)
+    cfg = copy.deepcopy(base.loaded_config.raw)
+    cfg["conflicts"]["hostile_pairs"] = []
+    cfg["guardrails"]["prevent_critical_before_day"] = 999
+    cfg["confidence"]["threshold_critical"] = 2.0
+    cfg["confidence"]["threshold_tension"] = 2.0
+    cfg["confidence"]["native_bonus"] = 0.0
+    cfg["confidence"]["base_drift_below_tension"] = 0.0
+    cfg["confidence"]["non_native_no_success_penalty"] = 0.0
+    cfg["confidence"]["unassigned_penalty"] = 0.0
+    cfg["confidence"]["hated_penalty"] = 0.0
+    cfg["confidence"]["tension_multiplier"] = 1.0
+    cfg["confidence"]["outcome_delta"] = {
+        "total_success": 0.0,
+        "small_success": 0.0,
+        "neutral": 0.0,
+        "small_fiasco": 0.0,
+        "total_fiasco": 0.0,
+    }
+    cfg["unlock_schedule"]["rooms"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 999}
+    cfg["unlock_schedule"]["supervisors"] = {"L": 0, "S": 0, "C": 0, "W": 0, "T": 0}
+    cfg["initial_state"]["worker_dumb"] = 20
+    cfg["initial_state"]["worker_smart"] = 20
+    cfg["guardrails"]["early_days_casualty_cap_until_day"] = 0
+    cfg["formulas"]["absenteeism"] = {"base": 0.0, "stress_coeff": 0.0, "discipline_coeff": 0.0}
+    cfg["formulas"]["accident"] = {"base": 0.0, "low_discipline_coeff": 0.0, "high_stress_coeff": 0.0, "low_equipment_coeff": 0.0}
+    for key in list(cfg["worker_equations"].keys()):
+        cfg["worker_equations"][key] = 0.0
+    path = _write_config(tmp_path, cfg, f"outcome_row_test_{seed}.json")
+    return SimSimKernel(seed=seed, config_path=path)
+
+
 def _run_hashes(seed: int, days: int) -> list[str]:
     kernel = SimSimKernel(seed=seed)
     hashes: list[str] = []
@@ -505,6 +538,129 @@ def test_factory_global_accident_bonus_delta_affects_accident_outcome(tmp_path) 
 
     assert without_bonus.rooms[2].accidents_count == 0
     assert with_bonus.rooms[2].accidents_count >= 1
+
+
+def test_outcome_row_loyalty_delta_updates_supervisor_loyalty(tmp_path) -> None:
+    base = _outcome_row_test_kernel(tmp_path, seed=61)
+    config_raw = copy.deepcopy(base.loaded_config.raw)
+    config_raw["outcome_tables"]["S"]["2"] = [
+        {
+            "label": "neutral",
+            "weight": 1,
+            "sup_mult": 1.0,
+            "fiasco_severity": 0.0,
+            "loyalty_delta": 0.2,
+        }
+    ]
+    config_path = _write_config(tmp_path, config_raw, "outcome_loyalty_delta.json")
+    kernel = SimSimKernel(seed=61, config_path=config_path)
+
+    day_input = DayInput(
+        tick_target=1,
+        advance=True,
+        set_supervisors={2: "S"},
+        set_workers={2: WorkerAssignment(dumb=4, smart=2)},
+    )
+    _advance_one_tick(kernel, tick_target=1, day_input=day_input)
+    assert abs(float(kernel.state.supervisors["S"].loyalty) - 0.75) < 1e-9
+
+
+def test_outcome_row_weaving_boost_applies_next_day_only(tmp_path) -> None:
+    base = _outcome_row_test_kernel(tmp_path, seed=67)
+    config_boost = copy.deepcopy(base.loaded_config.raw)
+    config_boost["outcome_tables"]["S"]["2"] = [
+        {
+            "label": "neutral",
+            "weight": 1,
+            "sup_mult": 1.0,
+            "fiasco_severity": 0.0,
+            "weaving_boost_next_day": 3.0,
+        }
+    ]
+    config_boost["outcome_tables"]["C"]["5"] = [
+        {
+            "label": "neutral",
+            "weight": 1,
+            "sup_mult": 1.0,
+            "fiasco_severity": 0.0,
+        }
+    ]
+    config_control = copy.deepcopy(base.loaded_config.raw)
+    config_control["outcome_tables"]["S"]["2"] = [
+        {
+            "label": "neutral",
+            "weight": 1,
+            "sup_mult": 1.0,
+            "fiasco_severity": 0.0,
+            "weaving_boost_next_day": 1.0,
+        }
+    ]
+    config_control["outcome_tables"]["C"]["5"] = [
+        {
+            "label": "neutral",
+            "weight": 1,
+            "sup_mult": 1.0,
+            "fiasco_severity": 0.0,
+        }
+    ]
+    boost_path = _write_config(tmp_path, config_boost, "outcome_weaving_boost.json")
+    control_path = _write_config(tmp_path, config_control, "outcome_weaving_control.json")
+
+    def _run_two_days(config_path: str) -> tuple[int, int]:
+        kernel = SimSimKernel(seed=67, config_path=config_path)
+        day1 = DayInput(
+            tick_target=1,
+            advance=True,
+            set_supervisors={2: "S", 5: "C"},
+            set_workers={2: WorkerAssignment(dumb=4, smart=2), 5: WorkerAssignment(dumb=0, smart=3)},
+        )
+        _advance_one_tick(kernel, tick_target=1, day_input=day1)
+        ribbon_day1 = int(kernel.state.rooms[5].output_today["ribbon_yards"])
+        day2 = DayInput(
+            tick_target=2,
+            advance=True,
+            set_supervisors={2: "S", 5: "C"},
+            set_workers={2: WorkerAssignment(dumb=4, smart=2), 5: WorkerAssignment(dumb=0, smart=3)},
+        )
+        _advance_one_tick(kernel, tick_target=2, day_input=day2)
+        ribbon_day2 = int(kernel.state.rooms[5].output_today["ribbon_yards"])
+        return ribbon_day1, ribbon_day2
+
+    boost_day1, boost_day2 = _run_two_days(boost_path)
+    control_day1, control_day2 = _run_two_days(control_path)
+
+    assert boost_day1 == control_day1
+    assert boost_day2 > control_day2
+
+
+def test_outcome_row_keys_are_all_consumed_or_intentionally_structural() -> None:
+    kernel = SimSimKernel(seed=5)
+    row_keys: set[str] = set()
+    for _, by_room in kernel.loaded_config.raw.get("outcome_tables", {}).items():
+        for _, rows in by_room.items():
+            for row in rows:
+                if isinstance(row, dict):
+                    row_keys.update(str(k) for k in row.keys())
+
+    consumed_keys = {
+        "label",
+        "weight",
+        "sup_mult",
+        "fiasco_severity",
+        "no_accidents",
+        "casualties_min",
+        "casualties_max",
+        "equipment_damage_min",
+        "equipment_damage_max",
+        "repair_all_equipment",
+        "repair_first",
+        "factory_stress_delta",
+        "factory_discipline_delta",
+        "factory_alignment_delta",
+        "weaving_boost_next_day",
+        "loyalty_delta",
+    }
+    assert row_keys.issubset(consumed_keys)
 
 
 def test_critical_event_w_applies_shutdown_brewery_multiplier_and_refactor_duration(tmp_path) -> None:

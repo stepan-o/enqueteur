@@ -870,6 +870,8 @@ class SimSimKernel:
             factory_deltas["global_accident_bonus"] += float(conflict_side_effects.get("global_accident_bonus", 0.0))
 
         outcome_by_supervisor: Dict[str, str] = {}
+        outcome_supervisor_deltas: Dict[str, Dict[str, float]] = {}
+        outcome_next_day_effects: Dict[str, float] = {"weaving_boost_multiplier": 1.0}
         self._resolve_supervisor_outcomes(
             runtime_rooms=runtime_rooms,
             regime=regime,
@@ -877,6 +879,8 @@ class SimSimKernel:
             emit=emit,
             factory_deltas=factory_deltas,
             outcome_by_supervisor=outcome_by_supervisor,
+            outcome_supervisor_deltas=outcome_supervisor_deltas,
+            outcome_next_day_effects=outcome_next_day_effects,
         )
         self._accumulate_tension_passive_deltas(
             start=start,
@@ -941,6 +945,7 @@ class SimSimKernel:
             assignments=assignments,
             outcomes=outcome_by_supervisor,
             conflict_resolution=conflict_resolution,
+            outcome_supervisor_deltas=outcome_supervisor_deltas,
         )
 
         # 25) Critical event eligibility + prompt allow/suppress.
@@ -989,6 +994,10 @@ class SimSimKernel:
         if any(value > 0 for value in output_by_room.get(5, _resource_zeroes()).values()):
             weaving_boost_pending = True
             weaving_boost_multiplier_pending = max(weaving_boost_multiplier_pending, 1.2)
+        outcome_weaving_boost = max(0.0, float(outcome_next_day_effects.get("weaving_boost_multiplier", 1.0)))
+        if outcome_weaving_boost > 1.0:
+            weaving_boost_pending = True
+            weaving_boost_multiplier_pending = max(weaving_boost_multiplier_pending, outcome_weaving_boost)
 
         # 28) Update hidden accumulators.
         hidden_next = self._update_hidden_accumulators(
@@ -1847,7 +1856,15 @@ class SimSimKernel:
         emit: Any,
         factory_deltas: MutableMapping[str, float],
         outcome_by_supervisor: MutableMapping[str, str],
+        outcome_supervisor_deltas: MutableMapping[str, MutableMapping[str, float]],
+        outcome_next_day_effects: MutableMapping[str, float],
     ) -> None:
+        def sup_delta(code: str, field: str, delta: float) -> None:
+            if not code:
+                return
+            outcome_supervisor_deltas.setdefault(code, {}).setdefault(field, 0.0)
+            outcome_supervisor_deltas[code][field] += float(delta)
+
         for rr in runtime_rooms.values():
             if rr.room_id in (1, 6):
                 continue
@@ -1858,21 +1875,30 @@ class SimSimKernel:
                 rr.sup_mult = 0.0
                 continue
 
-            rr.accident_chance = _clamp01(
-                self._config.accident.base
-                + self._config.accident.low_discipline_coeff * (1.0 - rr.discipline_old)
-                + self._config.accident.high_stress_coeff * rr.stress_old
-                + self._config.accident.low_equipment_coeff * (1.0 - rr.equipment_after_repair)
-                + regime.global_accident_bonus
-            )
-
             outcomes = self._config.outcome_tables.get(rr.supervisor or "", {}).get(rr.room_id)
             if outcomes:
                 row = self._choose_outcome(outcomes, day=day, room_id=rr.room_id, supervisor=rr.supervisor or "")
+
+                if bool(row.get("repair_first", False)):
+                    missing = max(0.0, 1.0 - rr.equipment_after_repair)
+                    repair_hours = min(max(0.0, rr.hours_effective), missing / 0.1)
+                    rr.equipment_after_repair = _clamp01(rr.equipment_after_repair + repair_hours * 0.1)
+                    rr.hours_effective = max(0.0, rr.hours_effective - repair_hours)
+
+                rr.accident_chance = _clamp01(
+                    self._config.accident.base
+                    + self._config.accident.low_discipline_coeff * (1.0 - rr.discipline_old)
+                    + self._config.accident.high_stress_coeff * rr.stress_old
+                    + self._config.accident.low_equipment_coeff * (1.0 - rr.equipment_after_repair)
+                    + regime.global_accident_bonus
+                )
+
                 rr.outcome_label = str(row.get("label", "neutral"))
                 rr.sup_mult = float(row.get("sup_mult", 1.0))
                 rr.fiasco_severity = float(row.get("fiasco_severity", 0.0))
                 rr.no_accidents = bool(row.get("no_accidents", False))
+                if rr.supervisor and float(row.get("loyalty_delta", 0.0)) != 0.0:
+                    sup_delta(rr.supervisor, "loyalty", float(row.get("loyalty_delta", 0.0)))
 
                 cas_min = int(row.get("casualties_min", 0))
                 cas_max = int(row.get("casualties_max", cas_min))
@@ -1896,8 +1922,12 @@ class SimSimKernel:
                 if float(row.get("factory_alignment_delta", 0.0)) != 0.0:
                     factory_deltas["alignment"] += float(row.get("factory_alignment_delta", 0.0))
 
-                if bool(row.get("weaving_boost_next_day", False)):
-                    rr.output_multiplier *= float(row.get("weaving_boost_next_day", 1.0))
+                boost_next = float(row.get("weaving_boost_next_day", 1.0))
+                if boost_next > 1.0:
+                    outcome_next_day_effects["weaving_boost_multiplier"] = max(
+                        float(outcome_next_day_effects.get("weaving_boost_multiplier", 1.0)),
+                        boost_next,
+                    )
 
                 emit(
                     "room_outcome",
@@ -1910,6 +1940,13 @@ class SimSimKernel:
                     },
                 )
             else:
+                rr.accident_chance = _clamp01(
+                    self._config.accident.base
+                    + self._config.accident.low_discipline_coeff * (1.0 - rr.discipline_old)
+                    + self._config.accident.high_stress_coeff * rr.stress_old
+                    + self._config.accident.low_equipment_coeff * (1.0 - rr.equipment_after_repair)
+                    + regime.global_accident_bonus
+                )
                 rr.outcome_label = "neutral"
                 rr.sup_mult = 1.0
                 rr.fiasco_severity = 0.0
@@ -2292,6 +2329,7 @@ class SimSimKernel:
         assignments: Mapping[str, int | None],
         outcomes: Mapping[str, str],
         conflict_resolution: Mapping[str, Any],
+        outcome_supervisor_deltas: Mapping[str, Mapping[str, float]],
     ) -> Dict[str, SupervisorState]:
         out: Dict[str, SupervisorState] = {}
         supervisor_deltas = conflict_resolution.get("supervisor_deltas", {})
@@ -2341,6 +2379,10 @@ class SimSimKernel:
             delta_conf += float(ext_delta.get("confidence", 0.0))
             delta_loyalty += float(ext_delta.get("loyalty", 0.0))
             delta_influence += float(ext_delta.get("influence", 0.0))
+            outcome_delta = outcome_supervisor_deltas.get(profile.code, {})
+            delta_conf += float(outcome_delta.get("confidence", 0.0))
+            delta_loyalty += float(outcome_delta.get("loyalty", 0.0))
+            delta_influence += float(outcome_delta.get("influence", 0.0))
 
             new_conf = _clamp01(prev.confidence + delta_conf)
             new_loyalty = _clamp01(prev.loyalty + delta_loyalty)
