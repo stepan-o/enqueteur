@@ -30,6 +30,7 @@ ROOM_NEIGHBORS: Dict[int, List[int]] = {
 }
 
 SIM_SIM_SCHEMA_VERSION = "sim_sim_1"
+NON_HASHED_WORLD_META_FIELDS = frozenset({"run_id", "world_id"})
 
 
 def normalize_channels(channels: Sequence[str] | None) -> List[str]:
@@ -86,7 +87,7 @@ def make_snapshot_payload(
     run_context: Mapping[str, Any],
 ) -> Dict[str, Any]:
     state = project_state_schema1(domain_state, channels, run_context=run_context)
-    step_hash = compute_step_hash(state)
+    step_hash = compute_step_hash(_state_for_step_hash(state))
     return {
         "schema_version": SIM_SIM_SCHEMA_VERSION,
         "tick": int(tick),
@@ -151,7 +152,7 @@ def make_diff_payload(
     if can_to.get("prompts") != can_from.get("prompts") and "prompts" in can_to:
         payload["prompts_update"] = can_to["prompts"]
 
-    step_hash = compute_step_hash(can_to)
+    step_hash = compute_step_hash(_state_for_step_hash(can_to))
     payload["step_hash"] = step_hash
     return payload
 
@@ -163,7 +164,24 @@ def compute_step_hash_for_channels(
     run_context: Mapping[str, Any],
 ) -> str:
     projected = project_state_schema1(domain_state, channels, run_context=run_context)
-    return compute_step_hash(projected)
+    return compute_step_hash(_state_for_step_hash(projected))
+
+
+def _state_for_step_hash(state: Mapping[str, Any]) -> Dict[str, Any]:
+    """Return the canonical projected state with run-unique session fields removed.
+
+    run_id/world_id remain in payloads for transport/viewer use, but they are
+    excluded from step_hash so separate runs with the same seed+inputs hash the
+    same simulation state chain.
+    """
+    hashed_state: Dict[str, Any] = dict(state)
+    world_meta = state.get("world_meta")
+    if isinstance(world_meta, Mapping):
+        world_meta_hashed = dict(world_meta)
+        for key in NON_HASHED_WORLD_META_FIELDS:
+            world_meta_hashed.pop(key, None)
+        hashed_state["world_meta"] = world_meta_hashed
+    return hashed_state
 
 
 def _project_rooms(domain_state: SimSimState) -> List[Dict[str, Any]]:

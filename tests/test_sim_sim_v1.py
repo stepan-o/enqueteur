@@ -6,7 +6,7 @@ import pytest
 
 from backend.sim_sim.config import ConfigValidationError, load_sim_sim_config
 from backend.sim_sim.kernel.state import DayInput, SimSimKernel
-from backend.sim_sim.projection.kvp_schema1 import compute_step_hash_for_channels
+from backend.sim_sim.projection.kvp_schema1 import compute_step_hash_for_channels, make_snapshot_payload
 
 
 def _run_hashes(seed: int, days: int) -> list[str]:
@@ -35,6 +35,68 @@ def test_sim_sim_determinism_same_seed_same_hashes() -> None:
 
 def test_sim_sim_determinism_different_seed_changes_hashes() -> None:
     assert _run_hashes(seed=7, days=6) != _run_hashes(seed=8, days=6)
+
+
+def test_sim_sim_snapshot_hash_chain_matches_across_separate_runs() -> None:
+    seed = 23
+    channels = ["WORLD", "AGENTS", "ITEMS", "EVENTS"]
+
+    kernel_a = SimSimKernel(seed=seed)
+    kernel_b = SimSimKernel(seed=seed)
+
+    run_context_a = {
+        "seed": seed,
+        "run_id": "run-A-uuid-like",
+        "world_id": "world-A-uuid-like",
+        "tick_hz": 1,
+    }
+    run_context_b = {
+        "seed": seed,
+        "run_id": "run-B-uuid-like",
+        "world_id": "world-B-uuid-like",
+        "tick_hz": 1,
+    }
+
+    hashes_a: list[str] = []
+    hashes_b: list[str] = []
+
+    # Baseline tick (0)
+    snap_a = make_snapshot_payload(
+        tick=kernel_a.state.day_tick,
+        domain_state=kernel_a.state,
+        channels=channels,
+        run_context=run_context_a,
+    )
+    snap_b = make_snapshot_payload(
+        tick=kernel_b.state.day_tick,
+        domain_state=kernel_b.state,
+        channels=channels,
+        run_context=run_context_b,
+    )
+    hashes_a.append(str(snap_a["step_hash"]))
+    hashes_b.append(str(snap_b["step_hash"]))
+
+    # Advance 5 ticks with identical day inputs.
+    for day in range(1, 6):
+        day_input = DayInput(tick_target=day, advance=True)
+        kernel_a.step(day_input)
+        kernel_b.step(day_input)
+        snap_a = make_snapshot_payload(
+            tick=kernel_a.state.day_tick,
+            domain_state=kernel_a.state,
+            channels=channels,
+            run_context=run_context_a,
+        )
+        snap_b = make_snapshot_payload(
+            tick=kernel_b.state.day_tick,
+            domain_state=kernel_b.state,
+            channels=channels,
+            run_context=run_context_b,
+        )
+        hashes_a.append(str(snap_a["step_hash"]))
+        hashes_b.append(str(snap_b["step_hash"]))
+
+    assert hashes_a == hashes_b
 
 
 def test_sim_sim_invariants_and_unlock_pacing() -> None:
