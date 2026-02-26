@@ -117,6 +117,7 @@ def _set_supervisor_confidence_state(
         pending_day_input=state.pending_day_input,
         conflict=state.conflict,
         hidden_accumulators=state.hidden_accumulators,
+        limen_security_count=state.limen_security_count,
         next_event_id=state.next_event_id,
     )
 
@@ -362,6 +363,21 @@ def test_sim_sim_invariants_and_unlock_pacing() -> None:
         events_today = [e for e in state.events if int(e.get("tick", -1)) == day]
         assert sum(1 for e in events_today if e.get("kind") == "conflict_event") <= 1
         assert sum(1 for e in events_today if e.get("kind") == "critical_triggered") <= 1
+
+
+def test_limen_security_hours_penalty_caps_and_persists() -> None:
+    kernel = SimSimKernel(seed=31)
+    observed_hours: list[float] = []
+    observed_counts: list[int] = []
+
+    for day in range(1, 4):
+        hours, _ = kernel._compute_hours(kernel.state, security_lead="L")  # type: ignore[attr-defined]
+        observed_hours.append(hours)
+        _advance_one_tick(kernel, tick_target=day)
+        observed_counts.append(int(kernel.state.limen_security_count))
+
+    assert observed_hours == [8.0, 7.0, 7.0]
+    assert observed_counts == [1, 2, 3]
 
 
 def test_deferred_conflict_prompt_blocks_advance_until_resolved() -> None:

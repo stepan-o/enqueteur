@@ -207,6 +207,7 @@ class SimSimState:
     pending_day_input: DayInput | None
     conflict: ConflictState
     hidden_accumulators: HiddenAccumulatorState
+    limen_security_count: int
     next_event_id: int
 
 
@@ -384,6 +385,7 @@ class SimSimKernel:
                 radical_potential=0.0,
                 innovation_pressure=0.0,
             ),
+            limen_security_count=0,
             next_event_id=1,
         )
 
@@ -442,6 +444,7 @@ class SimSimKernel:
             pending_day_input=self._state.pending_day_input,
             conflict=self._state.conflict,
             hidden_accumulators=self._state.hidden_accumulators,
+            limen_security_count=self._state.limen_security_count,
             next_event_id=self._state.next_event_id + 1,
         )
 
@@ -762,6 +765,7 @@ class SimSimKernel:
                 pending_day_input=pending_input_for_awaiting,
                 conflict=start.conflict,
                 hidden_accumulators=start.hidden_accumulators,
+                limen_security_count=start.limen_security_count,
                 next_event_id=next_event_id,
             )
             return previous, self._state
@@ -785,7 +789,7 @@ class SimSimKernel:
         security_lead = self._determine_security_lead(assignments)
 
         # 5) Compute hours (LIMEN penalty).
-        hours, _ = self._compute_hours(start, security_lead=security_lead)
+        hours, limen_security_count = self._compute_hours(start, security_lead=security_lead)
 
         # 6) Apply security redistribution.
         final_assigned, thrum_security_failed = self._apply_security_redistribution(
@@ -1116,6 +1120,7 @@ class SimSimKernel:
             pending_day_input=None,
             conflict=conflict_next,
             hidden_accumulators=hidden_next,
+            limen_security_count=limen_security_count,
             next_event_id=next_event_id,
         )
 
@@ -1267,11 +1272,7 @@ class SimSimKernel:
         return "C"
 
     def _compute_hours(self, start: SimSimState, *, security_lead: str) -> tuple[float, int]:
-        limen_security_count = 0
-        for ev in start.events:
-            if ev.get("kind") == "limen_security_counted":
-                limen_security_count += 1
-
+        limen_security_count = int(start.limen_security_count)
         hours = 9.0
         if security_lead == "L":
             limen_security_count += 1
