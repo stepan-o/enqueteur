@@ -951,6 +951,7 @@ class SimSimKernel:
             day_input=effective_input,
             regime=regime,
             hidden=start.hidden_accumulators,
+            runtime_rooms=runtime_rooms,
             prompts=runtime_prompts,
             emit=emit,
         )
@@ -959,6 +960,13 @@ class SimSimKernel:
         hidden_after_critical = critical_effects["hidden"]
         regime = critical_effects["regime"]
         supervisors_next = critical_effects["supervisors"]
+        inventory_after_units, output_by_room = self._apply_critical_immediate_effects(
+            day=day,
+            runtime_rooms=runtime_rooms,
+            inventory=inventory_after_units,
+            output_by_room=output_by_room,
+            effects=critical_effects.get("immediate_effects", {}),
+        )
 
         # 26) Apply casualties to worker pools.
         casualties_total = sum(rr.casualties for rr in runtime_rooms.values())
@@ -993,13 +1001,17 @@ class SimSimKernel:
         )
 
         # 29) Decrement durations; clear day flags.
+        carry_global_accident_bonus = max(0.0, float(regime.pending_accident_bonus_next_day))
+        if regime.inversion_days > 1 and regime.global_accident_bonus > 0.0:
+            carry_global_accident_bonus = max(carry_global_accident_bonus, float(regime.global_accident_bonus))
+
         regime_next = RegimeState(
             refactor_days=max(0, regime.refactor_days - 1),
             inversion_days=max(0, regime.inversion_days - 1),
             shutdown_except_brewery_today=False,
             weaving_boost_next_day=weaving_boost_pending,
             weaving_boost_multiplier_today=weaving_boost_multiplier_pending,
-            global_accident_bonus=max(0.0, regime.pending_accident_bonus_next_day),
+            global_accident_bonus=carry_global_accident_bonus,
             pending_accident_bonus_next_day=0.0,
             global_non_weaving_output_multiplier_today=1.0,
             lockdown_today=False,
@@ -2348,6 +2360,147 @@ class SimSimKernel:
 
         return out
 
+    def _empty_critical_immediate_effects(self) -> Dict[str, Any]:
+        return {
+            "room_metric_deltas": {
+                "stress": 0.0,
+                "discipline": 0.0,
+                "alignment": 0.0,
+            },
+            "set_all_alignment_to": None,
+            "set_equipment_all": None,
+            "set_equipment_by_room": {},
+            "factory_output_multiplier_today": 1.0,
+            "non_weaving_output_multiplier_today": 1.0,
+            "weaving_output_multiplier_today": 1.0,
+            "room_output_multipliers": {},
+            "shutdown_except_brewery_today": False,
+            "conveyor_casualties_min": 0,
+            "conveyor_casualties_max": 0,
+        }
+
+    def _factory_metric_from_runtime(
+        self,
+        runtime_rooms: Mapping[int, PipelineRoomRuntime],
+        *,
+        attr_name: str,
+        default: float = 0.0,
+    ) -> float:
+        weighted = 0.0
+        total_present = 0
+        for room_id in (2, 3, 4, 5):
+            rr = runtime_rooms.get(room_id)
+            if rr is None:
+                continue
+            present = int(rr.present_dumb + rr.present_smart)
+            if present <= 0:
+                continue
+            weighted += present * float(getattr(rr, attr_name))
+            total_present += present
+        if total_present <= 0:
+            return float(default)
+        return float(weighted / total_present)
+
+    def _apply_critical_immediate_effects(
+        self,
+        *,
+        day: int,
+        runtime_rooms: Mapping[int, PipelineRoomRuntime],
+        inventory: InventoryState,
+        output_by_room: Mapping[int, Mapping[str, int]],
+        effects: Mapping[str, Any],
+    ) -> tuple[InventoryState, Dict[int, Dict[str, int]]]:
+        if not effects:
+            return inventory, {int(room_id): dict(values) for room_id, values in output_by_room.items()}
+
+        active_room_ids = [room_id for room_id in (2, 3, 4, 5) if room_id in runtime_rooms]
+        metric_deltas = effects.get("room_metric_deltas", {})
+        if isinstance(metric_deltas, Mapping):
+            stress_delta = float(metric_deltas.get("stress", 0.0))
+            discipline_delta = float(metric_deltas.get("discipline", 0.0))
+            alignment_delta = float(metric_deltas.get("alignment", 0.0))
+            for room_id in active_room_ids:
+                rr = runtime_rooms[room_id]
+                rr.stress_old = _clamp01(rr.stress_old + stress_delta)
+                rr.discipline_old = _clamp01(rr.discipline_old + discipline_delta)
+                rr.alignment_old = _clamp01(rr.alignment_old + alignment_delta)
+
+        set_all_alignment_to = effects.get("set_all_alignment_to")
+        if isinstance(set_all_alignment_to, (int, float)):
+            for room_id in active_room_ids:
+                runtime_rooms[room_id].alignment_old = _clamp01(float(set_all_alignment_to))
+
+        set_equipment_all = effects.get("set_equipment_all")
+        if isinstance(set_equipment_all, (int, float)):
+            value = _clamp01(float(set_equipment_all))
+            for room_id in active_room_ids:
+                runtime_rooms[room_id].equipment_after_damage = value
+
+        set_equipment_by_room = effects.get("set_equipment_by_room", {})
+        if isinstance(set_equipment_by_room, Mapping):
+            for room_id_raw, value_raw in set_equipment_by_room.items():
+                if not isinstance(value_raw, (int, float)):
+                    continue
+                room_id = int(room_id_raw)
+                rr = runtime_rooms.get(room_id)
+                if rr is None:
+                    continue
+                rr.equipment_after_damage = _clamp01(float(value_raw))
+
+        cas_min = max(0, int(effects.get("conveyor_casualties_min", 0)))
+        cas_max = max(cas_min, int(effects.get("conveyor_casualties_max", cas_min)))
+        if cas_max > 0:
+            rr2 = runtime_rooms.get(2)
+            if rr2 is not None:
+                casualties = _rng_int(self._seed, cas_min, cas_max, "critical_s_casualties", day)
+                rr2.casualties = max(int(rr2.casualties), int(casualties))
+                if rr2.casualties > 0:
+                    rr2.accidents_count = max(int(rr2.accidents_count), 1)
+
+        out: Dict[int, Dict[str, int]] = {
+            int(room_id): {key: int(values.get(key, 0)) for key in RESOURCE_KEYS}
+            for room_id, values in output_by_room.items()
+        }
+        for room_id in ROOM_IDS:
+            out.setdefault(int(room_id), _resource_zeroes())
+
+        factory_mult = max(0.0, float(effects.get("factory_output_multiplier_today", 1.0)))
+        non_weaving_mult = max(0.0, float(effects.get("non_weaving_output_multiplier_today", 1.0)))
+        weaving_mult = max(0.0, float(effects.get("weaving_output_multiplier_today", 1.0)))
+        shutdown_except_brewery = bool(effects.get("shutdown_except_brewery_today", False))
+        room_multipliers_raw = effects.get("room_output_multipliers", {})
+        room_multipliers = {
+            int(room_id): max(0.0, float(mult))
+            for room_id, mult in room_multipliers_raw.items()
+            if isinstance(mult, (int, float))
+        } if isinstance(room_multipliers_raw, Mapping) else {}
+
+        for room_id in (2, 3, 4, 5):
+            before = out.get(room_id, _resource_zeroes())
+            factor = float(factory_mult)
+            factor *= float(weaving_mult if room_id == 5 else non_weaving_mult)
+            if shutdown_except_brewery and room_id != 4:
+                factor = 0.0
+            factor *= float(room_multipliers.get(room_id, 1.0))
+
+            after: Dict[str, int] = {}
+            for key in RESOURCE_KEYS:
+                after[key] = max(0, int(round(int(before.get(key, 0)) * factor)))
+            out[room_id] = after
+
+        inv = dict(inventory.inventories)
+        for room_id in (2, 3, 4, 5):
+            before = output_by_room.get(room_id, _resource_zeroes())
+            after = out.get(room_id, _resource_zeroes())
+            for key in RESOURCE_KEYS:
+                diff = int(after.get(key, 0)) - int(before.get(key, 0))
+                inv[key] = max(0, int(inv.get(key, 0) + diff))
+
+        for room_id, rr in runtime_rooms.items():
+            rr.output_today = dict(out.get(room_id, _resource_zeroes()))
+
+        return InventoryState(cash=int(inventory.cash), inventories=inv), out
+
     def _handle_critical_events(
         self,
         *,
@@ -2357,11 +2510,19 @@ class SimSimKernel:
         day_input: DayInput,
         regime: RegimeState,
         hidden: HiddenAccumulatorState,
+        runtime_rooms: Mapping[int, PipelineRoomRuntime],
         prompts: List[PromptState],
         emit: Any,
     ) -> Dict[str, Any]:
+        empty_effects = self._empty_critical_immediate_effects()
         if day < self._config.guardrails.prevent_critical_before_day:
-            return {"supervisors": supervisors, "regime": regime, "hidden": hidden, "awaiting_prompt": False}
+            return {
+                "supervisors": supervisors,
+                "regime": regime,
+                "hidden": hidden,
+                "awaiting_prompt": False,
+                "immediate_effects": empty_effects,
+            }
 
         candidates: List[SupervisorState] = []
         for sup in supervisors.values():
@@ -2374,7 +2535,13 @@ class SimSimKernel:
             candidates.append(sup)
 
         if not candidates:
-            return {"supervisors": supervisors, "regime": regime, "hidden": hidden, "awaiting_prompt": False}
+            return {
+                "supervisors": supervisors,
+                "regime": regime,
+                "hidden": hidden,
+                "awaiting_prompt": False,
+                "immediate_effects": empty_effects,
+            }
 
         chosen = sorted(candidates, key=lambda s: (-s.confidence, s.code))[0]
         prompt_id = f"prompt_critical_{day}_{chosen.code}"
@@ -2393,7 +2560,13 @@ class SimSimKernel:
                     payload={"supervisor": chosen.code, "room_id": chosen.assigned_room},
                 )
             )
-            return {"supervisors": supervisors, "regime": regime, "hidden": hidden, "awaiting_prompt": True}
+            return {
+                "supervisors": supervisors,
+                "regime": regime,
+                "hidden": hidden,
+                "awaiting_prompt": True,
+                "immediate_effects": empty_effects,
+            }
 
         prompts.append(
             PromptState(
@@ -2430,7 +2603,15 @@ class SimSimKernel:
                 cooldown_days=sup.cooldown_days,
             )
             emit("critical_suppressed", supervisor=chosen.code)
-            return {"supervisors": supervisors, "regime": regime, "hidden": hidden, "awaiting_prompt": False}
+            suppress_effects = self._empty_critical_immediate_effects()
+            suppress_effects["room_metric_deltas"]["stress"] = float(self._config.confidence.suppress_factory_stress_delta)
+            return {
+                "supervisors": supervisors,
+                "regime": regime,
+                "hidden": hidden,
+                "awaiting_prompt": False,
+                "immediate_effects": suppress_effects,
+            }
 
         event_cfg = self._config.critical_events.get(chosen.code, {})
         emit("critical_triggered", supervisor=chosen.code, details={"name": event_cfg.get("name", chosen.code)})
@@ -2442,10 +2623,23 @@ class SimSimKernel:
             radical_potential=hidden.radical_potential,
             innovation_pressure=hidden.innovation_pressure,
         )
+        immediate_effects = self._empty_critical_immediate_effects()
 
         if chosen.code == "W":
+            duration_days = max(0, int(event_cfg.get("duration_days", 3)))
+            low_discipline_threshold = float(event_cfg.get("discipline_threshold_for_bonus_risk", 0.6))
+            low_discipline_bonus = float(event_cfg.get("next_day_accident_bonus_if_low_discipline", 0.15))
+            factory_discipline = self._factory_metric_from_runtime(runtime_rooms, attr_name="discipline_old", default=0.5)
+            next_day_bonus = low_discipline_bonus if factory_discipline < low_discipline_threshold else 0.0
+
+            immediate_effects["shutdown_except_brewery_today"] = bool(event_cfg.get("shutdown_except_brewery_today", True))
+            immediate_effects["room_output_multipliers"][4] = max(0.0, float(event_cfg.get("brewery_multiplier_today", 6.0)))
+            if isinstance(event_cfg.get("set_equipment_to"), (int, float)):
+                immediate_effects["set_equipment_all"] = float(event_cfg.get("set_equipment_to"))
+            immediate_effects["room_metric_deltas"]["alignment"] += float(event_cfg.get("alignment_delta", 0.0))
+
             next_regime = RegimeState(
-                refactor_days=int(event_cfg.get("duration_days", 3)),
+                refactor_days=max(int(regime.refactor_days), duration_days),
                 inversion_days=regime.inversion_days,
                 shutdown_except_brewery_today=bool(event_cfg.get("shutdown_except_brewery_today", True)),
                 weaving_boost_next_day=regime.weaving_boost_next_day,
@@ -2453,7 +2647,7 @@ class SimSimKernel:
                 global_accident_bonus=regime.global_accident_bonus,
                 pending_accident_bonus_next_day=max(
                     regime.pending_accident_bonus_next_day,
-                    float(event_cfg.get("next_day_accident_bonus_if_low_discipline", 0.15)),
+                    float(next_day_bonus),
                 ),
                 global_non_weaving_output_multiplier_today=regime.global_non_weaving_output_multiplier_today,
                 lockdown_today=regime.lockdown_today,
@@ -2477,14 +2671,31 @@ class SimSimKernel:
                     cooldown_days=c.cooldown_days,
                 )
         elif chosen.code == "T":
+            duration_days = max(0, int(event_cfg.get("duration_days", 2)))
+            invert_alignment = bool(event_cfg.get("invert_alignment_indoctrination", True))
+            accident_bonus = max(0.0, float(event_cfg.get("global_accident_bonus", 0.05)))
+            immediate_effects["non_weaving_output_multiplier_today"] = max(
+                0.0,
+                float(event_cfg.get("global_non_weaving_output_multiplier_today", event_cfg.get("global_non_weaving_output_multiplier", 0.5))),
+            )
+            immediate_effects["weaving_output_multiplier_today"] = max(
+                0.0,
+                float(event_cfg.get("weaving_output_multiplier_today", 0.0)),
+            )
+            immediate_effects["room_metric_deltas"]["stress"] += float(event_cfg.get("factory_stress_delta", 0.0))
+            immediate_effects["room_metric_deltas"]["discipline"] += float(event_cfg.get("factory_discipline_delta", 0.0))
+
             next_regime = RegimeState(
                 refactor_days=regime.refactor_days,
-                inversion_days=int(event_cfg.get("duration_days", 2)),
+                inversion_days=max(int(regime.inversion_days), duration_days) if invert_alignment else int(regime.inversion_days),
                 shutdown_except_brewery_today=regime.shutdown_except_brewery_today,
                 weaving_boost_next_day=regime.weaving_boost_next_day,
                 weaving_boost_multiplier_today=regime.weaving_boost_multiplier_today,
-                global_accident_bonus=max(regime.global_accident_bonus, float(event_cfg.get("global_accident_bonus", 0.05))),
-                pending_accident_bonus_next_day=regime.pending_accident_bonus_next_day,
+                global_accident_bonus=max(regime.global_accident_bonus, accident_bonus),
+                pending_accident_bonus_next_day=max(
+                    float(regime.pending_accident_bonus_next_day),
+                    accident_bonus if duration_days > 1 else 0.0,
+                ),
                 global_non_weaving_output_multiplier_today=float(
                     event_cfg.get("global_non_weaving_output_multiplier_today", event_cfg.get("global_non_weaving_output_multiplier", 0.5))
                 ),
@@ -2522,6 +2733,10 @@ class SimSimKernel:
                     cooldown_days=l.cooldown_days,
                 )
         elif chosen.code == "L":
+            immediate_effects["factory_output_multiplier_today"] = max(0.0, float(event_cfg.get("factory_output_multiplier_today", 0.0)))
+            immediate_effects["room_metric_deltas"]["discipline"] += float(event_cfg.get("discipline_delta", 0.0))
+            immediate_effects["room_metric_deltas"]["stress"] += float(event_cfg.get("stress_delta", 0.0))
+
             next_regime = RegimeState(
                 refactor_days=regime.refactor_days,
                 inversion_days=regime.inversion_days,
@@ -2534,6 +2749,14 @@ class SimSimKernel:
                 lockdown_today=True,
             )
         elif chosen.code == "S":
+            immediate_effects["room_output_multipliers"][2] = max(0.0, float(event_cfg.get("conveyor_multiplier", 3.0)))
+            immediate_effects["set_equipment_by_room"][2] = float(event_cfg.get("conveyor_equipment_to", 0.0))
+            immediate_effects["conveyor_casualties_min"] = max(0, int(event_cfg.get("casualties_min", 0)))
+            immediate_effects["conveyor_casualties_max"] = max(
+                int(immediate_effects["conveyor_casualties_min"]),
+                int(event_cfg.get("casualties_max", immediate_effects["conveyor_casualties_min"])),
+            )
+
             next_regime = RegimeState(
                 refactor_days=regime.refactor_days,
                 inversion_days=regime.inversion_days,
@@ -2547,6 +2770,7 @@ class SimSimKernel:
             )
         elif chosen.code == "C":
             next_regime = regime
+            immediate_effects["set_all_alignment_to"] = float(event_cfg.get("set_all_alignment_to", 0.0))
 
         reset_conf = float(event_cfg.get("reset_confidence", 0.55))
         reset_cd = int(event_cfg.get("cooldown_days", self._config.confidence.cooldown_days_on_critical))
@@ -2563,7 +2787,13 @@ class SimSimKernel:
             cooldown_days=max(0, reset_cd),
         )
 
-        return {"supervisors": supervisors, "regime": next_regime, "hidden": next_hidden, "awaiting_prompt": False}
+        return {
+            "supervisors": supervisors,
+            "regime": next_regime,
+            "hidden": next_hidden,
+            "awaiting_prompt": False,
+            "immediate_effects": immediate_effects,
+        }
 
     def _apply_end_of_day_actions(
         self,
