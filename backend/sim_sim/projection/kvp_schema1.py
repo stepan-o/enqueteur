@@ -63,10 +63,16 @@ def project_state_schema1(
 
     if "EVENTS" in channels_norm:
         state["events"] = _project_events(domain_state)
+        state["prompts"] = _project_prompts(domain_state)
 
     if "DEBUG" in channels_norm:
         state["debug"] = {
             "sim_mode": "sim_sim_day_loop",
+            "hidden_accumulators": {
+                "rigidity": float(domain_state.hidden_accumulators.rigidity),
+                "radical_potential": float(domain_state.hidden_accumulators.radical_potential),
+                "innovation_pressure": float(domain_state.hidden_accumulators.innovation_pressure),
+            },
         }
 
     return canonicalize_state_obj(state)
@@ -141,6 +147,9 @@ def make_diff_payload(
     )
     if events_append:
         payload["events_append"] = events_append
+
+    if can_to.get("prompts") != can_from.get("prompts") and "prompts" in can_to:
+        payload["prompts_update"] = can_to["prompts"]
 
     step_hash = compute_step_hash(can_to)
     payload["step_hash"] = step_hash
@@ -223,6 +232,8 @@ def _project_world_meta(domain_state: SimSimState, *, run_context: Mapping[str, 
         "run_id": str(run_context.get("run_id", "")),
         "world_id": str(run_context.get("world_id", "")),
         "security_lead": str(domain_state.security_lead),
+        "config_hash": str(domain_state.config_hash),
+        "config_id": str(domain_state.config_id),
     }
 
 
@@ -230,6 +241,10 @@ def _project_inventory(domain_state: SimSimState) -> Dict[str, Any]:
     return {
         "cash": int(domain_state.inventory.cash),
         "inventories": {key: int(domain_state.inventory.inventories.get(key, 0)) for key in RESOURCE_KEYS},
+        "worker_pools": {
+            "dumb_total": int(domain_state.worker_pools.dumb_total),
+            "smart_total": int(domain_state.worker_pools.smart_total),
+        },
     }
 
 
@@ -240,7 +255,10 @@ def _project_regime(domain_state: SimSimState) -> Dict[str, Any]:
         "inversion_days": int(regime.inversion_days),
         "shutdown_except_brewery_today": bool(regime.shutdown_except_brewery_today),
         "weaving_boost_next_day": bool(regime.weaving_boost_next_day),
+        "weaving_boost_multiplier_today": float(regime.weaving_boost_multiplier_today),
         "global_accident_bonus": float(regime.global_accident_bonus),
+        "global_non_weaving_output_multiplier_today": float(regime.global_non_weaving_output_multiplier_today),
+        "lockdown_today": bool(regime.lockdown_today),
     }
 
 
@@ -259,6 +277,24 @@ def _project_events(domain_state: SimSimState) -> List[Dict[str, Any]]:
         if isinstance(event.get("details"), dict):
             projected["details"] = dict(event["details"])
         out.append(projected)
+    return out
+
+
+def _project_prompts(domain_state: SimSimState) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for prompt in domain_state.prompts:
+        out.append(
+            {
+                "prompt_id": str(prompt.prompt_id),
+                "kind": str(prompt.kind),
+                "tick": int(prompt.tick),
+                "choices": list(prompt.choices),
+                "status": str(prompt.status),
+                "selected_choice": prompt.selected_choice,
+                "payload": dict(prompt.payload),
+            }
+        )
+    out.sort(key=lambda item: (int(item.get("tick", 0)), str(item.get("prompt_id", ""))))
     return out
 
 

@@ -1,5 +1,5 @@
 import * as PIXI from "pixi.js";
-import type { SimSimEvent, SimSimRoom, SimSimSupervisor, SimSimViewerState } from "./simSimStore";
+import type { SimSimEvent, SimSimPrompt, SimSimRoom, SimSimSupervisor, SimSimViewerState } from "./simSimStore";
 
 type Vec2 = { x: number; y: number };
 type Bounds = { min_x: number; min_y: number; max_x: number; max_y: number };
@@ -133,7 +133,8 @@ export class SimSimScene {
             this.uiLayer.addChild(banner);
         }
 
-        this.renderOverlay(state, events);
+        const prompts = sortedPrompts(state.prompts);
+        this.renderOverlay(state, events, prompts);
     }
 
     private computeStageBounds(rooms: SimSimRoom[]): Bounds {
@@ -328,7 +329,7 @@ export class SimSimScene {
         mountEl.appendChild(root);
     }
 
-    private renderOverlay(state: SimSimViewerState, events: SimSimEvent[]): void {
+    private renderOverlay(state: SimSimViewerState, events: SimSimEvent[], prompts: SimSimPrompt[]): void {
         if (!this.hudEl || !this.roomCardsEl || !this.eventsEl || !this.debugPanelEl) return;
         const wm = state.worldMeta;
         const inv = state.inventory;
@@ -353,6 +354,7 @@ export class SimSimScene {
             `<div>day <strong>${wm?.day ?? "-"}</strong> • tick <strong>${wm?.tick ?? state.tick}</strong> • ${wm?.phase ?? "-"} @ ${wm?.time ?? "-"}</div>`,
             `<div>cash <strong>${inv?.cash ?? "-"}</strong> • raw ${inv?.inventories.raw_brains_dumb ?? 0}/${inv?.inventories.raw_brains_smart ?? 0} • washed ${inv?.inventories.washed_dumb ?? 0}/${inv?.inventories.washed_smart ?? 0}</div>`,
             `<div>substrate ${inv?.inventories.substrate_gallons ?? 0} • ribbon ${inv?.inventories.ribbon_yards ?? 0}</div>`,
+            `<div>workers ${inv?.worker_pools?.dumb_total ?? "-"}d / ${inv?.worker_pools?.smart_total ?? "-"}s</div>`,
             `<div>security lead <strong>${wm?.security_lead ?? "-"}</strong></div>`,
             `<div>supervisors: ${supervisorSummary || "none unlocked"}</div>`,
             `<div>regime: ${activeFlags.length ? activeFlags.join(", ") : "none"}</div>`,
@@ -378,13 +380,16 @@ export class SimSimScene {
             })
             .join("");
 
+        const promptRows = prompts.slice(-5).map((prompt) => {
+            return `<div style="color:#f3c76a;">t${prompt.tick} <strong>${prompt.kind}</strong> ${prompt.prompt_id} -> ${prompt.selected_choice ?? "-"}</div>`;
+        });
         const eventRows = events.slice(-10).map((event) => {
             const room = event.room_id ? ` room=${event.room_id}` : "";
             const sup = event.supervisor ? ` ${event.supervisor}` : "";
             const details = event.details ? ` ${JSON.stringify(event.details)}` : "";
             return `<div>t${event.tick} #${event.event_id} <strong>${event.kind}</strong>${room}${sup}${details}</div>`;
         });
-        this.eventsEl.innerHTML = `<div style="font-size:12px;font-weight:700;margin-bottom:4px;">Live Feed</div>${eventRows.join("")}`;
+        this.eventsEl.innerHTML = `<div style="font-size:12px;font-weight:700;margin-bottom:4px;">Live Feed</div>${promptRows.join("")}${eventRows.join("")}`;
 
         this.debugPanelEl.style.display = this.debugVisible ? "block" : "none";
         this.debugPanelEl.innerHTML = [
@@ -392,12 +397,18 @@ export class SimSimScene {
             `<div>last_msg_type: ${state.lastMsgType ?? "-"}</div>`,
             `<div>last_applied_diff_count: ${state.lastAppliedDiffCount}</div>`,
             `<div>diffs_applied_total: ${state.diffsAppliedTotal}</div>`,
+            `<div>prompts: ${state.prompts.size}</div>`,
+            `<div>config: ${wm?.config_id ?? "-"}</div>`,
         ].join("");
     }
 }
 
 function sortedEvents(events: Map<string, SimSimEvent>): SimSimEvent[] {
     return Array.from(events.values()).sort((a, b) => (a.tick - b.tick) || (a.event_id - b.event_id));
+}
+
+function sortedPrompts(prompts: Map<string, SimSimPrompt>): SimSimPrompt[] {
+    return Array.from(prompts.values()).sort((a, b) => (a.tick - b.tick) || a.prompt_id.localeCompare(b.prompt_id));
 }
 
 function pct(value: number | null | undefined): string {

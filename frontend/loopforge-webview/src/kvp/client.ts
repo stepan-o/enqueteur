@@ -41,6 +41,7 @@ export type MsgType =
     | "KERNEL_HELLO"
     | "SUBSCRIBE"
     | "SUBSCRIBED"
+    | "SIM_INPUT"
     | "FULL_SNAPSHOT"
     | "FRAME_DIFF"
     | "WARN"
@@ -153,6 +154,11 @@ export class KvpClient {
     sendSubscribe(subscribe: Subscribe = this.opts.defaultSubscribe): void {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
         this.sendEnvelope("SUBSCRIBE", subscribe);
+    }
+
+    sendSimInput(payload: Record<string, unknown>): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        this.sendEnvelope("SIM_INPUT", payload);
     }
 
     /* ---------------------------------------

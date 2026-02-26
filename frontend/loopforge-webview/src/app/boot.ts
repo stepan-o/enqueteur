@@ -226,6 +226,11 @@ export function boot(opts: BootOpts): ViewerHandle {
                 viewerStore.setLiveKernelKind(hello.engine_name === "sim_sim" ? "sim_sim" : "sim4");
             },
         });
+        const debugGlobal = globalThis as any;
+        debugGlobal.__loopforge = {
+            ...(debugGlobal.__loopforge ?? {}),
+            kvpClient: client,
+        };
         activeLiveWsUrl = wsUrl;
         return client;
     };

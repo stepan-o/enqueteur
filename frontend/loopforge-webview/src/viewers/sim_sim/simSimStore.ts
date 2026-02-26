@@ -12,6 +12,8 @@ export type SimSimWorldMeta = {
     run_id: string;
     world_id: string;
     security_lead?: string;
+    config_hash?: string;
+    config_id?: string;
 };
 
 export type SimSimWorkers = {
@@ -82,6 +84,10 @@ export type SimSimInventory = {
         substrate_gallons: number;
         ribbon_yards: number;
     };
+    worker_pools?: {
+        dumb_total: number;
+        smart_total: number;
+    };
 };
 
 export type SimSimRegime = {
@@ -89,7 +95,20 @@ export type SimSimRegime = {
     inversion_days: number;
     shutdown_except_brewery_today: boolean;
     weaving_boost_next_day: boolean;
+    weaving_boost_multiplier_today?: number;
     global_accident_bonus: number;
+    global_non_weaving_output_multiplier_today?: number;
+    lockdown_today?: boolean;
+};
+
+export type SimSimPrompt = {
+    prompt_id: string;
+    kind: string;
+    tick: number;
+    choices: string[];
+    status: string;
+    selected_choice?: string | null;
+    payload?: Record<string, unknown>;
 };
 
 export type SimSimSnapshotPayload = {
@@ -102,6 +121,7 @@ export type SimSimSnapshotPayload = {
         inventory?: SimSimInventory;
         regime?: SimSimRegime;
         events?: SimSimEvent[];
+        prompts?: SimSimPrompt[];
     };
     step_hash: string;
 };
@@ -117,6 +137,7 @@ export type SimSimFrameDiffPayload = {
     inventory_update?: SimSimInventory;
     regime_update?: SimSimRegime;
     events_append?: SimSimEvent[];
+    prompts_update?: SimSimPrompt[];
     step_hash: string;
 };
 
@@ -134,6 +155,7 @@ export type SimSimViewerState = {
     rooms: Map<number, SimSimRoom>;
     supervisors: Map<string, SimSimSupervisor>;
     events: Map<string, SimSimEvent>;
+    prompts: Map<string, SimSimPrompt>;
     desynced: boolean;
     desyncReason?: string;
 };
@@ -159,6 +181,7 @@ export class SimSimStore {
             rooms: new Map(),
             supervisors: new Map(),
             events: new Map(),
+            prompts: new Map(),
             desynced: false,
             desyncReason: undefined,
         };
@@ -209,6 +232,8 @@ export class SimSimStore {
 
         const events = new Map<string, SimSimEvent>();
         for (const ev of payload.state.events ?? []) events.set(eventKey(ev), ev);
+        const prompts = new Map<string, SimSimPrompt>();
+        for (const prompt of payload.state.prompts ?? []) prompts.set(prompt.prompt_id, prompt);
 
         this.state = {
             ...this.state,
@@ -223,6 +248,7 @@ export class SimSimStore {
             rooms,
             supervisors,
             events,
+            prompts,
             desynced: false,
             desyncReason: undefined,
         };
@@ -251,6 +277,7 @@ export class SimSimStore {
         const rooms = new Map(this.state.rooms);
         const supervisors = new Map(this.state.supervisors);
         const events = new Map(this.state.events);
+        const prompts = new Map(this.state.prompts);
         let worldMeta = this.state.worldMeta;
         let inventory = this.state.inventory;
         let regime = this.state.regime;
@@ -280,6 +307,11 @@ export class SimSimStore {
             events.set(eventKey(event), event);
             appliedCount += 1;
         }
+        if (payload.prompts_update) {
+            prompts.clear();
+            for (const prompt of payload.prompts_update) prompts.set(prompt.prompt_id, prompt);
+            appliedCount += 1;
+        }
 
         this.state = {
             ...this.state,
@@ -295,6 +327,7 @@ export class SimSimStore {
             rooms,
             supervisors,
             events,
+            prompts,
         };
         this.emit();
     }

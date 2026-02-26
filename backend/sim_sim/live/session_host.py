@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""LIVE session host for sim_sim minimal vertical slice."""
+"""LIVE session host for sim_sim schema sim_sim_1."""
 
 import asyncio
 import json
@@ -10,16 +10,19 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Sequence
 
 from backend.sim4.host.kvp_defaults import default_render_spec
-from backend.sim4.integration.live_envelope import make_live_envelope, validate_live_envelope
+from backend.sim4.integration.live_envelope import validate_live_envelope
 from backend.sim4.integration.live_session import LiveSession
 from backend.sim4.integration.manifest_schema import ALLOWED_CHANNELS
 from backend.sim4.integration.render_spec import Bounds
 
 from backend.sim_sim.kernel.state import (
     DayInput,
+    EndOfDayActions,
+    PromptResponse,
     SimSimKernel,
     SimSimState,
     SupervisorSwap,
+    WorkerAssignment,
     format_state_for_cli,
     resolve_supervisor_code,
 )
@@ -108,8 +111,8 @@ class ConnectionContext:
 class SessionHost:
     """Owns sim_sim state and all LIVE sessions."""
 
-    def __init__(self, *, seed: int) -> None:
-        self._kernel = SimSimKernel(seed=seed)
+    def __init__(self, *, seed: int, config_path: str | None = None) -> None:
+        self._kernel = SimSimKernel(seed=seed, config_path=config_path)
         self._pending_inputs: Dict[int, DayInput] = {}
         self._connections: Dict[str, ConnectionContext] = {}
         self._lock = asyncio.Lock()
@@ -129,10 +132,18 @@ class SessionHost:
             "run_id": str(self._run_anchors.run_id),
             "world_id": str(self._run_anchors.world_id),
             "tick_hz": int(self._run_anchors.tick_rate_hz),
+            "config_hash": str(self._kernel.loaded_config.config_hash),
+            "config_id": str(self._kernel.loaded_config.config_id),
         }
         self._render_spec = default_render_spec(
             bounds=Bounds(min_x=0.0, min_y=0.0, max_x=36.0, max_y=16.0),
             units_per_tile=1.0,
+        )
+        logger.info(
+            "[kernel] sim_sim boot seed=%s config_id=%s config_hash=%s",
+            seed,
+            self._kernel.loaded_config.config_id,
+            self._kernel.loaded_config.config_hash,
         )
 
     @property
@@ -183,8 +194,8 @@ class SessionHost:
         validate_live_envelope(envelope)
         msg_type = str(envelope.get("msg_type", ""))
 
-        if msg_type == "INPUT_COMMAND":
-            await self._handle_input_command(ctx, envelope)
+        if msg_type in {"INPUT_COMMAND", "SIM_INPUT"}:
+            await self._handle_sim_input(ctx, envelope)
             return
 
         # Envelope-first dispatch: hand protocol messages to LiveSession by msg_type.
@@ -299,116 +310,183 @@ class SessionHost:
         ctx.last_step_hash = str(payload["step_hash"])
         logger.info("[live] diff id=%s from=%s to=%s", ctx.connection_id, from_tick, to_tick)
 
-    async def _handle_input_command(self, ctx: ConnectionContext, envelope: Mapping[str, Any]) -> None:
+    async def _handle_sim_input(self, ctx: ConnectionContext, envelope: Mapping[str, Any]) -> None:
+        msg_type = str(envelope.get("msg_type", ""))
+        parsed = self._parse_sim_input_envelope(envelope)
+        if parsed[0] is None:
+            reason = parsed[1]
+            await self._record_input_ack_event(
+                accepted=False,
+                reason=reason,
+                source=f"ws:{ctx.connection_id}",
+                tick_target=self.current_tick + 1,
+            )
+            await self._broadcast_current_snapshot()
+            logger.info("[input] rejected source=ws:%s reason=%s", ctx.connection_id, reason)
+            return
+
+        day_input = parsed[0]
+        accepted, reason = await self.submit_day_input(day_input, source=f"ws:{ctx.connection_id}")
+        await self._record_input_ack_event(
+            accepted=accepted,
+            reason=reason,
+            source=f"ws:{ctx.connection_id}",
+            tick_target=day_input.tick_target,
+        )
+        await self._broadcast_current_snapshot()
+        logger.info(
+            "[input] %s source=ws:%s msg_type=%s tick_target=%s reason=%s",
+            "accepted" if accepted else "rejected",
+            ctx.connection_id,
+            msg_type,
+            day_input.tick_target,
+            reason,
+        )
+
+    def _parse_sim_input_envelope(self, envelope: Mapping[str, Any]) -> tuple[DayInput | None, str]:
+        msg_type = str(envelope.get("msg_type", ""))
+
+        tick_target: int | None = None
+        set_supervisors: Dict[int, str | None] = {}
+        set_workers: Dict[int, WorkerAssignment] = {}
+        end_of_day = EndOfDayActions()
+        prompt_responses: List[PromptResponse] = []
+        supervisor_swaps: List[SupervisorSwap] = []
+
         payload = envelope.get("payload", {})
         if not isinstance(payload, dict):
-            await self._send_command_rejected(
-                ctx,
-                client_cmd_id=str(envelope.get("msg_id", "")),
-                reason="payload must be an object",
-            )
-            return
+            return None, "payload must be an object"
 
-        client_cmd_id = str(payload.get("client_cmd_id", envelope.get("msg_id", "")))
-        cmd = payload.get("cmd", {})
-        if not isinstance(cmd, dict):
-            await self._send_command_rejected(ctx, client_cmd_id=client_cmd_id, reason="cmd must be an object")
-            return
+        if msg_type == "SIM_INPUT":
+            tick_target = payload.get("tick_target")
+            raw_sup = payload.get("set_supervisors", {})
+            if isinstance(raw_sup, dict):
+                for room_raw, code_raw in raw_sup.items():
+                    try:
+                        room_id = int(room_raw)
+                        if code_raw is None:
+                            set_supervisors[room_id] = None
+                        else:
+                            parsed_code = resolve_supervisor_code(code_raw)
+                            if parsed_code is None:
+                                return None, f"unknown supervisor code for room {room_id}"
+                            set_supervisors[room_id] = parsed_code
+                    except Exception:
+                        return None, "set_supervisors must map room_id to supervisor code/null"
 
-        cmd_type = str(cmd.get("type", ""))
-        tick_target = cmd.get("tick_target")
-        cmd_payload = cmd.get("payload", {})
-        if not isinstance(cmd_payload, dict):
-            await self._send_command_rejected(
-                ctx,
-                client_cmd_id=client_cmd_id,
-                reason="cmd.payload must be an object",
-            )
-            return
+            raw_workers = payload.get("set_workers", {})
+            if isinstance(raw_workers, dict):
+                for room_raw, worker_raw in raw_workers.items():
+                    if not isinstance(worker_raw, dict):
+                        return None, "set_workers entries must be objects"
+                    try:
+                        room_id = int(room_raw)
+                        set_workers[room_id] = WorkerAssignment(
+                            dumb=max(0, int(worker_raw.get("dumb", 0))),
+                            smart=max(0, int(worker_raw.get("smart", 0))),
+                        )
+                    except Exception:
+                        return None, "set_workers must use integer room ids and worker counts"
 
-        if cmd_type != "SIM_SIM_DAY_INPUT":
-            await self._send_command_rejected(
-                ctx,
-                client_cmd_id=client_cmd_id,
-                reason=f"unsupported cmd.type={cmd_type}",
-            )
-            return
+            raw_eod = payload.get("end_of_day", {})
+            if isinstance(raw_eod, dict):
+                try:
+                    end_of_day = EndOfDayActions(
+                        sell_washed_dumb=max(0, int(raw_eod.get("sell_washed_dumb", 0))),
+                        sell_washed_smart=max(0, int(raw_eod.get("sell_washed_smart", 0))),
+                        convert_workers_dumb=max(0, int(raw_eod.get("convert_workers_dumb", 0))),
+                        convert_workers_smart=max(0, int(raw_eod.get("convert_workers_smart", 0))),
+                        upgrade_brains=max(0, int(raw_eod.get("upgrade_brains", 0))),
+                    )
+                except Exception:
+                    return None, "end_of_day values must be integers"
 
+            raw_prompts = payload.get("prompt_responses", [])
+            if isinstance(raw_prompts, list):
+                for row in raw_prompts:
+                    if not isinstance(row, dict):
+                        return None, "prompt_responses entries must be objects"
+                    prompt_id = str(row.get("prompt_id", "")).strip()
+                    choice = str(row.get("choice", "")).strip()
+                    if not prompt_id or not choice:
+                        return None, "prompt_responses entries require prompt_id and choice"
+                    prompt_responses.append(PromptResponse(prompt_id=prompt_id, choice=choice))
+
+        elif msg_type == "INPUT_COMMAND":
+            # Backward-compatible shim for existing live-input command.
+            cmd = payload.get("cmd", {})
+            if not isinstance(cmd, dict):
+                return None, "cmd must be an object"
+            cmd_type = str(cmd.get("type", ""))
+            if cmd_type != "SIM_SIM_DAY_INPUT":
+                return None, f"unsupported cmd.type={cmd_type}"
+            tick_target = cmd.get("tick_target")
+            cmd_payload = cmd.get("payload", {})
+            if not isinstance(cmd_payload, dict):
+                return None, "cmd.payload must be an object"
+            for entry in cmd_payload.get("supervisor_swaps", []):
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    supervisor_code = resolve_supervisor_code(entry.get("supervisor_code"))
+                    if supervisor_code is None:
+                        supervisor_code = resolve_supervisor_code(entry.get("supervisor_id"))
+                    if supervisor_code is None:
+                        return None, "unknown supervisor in supervisor_swaps"
+                    supervisor_swaps.append(
+                        SupervisorSwap(
+                            supervisor_code=supervisor_code,
+                            room_id=int(entry.get("room_id")),
+                        )
+                    )
+                except Exception:
+                    return None, "invalid supervisor_swaps entry"
+        else:
+            return None, f"unsupported input msg_type={msg_type}"
+
+        if tick_target is None:
+            tick_target = self.current_tick + 1
         try:
             parsed_tick_target = int(tick_target)
         except Exception:
-            await self._send_command_rejected(
-                ctx,
-                client_cmd_id=client_cmd_id,
-                reason="cmd.tick_target must be an integer",
-            )
-            return
+            return None, "tick_target must be an integer"
 
-        swaps: List[SupervisorSwap] = []
-        for entry in cmd_payload.get("supervisor_swaps", []):
-            if not isinstance(entry, dict):
-                continue
-            try:
-                supervisor_code = resolve_supervisor_code(entry.get("supervisor_code"))
-                if supervisor_code is None:
-                    supervisor_code = resolve_supervisor_code(entry.get("supervisor_id"))
-                if supervisor_code is None:
-                    raise ValueError("unknown supervisor")
-                swaps.append(
-                    SupervisorSwap(
-                        supervisor_code=supervisor_code,
-                        room_id=int(entry.get("room_id")),
-                    )
-                )
-            except Exception:
-                await self._send_command_rejected(
-                    ctx,
-                    client_cmd_id=client_cmd_id,
-                    reason="invalid supervisor_swaps entry",
-                )
-                return
-
-        day_input = DayInput(
-            tick_target=parsed_tick_target,
-            advance=bool(cmd_payload.get("advance", True)),
-            supervisor_swaps=tuple(swaps),
-        )
-        accepted, reason = await self.submit_day_input(day_input, source=f"ws:{ctx.connection_id}")
-        if accepted:
-            await self._send_command_accepted(
-                ctx,
-                client_cmd_id=client_cmd_id,
+        return (
+            DayInput(
                 tick_target=parsed_tick_target,
-            )
-        else:
-            await self._send_command_rejected(
-                ctx,
-                client_cmd_id=client_cmd_id,
-                reason=reason,
+                advance=True,
+                supervisor_swaps=tuple(supervisor_swaps),
+                set_supervisors=set_supervisors,
+                set_workers=set_workers,
+                end_of_day=end_of_day,
+                prompt_responses=tuple(prompt_responses),
+            ),
+            "ok",
+        )
+
+    async def _record_input_ack_event(
+        self,
+        *,
+        accepted: bool,
+        reason: str,
+        source: str,
+        tick_target: int,
+    ) -> None:
+        kind = "input_accepted" if accepted else "input_rejected"
+        async with self._lock:
+            self._kernel.record_external_event(
+                kind=kind,
+                details={
+                    "source": source,
+                    "tick_target": int(tick_target),
+                    "reason": str(reason),
+                },
             )
 
-    async def _send_command_accepted(self, ctx: ConnectionContext, *, client_cmd_id: str, tick_target: int) -> None:
-        env = make_live_envelope(
-            "COMMAND_ACCEPTED",
-            {
-                "client_cmd_id": client_cmd_id,
-                "tick_target": int(tick_target),
-            },
-            msg_id=str(uuid.uuid4()),
-            sent_at_ms=0,
-        )
-        await ctx.send_bytes(ctx.codec.encode(env))
-        logger.info("[input] COMMAND_ACCEPTED id=%s tick_target=%s", client_cmd_id, tick_target)
-
-    async def _send_command_rejected(self, ctx: ConnectionContext, *, client_cmd_id: str, reason: str) -> None:
-        env = make_live_envelope(
-            "COMMAND_REJECTED",
-            {
-                "client_cmd_id": client_cmd_id,
-                "reason": str(reason),
-            },
-            msg_id=str(uuid.uuid4()),
-            sent_at_ms=0,
-        )
-        await ctx.send_bytes(ctx.codec.encode(env))
-        logger.info("[input] COMMAND_REJECTED id=%s reason=%s", client_cmd_id, reason)
+    async def _broadcast_current_snapshot(self) -> None:
+        state = self._kernel.state
+        tick = int(state.day_tick)
+        for conn in list(self._connections.values()):
+            if not bool(getattr(conn.session, "_subscribed", False)):
+                continue
+            await self._send_snapshot(conn, state, tick=tick)

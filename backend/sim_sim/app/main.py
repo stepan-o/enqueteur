@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""sim_sim minimal LIVE NOW entrypoint."""
+"""sim_sim LIVE entrypoint."""
 
 import argparse
 import asyncio
@@ -13,10 +13,16 @@ from backend.sim_sim.live.ws_server import SimSimWsServer
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="sim_sim minimal live vertical slice")
+    parser = argparse.ArgumentParser(description="sim_sim live interactive day runner")
     parser.add_argument("--mode", type=str, default="interactive", choices=("interactive",))
     parser.add_argument("--live", action="store_true", help="Enable LIVE websocket server on ws://localhost:7777/kvp")
-    parser.add_argument("--seed", type=int, default=7, help="Deterministic seed for placeholder kernel")
+    parser.add_argument("--seed", type=int, default=7, help="Deterministic seed for sim_sim kernel")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Optional path to sim_sim config YAML/JSON (defaults to sim_sim_1.default.yaml)",
+    )
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7777)
     return parser
@@ -84,7 +90,7 @@ async def _interactive_loop(session_host: SessionHost) -> None:
 
 
 async def _run(args: argparse.Namespace) -> None:
-    session_host = SessionHost(seed=int(args.seed))
+    session_host = SessionHost(seed=int(args.seed), config_path=args.config)
     ws_server: SimSimWsServer | None = None
     if bool(args.live):
         ws_server = SimSimWsServer(
@@ -114,4 +120,3 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-

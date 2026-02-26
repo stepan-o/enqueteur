@@ -39,6 +39,11 @@
   - `backend/sim_sim/projection/kvp_schema1.py`
 - Deterministic day kernel/state evolution:
   - `backend/sim_sim/kernel/state.py`
+- Config schema + loader:
+  - `docs/sim_sim/sim_sim_1_config_schema.md`
+  - `backend/sim_sim/config/sim_sim_1.default.yaml`
+  - `backend/sim_sim/config/model.py`
+  - `backend/sim_sim/config/load.py`
 - Channel mapping currently uses KVP v0.1 channels:
   - `WORLD`, `AGENTS`, `ITEMS`, `EVENTS`, `DEBUG`
 
@@ -51,12 +56,13 @@
 | `schema_version`      | string            | MUST be `"sim_sim_1"`                                             |
 | `tick`                | int               | current day tick                                                  |
 | `step_hash`           | string            | canonical hash over projected subscribed state                    |
-| `state.world_meta`    | object            | `{day,phase,time,tick_hz,seed,run_id,world_id,security_lead}`     |
+| `state.world_meta`    | object            | `{day,tick,phase,time,tick_hz,seed,run_id,world_id,security_lead,config_hash,config_id}` |
 | `state.rooms[]`       | array             | room metrics for room_id 1..6                                     |
 | `state.supervisors[]` | array             | `{code,assigned_room,loyalty,confidence,influence,cooldown_days}` |
-| `state.inventory`     | object            | `{cash,inventories{raw/washed/substrate/ribbon}}`                 |
+| `state.inventory`     | object            | `{cash,inventories{raw/washed/substrate/ribbon},worker_pools}`    |
 | `state.regime`        | object            | regime flags/modifiers                                            |
 | `state.events[]`      | array             | `{tick,event_id,kind,room_id?,supervisor?,details?}`              |
+| `state.prompts[]`     | array             | `{prompt_id,kind,tick,choices,status,selected_choice,payload}`    |
 | `state.debug`         | object (optional) | debug-only info                                                   |
 
 ### Room shape (`state.rooms[]`)
@@ -83,12 +89,43 @@ Structured updates by collection (only changed parts emitted):
 | `inventory_update`     | object (optional) | replace inventory                   |
 | `regime_update`        | object (optional) | replace regime                      |
 | `events_append[]`      | array (optional)  | append-only event rows              |
+| `prompts_update[]`     | array (optional)  | replace prompt list                 |
 | `step_hash`            | string            | resulting state hash at `to_tick`   |
 
 Determinism guarantees:
 - Rooms sorted by `room_id`
 - Supervisors sorted by `code`
 - Events sorted by `(tick,event_id)` and append-only per tick transition
+
+## C) LIVE SIM_INPUT (minimal interactive contract)
+
+`msg_type: "SIM_INPUT"` payload shape:
+
+```json
+{
+  "tick_target": 3,
+  "set_supervisors": { "2": "S", "4": "W" },
+  "set_workers": {
+    "2": { "dumb": 4, "smart": 2 },
+    "3": { "dumb": 1, "smart": 1 }
+  },
+  "end_of_day": {
+    "sell_washed_dumb": 0,
+    "sell_washed_smart": 0,
+    "convert_workers_dumb": 0,
+    "convert_workers_smart": 0,
+    "upgrade_brains": 0
+  },
+  "prompt_responses": [
+    { "prompt_id": "prompt_conflict_3_L_S", "choice": "support_A" },
+    { "prompt_id": "prompt_critical_7_W", "choice": "allow" }
+  ]
+}
+```
+
+Acknowledgement behavior:
+- Backend emits `input_accepted` / `input_rejected` rows into `events[]` (same KVP snapshot/diff stream).
+- No custom non-KVP envelope msg types are emitted for acks.
 
 ## Local verification
 
@@ -106,7 +143,11 @@ Determinism guarantees:
    - type `next` (or Enter)
    - confirm incoming `FRAME_DIFF`
    - confirm HUD tick/day, at least one room metric/inventory number, and live feed update
-6. Click `Exit to menu`:
+6. Optional SIM input (DevTools Console):
+   - Use the live client hook to send:
+   - `window.__loopforge?.kvpClient?.sendSimInput({ tick_target: 2, set_supervisors: {\"2\":\"S\"}, set_workers: {\"2\": {dumb: 4, smart: 2}}, end_of_day: { sell_washed_dumb: 0, sell_washed_smart: 0, convert_workers_dumb: 0, convert_workers_smart: 0, upgrade_brains: 0 }, prompt_responses: [] })`
+   - confirm next snapshot/feed includes `input_accepted` event (or `input_rejected` with reason)
+7. Click `Exit to menu`:
    - confirm socket closes cleanly
 
 Milestone 1 checklist:
@@ -149,12 +190,29 @@ This repo now enforces the canonical Floor 1 identity/unlock contract while keep
 
 Schema additions in `sim_sim_1` used by viewer:
 - `world_meta.tick`
+- `world_meta.config_hash`, `world_meta.config_id`
 - `rooms[].unlocked_day`
 - `supervisors[].unlocked_day`
 - `supervisors[].name`, `supervisors[].native_room`
+- `inventory.worker_pools`
+- `prompts[]` + `FRAME_DIFF.prompts_update[]`
 
 Constants/config location:
-- `backend/sim_sim/kernel/state.py`
-  - `ROOM_NAMES`
-  - `ROOM_UNLOCK_DAY`
-  - `SUPERVISOR_PROFILES`
+- Source-of-truth tunables are centralized in:
+  - `backend/sim_sim/config/sim_sim_1.default.yaml`
+- Loader + typed validation:
+  - `backend/sim_sim/config/load.py`
+  - `backend/sim_sim/config/model.py`
+- Kernel stores `config_hash/config_id` in world meta and logs it on boot via:
+  - `backend/sim_sim/live/session_host.py`
+
+## Config loading and overrides
+
+- Default config path:
+  - `backend/sim_sim/config/sim_sim_1.default.yaml`
+- Loader behavior:
+  - `backend/sim_sim/config/load.py` parses YAML (or JSON-subset YAML), validates required fields, and computes `config_hash` (sha1 over canonicalized config object).
+- Runtime override:
+  - `python -m backend.sim_sim.app.main --mode interactive --live --config /abs/path/to/custom.yaml`
+- Boot log includes:
+  - seed, `config_id`, and full `config_hash`.
