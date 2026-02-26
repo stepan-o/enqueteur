@@ -123,6 +123,12 @@ Determinism guarantees:
 }
 ```
 
+Protocol policy:
+- `SIM_INPUT` is the only supported live input message type for `sim_sim`.
+- Legacy `INPUT_COMMAND` / `SIM_SIM_DAY_INPUT` shims are not supported.
+- Unsupported inbound msg types are rejected and surfaced as `input_rejected` events with machine-readable `details.reason_code`.
+- Current reason-code examples: `UNSUPPORTED_MSG_TYPE`, `INVALID_ENVELOPE`, `INVALID_TICK_TARGET`, `INVALID_SET_SUPERVISORS`, `INVALID_SET_WORKERS`, `INVALID_END_OF_DAY`, `UNKNOWN_PROMPT_ID`, `INVALID_PROMPT_CHOICE`.
+
 Acknowledgement behavior:
 - Backend emits `input_accepted` / `input_rejected` rows into `events[]` (same KVP snapshot/diff stream).
 - No custom non-KVP envelope msg types are emitted for acks.

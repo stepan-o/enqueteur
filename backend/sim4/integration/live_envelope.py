@@ -28,6 +28,7 @@ ALLOWED_LIVE_MSG_TYPES: Final[set[str]] = {
     "FULL_SNAPSHOT",
     "FRAME_DIFF",
     # Input
+    "SIM_INPUT",
     "INPUT_COMMAND",
     "COMMAND_ACCEPTED",
     "COMMAND_REJECTED",

@@ -19,9 +19,9 @@ from backend.sim_sim.kernel.state import (
     DayInput,
     EndOfDayActions,
     PromptResponse,
+    ROOM_IDS,
     SimSimKernel,
     SimSimState,
-    SupervisorSwap,
     WorkerAssignment,
     format_state_for_cli,
     resolve_supervisor_code,
@@ -35,6 +35,8 @@ from backend.sim_sim.projection.kvp_schema1 import (
 )
 
 logger = logging.getLogger(__name__)
+
+ALLOWED_INBOUND_MSG_TYPES = {"VIEWER_HELLO", "SUBSCRIBE", "PING", "SIM_INPUT"}
 
 
 @dataclass(frozen=True)
@@ -190,12 +192,58 @@ class SessionHost:
             logger.info("[live] connection closed id=%s", ctx.connection_id)
 
     async def handle_client_message(self, ctx: ConnectionContext, raw_data: bytes) -> None:
-        envelope = ctx.codec.decode(raw_data)
-        validate_live_envelope(envelope)
+        try:
+            envelope = ctx.codec.decode(raw_data)
+        except Exception:
+            await self._record_input_ack_event(
+                accepted=False,
+                reason_code="INVALID_ENVELOPE",
+                reason="unable to decode envelope as JSON object",
+                source=f"ws:{ctx.connection_id}",
+                tick_target=self.current_tick + 1,
+            )
+            await self._broadcast_current_snapshot()
+            logger.info("[live] rejected inbound envelope id=%s reason=INVALID_ENVELOPE", ctx.connection_id)
+            return
+
         msg_type = str(envelope.get("msg_type", ""))
 
-        if msg_type in {"INPUT_COMMAND", "SIM_INPUT"}:
+        try:
+            validate_live_envelope(envelope)
+        except Exception as exc:
+            reason_code = "UNSUPPORTED_MSG_TYPE" if msg_type and msg_type not in ALLOWED_INBOUND_MSG_TYPES else "INVALID_ENVELOPE"
+            await self._record_input_ack_event(
+                accepted=False,
+                reason_code=reason_code,
+                reason=str(exc),
+                source=f"ws:{ctx.connection_id}",
+                tick_target=self.current_tick + 1,
+                msg_type=msg_type or None,
+            )
+            await self._broadcast_current_snapshot()
+            logger.info(
+                "[live] rejected inbound envelope id=%s msg_type=%s reason_code=%s",
+                ctx.connection_id,
+                msg_type or "UNKNOWN",
+                reason_code,
+            )
+            return
+
+        if msg_type == "SIM_INPUT":
             await self._handle_sim_input(ctx, envelope)
+            return
+
+        if msg_type not in ALLOWED_INBOUND_MSG_TYPES:
+            await self._record_input_ack_event(
+                accepted=False,
+                reason_code="UNSUPPORTED_MSG_TYPE",
+                reason=f"unsupported inbound msg_type={msg_type}",
+                source=f"ws:{ctx.connection_id}",
+                tick_target=self.current_tick + 1,
+                msg_type=msg_type,
+            )
+            await self._broadcast_current_snapshot()
+            logger.info("[live] rejected msg_type=%s id=%s", msg_type, ctx.connection_id)
             return
 
         # Envelope-first dispatch: hand protocol messages to LiveSession by msg_type.
@@ -314,153 +362,181 @@ class SessionHost:
         msg_type = str(envelope.get("msg_type", ""))
         parsed = self._parse_sim_input_envelope(envelope)
         if parsed[0] is None:
-            reason = parsed[1]
+            reason_code = parsed[1]
+            reason = parsed[2]
             await self._record_input_ack_event(
                 accepted=False,
+                reason_code=reason_code,
                 reason=reason,
                 source=f"ws:{ctx.connection_id}",
                 tick_target=self.current_tick + 1,
+                msg_type=msg_type,
             )
             await self._broadcast_current_snapshot()
-            logger.info("[input] rejected source=ws:%s reason=%s", ctx.connection_id, reason)
+            logger.info("[input] rejected source=ws:%s reason_code=%s reason=%s", ctx.connection_id, reason_code, reason)
             return
 
         day_input = parsed[0]
         accepted, reason = await self.submit_day_input(day_input, source=f"ws:{ctx.connection_id}")
         await self._record_input_ack_event(
             accepted=accepted,
+            reason_code="INPUT_ACCEPTED" if accepted else "INPUT_REJECTED",
             reason=reason,
             source=f"ws:{ctx.connection_id}",
             tick_target=day_input.tick_target,
+            msg_type=msg_type,
         )
         await self._broadcast_current_snapshot()
         logger.info(
-            "[input] %s source=ws:%s msg_type=%s tick_target=%s reason=%s",
+            "[input] %s source=ws:%s msg_type=%s tick_target=%s reason_code=%s reason=%s",
             "accepted" if accepted else "rejected",
             ctx.connection_id,
             msg_type,
             day_input.tick_target,
+            "INPUT_ACCEPTED" if accepted else "INPUT_REJECTED",
             reason,
         )
 
-    def _parse_sim_input_envelope(self, envelope: Mapping[str, Any]) -> tuple[DayInput | None, str]:
+    def _parse_sim_input_envelope(self, envelope: Mapping[str, Any]) -> tuple[DayInput | None, str, str]:
         msg_type = str(envelope.get("msg_type", ""))
+        if msg_type != "SIM_INPUT":
+            return None, "UNSUPPORTED_MSG_TYPE", f"unsupported input msg_type={msg_type}"
 
-        tick_target: int | None = None
+        next_tick = self.current_tick + 1
+        tick_target: int = next_tick
         set_supervisors: Dict[int, str | None] = {}
         set_workers: Dict[int, WorkerAssignment] = {}
         end_of_day = EndOfDayActions()
         prompt_responses: List[PromptResponse] = []
-        supervisor_swaps: List[SupervisorSwap] = []
 
         payload = envelope.get("payload", {})
         if not isinstance(payload, dict):
-            return None, "payload must be an object"
+            return None, "INVALID_PAYLOAD", "payload must be an object"
 
-        if msg_type == "SIM_INPUT":
-            tick_target = payload.get("tick_target")
-            raw_sup = payload.get("set_supervisors", {})
-            if isinstance(raw_sup, dict):
-                for room_raw, code_raw in raw_sup.items():
-                    try:
-                        room_id = int(room_raw)
-                        if code_raw is None:
-                            set_supervisors[room_id] = None
-                        else:
-                            parsed_code = resolve_supervisor_code(code_raw)
-                            if parsed_code is None:
-                                return None, f"unknown supervisor code for room {room_id}"
-                            set_supervisors[room_id] = parsed_code
-                    except Exception:
-                        return None, "set_supervisors must map room_id to supervisor code/null"
+        allowed_payload_keys = {"tick_target", "set_supervisors", "set_workers", "end_of_day", "prompt_responses"}
+        unknown_payload_keys = [k for k in payload.keys() if k not in allowed_payload_keys]
+        if unknown_payload_keys:
+            return None, "INVALID_PAYLOAD", f"unsupported SIM_INPUT payload key(s): {','.join(sorted(str(k) for k in unknown_payload_keys))}"
 
-            raw_workers = payload.get("set_workers", {})
-            if isinstance(raw_workers, dict):
-                for room_raw, worker_raw in raw_workers.items():
-                    if not isinstance(worker_raw, dict):
-                        return None, "set_workers entries must be objects"
-                    try:
-                        room_id = int(room_raw)
-                        set_workers[room_id] = WorkerAssignment(
-                            dumb=max(0, int(worker_raw.get("dumb", 0))),
-                            smart=max(0, int(worker_raw.get("smart", 0))),
-                        )
-                    except Exception:
-                        return None, "set_workers must use integer room ids and worker counts"
+        if "tick_target" in payload:
+            tick_raw = payload.get("tick_target")
+            if not isinstance(tick_raw, int):
+                return None, "INVALID_TICK_TARGET", "tick_target must be an integer"
+            if tick_raw != next_tick:
+                return None, "INVALID_TICK_TARGET", f"tick_target must equal next day tick ({next_tick})"
+            tick_target = int(tick_raw)
 
-            raw_eod = payload.get("end_of_day", {})
-            if isinstance(raw_eod, dict):
-                try:
-                    end_of_day = EndOfDayActions(
-                        sell_washed_dumb=max(0, int(raw_eod.get("sell_washed_dumb", 0))),
-                        sell_washed_smart=max(0, int(raw_eod.get("sell_washed_smart", 0))),
-                        convert_workers_dumb=max(0, int(raw_eod.get("convert_workers_dumb", 0))),
-                        convert_workers_smart=max(0, int(raw_eod.get("convert_workers_smart", 0))),
-                        upgrade_brains=max(0, int(raw_eod.get("upgrade_brains", 0))),
-                    )
-                except Exception:
-                    return None, "end_of_day values must be integers"
+        raw_sup = payload.get("set_supervisors", {})
+        if not isinstance(raw_sup, dict):
+            return None, "INVALID_SET_SUPERVISORS", "set_supervisors must be an object"
+        for room_raw, code_raw in raw_sup.items():
+            try:
+                room_id = int(room_raw)
+            except Exception:
+                return None, "INVALID_SET_SUPERVISORS", "set_supervisors keys must be integer room ids"
+            if room_id not in ROOM_IDS:
+                return None, "INVALID_SET_SUPERVISORS", f"set_supervisors includes invalid room_id={room_id}"
+            if code_raw is None:
+                set_supervisors[room_id] = None
+                continue
+            if not isinstance(code_raw, str):
+                return None, "INVALID_SET_SUPERVISORS", f"set_supervisors[{room_id}] must be supervisor code string or null"
+            parsed_code = resolve_supervisor_code(code_raw)
+            if parsed_code is None:
+                return None, "INVALID_SET_SUPERVISORS", f"unknown supervisor code for room {room_id}"
+            set_supervisors[room_id] = parsed_code
 
-            raw_prompts = payload.get("prompt_responses", [])
-            if isinstance(raw_prompts, list):
-                for row in raw_prompts:
-                    if not isinstance(row, dict):
-                        return None, "prompt_responses entries must be objects"
-                    prompt_id = str(row.get("prompt_id", "")).strip()
-                    choice = str(row.get("choice", "")).strip()
-                    if not prompt_id or not choice:
-                        return None, "prompt_responses entries require prompt_id and choice"
-                    prompt_responses.append(PromptResponse(prompt_id=prompt_id, choice=choice))
+        raw_workers = payload.get("set_workers", {})
+        if not isinstance(raw_workers, dict):
+            return None, "INVALID_SET_WORKERS", "set_workers must be an object"
+        for room_raw, worker_raw in raw_workers.items():
+            try:
+                room_id = int(room_raw)
+            except Exception:
+                return None, "INVALID_SET_WORKERS", "set_workers keys must be integer room ids"
+            if room_id not in ROOM_IDS:
+                return None, "INVALID_SET_WORKERS", f"set_workers includes invalid room_id={room_id}"
+            if not isinstance(worker_raw, dict):
+                return None, "INVALID_SET_WORKERS", "set_workers entries must be objects"
+            allowed_worker_keys = {"dumb", "smart"}
+            unknown_worker_keys = [k for k in worker_raw.keys() if k not in allowed_worker_keys]
+            if unknown_worker_keys:
+                return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}] has unsupported key(s): {','.join(sorted(str(k) for k in unknown_worker_keys))}"
+            dumb = worker_raw.get("dumb")
+            smart = worker_raw.get("smart")
+            if not isinstance(dumb, int) or dumb < 0:
+                return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}].dumb must be a non-negative integer"
+            if not isinstance(smart, int) or smart < 0:
+                return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}].smart must be a non-negative integer"
+            set_workers[room_id] = WorkerAssignment(dumb=int(dumb), smart=int(smart))
 
-        elif msg_type == "INPUT_COMMAND":
-            # Backward-compatible shim for existing live-input command.
-            cmd = payload.get("cmd", {})
-            if not isinstance(cmd, dict):
-                return None, "cmd must be an object"
-            cmd_type = str(cmd.get("type", ""))
-            if cmd_type != "SIM_SIM_DAY_INPUT":
-                return None, f"unsupported cmd.type={cmd_type}"
-            tick_target = cmd.get("tick_target")
-            cmd_payload = cmd.get("payload", {})
-            if not isinstance(cmd_payload, dict):
-                return None, "cmd.payload must be an object"
-            for entry in cmd_payload.get("supervisor_swaps", []):
-                if not isinstance(entry, dict):
-                    continue
-                try:
-                    supervisor_code = resolve_supervisor_code(entry.get("supervisor_code"))
-                    if supervisor_code is None:
-                        supervisor_code = resolve_supervisor_code(entry.get("supervisor_id"))
-                    if supervisor_code is None:
-                        return None, "unknown supervisor in supervisor_swaps"
-                    supervisor_swaps.append(
-                        SupervisorSwap(
-                            supervisor_code=supervisor_code,
-                            room_id=int(entry.get("room_id")),
-                        )
-                    )
-                except Exception:
-                    return None, "invalid supervisor_swaps entry"
-        else:
-            return None, f"unsupported input msg_type={msg_type}"
+        raw_eod = payload.get("end_of_day", {})
+        if not isinstance(raw_eod, dict):
+            return None, "INVALID_END_OF_DAY", "end_of_day must be an object"
+        allowed_eod_keys = {
+            "sell_washed_dumb",
+            "sell_washed_smart",
+            "convert_workers_dumb",
+            "convert_workers_smart",
+            "upgrade_brains",
+        }
+        unknown_eod_keys = [k for k in raw_eod.keys() if k not in allowed_eod_keys]
+        if unknown_eod_keys:
+            return None, "INVALID_END_OF_DAY", f"end_of_day has unsupported key(s): {','.join(sorted(str(k) for k in unknown_eod_keys))}"
+        eod_values: Dict[str, int] = {}
+        for key in allowed_eod_keys:
+            value = raw_eod.get(key, 0)
+            if not isinstance(value, int) or value < 0:
+                return None, "INVALID_END_OF_DAY", f"end_of_day.{key} must be a non-negative integer"
+            eod_values[key] = int(value)
+        end_of_day = EndOfDayActions(
+            sell_washed_dumb=eod_values["sell_washed_dumb"],
+            sell_washed_smart=eod_values["sell_washed_smart"],
+            convert_workers_dumb=eod_values["convert_workers_dumb"],
+            convert_workers_smart=eod_values["convert_workers_smart"],
+            upgrade_brains=eod_values["upgrade_brains"],
+        )
 
-        if tick_target is None:
-            tick_target = self.current_tick + 1
-        try:
-            parsed_tick_target = int(tick_target)
-        except Exception:
-            return None, "tick_target must be an integer"
+        prompt_by_id = {
+            prompt.prompt_id: set(str(choice) for choice in prompt.choices)
+            for prompt in self.current_state.prompts
+        }
+        seen_prompt_ids: set[str] = set()
+        raw_prompts = payload.get("prompt_responses", [])
+        if not isinstance(raw_prompts, list):
+            return None, "INVALID_PROMPT_RESPONSES", "prompt_responses must be an array"
+        for row in raw_prompts:
+            if not isinstance(row, dict):
+                return None, "INVALID_PROMPT_RESPONSES", "prompt_responses entries must be objects"
+            if set(row.keys()) != {"prompt_id", "choice"}:
+                return None, "INVALID_PROMPT_RESPONSES", "prompt_responses entries must include only prompt_id and choice"
+            prompt_id = row.get("prompt_id")
+            choice = row.get("choice")
+            if not isinstance(prompt_id, str) or not prompt_id.strip():
+                return None, "INVALID_PROMPT_RESPONSES", "prompt_responses.prompt_id must be a non-empty string"
+            if not isinstance(choice, str) or not choice.strip():
+                return None, "INVALID_PROMPT_RESPONSES", "prompt_responses.choice must be a non-empty string"
+            if prompt_id in seen_prompt_ids:
+                return None, "INVALID_PROMPT_RESPONSES", f"duplicate prompt response for prompt_id={prompt_id}"
+            seen_prompt_ids.add(prompt_id)
+            allowed_choices = prompt_by_id.get(prompt_id)
+            if allowed_choices is None:
+                return None, "UNKNOWN_PROMPT_ID", f"unknown prompt_id={prompt_id}"
+            if choice not in allowed_choices:
+                return None, "INVALID_PROMPT_CHOICE", f"invalid choice for prompt_id={prompt_id}"
+            prompt_responses.append(PromptResponse(prompt_id=prompt_id, choice=choice))
 
         return (
             DayInput(
-                tick_target=parsed_tick_target,
+                tick_target=int(tick_target),
                 advance=True,
-                supervisor_swaps=tuple(supervisor_swaps),
+                supervisor_swaps=tuple(),
                 set_supervisors=set_supervisors,
                 set_workers=set_workers,
                 end_of_day=end_of_day,
                 prompt_responses=tuple(prompt_responses),
             ),
+            "OK",
             "ok",
         )
 
@@ -468,19 +544,25 @@ class SessionHost:
         self,
         *,
         accepted: bool,
+        reason_code: str,
         reason: str,
         source: str,
         tick_target: int,
+        msg_type: str | None = None,
     ) -> None:
         kind = "input_accepted" if accepted else "input_rejected"
         async with self._lock:
+            details: Dict[str, Any] = {
+                "source": source,
+                "tick_target": int(tick_target),
+                "reason_code": str(reason_code),
+                "reason": str(reason),
+            }
+            if msg_type is not None:
+                details["msg_type"] = str(msg_type)
             self._kernel.record_external_event(
                 kind=kind,
-                details={
-                    "source": source,
-                    "tick_target": int(tick_target),
-                    "reason": str(reason),
-                },
+                details=details,
             )
 
     async def _broadcast_current_snapshot(self) -> None:
