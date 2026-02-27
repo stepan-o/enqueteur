@@ -7,7 +7,7 @@ import asyncio
 import logging
 from typing import Sequence
 
-from backend.sim_sim.kernel.state import DayInput, parse_swaps
+from backend.sim_sim.kernel.state import DayInput, PromptResponse, PromptState, SimSimState, parse_swaps
 from backend.sim_sim.live.session_host import SessionHost
 from backend.sim_sim.live.ws_server import SimSimWsServer
 
@@ -36,9 +36,104 @@ def _print_help() -> None:
     print("commands:")
     print("  <enter> | next                advance one day")
     print("  next 1:2,3:4                  advance and swap supervisor assignments")
+    print("  choose <prompt_id> <choice>   resolve one pending prompt while awaiting prompts")
+    print("  choose A|B                    shorthand when exactly one pending prompt supports A/B mapping")
     print("  show                          print current state")
     print("  help                          show this help")
     print("  quit | exit                   stop")
+
+
+def _unresolved_prompts(state: SimSimState) -> list[PromptState]:
+    return [prompt for prompt in state.prompts if prompt.status != "resolved"]
+
+
+def _choice_aliases(prompt: PromptState) -> dict[str, str]:
+    alias_candidates: dict[str, set[str]] = {}
+    for choice in prompt.choices:
+        text = str(choice).strip()
+        if not text:
+            continue
+        key = text.lower()
+        alias_candidates.setdefault(key, set()).add(text)
+        if key.endswith("_a"):
+            alias_candidates.setdefault("a", set()).add(text)
+        if key.endswith("_b"):
+            alias_candidates.setdefault("b", set()).add(text)
+
+    aliases: dict[str, str] = {}
+    for alias, values in alias_candidates.items():
+        if len(values) == 1:
+            aliases[alias] = next(iter(values))
+    return aliases
+
+
+def _resolve_prompt_choice(prompt: PromptState, token: str) -> str | None:
+    aliases = _choice_aliases(prompt)
+    return aliases.get(token.strip().lower())
+
+
+def _print_pending_prompts(state: SimSimState) -> None:
+    pending = _unresolved_prompts(state)
+    if not pending:
+        print("no pending prompts")
+        return
+    print("pending prompts:")
+    for prompt in pending:
+        choices = ", ".join(str(choice) for choice in prompt.choices)
+        print(
+            f"  - {prompt.prompt_id} kind={prompt.kind} tick={prompt.tick} "
+            f"choices=[{choices}]"
+        )
+
+
+def _build_choose_day_input(
+    tokens: Sequence[str],
+    *,
+    state: SimSimState,
+    tick_target: int,
+) -> tuple[DayInput | None, str | None]:
+    pending = _unresolved_prompts(state)
+    if not pending:
+        return None, "no unresolved prompts; use 'next' instead"
+
+    if len(tokens) < 2:
+        return None, "usage: choose <prompt_id> <choice> (or choose A|B for a single prompt)"
+
+    if len(tokens) == 2:
+        if len(pending) != 1:
+            return None, "choose A/B shorthand requires exactly one unresolved prompt"
+        prompt = pending[0]
+        resolved_choice = _resolve_prompt_choice(prompt, tokens[1])
+        if resolved_choice is None:
+            return None, f"invalid choice '{tokens[1]}' for {prompt.prompt_id}"
+        return (
+            DayInput(
+                tick_target=tick_target,
+                advance=True,
+                prompt_responses=(PromptResponse(prompt_id=prompt.prompt_id, choice=resolved_choice),),
+            ),
+            None,
+        )
+
+    prompt_id = str(tokens[1]).strip()
+    choice_token = " ".join(tokens[2:]).strip()
+    prompt = next((item for item in pending if item.prompt_id == prompt_id), None)
+    if prompt is None:
+        ids = ", ".join(item.prompt_id for item in pending)
+        return None, f"unknown prompt_id '{prompt_id}'. pending: {ids}"
+    resolved_choice = _resolve_prompt_choice(prompt, choice_token)
+    if resolved_choice is None:
+        choices = ", ".join(str(choice) for choice in prompt.choices)
+        return None, f"invalid choice '{choice_token}' for {prompt_id}; valid: {choices}"
+
+    return (
+        DayInput(
+            tick_target=tick_target,
+            advance=True,
+            prompt_responses=(PromptResponse(prompt_id=prompt.prompt_id, choice=resolved_choice),),
+        ),
+        None,
+    )
 
 
 async def _interactive_loop(session_host: SessionHost) -> None:
@@ -58,22 +153,41 @@ async def _interactive_loop(session_host: SessionHost) -> None:
 
         tokens = raw.split()
         command = tokens[0] if tokens else "next"
-        if command != "next":
+        if command not in ("next", "choose"):
             print("unknown command; use 'help'")
             continue
 
-        try:
-            swaps = parse_swaps(tokens[1:])
-        except ValueError as exc:
-            print(f"invalid swap format: {exc}")
-            continue
-
         next_tick = session_host.current_tick + 1
-        fallback_input = DayInput(
-            tick_target=next_tick,
-            advance=True,
-            supervisor_swaps=swaps,
-        )
+        current_state = session_host.current_state
+        fallback_input: DayInput
+
+        if command == "next":
+            if current_state.phase == "awaiting_prompts":
+                print("cannot advance: unresolved prompts require responses first")
+                _print_pending_prompts(current_state)
+                print("use: choose <prompt_id> <choice>")
+                continue
+            try:
+                swaps = parse_swaps(tokens[1:])
+            except ValueError as exc:
+                print(f"invalid swap format: {exc}")
+                continue
+            fallback_input = DayInput(
+                tick_target=next_tick,
+                advance=True,
+                supervisor_swaps=swaps,
+            )
+        else:
+            if current_state.phase != "awaiting_prompts":
+                print("choose is only available while phase=awaiting_prompts")
+                continue
+            _print_pending_prompts(current_state)
+            choose_input, choose_error = _build_choose_day_input(tokens, state=current_state, tick_target=next_tick)
+            if choose_input is None:
+                print(choose_error or "invalid choose command")
+                continue
+            fallback_input = choose_input
+
         accepted, reason = await session_host.submit_day_input(fallback_input, source="cli")
         if not accepted and "already queued" not in reason:
             print(f"input rejected: {reason}")
@@ -82,6 +196,8 @@ async def _interactive_loop(session_host: SessionHost) -> None:
         to_tick, used_input = await session_host.advance_day(fallback_input)
         if not accepted and "already queued" in reason:
             print(f"used queued input for tick {to_tick}")
+        elif command == "choose":
+            print(f"resolved prompts and advanced to tick {to_tick}")
         elif used_input.supervisor_swaps:
             print(f"applied swaps for tick {to_tick}")
         else:
