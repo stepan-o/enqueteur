@@ -37,13 +37,6 @@ ROOM_CODES: Dict[int, str] = {
     6: "cortex",
 }
 
-DEFAULT_BASELINE_ROOM_TARGETS: Tuple[Tuple[int, int], ...] = (
-    (2, 4),
-    (3, 2),
-    (4, 1),
-    (5, 1),
-)
-
 ROOM_NEIGHBORS: Dict[int, Tuple[int, ...]] = {
     1: (2, 4),
     2: (1, 3, 5),
@@ -108,7 +101,6 @@ class DayInput:
     advance: bool = True
     supervisor_swaps: Tuple[SupervisorSwap, ...] = ()
     set_supervisors: Mapping[int, str | None] = field(default_factory=dict)
-    set_workers: Mapping[int, WorkerAssignment] = field(default_factory=dict)
     end_of_day: EndOfDayActions = field(default_factory=EndOfDayActions)
     prompt_responses: Tuple[PromptResponse, ...] = ()
 
@@ -604,7 +596,7 @@ class SimSimKernel:
         if self._state.phase == "awaiting_prompts":
             if not unresolved:
                 return False, "phase awaiting_prompts requires unresolved prompts"
-            if day_input.supervisor_swaps or day_input.set_supervisors or day_input.set_workers:
+            if day_input.supervisor_swaps or day_input.set_supervisors:
                 return False, "while awaiting prompts, only prompt_responses are accepted"
             eod = day_input.end_of_day
             if any(
@@ -661,21 +653,6 @@ class SimSimKernel:
                 continue
             if not self._is_supervisor_unlocked(code, expected_tick_target):
                 return False, f"supervisor {code} not unlocked for day {expected_tick_target}"
-            if room_id == 1 and code != "L":
-                return False, "room1 accepts LIMEN only"
-            if code == "L" and room_id != 1:
-                return False, "LIMEN remains assigned to room1"
-
-        # Worker proposals.
-        for room_id, assignment in day_input.set_workers.items():
-            if int(room_id) not in ROOM_IDS:
-                return False, f"set_workers has invalid room_id={room_id}"
-            if room_id in (1, 6):
-                return False, f"room_id={room_id} does not accept workers"
-            if not self._is_room_unlocked(room_id, expected_tick_target):
-                return False, f"room_id={room_id} not unlocked for worker assignment"
-            if assignment.dumb < 0 or assignment.smart < 0:
-                return False, f"set_workers room_id={room_id} must be non-negative"
 
         eod = day_input.end_of_day
         for label, value in (
@@ -700,9 +677,6 @@ class SimSimKernel:
         for swap in day_input.supervisor_swaps:
             code = resolve_supervisor_code(swap.supervisor_code)
             merged[int(swap.room_id)] = code
-
-        # Canon hard rule always enforced.
-        merged[1] = "L"
         return merged
 
     def step(self, day_input: DayInput) -> tuple[SimSimState, SimSimState]:
@@ -719,7 +693,6 @@ class SimSimKernel:
                 advance=True,
                 supervisor_swaps=tuple(pending_input.supervisor_swaps),
                 set_supervisors=dict(pending_input.set_supervisors),
-                set_workers=dict(pending_input.set_workers),
                 end_of_day=pending_input.end_of_day,
                 prompt_responses=tuple(day_input.prompt_responses),
             )
@@ -731,7 +704,6 @@ class SimSimKernel:
             advance=True,
             supervisor_swaps=tuple(effective_input.supervisor_swaps),
             set_supervisors=dict(effective_input.set_supervisors),
-            set_workers=dict(effective_input.set_workers),
             end_of_day=effective_input.end_of_day,
             prompt_responses=tuple(),
         )
@@ -783,17 +755,17 @@ class SimSimKernel:
         # 2) Validate supervisor assignments.
         assignments = self._compute_assignments(start, day_input=effective_input, day=day, emit=emit)
 
-        # 3) Validate worker proposal capacities + availability.
-        proposed_workers = self._compute_worker_proposal(
+        # 3) Determine security lead (sole worker-dispatch control knob).
+        security_lead = self._determine_security_lead(assignments)
+
+        # 4) Compute deterministic dispatch plan for worker assignments.
+        proposed_workers = self._dispatch_workers_for_day(
             start,
-            day_input=effective_input,
             assignments=assignments,
+            security_lead=security_lead,
             day=day,
             emit=emit,
         )
-
-        # 4) Determine security lead.
-        security_lead = self._determine_security_lead(assignments)
 
         # 5) Compute hours (LIMEN penalty).
         hours, limen_security_count = self._compute_hours(start, security_lead=security_lead)
@@ -806,6 +778,24 @@ class SimSimKernel:
             security_lead=security_lead,
             day=day,
             emit=emit,
+        )
+        dispatch_summary = {
+            str(room_id): {
+                "dumb": int(final_assigned.get(room_id, WorkerAssignment(0, 0)).dumb),
+                "smart": int(final_assigned.get(room_id, WorkerAssignment(0, 0)).smart),
+                "total": int(final_assigned.get(room_id, WorkerAssignment(0, 0)).dumb)
+                + int(final_assigned.get(room_id, WorkerAssignment(0, 0)).smart),
+            }
+            for room_id in ROOM_IDS
+            if self._is_room_unlocked(room_id, day) and room_id not in (1, 6)
+        }
+        emit(
+            "dispatch_applied",
+            supervisor=security_lead,
+            details={
+                "security_lead": security_lead,
+                "assignment_template": dispatch_summary,
+            },
         )
 
         # 7) Absenteeism baseline + security attendance modifiers.
@@ -1155,29 +1145,25 @@ class SimSimKernel:
 
         overrides = self._normalize_supervisor_input(day_input)
         for room_id, code in overrides.items():
-            if room_id == 1:
-                assignments["L"] = 1
-                continue
-            if not self._is_room_unlocked(room_id, day):
-                continue
-            if code is None:
-                # remove existing occupant if any
-                for sup_code, assigned_room in list(assignments.items()):
-                    if assigned_room == room_id and sup_code != "L":
-                        assignments[sup_code] = None
+            if room_id == 6 or not self._is_room_unlocked(room_id, day):
                 continue
 
-            if code == "L":
-                assignments["L"] = 1
-                continue
-
-            # clear room occupant first
+            # Clear any current room occupant.
             for sup_code, assigned_room in list(assignments.items()):
                 if assigned_room == room_id:
                     assignments[sup_code] = None
-            assignments[code] = room_id
 
-        assignments["L"] = 1
+            if code is None:
+                continue
+
+            if code not in assignments:
+                continue
+
+            # Move supervisor to target room, clearing previous assignment.
+            for sup_code, assigned_room in list(assignments.items()):
+                if sup_code != code and assigned_room == room_id:
+                    assignments[sup_code] = None
+            assignments[code] = room_id
 
         # uniqueness per room (L owns room1).
         occupied: Dict[int, str] = {}
@@ -1198,117 +1184,44 @@ class SimSimKernel:
 
         return assignments
 
-    def _compute_worker_proposal(
+    def _dispatch_workers_for_day(
         self,
         start: SimSimState,
         *,
-        day_input: DayInput,
         assignments: Mapping[str, int | None],
+        security_lead: str,
         day: int,
         emit: Any,
     ) -> Dict[int, WorkerAssignment]:
-        if day_input.set_workers:
-            # SIM_INPUT set_workers is authoritative: explicit map fully replaces defaults.
-            proposed = {room_id: WorkerAssignment(0, 0) for room_id in ROOM_IDS}
-            for room_id, assignment in day_input.set_workers.items():
-                if room_id in (1, 6) or not self._is_room_unlocked(room_id, day):
-                    continue
-                proposed[room_id] = WorkerAssignment(
-                    dumb=max(0, int(assignment.dumb)),
-                    smart=max(0, int(assignment.smart)),
-                )
-        else:
-            proposed = self._compute_default_worker_proposal(start, day=day)
-
-        # capacity validation/clamp by room
-        for room_id in ROOM_IDS:
-            cap = self._config.room_capacities.get(room_id)
-            p = proposed.get(room_id, WorkerAssignment(0, 0))
-            if cap is None or room_id in (1, 6) or not self._is_room_unlocked(room_id, day):
-                proposed[room_id] = WorkerAssignment(0, 0)
-                continue
-            dumb = min(max(0, p.dumb), cap.max_dumb)
-            smart = min(max(0, p.smart), cap.max_smart)
-            total = dumb + smart
-            if total > cap.max_total:
-                overflow = total - cap.max_total
-                # deterministic trim: smart first for lower-volume capacity rooms.
-                trim_smart = min(smart, overflow)
-                smart -= trim_smart
-                overflow -= trim_smart
-                if overflow > 0:
-                    dumb = max(0, dumb - overflow)
-                emit("worker_proposal_clamped", room_id=room_id, details={"reason": "capacity"})
-            proposed[room_id] = WorkerAssignment(dumb=dumb, smart=smart)
-
-        # availability clamp across all rooms
-        total_dumb = sum(v.dumb for rid, v in proposed.items() if rid not in (1, 6))
-        total_smart = sum(v.smart for rid, v in proposed.items() if rid not in (1, 6))
-        avail_dumb = int(start.worker_pools.dumb_total)
-        avail_smart = int(start.worker_pools.smart_total)
-
-        if total_dumb > avail_dumb:
-            overflow = total_dumb - avail_dumb
-            for room_id in (5, 4, 3, 2):
-                current = proposed[room_id]
-                cut = min(current.dumb, overflow)
-                proposed[room_id] = WorkerAssignment(current.dumb - cut, current.smart)
-                overflow -= cut
-                if overflow <= 0:
-                    break
-            emit("worker_proposal_clamped", details={"reason": "dumb_availability"})
-
-        if total_smart > avail_smart:
-            overflow = total_smart - avail_smart
-            for room_id in (5, 4, 3, 2):
-                current = proposed[room_id]
-                cut = min(current.smart, overflow)
-                proposed[room_id] = WorkerAssignment(current.dumb, current.smart - cut)
-                overflow -= cut
-                if overflow <= 0:
-                    break
-            emit("worker_proposal_clamped", details={"reason": "smart_availability"})
-
-        # rooms without supervisor are still allowed workers (player intent), no extra constraints here.
-        return proposed
-
-    def _compute_default_worker_proposal(self, start: SimSimState, *, day: int) -> Dict[int, WorkerAssignment]:
+        del assignments  # dispatch is currently controlled only by security lead + available capacity.
         proposed: Dict[int, WorkerAssignment] = {room_id: WorkerAssignment(0, 0) for room_id in ROOM_IDS}
         active_room_ids = [room_id for room_id in (2, 3, 4, 5) if self._is_room_unlocked(room_id, day)]
-
-        template_nonzero = False
-        for room_id in active_room_ids:
-            just_unlocked = not self._is_room_unlocked(room_id, day - 1)
-            if just_unlocked:
-                continue
-            prev = start.assignment_template.get(room_id, WorkerAssignment(0, 0))
-            proposed[room_id] = WorkerAssignment(
-                dumb=max(0, int(prev.dumb)),
-                smart=max(0, int(prev.smart)),
-            )
-            if proposed[room_id].dumb + proposed[room_id].smart > 0:
-                template_nonzero = True
-
-        if template_nonzero:
+        if not active_room_ids:
             return proposed
 
-        # Early-run deterministic baseline when no prior template exists.
         remaining_dumb = max(0, int(start.worker_pools.dumb_total))
         remaining_smart = max(0, int(start.worker_pools.smart_total))
 
-        for room_id, target_total in DEFAULT_BASELINE_ROOM_TARGETS:
-            if room_id not in active_room_ids or target_total <= 0:
-                continue
+        # LIMEN security can keep one worker in reserve if possible.
+        if security_lead == "L":
+            if remaining_dumb > 0:
+                remaining_dumb -= 1
+            elif remaining_smart > 0:
+                remaining_smart -= 1
+
+        def assign_to_room(room_id: int, target_total: int, *, smart_first: bool) -> None:
+            nonlocal remaining_dumb, remaining_smart
+            if room_id not in active_room_ids:
+                return
             cap = self._config.room_capacities.get(room_id)
-            if cap is None:
-                continue
+            if cap is None or target_total <= 0:
+                return
+            current = proposed.get(room_id, WorkerAssignment(0, 0))
+            room_d = int(current.dumb)
+            room_s = int(current.smart)
+            room_target = max(0, min(int(target_total), int(cap.max_total)))
 
-            max_room_total = max(0, min(cap.max_total, target_total))
-            room_d = 0
-            room_s = 0
-
-            smart_first = room_id in (4, 5)
-            for _ in range(max_room_total):
+            while (room_d + room_s) < room_target:
                 if smart_first:
                     if remaining_smart > 0 and room_s < cap.max_smart:
                         remaining_smart -= 1
@@ -1328,16 +1241,53 @@ class SimSimKernel:
                         room_s += 1
                         continue
                 break
+            proposed[room_id] = WorkerAssignment(dumb=room_d, smart=room_s)
 
-            proposed[room_id] = WorkerAssignment(room_d, room_s)
+        forge_cap = self._config.room_capacities.get(2)
+        forge_target = int(forge_cap.max_total) if forge_cap is not None and 2 in active_room_ids else 0
+        if security_lead == "L" and 4 in active_room_ids and forge_target > 0:
+            forge_target = max(0, forge_target - 1)
+        if security_lead == "S":
+            forge_target += 2
+        assign_to_room(2, forge_target, smart_first=False)
+
+        if 4 in active_room_ids:
+            brewery_min = min(2, int(self._config.room_capacities[4].max_total))
+            assign_to_room(4, brewery_min, smart_first=False)
+
+        if 5 in active_room_ids:
+            weaving_cap = int(self._config.room_capacities[5].max_total)
+            assign_to_room(5, weaving_cap, smart_first=True)
+
+        # Burn-in stays at 0 by default; only overflow is routed there.
+        if 3 in active_room_ids:
+            assign_to_room(3, remaining_dumb + remaining_smart, smart_first=False)
+
+        # Any remaining workers are routed deterministically by fallback priority.
+        for room_id, smart_first in ((4, True), (5, True), (2, False), (3, False)):
+            if remaining_dumb <= 0 and remaining_smart <= 0:
+                break
+            current = proposed.get(room_id, WorkerAssignment(0, 0))
+            assign_to_room(room_id, current.dumb + current.smart + remaining_dumb + remaining_smart, smart_first=smart_first)
+
+        if remaining_dumb > 0 or remaining_smart > 0:
+            emit(
+                "dispatch_clamped",
+                details={
+                    "reason": "capacity",
+                    "unassigned_dumb": int(remaining_dumb),
+                    "unassigned_smart": int(remaining_smart),
+                },
+            )
 
         return proposed
 
     def _determine_security_lead(self, assignments: Mapping[str, int | None]) -> str:
-        for code, room_id in assignments.items():
+        for code in sorted(assignments.keys()):
+            room_id = assignments.get(code)
             if room_id == 1:
                 return code
-        return "C"
+        return "L"
 
     def _compute_hours(self, start: SimSimState, *, security_lead: str) -> tuple[float, int]:
         limen_security_count = int(start.limen_security_count)
@@ -3032,7 +2982,7 @@ class SimSimKernel:
                     name=ROOM_NAMES[1],
                     unlocked_day=0,
                     locked=False,
-                    supervisor="L" if "L" in supervisors else None,
+                    supervisor=supervisor_by_room.get(1),
                     workers_assigned_dumb=None,
                     workers_assigned_smart=None,
                     workers_present_dumb=None,

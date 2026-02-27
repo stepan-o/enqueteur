@@ -13,7 +13,6 @@ from backend.sim_sim.kernel.state import (
     SimSimKernel,
     SimSimState,
     SupervisorState,
-    WorkerAssignment,
 )
 from backend.sim_sim.projection.kvp_schema1 import compute_step_hash_for_channels, make_snapshot_payload
 
@@ -365,7 +364,7 @@ def test_sim_sim_invariants_and_unlock_pacing() -> None:
         assert sum(1 for e in events_today if e.get("kind") == "critical_triggered") <= 1
 
 
-def test_default_worker_template_applies_when_set_workers_absent_and_is_deterministic() -> None:
+def test_dispatch_deterministic_default() -> None:
     kernel_a = SimSimKernel(seed=13)
     kernel_b = SimSimKernel(seed=13)
 
@@ -381,31 +380,29 @@ def test_default_worker_template_applies_when_set_workers_absent_and_is_determin
     assert total_a == total_b
     assert kernel_a.state.assignment_template[2] == kernel_b.state.assignment_template[2]
 
-    # Room 3 just unlocked on day 2; default assignment remains 0 until explicitly set.
-    _advance_one_tick(kernel_a, tick_target=2, day_input=DayInput(tick_target=2, advance=True))
-    assert int(kernel_a.state.rooms[3].workers_assigned_dumb or 0) == 0
-    assert int(kernel_a.state.rooms[3].workers_assigned_smart or 0) == 0
 
+def test_dispatch_changes_with_stiletto_on_security() -> None:
+    kernel_l = SimSimKernel(seed=17)
+    kernel_s = SimSimKernel(seed=17)
 
-def test_set_workers_fully_overrides_default_worker_template() -> None:
-    kernel = SimSimKernel(seed=17)
-    _advance_one_tick(kernel, tick_target=1, day_input=DayInput(tick_target=1, advance=True))
-    assert int(kernel.state.rooms[2].workers_assigned_dumb or 0) + int(kernel.state.rooms[2].workers_assigned_smart or 0) > 0
-
-    # Explicit set_workers map is authoritative; unspecified rooms are treated as zero.
+    _advance_one_tick(kernel_l, tick_target=1, day_input=DayInput(tick_target=1, advance=True))
     _advance_one_tick(
-        kernel,
-        tick_target=2,
+        kernel_s,
+        tick_target=1,
         day_input=DayInput(
-            tick_target=2,
+            tick_target=1,
             advance=True,
-            set_workers={3: WorkerAssignment(dumb=2, smart=0)},
+            set_supervisors={1: "S"},
         ),
     )
-    assert int(kernel.state.rooms[2].workers_assigned_dumb or 0) == 0
-    assert int(kernel.state.rooms[2].workers_assigned_smart or 0) == 0
-    assert int(kernel.state.rooms[3].workers_assigned_dumb or 0) == 2
-    assert int(kernel.state.rooms[3].workers_assigned_smart or 0) == 0
+
+    assert kernel_l.state.security_lead == "L"
+    assert kernel_s.state.security_lead == "S"
+
+    l_forge = int(kernel_l.state.rooms[2].workers_assigned_dumb or 0) + int(kernel_l.state.rooms[2].workers_assigned_smart or 0)
+    s_forge = int(kernel_s.state.rooms[2].workers_assigned_dumb or 0) + int(kernel_s.state.rooms[2].workers_assigned_smart or 0)
+    assert s_forge >= l_forge
+    assert kernel_l.state.assignment_template != kernel_s.state.assignment_template
 
 
 def test_limen_security_hours_penalty_caps_and_persists() -> None:
@@ -584,11 +581,7 @@ def test_factory_global_accident_bonus_delta_affects_accident_outcome(tmp_path) 
             f"accident_bonus_{str(global_bonus).replace('.', '_')}.json",
         )
         kernel = SimSimKernel(seed=2, config_path=config_path)
-        day_input = DayInput(
-            tick_target=1,
-            advance=True,
-            set_workers={2: WorkerAssignment(dumb=1, smart=0)},
-        )
+        day_input = DayInput(tick_target=1, advance=True)
         _advance_one_tick(kernel, tick_target=1, day_input=day_input)
         return kernel
 
@@ -618,7 +611,6 @@ def test_outcome_row_loyalty_delta_updates_supervisor_loyalty(tmp_path) -> None:
         tick_target=1,
         advance=True,
         set_supervisors={2: "S"},
-        set_workers={2: WorkerAssignment(dumb=4, smart=2)},
     )
     _advance_one_tick(kernel, tick_target=1, day_input=day_input)
     assert abs(float(kernel.state.supervisors["S"].loyalty) - 0.75) < 1e-9
@@ -671,7 +663,6 @@ def test_outcome_row_weaving_boost_applies_next_day_only(tmp_path) -> None:
             tick_target=1,
             advance=True,
             set_supervisors={2: "S", 5: "C"},
-            set_workers={2: WorkerAssignment(dumb=4, smart=2), 5: WorkerAssignment(dumb=0, smart=3)},
         )
         _advance_one_tick(kernel, tick_target=1, day_input=day1)
         ribbon_day1 = int(kernel.state.rooms[5].output_today["ribbon_yards"])
@@ -679,7 +670,6 @@ def test_outcome_row_weaving_boost_applies_next_day_only(tmp_path) -> None:
             tick_target=2,
             advance=True,
             set_supervisors={2: "S", 5: "C"},
-            set_workers={2: WorkerAssignment(dumb=4, smart=2), 5: WorkerAssignment(dumb=0, smart=3)},
         )
         _advance_one_tick(kernel, tick_target=2, day_input=day2)
         ribbon_day2 = int(kernel.state.rooms[5].output_today["ribbon_yards"])
@@ -729,12 +719,6 @@ def test_critical_event_w_applies_shutdown_brewery_multiplier_and_refactor_durat
     day_input = DayInput(
         tick_target=1,
         advance=True,
-        set_workers={
-            2: WorkerAssignment(dumb=6, smart=2),
-            3: WorkerAssignment(dumb=4, smart=1),
-            4: WorkerAssignment(dumb=1, smart=3),
-            5: WorkerAssignment(dumb=0, smart=3),
-        },
     )
     _trigger_critical_allow(kernel, tick_target=1, day_input=day_input)
     state = kernel.state
@@ -756,12 +740,6 @@ def test_critical_event_t_applies_inversion_and_output_modifiers(tmp_path) -> No
     day_input = DayInput(
         tick_target=1,
         advance=True,
-        set_workers={
-            2: WorkerAssignment(dumb=6, smart=2),
-            3: WorkerAssignment(dumb=4, smart=1),
-            4: WorkerAssignment(dumb=1, smart=3),
-            5: WorkerAssignment(dumb=0, smart=3),
-        },
     )
     _trigger_critical_allow(kernel, tick_target=1, day_input=day_input)
     state = kernel.state
@@ -780,12 +758,6 @@ def test_critical_event_l_applies_factory_lockdown_and_metric_deltas(tmp_path) -
     day_input = DayInput(
         tick_target=1,
         advance=True,
-        set_workers={
-            2: WorkerAssignment(dumb=6, smart=2),
-            3: WorkerAssignment(dumb=4, smart=1),
-            4: WorkerAssignment(dumb=1, smart=3),
-            5: WorkerAssignment(dumb=0, smart=3),
-        },
     )
     _trigger_critical_allow(kernel, tick_target=1, day_input=day_input)
     state = kernel.state
@@ -805,12 +777,6 @@ def test_critical_event_s_applies_conveyor_casualties_and_equipment_override(tmp
     day_input = DayInput(
         tick_target=1,
         advance=True,
-        set_workers={
-            2: WorkerAssignment(dumb=6, smart=2),
-            3: WorkerAssignment(dumb=4, smart=1),
-            4: WorkerAssignment(dumb=1, smart=3),
-            5: WorkerAssignment(dumb=0, smart=3),
-        },
     )
     _trigger_critical_allow(kernel, tick_target=1, day_input=day_input)
     state = kernel.state
@@ -827,12 +793,6 @@ def test_critical_event_c_sets_all_room_alignment(tmp_path) -> None:
     day_input = DayInput(
         tick_target=1,
         advance=True,
-        set_workers={
-            2: WorkerAssignment(dumb=6, smart=2),
-            3: WorkerAssignment(dumb=4, smart=1),
-            4: WorkerAssignment(dumb=1, smart=3),
-            5: WorkerAssignment(dumb=0, smart=3),
-        },
     )
     _trigger_critical_allow(kernel, tick_target=1, day_input=day_input)
     state = kernel.state
@@ -848,12 +808,6 @@ def test_critical_duration_counters_decrement_and_expire(tmp_path) -> None:
     day1_input = DayInput(
         tick_target=1,
         advance=True,
-        set_workers={
-            2: WorkerAssignment(dumb=6, smart=2),
-            3: WorkerAssignment(dumb=4, smart=1),
-            4: WorkerAssignment(dumb=1, smart=3),
-            5: WorkerAssignment(dumb=0, smart=3),
-        },
     )
     _trigger_critical_allow(kernel, tick_target=1, day_input=day1_input)
     assert kernel.state.regime.refactor_days == 2
