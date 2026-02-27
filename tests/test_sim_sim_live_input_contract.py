@@ -80,6 +80,14 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.02)
         self.fail("expected to reach awaiting_prompts phase")
 
+    async def _advance_via_host(self, tick_target: int) -> int:
+        day_input = DayInput(tick_target=tick_target, advance=True)
+        accepted, reason = await self.host.submit_day_input(day_input, source="test-cli")
+        self.assertTrue(accepted, reason)
+        to_tick, _ = await self.host.advance_day(day_input)
+        await asyncio.sleep(0.02)
+        return int(to_tick)
+
     def _decoded_sent(self) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
         for item in self.sent:
@@ -275,3 +283,83 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.host.current_state.phase, "planning")
         decoded = self._decoded_sent()
         self.assertTrue(any(env.get("msg_type") in ("FRAME_DIFF", "FULL_SNAPSHOT") for env in decoded))
+
+    async def test_live_prompt_resolution_over_live_regression(self) -> None:
+        # Connected fake WS client starts from tick 0 after setup.
+        self.assertEqual(self.host.current_tick, 0)
+        self.assertEqual(self.host.current_state.phase, "planning")
+
+        # Advance to tick 1 via host/CLI style path.
+        to_tick = await self._advance_via_host(1)
+        self.assertEqual(to_tick, 1)
+        self.assertEqual(self.host.current_tick, 1)
+        self.assertEqual(self.host.current_state.phase, "planning")
+
+        # Attempt to advance to tick 2; deterministic seed=7 should enter awaiting_prompts first.
+        to_tick = await self._advance_via_host(2)
+        self.assertEqual(to_tick, 1)
+        self.assertEqual(self.host.current_tick, 1)
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        unresolved = [prompt for prompt in self.host.current_state.prompts if prompt.status != "resolved"]
+        self.assertGreater(len(unresolved), 0)
+
+        decoded_before = self._decoded_sent()
+        awaiting_snapshots = [
+            env
+            for env in decoded_before
+            if env.get("msg_type") == "FULL_SNAPSHOT"
+            and int(env.get("payload", {}).get("tick", -1)) == 1
+        ]
+        self.assertGreater(len(awaiting_snapshots), 0, "expected FULL_SNAPSHOT while awaiting prompts")
+
+        prompt = unresolved[0]
+        before_count = len(decoded_before)
+
+        # Resolve via LIVE SIM_INPUT prompt response.
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "schema": "sim_sim_1",
+                "tick_target": 2,
+                "payload": {
+                    "prompt_responses": {
+                        prompt.prompt_id: str(prompt.choices[0]),
+                    }
+                },
+            },
+        )
+
+        decoded_after = self._decoded_sent()
+        self.assertGreater(len(decoded_after), before_count, "expected subsequent publish after prompt response")
+        self.assertEqual(self.host.current_tick, 2)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertFalse([p for p in self.host.current_state.prompts if p.status != "resolved"])
+        self.assertTrue(
+            any(
+                env.get("msg_type") == "FRAME_DIFF"
+                and int(env.get("payload", {}).get("to_tick", -1)) == 2
+                for env in decoded_after
+            ),
+            "expected FRAME_DIFF advancing to tick 2",
+        )
+
+        # Regression assertion: prompt response must not be rejected due to queue collisions.
+        all_events: List[Dict[str, Any]] = []
+        for env in decoded_after:
+            if env.get("msg_type") == "FULL_SNAPSHOT":
+                events = env.get("payload", {}).get("state", {}).get("events", [])
+                if isinstance(events, list):
+                    all_events.extend([ev for ev in events if isinstance(ev, dict)])
+            elif env.get("msg_type") == "FRAME_DIFF":
+                events = env.get("payload", {}).get("events_append", [])
+                if isinstance(events, list):
+                    all_events.extend([ev for ev in events if isinstance(ev, dict)])
+
+        queued_rejections = [
+            ev
+            for ev in all_events
+            if ev.get("kind") == "input_rejected"
+            and isinstance(ev.get("details"), dict)
+            and "already queued" in str(ev.get("details", {}).get("reason", ""))
+        ]
+        self.assertEqual(len(queued_rejections), 0, "prompt response should not hit already-queued rejection")
