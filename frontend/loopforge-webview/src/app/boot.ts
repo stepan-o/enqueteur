@@ -173,6 +173,17 @@ export function boot(opts: BootOpts): ViewerHandle {
                     },
                 });
             },
+            onAdvanceDay: ({ tickTarget }) => {
+                if (!client) {
+                    console.warn("[webview] sim_sim advance ignored: live client not connected");
+                    return;
+                }
+                client.sendSimInput({
+                    schema: SIM_SIM_SCHEMA_VERSION,
+                    tick_target: tickTarget,
+                    payload: {},
+                });
+            },
         });
         // Force an immediate paint using the latest known store state so the overlay
         // never appears blank while waiting for the next websocket tick.

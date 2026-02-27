@@ -8,8 +8,12 @@ type SubmitPromptChoice = {
     promptId: string;
     choice: string;
 };
+type AdvanceDayPayload = {
+    tickTarget: number;
+};
 type SimSimSceneOpts = {
     onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
+    onAdvanceDay?: (payload: AdvanceDayPayload) => void;
 };
 
 const FALLBACK_LAYOUT: Record<number, Bounds> = {
@@ -38,12 +42,16 @@ export class SimSimScene {
     private eventsEl?: HTMLDivElement;
     private promptsEl?: HTMLDivElement;
     private debugPanelEl?: HTMLDivElement;
+    private advanceDayButtonEl?: HTMLButtonElement;
+    private advanceStatusEl?: HTMLDivElement;
     private debugVisible = true;
     private lastState?: SimSimViewerState;
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
+    private readonly onAdvanceDay?: (payload: AdvanceDayPayload) => void;
 
     constructor(mountEl: HTMLElement, opts?: SimSimSceneOpts) {
         this.onSubmitPromptChoice = opts?.onSubmitPromptChoice;
+        this.onAdvanceDay = opts?.onAdvanceDay;
         this.app = new PIXI.Application();
         void this.init(mountEl);
     }
@@ -267,7 +275,41 @@ export class SimSimScene {
         hud.style.border = "1px solid rgba(140, 214, 200, 0.36)";
         hud.style.fontSize = "12px";
         hud.style.lineHeight = "1.45";
+        hud.style.pointerEvents = "auto";
         root.appendChild(hud);
+
+        const advanceControls = document.createElement("div");
+        advanceControls.style.position = "absolute";
+        advanceControls.style.left = "14px";
+        advanceControls.style.top = "150px";
+        advanceControls.style.padding = "10px 12px";
+        advanceControls.style.borderRadius = "10px";
+        advanceControls.style.border = "1px solid rgba(243, 199, 106, 0.45)";
+        advanceControls.style.background = "rgba(24, 17, 9, 0.82)";
+        advanceControls.style.pointerEvents = "auto";
+        advanceControls.style.minWidth = "240px";
+
+        const advanceButton = document.createElement("button");
+        advanceButton.type = "button";
+        advanceButton.textContent = "Advance Day";
+        advanceButton.style.border = "1px solid rgba(243, 199, 106, 0.75)";
+        advanceButton.style.background = "rgba(38, 29, 12, 0.95)";
+        advanceButton.style.color = "#f3efe3";
+        advanceButton.style.borderRadius = "8px";
+        advanceButton.style.padding = "6px 10px";
+        advanceButton.style.fontSize = "12px";
+        advanceButton.style.fontWeight = "700";
+        advanceButton.style.letterSpacing = "0.03em";
+        advanceButton.style.cursor = "pointer";
+        advanceControls.appendChild(advanceButton);
+
+        const advanceStatus = document.createElement("div");
+        advanceStatus.style.marginTop = "7px";
+        advanceStatus.style.fontSize = "11px";
+        advanceStatus.style.lineHeight = "1.35";
+        advanceStatus.style.opacity = "0.95";
+        advanceControls.appendChild(advanceStatus);
+        root.appendChild(advanceControls);
 
         const roomCards = document.createElement("div");
         roomCards.style.position = "absolute";
@@ -354,6 +396,8 @@ export class SimSimScene {
         this.eventsEl = events;
         this.promptsEl = prompts;
         this.debugPanelEl = debugPanel;
+        this.advanceDayButtonEl = advanceButton;
+        this.advanceStatusEl = advanceStatus;
 
         mountEl.appendChild(root);
     }
@@ -364,6 +408,8 @@ export class SimSimScene {
         const inv = state.inventory;
         const regime = state.regime;
         const awaitingPrompts = (wm?.phase ?? "").toLowerCase() === "awaiting_prompts";
+        const planningPhase = (wm?.phase ?? "").toLowerCase() === "planning";
+        const tickTarget = state.tick + 1;
         this.roomCardsEl.style.pointerEvents = awaitingPrompts ? "none" : "auto";
 
         const activeFlags: string[] = [];
@@ -393,6 +439,34 @@ export class SimSimScene {
                 ? `<div style="color:#f3c76a;">phase awaiting_prompts: supervisor/worker/EOD controls disabled until prompt resolution</div>`
                 : "",
         ].join("");
+
+        const latestRejection = findLatestInputRejection(events);
+        if (this.advanceDayButtonEl) {
+            const disabled = !planningPhase || state.desynced;
+            this.advanceDayButtonEl.disabled = disabled;
+            this.advanceDayButtonEl.style.opacity = disabled ? "0.55" : "1";
+            this.advanceDayButtonEl.style.cursor = disabled ? "not-allowed" : "pointer";
+            this.advanceDayButtonEl.onclick = disabled
+                ? null
+                : () => {
+                      this.onAdvanceDay?.({ tickTarget });
+                  };
+        }
+        if (this.advanceStatusEl) {
+            if (state.desynced) {
+                this.advanceStatusEl.style.color = "#ffd8cf";
+                this.advanceStatusEl.textContent = "Advance disabled while desynced.";
+            } else if (awaitingPrompts) {
+                this.advanceStatusEl.style.color = "#f3c76a";
+                this.advanceStatusEl.textContent = "Resolve pending prompts before advancing.";
+            } else if (latestRejection) {
+                this.advanceStatusEl.style.color = "#ffd8cf";
+                this.advanceStatusEl.textContent = `Last rejection: ${latestRejection.reasonCode} — ${latestRejection.reason}`;
+            } else {
+                this.advanceStatusEl.style.color = "#f3efe3";
+                this.advanceStatusEl.textContent = "Ready: submit no-op SIM_INPUT to advance one day.";
+            }
+        }
 
         const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
         this.roomCardsEl.innerHTML = rooms

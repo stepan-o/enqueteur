@@ -750,13 +750,21 @@ class SimSimKernel:
             pending_input = previous.pending_day_input
             if pending_input is None:
                 raise ValueError("phase awaiting_prompts requires pending_day_input")
+            merged_prompt_responses: Dict[str, PromptResponse] = {
+                response.prompt_id: response for response in pending_input.prompt_responses
+            }
+            for response in day_input.prompt_responses:
+                merged_prompt_responses[response.prompt_id] = response
             effective_input = DayInput(
                 tick_target=int(pending_input.tick_target),
                 advance=True,
                 supervisor_swaps=tuple(pending_input.supervisor_swaps),
                 set_supervisors=dict(pending_input.set_supervisors),
                 end_of_day=pending_input.end_of_day,
-                prompt_responses=tuple(day_input.prompt_responses),
+                prompt_responses=tuple(
+                    merged_prompt_responses[prompt_id]
+                    for prompt_id in sorted(merged_prompt_responses.keys())
+                ),
             )
         else:
             effective_input = day_input
@@ -767,7 +775,7 @@ class SimSimKernel:
             supervisor_swaps=tuple(effective_input.supervisor_swaps),
             set_supervisors=dict(effective_input.set_supervisors),
             end_of_day=effective_input.end_of_day,
-            prompt_responses=tuple(),
+            prompt_responses=tuple(effective_input.prompt_responses),
         )
 
         runtime_events: List[dict] = []
@@ -791,6 +799,7 @@ class SimSimKernel:
             prompts: Sequence[PromptState],
             swap_budget: int,
             swaps_used_if_applied: int,
+            conflict_discovered: Mapping[str, bool],
         ) -> tuple[SimSimState, SimSimState]:
             self._state = SimSimState(
                 day_tick=start.day_tick,
@@ -809,7 +818,7 @@ class SimSimKernel:
                 events=start.events + runtime_events,
                 prompts=list(prompts),
                 pending_day_input=pending_input_for_awaiting,
-                conflict=start.conflict,
+                conflict=ConflictState(discovered=dict(conflict_discovered)),
                 hidden_accumulators=start.hidden_accumulators,
                 limen_security_count=start.limen_security_count,
                 next_event_id=next_event_id,
@@ -907,6 +916,7 @@ class SimSimKernel:
                 prompts=runtime_prompts,
                 swap_budget=swap_budget_for_day,
                 swaps_used_if_applied=swaps_used_for_input,
+                conflict_discovered=conflict_resolution.get("discovered_next", start.conflict.discovered),
             )
 
         # 11) Compute base L/I/Rsup.
@@ -1047,6 +1057,7 @@ class SimSimKernel:
                 prompts=runtime_prompts,
                 swap_budget=swap_budget_for_day,
                 swaps_used_if_applied=swaps_used_for_input,
+                conflict_discovered=conflict_resolution.get("discovered_next", start.conflict.discovered),
             )
         hidden_after_critical = critical_effects["hidden"]
         regime = critical_effects["regime"]

@@ -375,7 +375,6 @@ class SessionHost:
 
     async def _handle_sim_input(self, ctx: ConnectionContext, envelope: Mapping[str, Any]) -> None:
         msg_type = str(envelope.get("msg_type", ""))
-        phase_before = str(self.current_state.phase)
         parsed = self._parse_sim_input_envelope(envelope)
         if parsed[0] is None:
             reason_code = parsed[1]
@@ -403,7 +402,9 @@ class SessionHost:
             tick_target=day_input.tick_target,
             msg_type=msg_type,
         )
-        if accepted and phase_before == "awaiting_prompts":
+        if accepted:
+            # LIVE-first behavior: accepted SIM_INPUT immediately drives kernel progression
+            # so webview does not depend on an external CLI advance loop.
             await self.advance_day(day_input)
         else:
             await self._broadcast_current_snapshot()

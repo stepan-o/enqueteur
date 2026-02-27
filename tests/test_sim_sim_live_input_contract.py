@@ -94,18 +94,29 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
             out.append(json.loads(item.decode("utf-8")))
         return out
 
-    def _latest_snapshot_events(self) -> List[Dict[str, Any]]:
+    def _latest_stream_events(self) -> List[Dict[str, Any]]:
         decoded = self._decoded_sent()
-        snapshots = [env for env in decoded if env.get("msg_type") == "FULL_SNAPSHOT"]
-        self.assertGreater(len(snapshots), 0, "expected at least one FULL_SNAPSHOT after input ack")
-        payload = snapshots[-1].get("payload", {})
-        state = payload.get("state", {})
-        events = state.get("events", [])
-        self.assertIsInstance(events, list)
-        return events
+        stream_events: List[Dict[str, Any]] = []
+        for env in decoded:
+            msg_type = env.get("msg_type")
+            payload = env.get("payload", {})
+            if not isinstance(payload, dict):
+                continue
+            if msg_type == "FULL_SNAPSHOT":
+                state = payload.get("state", {})
+                if isinstance(state, dict):
+                    events = state.get("events", [])
+                    if isinstance(events, list):
+                        stream_events.extend([ev for ev in events if isinstance(ev, dict)])
+            elif msg_type == "FRAME_DIFF":
+                events = payload.get("events_append", [])
+                if isinstance(events, list):
+                    stream_events.extend([ev for ev in events if isinstance(ev, dict)])
+        self.assertGreater(len(stream_events), 0, "expected at least one streamed event after input")
+        return stream_events
 
     def _latest_ack_event(self, kind: str) -> Dict[str, Any]:
-        events = self._latest_snapshot_events()
+        events = self._latest_stream_events()
         matching = [ev for ev in events if isinstance(ev, dict) and ev.get("kind") == kind]
         self.assertGreater(len(matching), 0, f"expected at least one event kind={kind}")
         return matching[-1]
@@ -157,14 +168,12 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
             },
         )
 
-        self.assertEqual(self.host.current_tick, 0)
-        self.assertIn(1, self.host._pending_inputs)  # type: ignore[attr-defined]
-
-        ack = self._latest_ack_event("input_accepted")
-        details = ack.get("details", {})
-        self.assertEqual(details.get("reason_code"), "INPUT_ACCEPTED")
-        self.assertEqual(details.get("tick_target"), 1)
-        self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+        self.assertEqual(self.host.current_tick, 1)
+        self.assertEqual(set(self.host._pending_inputs.keys()), set())  # type: ignore[attr-defined]
+        decoded = self._decoded_sent()
+        self.assertTrue(
+            any(env.get("msg_type") == "FRAME_DIFF" and int(env.get("payload", {}).get("to_tick", -1)) == 1 for env in decoded)
+        )
 
     async def test_accepts_noop_planning_input_without_wrapped_payload(self) -> None:
         await self._send_message(
@@ -174,14 +183,12 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
             },
         )
 
-        self.assertEqual(self.host.current_tick, 0)
-        self.assertIn(1, self.host._pending_inputs)  # type: ignore[attr-defined]
-
-        ack = self._latest_ack_event("input_accepted")
-        details = ack.get("details", {})
-        self.assertEqual(details.get("reason_code"), "INPUT_ACCEPTED")
-        self.assertEqual(details.get("tick_target"), 1)
-        self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+        self.assertEqual(self.host.current_tick, 1)
+        self.assertEqual(set(self.host._pending_inputs.keys()), set())  # type: ignore[attr-defined]
+        decoded = self._decoded_sent()
+        self.assertTrue(
+            any(env.get("msg_type") == "FRAME_DIFF" and int(env.get("payload", {}).get("to_tick", -1)) == 1 for env in decoded)
+        )
 
     async def test_planning_rejects_prompt_responses(self) -> None:
         self.assertEqual(self.host.current_state.phase, "planning")
@@ -237,6 +244,85 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         details = ack.get("details", {})
         self.assertEqual(details.get("reason_code"), "SUPERVISOR_SWAP_BUDGET_EXCEEDED")
         self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+
+    async def test_live_chained_prompt_resolution_progresses_same_day(self) -> None:
+        # Deterministic seed=7: by tick 4 -> tick 5 transition we hit conflict then critical prompts.
+        while self.host.current_tick < 4:
+            next_tick = self.host.current_tick + 1
+            day_input = DayInput(tick_target=next_tick, advance=True)
+            accepted, reason = await self.host.submit_day_input(day_input, source="test-cli")
+            self.assertTrue(accepted, reason)
+            to_tick, _ = await self.host.advance_day(day_input)
+            await asyncio.sleep(0.02)
+            if to_tick < next_tick:
+                unresolved = [prompt for prompt in self.host.current_state.prompts if prompt.status != "resolved"]
+                self.assertTrue(unresolved)
+                responses = tuple(
+                    PromptResponse(prompt_id=prompt.prompt_id, choice=str(prompt.choices[0]))
+                    for prompt in unresolved
+                )
+                resolve = DayInput(tick_target=next_tick, advance=True, prompt_responses=responses)
+                accepted, reason = await self.host.submit_day_input(resolve, source="test-cli")
+                self.assertTrue(accepted, reason)
+                await self.host.advance_day(resolve)
+                await asyncio.sleep(0.02)
+
+        self.assertEqual(self.host.current_tick, 4)
+        self.assertEqual(self.host.current_state.phase, "planning")
+
+        # First no-op input starts day 5 and should pause on conflict prompt.
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "schema": "sim_sim_1",
+                "tick_target": 5,
+                "payload": {},
+            },
+        )
+        self.assertEqual(self.host.current_tick, 4)
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        conflict_prompt = next(
+            prompt
+            for prompt in self.host.current_state.prompts
+            if prompt.status != "resolved" and prompt.kind == "conflict"
+        )
+
+        # Resolve conflict first; run remains awaiting due critical prompt.
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "schema": "sim_sim_1",
+                "tick_target": 5,
+                "payload": {
+                    "prompt_responses": {
+                        conflict_prompt.prompt_id: str(conflict_prompt.choices[0]),
+                    }
+                },
+            },
+        )
+        self.assertEqual(self.host.current_tick, 4)
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        critical_prompt = next(
+            prompt
+            for prompt in self.host.current_state.prompts
+            if prompt.status != "resolved" and prompt.kind == "critical"
+        )
+
+        # Resolve critical next; tick must advance to 5 (no conflict loop).
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "schema": "sim_sim_1",
+                "tick_target": 5,
+                "payload": {
+                    "prompt_responses": {
+                        critical_prompt.prompt_id: str(critical_prompt.choices[0]),
+                    }
+                },
+            },
+        )
+        self.assertEqual(self.host.current_tick, 5)
+        self.assertEqual(self.host.current_state.phase, "planning")
 
     async def test_live_prompt_response_unblocks_without_queue_collision(self) -> None:
         await self._drive_to_awaiting_prompts()
