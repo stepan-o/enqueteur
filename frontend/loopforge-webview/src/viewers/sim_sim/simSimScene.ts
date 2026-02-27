@@ -3,6 +3,14 @@ import type { SimSimEvent, SimSimPrompt, SimSimRoom, SimSimSupervisor, SimSimVie
 
 type Vec2 = { x: number; y: number };
 type Bounds = { min_x: number; min_y: number; max_x: number; max_y: number };
+type SubmitPromptChoice = {
+    tickTarget: number;
+    promptId: string;
+    choice: string;
+};
+type SimSimSceneOpts = {
+    onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
+};
 
 const FALLBACK_LAYOUT: Record<number, Bounds> = {
     1: { min_x: 0, min_y: 0, max_x: 12, max_y: 8 },
@@ -28,11 +36,14 @@ export class SimSimScene {
     private hudEl?: HTMLDivElement;
     private roomCardsEl?: HTMLDivElement;
     private eventsEl?: HTMLDivElement;
+    private promptsEl?: HTMLDivElement;
     private debugPanelEl?: HTMLDivElement;
     private debugVisible = true;
     private lastState?: SimSimViewerState;
+    private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
 
-    constructor(mountEl: HTMLElement) {
+    constructor(mountEl: HTMLElement, opts?: SimSimSceneOpts) {
+        this.onSubmitPromptChoice = opts?.onSubmitPromptChoice;
         this.app = new PIXI.Application();
         void this.init(mountEl);
     }
@@ -285,6 +296,23 @@ export class SimSimScene {
         events.style.lineHeight = "1.35";
         root.appendChild(events);
 
+        const prompts = document.createElement("div");
+        prompts.style.position = "absolute";
+        prompts.style.right = "14px";
+        prompts.style.bottom = "84px";
+        prompts.style.width = "min(460px, 34vw)";
+        prompts.style.maxHeight = "30vh";
+        prompts.style.overflowY = "auto";
+        prompts.style.padding = "10px 12px";
+        prompts.style.borderRadius = "10px";
+        prompts.style.border = "1px solid rgba(243, 199, 106, 0.45)";
+        prompts.style.background = "rgba(24, 17, 9, 0.86)";
+        prompts.style.fontSize = "12px";
+        prompts.style.lineHeight = "1.35";
+        prompts.style.display = "none";
+        prompts.style.pointerEvents = "auto";
+        root.appendChild(prompts);
+
         const debugToggle = document.createElement("button");
         debugToggle.type = "button";
         debugToggle.textContent = "Schema Debug";
@@ -324,16 +352,19 @@ export class SimSimScene {
         this.hudEl = hud;
         this.roomCardsEl = roomCards;
         this.eventsEl = events;
+        this.promptsEl = prompts;
         this.debugPanelEl = debugPanel;
 
         mountEl.appendChild(root);
     }
 
     private renderOverlay(state: SimSimViewerState, events: SimSimEvent[], prompts: SimSimPrompt[]): void {
-        if (!this.hudEl || !this.roomCardsEl || !this.eventsEl || !this.debugPanelEl) return;
+        if (!this.hudEl || !this.roomCardsEl || !this.eventsEl || !this.promptsEl || !this.debugPanelEl) return;
         const wm = state.worldMeta;
         const inv = state.inventory;
         const regime = state.regime;
+        const awaitingPrompts = (wm?.phase ?? "").toLowerCase() === "awaiting_prompts";
+        this.roomCardsEl.style.pointerEvents = awaitingPrompts ? "none" : "auto";
 
         const activeFlags: string[] = [];
         if (regime) {
@@ -358,6 +389,9 @@ export class SimSimScene {
             `<div>security lead <strong>${wm?.security_lead ?? "-"}</strong></div>`,
             `<div>supervisors: ${supervisorSummary || "none unlocked"}</div>`,
             `<div>regime: ${activeFlags.length ? activeFlags.join(", ") : "none"}</div>`,
+            awaitingPrompts
+                ? `<div style="color:#f3c76a;">phase awaiting_prompts: supervisor/worker/EOD controls disabled until prompt resolution</div>`
+                : "",
         ].join("");
 
         const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
@@ -380,16 +414,15 @@ export class SimSimScene {
             })
             .join("");
 
-        const promptRows = prompts.slice(-5).map((prompt) => {
-            return `<div style="color:#f3c76a;">t${prompt.tick} <strong>${prompt.kind}</strong> ${prompt.prompt_id} -> ${prompt.selected_choice ?? "-"}</div>`;
-        });
+        this.renderPromptsPanel(state, prompts, awaitingPrompts);
+
         const eventRows = events.slice(-10).map((event) => {
             const room = event.room_id ? ` room=${event.room_id}` : "";
             const sup = event.supervisor ? ` ${event.supervisor}` : "";
             const details = event.details ? ` ${JSON.stringify(event.details)}` : "";
             return `<div>t${event.tick} #${event.event_id} <strong>${event.kind}</strong>${room}${sup}${details}</div>`;
         });
-        this.eventsEl.innerHTML = `<div style="font-size:12px;font-weight:700;margin-bottom:4px;">Live Feed</div>${promptRows.join("")}${eventRows.join("")}`;
+        this.eventsEl.innerHTML = `<div style="font-size:12px;font-weight:700;margin-bottom:4px;">Live Feed</div>${eventRows.join("")}`;
 
         this.debugPanelEl.style.display = this.debugVisible ? "block" : "none";
         this.debugPanelEl.innerHTML = [
@@ -401,6 +434,93 @@ export class SimSimScene {
             `<div>config: ${wm?.config_id ?? "-"}</div>`,
         ].join("");
     }
+
+    private renderPromptsPanel(state: SimSimViewerState, prompts: SimSimPrompt[], awaitingPrompts: boolean): void {
+        if (!this.promptsEl) return;
+        if (prompts.length === 0) {
+            this.promptsEl.style.display = "none";
+            this.promptsEl.innerHTML = "";
+            return;
+        }
+
+        this.promptsEl.style.display = "block";
+        this.promptsEl.innerHTML = "";
+
+        const title = document.createElement("div");
+        title.style.fontSize = "12px";
+        title.style.fontWeight = "700";
+        title.style.marginBottom = "6px";
+        title.textContent = "Prompts";
+        this.promptsEl.appendChild(title);
+
+        const hint = document.createElement("div");
+        hint.style.fontSize = "11px";
+        hint.style.opacity = "0.9";
+        hint.style.marginBottom = "8px";
+        hint.textContent = awaitingPrompts
+            ? "Choose a response to continue day advancement."
+            : "Prompt history (resolved prompts are read-only).";
+        this.promptsEl.appendChild(hint);
+
+        const tickTarget = state.tick + 1;
+
+        for (const prompt of prompts) {
+            const row = document.createElement("div");
+            row.style.border = "1px solid rgba(243, 199, 106, 0.32)";
+            row.style.borderRadius = "8px";
+            row.style.padding = "8px";
+            row.style.marginBottom = "7px";
+            row.style.background = "rgba(11, 10, 10, 0.42)";
+
+            const header = document.createElement("div");
+            header.style.fontSize = "11px";
+            header.style.marginBottom = "6px";
+            header.innerHTML = `<strong>${prompt.kind}</strong> • ${prompt.prompt_id}<br/>created t${prompt.tick_created} • status=${prompt.status}`;
+            row.appendChild(header);
+
+            const choices = prompt.choices ?? [];
+            if (choices.length === 0) {
+                const none = document.createElement("div");
+                none.style.fontSize = "11px";
+                none.style.opacity = "0.75";
+                none.textContent = "No valid choices declared.";
+                row.appendChild(none);
+            } else {
+                const buttons = document.createElement("div");
+                buttons.style.display = "flex";
+                buttons.style.flexWrap = "wrap";
+                buttons.style.gap = "6px";
+                for (const choice of choices) {
+                    const btn = document.createElement("button");
+                    btn.type = "button";
+                    btn.textContent = choice;
+                    btn.style.border = "1px solid rgba(243, 199, 106, 0.55)";
+                    btn.style.background = "rgba(28, 24, 16, 0.9)";
+                    btn.style.color = "#f3efe3";
+                    btn.style.borderRadius = "7px";
+                    btn.style.padding = "4px 8px";
+                    btn.style.fontSize = "11px";
+                    btn.style.pointerEvents = "auto";
+                    const disabled = !awaitingPrompts || prompt.status === "resolved" || state.desynced;
+                    btn.disabled = disabled;
+                    btn.style.opacity = disabled ? "0.55" : "1";
+                    if (!disabled) {
+                        btn.addEventListener("click", () => {
+                            this.onSubmitPromptChoice?.({
+                                tickTarget,
+                                promptId: prompt.prompt_id,
+                                choice,
+                            });
+                        });
+                    }
+                    buttons.appendChild(btn);
+                }
+                row.appendChild(buttons);
+            }
+
+            this.promptsEl.appendChild(row);
+        }
+    }
 }
 
 function sortedEvents(events: Map<string, SimSimEvent>): SimSimEvent[] {
@@ -408,7 +528,7 @@ function sortedEvents(events: Map<string, SimSimEvent>): SimSimEvent[] {
 }
 
 function sortedPrompts(prompts: Map<string, SimSimPrompt>): SimSimPrompt[] {
-    return Array.from(prompts.values()).sort((a, b) => (a.tick - b.tick) || a.prompt_id.localeCompare(b.prompt_id));
+    return Array.from(prompts.values()).sort((a, b) => (a.tick_created - b.tick_created) || a.prompt_id.localeCompare(b.prompt_id));
 }
 
 function pct(value: number | null | undefined): string {

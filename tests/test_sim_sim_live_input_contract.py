@@ -6,6 +6,7 @@ import unittest
 import uuid
 from typing import Any, Dict, List
 
+from backend.sim_sim.kernel.state import DayInput
 from backend.sim_sim.live.session_host import SessionHost
 
 
@@ -66,6 +67,18 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
     async def _send_message(self, msg_type: str, payload: Dict[str, Any]) -> None:
         await self.host.handle_client_message(self.ctx, _make_envelope(msg_type, payload))
         await asyncio.sleep(0.02)
+
+    async def _drive_to_awaiting_prompts(self) -> None:
+        for _ in range(8):
+            if self.host.current_state.phase == "awaiting_prompts":
+                return
+            next_tick = self.host.current_tick + 1
+            day_input = DayInput(tick_target=next_tick, advance=True)
+            accepted, reason = await self.host.submit_day_input(day_input, source="test")
+            self.assertTrue(accepted, reason)
+            await self.host.advance_day(day_input)
+            await asyncio.sleep(0.02)
+        self.fail("expected to reach awaiting_prompts phase")
 
     def _decoded_sent(self) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
@@ -160,3 +173,80 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(details.get("reason_code"), "INPUT_ACCEPTED")
         self.assertEqual(details.get("tick_target"), 1)
         self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+
+    async def test_live_prompt_response_unblocks_without_queue_collision(self) -> None:
+        await self._drive_to_awaiting_prompts()
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        blocked_tick = self.host.current_tick
+        tick_target = blocked_tick + 1
+
+        # Simulate stale queue entry that must not block prompt-response resume.
+        self.host._pending_inputs[tick_target] = DayInput(tick_target=tick_target, advance=True)  # type: ignore[attr-defined]
+
+        prompt = next(prompt for prompt in self.host.current_state.prompts if prompt.status != "resolved")
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": tick_target,
+                "prompt_responses": [{"prompt_id": prompt.prompt_id, "choice": str(prompt.choices[0])}],
+            },
+        )
+
+        self.assertEqual(self.host.current_tick, blocked_tick + 1)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertFalse(self.host._pending_inputs)  # type: ignore[attr-defined]
+        self.assertFalse([p for p in self.host.current_state.prompts if p.status != "resolved"])
+
+    async def test_live_awaiting_prompts_rejects_non_prompt_fields(self) -> None:
+        await self._drive_to_awaiting_prompts()
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        blocked_tick = self.host.current_tick
+        tick_target = blocked_tick + 1
+
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": tick_target,
+                "set_workers": {"2": {"dumb": 1, "smart": 0}},
+                "prompt_responses": [],
+            },
+        )
+
+        self.assertEqual(self.host.current_tick, blocked_tick)
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        ack = self._latest_ack_event("input_rejected")
+        details = ack.get("details", {})
+        self.assertEqual(details.get("reason_code"), "AWAITING_PROMPTS_ONLY_PROMPT_RESPONSES")
+        self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+
+    async def test_live_allows_multiple_prompt_response_updates_same_tick_target(self) -> None:
+        await self._drive_to_awaiting_prompts()
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        blocked_tick = self.host.current_tick
+        tick_target = blocked_tick + 1
+        prompt = next(prompt for prompt in self.host.current_state.prompts if prompt.status != "resolved")
+
+        # First attempt: invalid choice (rejected, tick unchanged).
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": tick_target,
+                "prompt_responses": [{"prompt_id": prompt.prompt_id, "choice": "__invalid_choice__"}],
+            },
+        )
+        self.assertEqual(self.host.current_tick, blocked_tick)
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        rejected = self._latest_ack_event("input_rejected")
+        self.assertEqual(rejected.get("details", {}).get("reason_code"), "INVALID_PROMPT_CHOICE")
+
+        # Second attempt: valid choice should advance, without queue-collision rejection.
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": tick_target,
+                "prompt_responses": [{"prompt_id": prompt.prompt_id, "choice": str(prompt.choices[0])}],
+            },
+        )
+        self.assertEqual(self.host.current_tick, blocked_tick + 1)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertFalse(self.host._pending_inputs)  # type: ignore[attr-defined]

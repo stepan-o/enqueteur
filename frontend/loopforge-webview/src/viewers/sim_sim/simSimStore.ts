@@ -104,7 +104,7 @@ export type SimSimRegime = {
 export type SimSimPrompt = {
     prompt_id: string;
     kind: string;
-    tick: number;
+    tick_created: number;
     choices: string[];
     status: string;
     selected_choice?: string | null;
@@ -233,7 +233,10 @@ export class SimSimStore {
         const events = new Map<string, SimSimEvent>();
         for (const ev of payload.state.events ?? []) events.set(eventKey(ev), ev);
         const prompts = new Map<string, SimSimPrompt>();
-        for (const prompt of payload.state.prompts ?? []) prompts.set(prompt.prompt_id, prompt);
+        for (const prompt of payload.state.prompts ?? []) {
+            const normalized = normalizePrompt(prompt, payload.tick);
+            if (normalized) prompts.set(normalized.prompt_id, normalized);
+        }
 
         this.state = {
             ...this.state,
@@ -309,7 +312,10 @@ export class SimSimStore {
         }
         if (payload.prompts_update) {
             prompts.clear();
-            for (const prompt of payload.prompts_update) prompts.set(prompt.prompt_id, prompt);
+            for (const prompt of payload.prompts_update) {
+                const normalized = normalizePrompt(prompt, payload.to_tick);
+                if (normalized) prompts.set(normalized.prompt_id, normalized);
+            }
             appliedCount += 1;
         }
 
@@ -339,4 +345,39 @@ export class SimSimStore {
 
 function eventKey(ev: SimSimEvent): string {
     return `${ev.tick}:${ev.event_id}`;
+}
+
+function normalizePrompt(raw: unknown, fallbackTick: number): SimSimPrompt | null {
+    if (!raw || typeof raw !== "object") return null;
+    const promptObj = raw as Record<string, unknown>;
+    const promptId = typeof promptObj.prompt_id === "string" ? promptObj.prompt_id.trim() : "";
+    if (!promptId) return null;
+
+    const tickCandidate =
+        typeof promptObj.tick_created === "number"
+            ? promptObj.tick_created
+            : typeof promptObj.tick === "number"
+              ? promptObj.tick
+              : fallbackTick;
+
+    const choices: string[] = Array.isArray(promptObj.choices)
+        ? promptObj.choices.filter((choice): choice is string => typeof choice === "string")
+        : [];
+    const selectedChoice: string | null =
+        typeof promptObj.selected_choice === "string" || promptObj.selected_choice === null
+            ? (promptObj.selected_choice as string | null)
+            : null;
+
+    return {
+        prompt_id: promptId,
+        kind: typeof promptObj.kind === "string" ? promptObj.kind : "prompt",
+        tick_created: Number.isFinite(tickCandidate) ? tickCandidate : fallbackTick,
+        choices,
+        status: typeof promptObj.status === "string" ? promptObj.status : "pending",
+        selected_choice: selectedChoice,
+        payload:
+            promptObj.payload && typeof promptObj.payload === "object" && !Array.isArray(promptObj.payload)
+                ? (promptObj.payload as Record<string, unknown>)
+                : undefined,
+    };
 }

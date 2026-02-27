@@ -152,7 +152,18 @@ export function boot(opts: BootOpts): ViewerHandle {
 
     const ensureSimSimScene = (): SimSimScene => {
         if (simSimScene) return simSimScene;
-        simSimScene = new SimSimScene(opts.mountEl);
+        simSimScene = new SimSimScene(opts.mountEl, {
+            onSubmitPromptChoice: ({ tickTarget, promptId, choice }) => {
+                if (!client) {
+                    console.warn("[webview] sim_sim prompt response ignored: live client not connected");
+                    return;
+                }
+                client.sendSimInput({
+                    tick_target: tickTarget,
+                    prompt_responses: [{ prompt_id: promptId, choice }],
+                });
+            },
+        });
         simSimScene.setVisible(false);
         return simSimScene;
     };

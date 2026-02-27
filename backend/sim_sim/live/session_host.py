@@ -276,6 +276,11 @@ class SessionHost:
             valid, reason = self._kernel.validate_day_input(day_input, expected_tick_target=expected_tick)
             if not valid:
                 return False, reason
+            if self._kernel.state.phase == "awaiting_prompts":
+                # Prompt responses are applied immediately via advance_day fallback.
+                self._pending_inputs.pop(day_input.tick_target, None)
+                logger.info("[input] accepted source=%s tick_target=%s (awaiting_prompts immediate mode)", source, day_input.tick_target)
+                return True, "accepted"
             if day_input.tick_target in self._pending_inputs:
                 return False, f"day input already queued for tick {day_input.tick_target}"
             self._pending_inputs[day_input.tick_target] = day_input
@@ -285,7 +290,12 @@ class SessionHost:
     async def advance_day(self, fallback_input: DayInput) -> tuple[int, DayInput]:
         async with self._lock:
             next_tick = self.current_tick + 1
-            selected_input = self._pending_inputs.pop(next_tick, fallback_input)
+            if self._kernel.state.phase == "awaiting_prompts":
+                # Never let stale queued next-tick input shadow prompt responses.
+                self._pending_inputs.pop(next_tick, None)
+                selected_input = fallback_input
+            else:
+                selected_input = self._pending_inputs.pop(next_tick, fallback_input)
             valid, reason = self._kernel.validate_day_input(selected_input, expected_tick_target=next_tick)
             if not valid:
                 raise ValueError(reason)
@@ -366,6 +376,7 @@ class SessionHost:
 
     async def _handle_sim_input(self, ctx: ConnectionContext, envelope: Mapping[str, Any]) -> None:
         msg_type = str(envelope.get("msg_type", ""))
+        phase_before = str(self.current_state.phase)
         parsed = self._parse_sim_input_envelope(envelope)
         if parsed[0] is None:
             reason_code = parsed[1]
@@ -386,20 +397,23 @@ class SessionHost:
         accepted, reason = await self.submit_day_input(day_input, source=f"ws:{ctx.connection_id}")
         await self._record_input_ack_event(
             accepted=accepted,
-            reason_code="INPUT_ACCEPTED" if accepted else "INPUT_REJECTED",
+            reason_code="INPUT_ACCEPTED" if accepted else "KERNEL_VALIDATION_FAILED",
             reason=reason,
             source=f"ws:{ctx.connection_id}",
             tick_target=day_input.tick_target,
             msg_type=msg_type,
         )
-        await self._broadcast_current_snapshot()
+        if accepted and phase_before == "awaiting_prompts":
+            await self.advance_day(day_input)
+        else:
+            await self._broadcast_current_snapshot()
         logger.info(
             "[input] %s source=ws:%s msg_type=%s tick_target=%s reason_code=%s reason=%s",
             "accepted" if accepted else "rejected",
             ctx.connection_id,
             msg_type,
             day_input.tick_target,
-            "INPUT_ACCEPTED" if accepted else "INPUT_REJECTED",
+            "INPUT_ACCEPTED" if accepted else "KERNEL_VALIDATION_FAILED",
             reason,
         )
 
@@ -432,76 +446,89 @@ class SessionHost:
                 return None, "INVALID_TICK_TARGET", f"tick_target must equal next day tick ({next_tick})"
             tick_target = int(tick_raw)
 
-        raw_sup = payload.get("set_supervisors", {})
-        if not isinstance(raw_sup, dict):
-            return None, "INVALID_SET_SUPERVISORS", "set_supervisors must be an object"
-        for room_raw, code_raw in raw_sup.items():
-            try:
-                room_id = int(room_raw)
-            except Exception:
-                return None, "INVALID_SET_SUPERVISORS", "set_supervisors keys must be integer room ids"
-            if room_id not in ROOM_IDS:
-                return None, "INVALID_SET_SUPERVISORS", f"set_supervisors includes invalid room_id={room_id}"
-            if code_raw is None:
-                set_supervisors[room_id] = None
-                continue
-            if not isinstance(code_raw, str):
-                return None, "INVALID_SET_SUPERVISORS", f"set_supervisors[{room_id}] must be supervisor code string or null"
-            parsed_code = resolve_supervisor_code(code_raw)
-            if parsed_code is None:
-                return None, "INVALID_SET_SUPERVISORS", f"unknown supervisor code for room {room_id}"
-            set_supervisors[room_id] = parsed_code
+        is_awaiting_prompts = self.current_state.phase == "awaiting_prompts"
+        if is_awaiting_prompts:
+            disallowed_keys = [key for key in ("set_supervisors", "set_workers", "end_of_day") if key in payload]
+            if disallowed_keys:
+                return (
+                    None,
+                    "AWAITING_PROMPTS_ONLY_PROMPT_RESPONSES",
+                    f"while awaiting prompts, SIM_INPUT may include only prompt_responses (found: {','.join(disallowed_keys)})",
+                )
+            if "prompt_responses" not in payload:
+                return None, "PROMPT_RESPONSES_REQUIRED", "while awaiting prompts, prompt_responses are required"
 
-        raw_workers = payload.get("set_workers", {})
-        if not isinstance(raw_workers, dict):
-            return None, "INVALID_SET_WORKERS", "set_workers must be an object"
-        for room_raw, worker_raw in raw_workers.items():
-            try:
-                room_id = int(room_raw)
-            except Exception:
-                return None, "INVALID_SET_WORKERS", "set_workers keys must be integer room ids"
-            if room_id not in ROOM_IDS:
-                return None, "INVALID_SET_WORKERS", f"set_workers includes invalid room_id={room_id}"
-            if not isinstance(worker_raw, dict):
-                return None, "INVALID_SET_WORKERS", "set_workers entries must be objects"
-            allowed_worker_keys = {"dumb", "smart"}
-            unknown_worker_keys = [k for k in worker_raw.keys() if k not in allowed_worker_keys]
-            if unknown_worker_keys:
-                return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}] has unsupported key(s): {','.join(sorted(str(k) for k in unknown_worker_keys))}"
-            dumb = worker_raw.get("dumb")
-            smart = worker_raw.get("smart")
-            if not isinstance(dumb, int) or dumb < 0:
-                return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}].dumb must be a non-negative integer"
-            if not isinstance(smart, int) or smart < 0:
-                return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}].smart must be a non-negative integer"
-            set_workers[room_id] = WorkerAssignment(dumb=int(dumb), smart=int(smart))
+        if not is_awaiting_prompts:
+            raw_sup = payload.get("set_supervisors", {})
+            if not isinstance(raw_sup, dict):
+                return None, "INVALID_SET_SUPERVISORS", "set_supervisors must be an object"
+            for room_raw, code_raw in raw_sup.items():
+                try:
+                    room_id = int(room_raw)
+                except Exception:
+                    return None, "INVALID_SET_SUPERVISORS", "set_supervisors keys must be integer room ids"
+                if room_id not in ROOM_IDS:
+                    return None, "INVALID_SET_SUPERVISORS", f"set_supervisors includes invalid room_id={room_id}"
+                if code_raw is None:
+                    set_supervisors[room_id] = None
+                    continue
+                if not isinstance(code_raw, str):
+                    return None, "INVALID_SET_SUPERVISORS", f"set_supervisors[{room_id}] must be supervisor code string or null"
+                parsed_code = resolve_supervisor_code(code_raw)
+                if parsed_code is None:
+                    return None, "INVALID_SET_SUPERVISORS", f"unknown supervisor code for room {room_id}"
+                set_supervisors[room_id] = parsed_code
 
-        raw_eod = payload.get("end_of_day", {})
-        if not isinstance(raw_eod, dict):
-            return None, "INVALID_END_OF_DAY", "end_of_day must be an object"
-        allowed_eod_keys = {
-            "sell_washed_dumb",
-            "sell_washed_smart",
-            "convert_workers_dumb",
-            "convert_workers_smart",
-            "upgrade_brains",
-        }
-        unknown_eod_keys = [k for k in raw_eod.keys() if k not in allowed_eod_keys]
-        if unknown_eod_keys:
-            return None, "INVALID_END_OF_DAY", f"end_of_day has unsupported key(s): {','.join(sorted(str(k) for k in unknown_eod_keys))}"
-        eod_values: Dict[str, int] = {}
-        for key in allowed_eod_keys:
-            value = raw_eod.get(key, 0)
-            if not isinstance(value, int) or value < 0:
-                return None, "INVALID_END_OF_DAY", f"end_of_day.{key} must be a non-negative integer"
-            eod_values[key] = int(value)
-        end_of_day = EndOfDayActions(
-            sell_washed_dumb=eod_values["sell_washed_dumb"],
-            sell_washed_smart=eod_values["sell_washed_smart"],
-            convert_workers_dumb=eod_values["convert_workers_dumb"],
-            convert_workers_smart=eod_values["convert_workers_smart"],
-            upgrade_brains=eod_values["upgrade_brains"],
-        )
+            raw_workers = payload.get("set_workers", {})
+            if not isinstance(raw_workers, dict):
+                return None, "INVALID_SET_WORKERS", "set_workers must be an object"
+            for room_raw, worker_raw in raw_workers.items():
+                try:
+                    room_id = int(room_raw)
+                except Exception:
+                    return None, "INVALID_SET_WORKERS", "set_workers keys must be integer room ids"
+                if room_id not in ROOM_IDS:
+                    return None, "INVALID_SET_WORKERS", f"set_workers includes invalid room_id={room_id}"
+                if not isinstance(worker_raw, dict):
+                    return None, "INVALID_SET_WORKERS", "set_workers entries must be objects"
+                allowed_worker_keys = {"dumb", "smart"}
+                unknown_worker_keys = [k for k in worker_raw.keys() if k not in allowed_worker_keys]
+                if unknown_worker_keys:
+                    return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}] has unsupported key(s): {','.join(sorted(str(k) for k in unknown_worker_keys))}"
+                dumb = worker_raw.get("dumb")
+                smart = worker_raw.get("smart")
+                if not isinstance(dumb, int) or dumb < 0:
+                    return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}].dumb must be a non-negative integer"
+                if not isinstance(smart, int) or smart < 0:
+                    return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}].smart must be a non-negative integer"
+                set_workers[room_id] = WorkerAssignment(dumb=int(dumb), smart=int(smart))
+
+            raw_eod = payload.get("end_of_day", {})
+            if not isinstance(raw_eod, dict):
+                return None, "INVALID_END_OF_DAY", "end_of_day must be an object"
+            allowed_eod_keys = {
+                "sell_washed_dumb",
+                "sell_washed_smart",
+                "convert_workers_dumb",
+                "convert_workers_smart",
+                "upgrade_brains",
+            }
+            unknown_eod_keys = [k for k in raw_eod.keys() if k not in allowed_eod_keys]
+            if unknown_eod_keys:
+                return None, "INVALID_END_OF_DAY", f"end_of_day has unsupported key(s): {','.join(sorted(str(k) for k in unknown_eod_keys))}"
+            eod_values: Dict[str, int] = {}
+            for key in allowed_eod_keys:
+                value = raw_eod.get(key, 0)
+                if not isinstance(value, int) or value < 0:
+                    return None, "INVALID_END_OF_DAY", f"end_of_day.{key} must be a non-negative integer"
+                eod_values[key] = int(value)
+            end_of_day = EndOfDayActions(
+                sell_washed_dumb=eod_values["sell_washed_dumb"],
+                sell_washed_smart=eod_values["sell_washed_smart"],
+                convert_workers_dumb=eod_values["convert_workers_dumb"],
+                convert_workers_smart=eod_values["convert_workers_smart"],
+                upgrade_brains=eod_values["upgrade_brains"],
+            )
 
         prompt_by_id = {
             prompt.prompt_id: set(str(choice) for choice in prompt.choices)
