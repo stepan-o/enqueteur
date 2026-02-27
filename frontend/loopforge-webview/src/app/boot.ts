@@ -184,6 +184,19 @@ export function boot(opts: BootOpts): ViewerHandle {
                     payload: {},
                 });
             },
+            onApplySupervisorPlacements: ({ tickTarget, setSupervisors }) => {
+                if (!client) {
+                    console.warn("[webview] sim_sim placement update ignored: live client not connected");
+                    return;
+                }
+                client.sendSimInput({
+                    schema: SIM_SIM_SCHEMA_VERSION,
+                    tick_target: tickTarget,
+                    payload: {
+                        set_supervisors: setSupervisors,
+                    },
+                });
+            },
         });
         // Force an immediate paint using the latest known store state so the overlay
         // never appears blank while waiting for the next websocket tick.

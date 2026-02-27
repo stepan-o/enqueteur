@@ -2,6 +2,13 @@ import type { KernelHello } from "../../state/worldStore";
 
 export const SIM_SIM_SCHEMA_VERSION = "sim_sim_1";
 
+export type SimSimSupervisorSwaps = {
+    swap_budget: number;
+    swaps_used_if_applied: number;
+    swaps_remaining: number;
+    placements_current: Record<string, number | null>;
+};
+
 export type SimSimWorldMeta = {
     day: number;
     tick: number;
@@ -14,6 +21,7 @@ export type SimSimWorldMeta = {
     security_lead?: string;
     config_hash?: string;
     config_id?: string;
+    supervisor_swaps?: SimSimSupervisorSwaps;
 };
 
 export type SimSimWorkers = {

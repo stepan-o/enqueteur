@@ -11,9 +11,14 @@ type SubmitPromptChoice = {
 type AdvanceDayPayload = {
     tickTarget: number;
 };
+type ApplySupervisorPlacementsPayload = {
+    tickTarget: number;
+    setSupervisors: Record<string, string | null>;
+};
 type SimSimSceneOpts = {
     onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     onAdvanceDay?: (payload: AdvanceDayPayload) => void;
+    onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
 };
 
 const FALLBACK_LAYOUT: Record<number, Bounds> = {
@@ -44,14 +49,19 @@ export class SimSimScene {
     private debugPanelEl?: HTMLDivElement;
     private advanceDayButtonEl?: HTMLButtonElement;
     private advanceStatusEl?: HTMLDivElement;
+    private supervisorPanelEl?: HTMLDivElement;
     private debugVisible = true;
     private lastState?: SimSimViewerState;
+    private supervisorDraftByRoom: Map<number, string | null> = new Map();
+    private supervisorDraftSignature = "";
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     private readonly onAdvanceDay?: (payload: AdvanceDayPayload) => void;
+    private readonly onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
 
     constructor(mountEl: HTMLElement, opts?: SimSimSceneOpts) {
         this.onSubmitPromptChoice = opts?.onSubmitPromptChoice;
         this.onAdvanceDay = opts?.onAdvanceDay;
+        this.onApplySupervisorPlacements = opts?.onApplySupervisorPlacements;
         this.app = new PIXI.Application();
         void this.init(mountEl);
     }
@@ -311,6 +321,21 @@ export class SimSimScene {
         advanceControls.appendChild(advanceStatus);
         root.appendChild(advanceControls);
 
+        const supervisorPanel = document.createElement("div");
+        supervisorPanel.style.position = "absolute";
+        supervisorPanel.style.left = "14px";
+        supervisorPanel.style.top = "250px";
+        supervisorPanel.style.padding = "10px 12px";
+        supervisorPanel.style.borderRadius = "10px";
+        supervisorPanel.style.border = "1px solid rgba(140, 214, 200, 0.42)";
+        supervisorPanel.style.background = "rgba(13, 20, 28, 0.86)";
+        supervisorPanel.style.pointerEvents = "auto";
+        supervisorPanel.style.minWidth = "320px";
+        supervisorPanel.style.maxWidth = "min(420px, 38vw)";
+        supervisorPanel.style.maxHeight = "40vh";
+        supervisorPanel.style.overflowY = "auto";
+        root.appendChild(supervisorPanel);
+
         const roomCards = document.createElement("div");
         roomCards.style.position = "absolute";
         roomCards.style.right = "14px";
@@ -398,12 +423,13 @@ export class SimSimScene {
         this.debugPanelEl = debugPanel;
         this.advanceDayButtonEl = advanceButton;
         this.advanceStatusEl = advanceStatus;
+        this.supervisorPanelEl = supervisorPanel;
 
         mountEl.appendChild(root);
     }
 
     private renderOverlay(state: SimSimViewerState, events: SimSimEvent[], prompts: SimSimPrompt[]): void {
-        if (!this.hudEl || !this.roomCardsEl || !this.eventsEl || !this.promptsEl || !this.debugPanelEl) return;
+        if (!this.hudEl || !this.roomCardsEl || !this.eventsEl || !this.promptsEl || !this.debugPanelEl || !this.supervisorPanelEl) return;
         const wm = state.worldMeta;
         const inv = state.inventory;
         const regime = state.regime;
@@ -436,7 +462,7 @@ export class SimSimScene {
             `<div>supervisors: ${supervisorSummary || "none unlocked"}</div>`,
             `<div>regime: ${activeFlags.length ? activeFlags.join(", ") : "none"}</div>`,
             awaitingPrompts
-                ? `<div style="color:#f3c76a;">phase awaiting_prompts: supervisor/worker/EOD controls disabled until prompt resolution</div>`
+                ? `<div style="color:#f3c76a;">phase awaiting_prompts: placements and advance disabled until prompt resolution</div>`
                 : "",
         ].join("");
 
@@ -488,6 +514,7 @@ export class SimSimScene {
             })
             .join("");
 
+        this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
         this.renderPromptsPanel(state, prompts, awaitingPrompts, events);
 
         const eventRows = events.slice(-10).map((event) => {
@@ -507,6 +534,188 @@ export class SimSimScene {
             `<div>prompts: ${state.prompts.size}</div>`,
             `<div>config: ${wm?.config_id ?? "-"}</div>`,
         ].join("");
+    }
+
+    private renderSupervisorPlacementsPanel(state: SimSimViewerState, rooms: SimSimRoom[], awaitingPrompts: boolean): void {
+        if (!this.supervisorPanelEl) return;
+        const panel = this.supervisorPanelEl;
+        panel.innerHTML = "";
+
+        const wm = state.worldMeta;
+        const planningPhase = (wm?.phase ?? "").toLowerCase() === "planning";
+        const controlsDisabled = !planningPhase || awaitingPrompts || state.desynced;
+        const tickTarget = state.tick + 1;
+        const unlockedRooms = rooms.filter((room) => !room.locked).sort((a, b) => a.room_id - b.room_id);
+        const unlockedSupervisors = Array.from(state.supervisors.values())
+            .filter((supervisor) => supervisor.unlocked_day <= tickTarget)
+            .sort((a, b) => a.code.localeCompare(b.code));
+
+        const title = document.createElement("div");
+        title.style.fontSize = "12px";
+        title.style.fontWeight = "700";
+        title.style.marginBottom = "6px";
+        title.textContent = "Supervisor Placements";
+        panel.appendChild(title);
+
+        const hint = document.createElement("div");
+        hint.style.fontSize = "11px";
+        hint.style.opacity = "0.92";
+        hint.style.marginBottom = "8px";
+        hint.textContent = "Optional: set room supervisors before advancing. Security (room 1) sets dispatch behavior.";
+        panel.appendChild(hint);
+
+        if (unlockedRooms.length === 0) {
+            const empty = document.createElement("div");
+            empty.style.fontSize = "11px";
+            empty.style.opacity = "0.82";
+            empty.textContent = "No unlocked rooms yet.";
+            panel.appendChild(empty);
+            return;
+        }
+
+        const currentByRoom = new Map<number, string | null>();
+        for (const room of unlockedRooms) {
+            currentByRoom.set(room.room_id, room.supervisor ?? null);
+        }
+
+        const baselineSignature = JSON.stringify(
+            unlockedRooms.map((room) => [room.room_id, currentByRoom.get(room.room_id) ?? null])
+        );
+        if (this.supervisorDraftSignature !== baselineSignature) {
+            this.supervisorDraftSignature = baselineSignature;
+            this.supervisorDraftByRoom = new Map(currentByRoom);
+        } else {
+            for (const room of unlockedRooms) {
+                if (!this.supervisorDraftByRoom.has(room.room_id)) {
+                    this.supervisorDraftByRoom.set(room.room_id, currentByRoom.get(room.room_id) ?? null);
+                }
+            }
+        }
+        for (const roomId of Array.from(this.supervisorDraftByRoom.keys())) {
+            if (!currentByRoom.has(roomId)) this.supervisorDraftByRoom.delete(roomId);
+        }
+
+        const currentBySupervisor = assignmentsBySupervisor(currentByRoom);
+        const draftBySupervisor = assignmentsBySupervisor(this.supervisorDraftByRoom);
+        const swapsUsed = countSupervisorSwapUnits(currentBySupervisor, draftBySupervisor);
+        const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) < 4 ? 1 : 2);
+        const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
+        const overBudget = swapsUsed > swapBudget;
+        const changed = !assignmentMapsEqual(currentByRoom, this.supervisorDraftByRoom);
+
+        const summary = document.createElement("div");
+        summary.style.fontSize = "11px";
+        summary.style.marginBottom = "8px";
+        summary.innerHTML = [
+            `<div>Swap budget: <strong>${swapBudget}</strong> • used: <strong>${swapsUsed}</strong> • remaining: <strong>${swapsRemaining}</strong></div>`,
+            overBudget ? `<div style="color:#ffd8cf;">Placement draft exceeds daily swap budget.</div>` : "",
+            controlsDisabled ? `<div style="color:#f3c76a;">Placements locked while phase is ${wm?.phase ?? "unknown"}.</div>` : "",
+        ].join("");
+        panel.appendChild(summary);
+
+        for (const room of unlockedRooms) {
+            const row = document.createElement("div");
+            row.style.display = "grid";
+            row.style.gridTemplateColumns = "1fr auto";
+            row.style.alignItems = "center";
+            row.style.gap = "8px";
+            row.style.fontSize = "11px";
+            row.style.marginBottom = "6px";
+
+            const label = document.createElement("label");
+            label.textContent = `Room ${room.room_id} • ${room.name}`;
+            row.appendChild(label);
+
+            const select = document.createElement("select");
+            select.style.minWidth = "156px";
+            select.style.maxWidth = "220px";
+            select.style.fontSize = "11px";
+            select.style.borderRadius = "6px";
+            select.style.padding = "4px 6px";
+            select.style.background = "rgba(16, 22, 28, 0.96)";
+            select.style.color = "#f3efe3";
+            select.style.border = "1px solid rgba(140, 214, 200, 0.45)";
+            select.disabled = controlsDisabled;
+
+            const noneOpt = document.createElement("option");
+            noneOpt.value = "__none__";
+            noneOpt.textContent = "Unassigned";
+            select.appendChild(noneOpt);
+
+            for (const supervisor of unlockedSupervisors) {
+                const opt = document.createElement("option");
+                opt.value = supervisor.code;
+                opt.textContent = `${supervisor.code} ${supervisor.name}`;
+                select.appendChild(opt);
+            }
+
+            const selectedCode = this.supervisorDraftByRoom.get(room.room_id) ?? null;
+            select.value = selectedCode ?? "__none__";
+            select.addEventListener("change", () => {
+                const raw = select.value;
+                const nextCode = raw === "__none__" ? null : raw;
+                if (nextCode) {
+                    for (const [roomId, code] of this.supervisorDraftByRoom.entries()) {
+                        if (roomId !== room.room_id && code === nextCode) {
+                            this.supervisorDraftByRoom.set(roomId, null);
+                        }
+                    }
+                }
+                this.supervisorDraftByRoom.set(room.room_id, nextCode);
+                this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+            });
+            row.appendChild(select);
+
+            panel.appendChild(row);
+        }
+
+        const actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.alignItems = "center";
+        actions.style.gap = "8px";
+        actions.style.marginTop = "8px";
+
+        const applyButton = document.createElement("button");
+        applyButton.type = "button";
+        applyButton.textContent = "Apply Placements";
+        applyButton.style.border = "1px solid rgba(140, 214, 200, 0.65)";
+        applyButton.style.background = "rgba(12, 25, 31, 0.95)";
+        applyButton.style.color = "#f3efe3";
+        applyButton.style.borderRadius = "8px";
+        applyButton.style.padding = "5px 10px";
+        applyButton.style.fontSize = "11px";
+        applyButton.style.fontWeight = "700";
+        applyButton.style.cursor = "pointer";
+
+        const applyDisabled = controlsDisabled || overBudget || !changed;
+        applyButton.disabled = applyDisabled;
+        applyButton.style.opacity = applyDisabled ? "0.55" : "1";
+        applyButton.style.cursor = applyDisabled ? "not-allowed" : "pointer";
+        if (!applyDisabled) {
+            applyButton.addEventListener("click", () => {
+                const setSupervisors: Record<string, string | null> = {};
+                for (const room of unlockedRooms) {
+                    setSupervisors[String(room.room_id)] = this.supervisorDraftByRoom.get(room.room_id) ?? null;
+                }
+                this.onApplySupervisorPlacements?.({
+                    tickTarget,
+                    setSupervisors,
+                });
+            });
+        }
+        actions.appendChild(applyButton);
+
+        const applyHint = document.createElement("div");
+        applyHint.style.fontSize = "11px";
+        applyHint.style.opacity = "0.88";
+        applyHint.textContent = !changed
+            ? "No placement changes."
+            : overBudget
+              ? "Reduce changes to fit swap budget."
+              : `Ready for tick ${tickTarget}.`;
+        actions.appendChild(applyHint);
+
+        panel.appendChild(actions);
     }
 
     private renderPromptsPanel(
@@ -651,4 +860,35 @@ function fmtPair(a: number | null | undefined, b: number | null | undefined): st
     const left = a === null || a === undefined ? "--" : String(a);
     const right = b === null || b === undefined ? "--" : String(b);
     return `${left}/${right}`;
+}
+
+function assignmentsBySupervisor(roomToCode: Map<number, string | null>): Map<string, number | null> {
+    const out = new Map<string, number | null>();
+    for (const [roomId, code] of roomToCode.entries()) {
+        if (!code) continue;
+        out.set(code, roomId);
+    }
+    return out;
+}
+
+function countSupervisorSwapUnits(
+    currentBySupervisor: Map<string, number | null>,
+    proposedBySupervisor: Map<string, number | null>
+): number {
+    const allCodes = new Set<string>([...currentBySupervisor.keys(), ...proposedBySupervisor.keys()]);
+    let changedSupervisors = 0;
+    for (const code of Array.from(allCodes.values()).sort((a, b) => a.localeCompare(b))) {
+        if ((currentBySupervisor.get(code) ?? null) !== (proposedBySupervisor.get(code) ?? null)) {
+            changedSupervisors += 1;
+        }
+    }
+    return Math.floor((changedSupervisors + 1) / 2);
+}
+
+function assignmentMapsEqual(left: Map<number, string | null>, right: Map<number, string | null>): boolean {
+    if (left.size !== right.size) return false;
+    for (const [roomId, code] of left.entries()) {
+        if ((right.get(roomId) ?? null) !== (code ?? null)) return false;
+    }
+    return true;
 }
