@@ -429,17 +429,39 @@ class SessionHost:
         end_of_day = EndOfDayActions()
         prompt_responses: List[PromptResponse] = []
 
-        payload = envelope.get("payload", {})
-        if not isinstance(payload, dict):
+        payload_obj = envelope.get("payload", {})
+        if not isinstance(payload_obj, dict):
             return None, "INVALID_PAYLOAD", "payload must be an object"
 
+        # Support both direct payload shape and wrapped payload shape:
+        # direct: {tick_target,set_supervisors,set_workers,end_of_day,prompt_responses}
+        # wrapped: {schema,tick_target,payload:{prompt_responses: {...}}}
+        command_payload = payload_obj
+        if "payload" in payload_obj:
+            allowed_wrapper_keys = {"schema", "tick_target", "payload"}
+            unknown_wrapper_keys = [k for k in payload_obj.keys() if k not in allowed_wrapper_keys]
+            if unknown_wrapper_keys:
+                return None, "INVALID_PAYLOAD", f"unsupported SIM_INPUT wrapper key(s): {','.join(sorted(str(k) for k in unknown_wrapper_keys))}"
+            schema = payload_obj.get("schema")
+            if schema is not None and str(schema) != SIM_SIM_SCHEMA_VERSION:
+                return None, "INVALID_SCHEMA", f"schema must be {SIM_SIM_SCHEMA_VERSION}"
+            nested_payload = payload_obj.get("payload")
+            if not isinstance(nested_payload, dict):
+                return None, "INVALID_PAYLOAD", "SIM_INPUT.payload must be an object"
+            command_payload = nested_payload
+
         allowed_payload_keys = {"tick_target", "set_supervisors", "set_workers", "end_of_day", "prompt_responses"}
-        unknown_payload_keys = [k for k in payload.keys() if k not in allowed_payload_keys]
+        unknown_payload_keys = [k for k in command_payload.keys() if k not in allowed_payload_keys]
         if unknown_payload_keys:
             return None, "INVALID_PAYLOAD", f"unsupported SIM_INPUT payload key(s): {','.join(sorted(str(k) for k in unknown_payload_keys))}"
 
-        if "tick_target" in payload:
-            tick_raw = payload.get("tick_target")
+        tick_raw = None
+        if "tick_target" in payload_obj:
+            tick_raw = payload_obj.get("tick_target")
+        elif "tick_target" in command_payload:
+            tick_raw = command_payload.get("tick_target")
+
+        if tick_raw is not None:
             if not isinstance(tick_raw, int):
                 return None, "INVALID_TICK_TARGET", "tick_target must be an integer"
             if tick_raw != next_tick:
@@ -448,18 +470,18 @@ class SessionHost:
 
         is_awaiting_prompts = self.current_state.phase == "awaiting_prompts"
         if is_awaiting_prompts:
-            disallowed_keys = [key for key in ("set_supervisors", "set_workers", "end_of_day") if key in payload]
+            disallowed_keys = [key for key in ("set_supervisors", "set_workers", "end_of_day") if key in command_payload]
             if disallowed_keys:
                 return (
                     None,
                     "AWAITING_PROMPTS_ONLY_PROMPT_RESPONSES",
                     f"while awaiting prompts, SIM_INPUT may include only prompt_responses (found: {','.join(disallowed_keys)})",
                 )
-            if "prompt_responses" not in payload:
+            if "prompt_responses" not in command_payload:
                 return None, "PROMPT_RESPONSES_REQUIRED", "while awaiting prompts, prompt_responses are required"
 
         if not is_awaiting_prompts:
-            raw_sup = payload.get("set_supervisors", {})
+            raw_sup = command_payload.get("set_supervisors", {})
             if not isinstance(raw_sup, dict):
                 return None, "INVALID_SET_SUPERVISORS", "set_supervisors must be an object"
             for room_raw, code_raw in raw_sup.items():
@@ -479,7 +501,7 @@ class SessionHost:
                     return None, "INVALID_SET_SUPERVISORS", f"unknown supervisor code for room {room_id}"
                 set_supervisors[room_id] = parsed_code
 
-            raw_workers = payload.get("set_workers", {})
+            raw_workers = command_payload.get("set_workers", {})
             if not isinstance(raw_workers, dict):
                 return None, "INVALID_SET_WORKERS", "set_workers must be an object"
             for room_raw, worker_raw in raw_workers.items():
@@ -503,7 +525,7 @@ class SessionHost:
                     return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}].smart must be a non-negative integer"
                 set_workers[room_id] = WorkerAssignment(dumb=int(dumb), smart=int(smart))
 
-            raw_eod = payload.get("end_of_day", {})
+            raw_eod = command_payload.get("end_of_day", {})
             if not isinstance(raw_eod, dict):
                 return None, "INVALID_END_OF_DAY", "end_of_day must be an object"
             allowed_eod_keys = {
@@ -535,12 +557,20 @@ class SessionHost:
             for prompt in self.current_state.prompts
         }
         seen_prompt_ids: set[str] = set()
-        raw_prompts = payload.get("prompt_responses", [])
-        if not isinstance(raw_prompts, list):
-            return None, "INVALID_PROMPT_RESPONSES", "prompt_responses must be an array"
-        for row in raw_prompts:
-            if not isinstance(row, dict):
-                return None, "INVALID_PROMPT_RESPONSES", "prompt_responses entries must be objects"
+        raw_prompts = command_payload.get("prompt_responses", [])
+        rows: List[Dict[str, Any]] = []
+        if isinstance(raw_prompts, dict):
+            for prompt_id_key, choice_value in raw_prompts.items():
+                rows.append({"prompt_id": prompt_id_key, "choice": choice_value})
+        elif isinstance(raw_prompts, list):
+            for row in raw_prompts:
+                if not isinstance(row, dict):
+                    return None, "INVALID_PROMPT_RESPONSES", "prompt_responses entries must be objects"
+                rows.append(dict(row))
+        else:
+            return None, "INVALID_PROMPT_RESPONSES", "prompt_responses must be an object or array"
+
+        for row in rows:
             if set(row.keys()) != {"prompt_id", "choice"}:
                 return None, "INVALID_PROMPT_RESPONSES", "prompt_responses entries must include only prompt_id and choice"
             prompt_id = row.get("prompt_id")

@@ -16,7 +16,7 @@ import { ViewerPluginRegistry } from "../viewers/core/viewerPlugin";
 import { createSim4ViewerPlugin } from "../viewers/sim4/sim4Plugin";
 import { createSimSimViewerPlugin } from "../viewers/sim_sim/simSimPlugin";
 import { SimSimScene } from "../viewers/sim_sim/simSimScene";
-import { SimSimStore } from "../viewers/sim_sim/simSimStore";
+import { SIM_SIM_SCHEMA_VERSION, SimSimStore } from "../viewers/sim_sim/simSimStore";
 
 /**
  * Boot the Loopforge Web Viewer (WEBVIEW-0001).
@@ -159,8 +159,13 @@ export function boot(opts: BootOpts): ViewerHandle {
                     return;
                 }
                 client.sendSimInput({
+                    schema: SIM_SIM_SCHEMA_VERSION,
                     tick_target: tickTarget,
-                    prompt_responses: [{ prompt_id: promptId, choice }],
+                    payload: {
+                        prompt_responses: {
+                            [promptId]: choice,
+                        },
+                    },
                 });
             },
         });

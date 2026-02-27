@@ -250,3 +250,28 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.host.current_tick, blocked_tick + 1)
         self.assertEqual(self.host.current_state.phase, "planning")
         self.assertFalse(self.host._pending_inputs)  # type: ignore[attr-defined]
+
+    async def test_live_accepts_wrapped_prompt_response_payload_shape(self) -> None:
+        await self._drive_to_awaiting_prompts()
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        blocked_tick = self.host.current_tick
+        tick_target = blocked_tick + 1
+        prompt = next(prompt for prompt in self.host.current_state.prompts if prompt.status != "resolved")
+
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "schema": "sim_sim_1",
+                "tick_target": tick_target,
+                "payload": {
+                    "prompt_responses": {
+                        prompt.prompt_id: str(prompt.choices[0]),
+                    }
+                },
+            },
+        )
+
+        self.assertEqual(self.host.current_tick, blocked_tick + 1)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        decoded = self._decoded_sent()
+        self.assertTrue(any(env.get("msg_type") in ("FRAME_DIFF", "FULL_SNAPSHOT") for env in decoded))
