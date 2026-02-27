@@ -394,9 +394,10 @@ class SessionHost:
 
         day_input = parsed[0]
         accepted, reason = await self.submit_day_input(day_input, source=f"ws:{ctx.connection_id}")
+        rejection_reason_code = self._kernel_reason_code(reason)
         await self._record_input_ack_event(
             accepted=accepted,
-            reason_code="INPUT_ACCEPTED" if accepted else "KERNEL_VALIDATION_FAILED",
+            reason_code="INPUT_ACCEPTED" if accepted else rejection_reason_code,
             reason=reason,
             source=f"ws:{ctx.connection_id}",
             tick_target=day_input.tick_target,
@@ -412,9 +413,15 @@ class SessionHost:
             ctx.connection_id,
             msg_type,
             day_input.tick_target,
-            "INPUT_ACCEPTED" if accepted else "KERNEL_VALIDATION_FAILED",
+            "INPUT_ACCEPTED" if accepted else rejection_reason_code,
             reason,
         )
+
+    def _kernel_reason_code(self, reason: str) -> str:
+        text = str(reason)
+        if text.startswith("SUPERVISOR_SWAP_BUDGET_EXCEEDED"):
+            return "SUPERVISOR_SWAP_BUDGET_EXCEEDED"
+        return "KERNEL_VALIDATION_FAILED"
 
     def _parse_sim_input_envelope(self, envelope: Mapping[str, Any]) -> tuple[DayInput | None, str, str]:
         msg_type = str(envelope.get("msg_type", ""))

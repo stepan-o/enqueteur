@@ -118,6 +118,10 @@ def _set_supervisor_confidence_state(
         hidden_accumulators=state.hidden_accumulators,
         limen_security_count=state.limen_security_count,
         next_event_id=state.next_event_id,
+        previous_day_assignments=dict(state.previous_day_assignments),
+        swap_budget=state.swap_budget,
+        swaps_used_if_applied=state.swaps_used_if_applied,
+        swaps_remaining=state.swaps_remaining,
     )
 
 
@@ -403,6 +407,33 @@ def test_dispatch_changes_with_stiletto_on_security() -> None:
     s_forge = int(kernel_s.state.rooms[2].workers_assigned_dumb or 0) + int(kernel_s.state.rooms[2].workers_assigned_smart or 0)
     assert s_forge >= l_forge
     assert kernel_l.state.assignment_template != kernel_s.state.assignment_template
+
+
+def test_supervisor_swap_budget_counting_and_enforcement() -> None:
+    kernel = SimSimKernel(seed=23)
+    for day in range(1, 5):
+        _advance_one_tick(kernel, tick_target=day, day_input=DayInput(tick_target=day, advance=True))
+
+    assert kernel.state.day_tick == 4
+    assert kernel.state.swap_budget == 2
+    assert kernel.state.swaps_remaining == 2
+
+    over_budget_input = DayInput(
+        tick_target=5,
+        advance=True,
+        set_supervisors={1: "S", 2: "C", 3: "W", 4: "T", 5: "L"},
+    )
+    valid, reason = kernel.validate_day_input(over_budget_input, expected_tick_target=5)
+    assert not valid
+    assert str(reason).startswith("SUPERVISOR_SWAP_BUDGET_EXCEEDED")
+
+    within_budget_input = DayInput(
+        tick_target=5,
+        advance=True,
+        set_supervisors={1: "S", 2: "L"},
+    )
+    valid, reason = kernel.validate_day_input(within_budget_input, expected_tick_target=5)
+    assert valid, reason
 
 
 def test_limen_security_hours_penalty_caps_and_persists() -> None:

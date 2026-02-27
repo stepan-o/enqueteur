@@ -240,6 +240,10 @@ def _project_supervisors(domain_state: SimSimState) -> List[Dict[str, Any]]:
 
 
 def _project_world_meta(domain_state: SimSimState, *, run_context: Mapping[str, Any]) -> Dict[str, Any]:
+    placements_current = {
+        str(code): (int(room_id) if isinstance(room_id, int) else None)
+        for code, room_id in sorted(domain_state.assignments.items(), key=lambda item: str(item[0]))
+    }
     return {
         "day": int(domain_state.day_tick),
         "tick": int(domain_state.day_tick),
@@ -252,6 +256,12 @@ def _project_world_meta(domain_state: SimSimState, *, run_context: Mapping[str, 
         "security_lead": str(domain_state.security_lead),
         "config_hash": str(domain_state.config_hash),
         "config_id": str(domain_state.config_id),
+        "supervisor_swaps": {
+            "swap_budget": int(domain_state.swap_budget),
+            "swaps_used_if_applied": int(domain_state.swaps_used_if_applied),
+            "swaps_remaining": int(domain_state.swaps_remaining),
+            "placements_current": placements_current,
+        },
     }
 
 

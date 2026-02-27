@@ -6,7 +6,7 @@ import unittest
 import uuid
 from typing import Any, Dict, List
 
-from backend.sim_sim.kernel.state import DayInput
+from backend.sim_sim.kernel.state import DayInput, PromptResponse
 from backend.sim_sim.live.session_host import SessionHost
 
 
@@ -198,6 +198,44 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         ack = self._latest_ack_event("input_rejected")
         details = ack.get("details", {})
         self.assertEqual(details.get("reason_code"), "DISALLOWED_FIELD_PROMPT_RESPONSES_IN_PLANNING")
+        self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+
+    async def test_live_rejects_supervisor_swaps_over_budget(self) -> None:
+        while self.host.current_tick < 4:
+            next_tick = self.host.current_tick + 1
+            day_input = DayInput(tick_target=next_tick, advance=True)
+            accepted, reason = await self.host.submit_day_input(day_input, source="test-cli")
+            self.assertTrue(accepted, reason)
+            to_tick, _ = await self.host.advance_day(day_input)
+            await asyncio.sleep(0.02)
+            if to_tick < next_tick:
+                unresolved = [prompt for prompt in self.host.current_state.prompts if prompt.status != "resolved"]
+                self.assertTrue(unresolved)
+                responses = tuple(
+                    PromptResponse(prompt_id=prompt.prompt_id, choice=str(prompt.choices[0]))
+                    for prompt in unresolved
+                )
+                resolve = DayInput(tick_target=next_tick, advance=True, prompt_responses=responses)
+                accepted, reason = await self.host.submit_day_input(resolve, source="test-cli")
+                self.assertTrue(accepted, reason)
+                await self.host.advance_day(resolve)
+                await asyncio.sleep(0.02)
+        self.assertEqual(self.host.current_tick, 4)
+        self.assertEqual(self.host.current_state.phase, "planning")
+
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": 5,
+                "set_supervisors": {"1": "S", "2": "C", "3": "W", "4": "T", "5": "L"},
+            },
+        )
+
+        self.assertEqual(self.host.current_tick, 4)
+        self.assertNotIn(5, self.host._pending_inputs)  # type: ignore[attr-defined]
+        ack = self._latest_ack_event("input_rejected")
+        details = ack.get("details", {})
+        self.assertEqual(details.get("reason_code"), "SUPERVISOR_SWAP_BUDGET_EXCEEDED")
         self.assertEqual(details.get("msg_type"), "SIM_INPUT")
 
     async def test_live_prompt_response_unblocks_without_queue_collision(self) -> None:

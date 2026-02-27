@@ -208,6 +208,10 @@ class SimSimState:
     hidden_accumulators: HiddenAccumulatorState
     limen_security_count: int
     next_event_id: int
+    previous_day_assignments: Dict[str, int | None] = field(default_factory=dict)
+    swap_budget: int = 1
+    swaps_used_if_applied: int = 0
+    swaps_remaining: int = 1
 
 
 @dataclass
@@ -386,6 +390,10 @@ class SimSimKernel:
             ),
             limen_security_count=0,
             next_event_id=1,
+            previous_day_assignments=dict(initial_assignments),
+            swap_budget=self._supervisor_swap_budget_for_day(1),
+            swaps_used_if_applied=0,
+            swaps_remaining=self._supervisor_swap_budget_for_day(1),
         )
 
     @property
@@ -445,6 +453,10 @@ class SimSimKernel:
             hidden_accumulators=self._state.hidden_accumulators,
             limen_security_count=self._state.limen_security_count,
             next_event_id=self._state.next_event_id + 1,
+            previous_day_assignments=dict(self._state.previous_day_assignments),
+            swap_budget=self._state.swap_budget,
+            swaps_used_if_applied=self._state.swaps_used_if_applied,
+            swaps_remaining=self._state.swaps_remaining,
         )
 
     def _room_unlock_day(self, room_id: int) -> int:
@@ -586,6 +598,37 @@ class SimSimKernel:
         t = _rng01(self._seed, "init_stress", room_id)
         return lo + (hi - lo) * t
 
+    def _supervisor_swap_budget_for_day(self, day_tick: int) -> int:
+        return 1 if int(day_tick) < 4 else 2
+
+    def _count_supervisor_swaps(
+        self,
+        *,
+        previous_assignments: Mapping[str, int | None],
+        next_assignments: Mapping[str, int | None],
+    ) -> int:
+        changed_supervisors = 0
+        for code in sorted(set(previous_assignments.keys()) | set(next_assignments.keys())):
+            prev_room = previous_assignments.get(code)
+            next_room = next_assignments.get(code)
+            if prev_room != next_room:
+                changed_supervisors += 1
+        return int((changed_supervisors + 1) // 2)
+
+    def _swaps_used_for_input(
+        self,
+        *,
+        day_input: DayInput,
+        previous_assignments: Mapping[str, int | None],
+        next_assignments: Mapping[str, int | None],
+    ) -> int:
+        if not day_input.set_supervisors and not day_input.supervisor_swaps:
+            return 0
+        return self._count_supervisor_swaps(
+            previous_assignments=previous_assignments,
+            next_assignments=next_assignments,
+        )
+
     def validate_day_input(self, day_input: DayInput, expected_tick_target: int) -> tuple[bool, str]:
         if day_input.tick_target != expected_tick_target:
             return False, f"tick_target must equal next day tick ({expected_tick_target})"
@@ -653,6 +696,25 @@ class SimSimKernel:
                 continue
             if not self._is_supervisor_unlocked(code, expected_tick_target):
                 return False, f"supervisor {code} not unlocked for day {expected_tick_target}"
+
+        if day_input.set_supervisors or day_input.supervisor_swaps:
+            proposed_assignments = self._compute_assignments(
+                self._state,
+                day_input=day_input,
+                day=expected_tick_target,
+                emit=lambda *args, **kwargs: None,
+            )
+            swaps_used = self._swaps_used_for_input(
+                day_input=day_input,
+                previous_assignments=self._state.assignments,
+                next_assignments=proposed_assignments,
+            )
+            swap_budget = self._supervisor_swap_budget_for_day(expected_tick_target)
+            if swaps_used > swap_budget:
+                return (
+                    False,
+                    f"SUPERVISOR_SWAP_BUDGET_EXCEEDED: used={swaps_used} budget={swap_budget}",
+                )
 
         eod = day_input.end_of_day
         for label, value in (
@@ -724,7 +786,12 @@ class SimSimKernel:
             runtime_events.append(event)
             next_event_id += 1
 
-        def enter_awaiting_prompts(*, prompts: Sequence[PromptState]) -> tuple[SimSimState, SimSimState]:
+        def enter_awaiting_prompts(
+            *,
+            prompts: Sequence[PromptState],
+            swap_budget: int,
+            swaps_used_if_applied: int,
+        ) -> tuple[SimSimState, SimSimState]:
             self._state = SimSimState(
                 day_tick=start.day_tick,
                 phase="awaiting_prompts",
@@ -746,6 +813,10 @@ class SimSimKernel:
                 hidden_accumulators=start.hidden_accumulators,
                 limen_security_count=start.limen_security_count,
                 next_event_id=next_event_id,
+                previous_day_assignments=dict(start.previous_day_assignments),
+                swap_budget=int(swap_budget),
+                swaps_used_if_applied=int(swaps_used_if_applied),
+                swaps_remaining=max(0, int(swap_budget) - int(swaps_used_if_applied)),
             )
             return previous, self._state
 
@@ -754,6 +825,12 @@ class SimSimKernel:
 
         # 2) Validate supervisor assignments.
         assignments = self._compute_assignments(start, day_input=effective_input, day=day, emit=emit)
+        swap_budget_for_day = self._supervisor_swap_budget_for_day(day)
+        swaps_used_for_input = self._swaps_used_for_input(
+            day_input=effective_input,
+            previous_assignments=start.assignments,
+            next_assignments=assignments,
+        )
 
         # 3) Determine security lead (sole worker-dispatch control knob).
         security_lead = self._determine_security_lead(assignments)
@@ -826,7 +903,11 @@ class SimSimKernel:
             prompts=runtime_prompts,
         )
         if bool(conflict_resolution.get("awaiting_prompt", False)):
-            return enter_awaiting_prompts(prompts=runtime_prompts)
+            return enter_awaiting_prompts(
+                prompts=runtime_prompts,
+                swap_budget=swap_budget_for_day,
+                swaps_used_if_applied=swaps_used_for_input,
+            )
 
         # 11) Compute base L/I/Rsup.
         runtime_rooms = self._build_runtime_rooms(
@@ -962,7 +1043,11 @@ class SimSimKernel:
             emit=emit,
         )
         if bool(critical_effects.get("awaiting_prompt", False)):
-            return enter_awaiting_prompts(prompts=runtime_prompts)
+            return enter_awaiting_prompts(
+                prompts=runtime_prompts,
+                swap_budget=swap_budget_for_day,
+                swaps_used_if_applied=swaps_used_for_input,
+            )
         hidden_after_critical = critical_effects["hidden"]
         regime = critical_effects["regime"]
         supervisors_next = critical_effects["supervisors"]
@@ -1119,6 +1204,10 @@ class SimSimKernel:
             hidden_accumulators=hidden_next,
             limen_security_count=limen_security_count,
             next_event_id=next_event_id,
+            previous_day_assignments=dict(start.assignments),
+            swap_budget=self._supervisor_swap_budget_for_day(day + 1),
+            swaps_used_if_applied=0,
+            swaps_remaining=self._supervisor_swap_budget_for_day(day + 1),
         )
 
         return previous, self._state
