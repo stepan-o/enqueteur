@@ -20,6 +20,7 @@ type SimSimSceneOpts = {
     onAdvanceDay?: (payload: AdvanceDayPayload) => void;
     onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
 };
+type PlacementDraft = Record<number, string | null>;
 
 const FALLBACK_LAYOUT: Record<number, Bounds> = {
     1: { min_x: 0, min_y: 0, max_x: 12, max_y: 8 },
@@ -52,8 +53,17 @@ export class SimSimScene {
     private supervisorPanelEl?: HTMLDivElement;
     private debugVisible = true;
     private lastState?: SimSimViewerState;
-    private supervisorDraftByRoom: Map<number, string | null> = new Map();
-    private supervisorDraftSignature = "";
+    private placementsBaseline: PlacementDraft = {};
+    private placementsDraft: PlacementDraft = {};
+    private placementsHistory: PlacementDraft[] = [];
+    private selectedSupId: string | null = null;
+    private selectedRoomId: number | null = null;
+    private lastPlacementSyncTick: number | null = null;
+    private lastPlacementSyncSignature = "";
+    private advanceInFlight = false;
+    private advanceInFlightStateKey: string | null = null;
+    private advanceStatusOverride: { text: string; color: string; untilMs: number } | null = null;
+    private promptsFlashTimer: number | null = null;
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     private readonly onAdvanceDay?: (payload: AdvanceDayPayload) => void;
     private readonly onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
@@ -109,7 +119,14 @@ export class SimSimScene {
             this.pendingState = state;
             return;
         }
+        const previousState = this.lastState;
         this.lastState = state;
+
+        const updateKey = this.stateUpdateKey(state);
+        if (this.advanceInFlight && this.advanceInFlightStateKey !== updateKey) {
+            this.advanceInFlight = false;
+            this.advanceInFlightStateKey = null;
+        }
 
         this.roomLayer.removeChildren();
         this.supervisorLayer.removeChildren();
@@ -163,7 +180,7 @@ export class SimSimScene {
         }
 
         const prompts = sortedPrompts(state.prompts);
-        this.renderOverlay(state, events, prompts);
+        this.renderOverlay(state, events, prompts, previousState);
     }
 
     private computeStageBounds(rooms: SimSimRoom[]): Bounds {
@@ -428,13 +445,27 @@ export class SimSimScene {
         mountEl.appendChild(root);
     }
 
-    private renderOverlay(state: SimSimViewerState, events: SimSimEvent[], prompts: SimSimPrompt[]): void {
+    private renderOverlay(
+        state: SimSimViewerState,
+        events: SimSimEvent[],
+        prompts: SimSimPrompt[],
+        previousState?: SimSimViewerState
+    ): void {
         if (!this.hudEl || !this.roomCardsEl || !this.eventsEl || !this.promptsEl || !this.debugPanelEl || !this.supervisorPanelEl) return;
         const wm = state.worldMeta;
         const inv = state.inventory;
         const regime = state.regime;
+        const previousPhase = (previousState?.worldMeta?.phase ?? "").toLowerCase();
         const awaitingPrompts = (wm?.phase ?? "").toLowerCase() === "awaiting_prompts";
         const planningPhase = (wm?.phase ?? "").toLowerCase() === "planning";
+        const enteredAwaitingPrompts = previousPhase === "planning" && awaitingPrompts;
+        if (enteredAwaitingPrompts) {
+            this.advanceStatusOverride = {
+                text: "Day requires a decision - resolve prompts to continue.",
+                color: "#f3c76a",
+                untilMs: Date.now() + 4000,
+            };
+        }
         const tickTarget = state.tick + 1;
         this.roomCardsEl.style.pointerEvents = awaitingPrompts ? "none" : "auto";
 
@@ -468,20 +499,45 @@ export class SimSimScene {
 
         const latestRejection = findLatestInputRejection(events);
         if (this.advanceDayButtonEl) {
-            const disabled = !planningPhase || state.desynced;
+            const disabled = !planningPhase || state.desynced || this.advanceInFlight;
             this.advanceDayButtonEl.disabled = disabled;
             this.advanceDayButtonEl.style.opacity = disabled ? "0.55" : "1";
             this.advanceDayButtonEl.style.cursor = disabled ? "not-allowed" : "pointer";
             this.advanceDayButtonEl.onclick = disabled
                 ? null
                 : () => {
+                      if (this.advanceInFlight) return;
+                      this.advanceInFlight = true;
+                      this.advanceInFlightStateKey = this.stateUpdateKey(state);
+                      this.advanceStatusOverride = {
+                          text: "Submitting day advance...",
+                          color: "#f3efe3",
+                          untilMs: Date.now() + 3000,
+                      };
+                      if (this.advanceDayButtonEl) {
+                          this.advanceDayButtonEl.disabled = true;
+                          this.advanceDayButtonEl.style.opacity = "0.55";
+                          this.advanceDayButtonEl.style.cursor = "not-allowed";
+                      }
+                      if (this.advanceStatusEl) {
+                          this.advanceStatusEl.style.color = "#f3efe3";
+                          this.advanceStatusEl.textContent = "Submitting day advance...";
+                      }
                       this.onAdvanceDay?.({ tickTarget });
                   };
         }
         if (this.advanceStatusEl) {
-            if (state.desynced) {
+            const overrideActive =
+                this.advanceStatusOverride !== null && this.advanceStatusOverride.untilMs >= Date.now();
+            if (overrideActive && this.advanceStatusOverride) {
+                this.advanceStatusEl.style.color = this.advanceStatusOverride.color;
+                this.advanceStatusEl.textContent = this.advanceStatusOverride.text;
+            } else if (state.desynced) {
                 this.advanceStatusEl.style.color = "#ffd8cf";
                 this.advanceStatusEl.textContent = "Advance disabled while desynced.";
+            } else if (this.advanceInFlight) {
+                this.advanceStatusEl.style.color = "#f3efe3";
+                this.advanceStatusEl.textContent = "Submitting day advance...";
             } else if (awaitingPrompts) {
                 this.advanceStatusEl.style.color = "#f3c76a";
                 this.advanceStatusEl.textContent = "Resolve pending prompts before advancing.";
@@ -516,6 +572,9 @@ export class SimSimScene {
 
         this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
         this.renderPromptsPanel(state, prompts, awaitingPrompts, events);
+        if (enteredAwaitingPrompts && prompts.length > 0) {
+            this.focusPromptsPanel();
+        }
 
         const eventRows = events.slice(-10).map((event) => {
             const room = event.room_id ? ` room=${event.room_id}` : "";
@@ -536,6 +595,134 @@ export class SimSimScene {
         ].join("");
     }
 
+    private focusPromptsPanel(): void {
+        if (!this.promptsEl) return;
+        this.promptsEl.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+        this.promptsEl.style.transition = "box-shadow 120ms ease, border-color 120ms ease";
+        this.promptsEl.style.borderColor = "rgba(243, 199, 106, 0.95)";
+        this.promptsEl.style.boxShadow = "0 0 0 2px rgba(243, 199, 106, 0.32)";
+        if (this.promptsFlashTimer !== null) {
+            window.clearTimeout(this.promptsFlashTimer);
+        }
+        this.promptsFlashTimer = window.setTimeout(() => {
+            if (!this.promptsEl) return;
+            this.promptsEl.style.borderColor = "rgba(243, 199, 106, 0.45)";
+            this.promptsEl.style.boxShadow = "none";
+            this.promptsFlashTimer = null;
+        }, 800);
+    }
+
+    private stateUpdateKey(state: SimSimViewerState): string {
+        return `${state.lastMsgType ?? "-"}|${state.tick}|${state.stepHash ?? "-"}|${state.diffsAppliedTotal}|${state.lastAppliedDiffCount}`;
+    }
+
+    private syncPlacementEditorState(state: SimSimViewerState, rooms: SimSimRoom[]): void {
+        const baseline = this.extractBaselinePlacements(state, rooms);
+        const signature = this.placementSignature(baseline);
+        if (this.lastPlacementSyncTick !== state.tick || this.lastPlacementSyncSignature !== signature) {
+            this.placementsBaseline = this.clonePlacementMap(baseline);
+            this.placementsDraft = this.clonePlacementMap(baseline);
+            this.placementsHistory = [];
+            this.unselect();
+            this.lastPlacementSyncTick = state.tick;
+            this.lastPlacementSyncSignature = signature;
+        }
+    }
+
+    private extractBaselinePlacements(state: SimSimViewerState, rooms: SimSimRoom[]): PlacementDraft {
+        const baseline: PlacementDraft = {};
+        const unlockedRooms = rooms.filter((room) => !room.locked);
+        for (const room of unlockedRooms) {
+            baseline[room.room_id] = null;
+        }
+
+        const bySupervisor = state.worldMeta?.supervisor_swaps?.placements_current;
+        if (bySupervisor && typeof bySupervisor === "object") {
+            for (const [supCode, rawRoomId] of Object.entries(bySupervisor)) {
+                const parsedRoomId =
+                    typeof rawRoomId === "number"
+                        ? rawRoomId
+                        : typeof rawRoomId === "string"
+                          ? Number(rawRoomId)
+                          : NaN;
+                if (!Number.isFinite(parsedRoomId)) continue;
+                const roomId = Number(parsedRoomId);
+                if (!Object.prototype.hasOwnProperty.call(baseline, roomId)) continue;
+                baseline[roomId] = supCode;
+            }
+            return baseline;
+        }
+
+        for (const room of unlockedRooms) {
+            baseline[room.room_id] = room.supervisor ?? null;
+        }
+        return baseline;
+    }
+
+    private placementSignature(placements: PlacementDraft): string {
+        const ordered = Object.keys(placements)
+            .map((roomId) => Number(roomId))
+            .filter((roomId) => Number.isFinite(roomId))
+            .sort((a, b) => a - b)
+            .map((roomId) => [roomId, placements[roomId] ?? null]);
+        return JSON.stringify(ordered);
+    }
+
+    private clonePlacementMap(placements: PlacementDraft): PlacementDraft {
+        const clone: PlacementDraft = {};
+        for (const [roomId, supId] of Object.entries(placements)) {
+            clone[Number(roomId)] = supId ?? null;
+        }
+        return clone;
+    }
+
+    private isPlacementMapEqual(left: PlacementDraft, right: PlacementDraft): boolean {
+        const keys = new Set<string>([...Object.keys(left), ...Object.keys(right)]);
+        for (const key of keys) {
+            const roomId = Number(key);
+            if ((left[roomId] ?? null) !== (right[roomId] ?? null)) return false;
+        }
+        return true;
+    }
+
+    private resetDraftToBaseline(): void {
+        if (this.isPlacementMapEqual(this.placementsDraft, this.placementsBaseline)) return;
+        this.pushHistory();
+        this.placementsDraft = this.clonePlacementMap(this.placementsBaseline);
+        this.unselect();
+    }
+
+    private pushHistory(): void {
+        this.placementsHistory.push(this.clonePlacementMap(this.placementsDraft));
+        if (this.placementsHistory.length > 50) {
+            this.placementsHistory.shift();
+        }
+    }
+
+    private undo(): void {
+        const previous = this.placementsHistory.pop();
+        if (!previous) return;
+        this.placementsDraft = this.clonePlacementMap(previous);
+        this.unselect();
+    }
+
+    private unselect(): void {
+        this.selectedSupId = null;
+        this.selectedRoomId = null;
+    }
+
+    private computeSwapsUsed(draft: PlacementDraft, baseline: PlacementDraft): number {
+        const keys = new Set<string>([...Object.keys(baseline), ...Object.keys(draft)]);
+        let changed = 0;
+        for (const key of keys) {
+            const roomId = Number(key);
+            if ((baseline[roomId] ?? null) !== (draft[roomId] ?? null)) {
+                changed += 1;
+            }
+        }
+        return Math.floor((changed + 1) / 2);
+    }
+
     private renderSupervisorPlacementsPanel(state: SimSimViewerState, rooms: SimSimRoom[], awaitingPrompts: boolean): void {
         if (!this.supervisorPanelEl) return;
         const panel = this.supervisorPanelEl;
@@ -549,6 +736,7 @@ export class SimSimScene {
         const unlockedSupervisors = Array.from(state.supervisors.values())
             .filter((supervisor) => supervisor.unlocked_day <= tickTarget)
             .sort((a, b) => a.code.localeCompare(b.code));
+        this.syncPlacementEditorState(state, rooms);
 
         const title = document.createElement("div");
         title.style.fontSize = "12px";
@@ -573,41 +761,18 @@ export class SimSimScene {
             return;
         }
 
-        const currentByRoom = new Map<number, string | null>();
-        for (const room of unlockedRooms) {
-            currentByRoom.set(room.room_id, room.supervisor ?? null);
-        }
-
-        const baselineSignature = JSON.stringify(
-            unlockedRooms.map((room) => [room.room_id, currentByRoom.get(room.room_id) ?? null])
-        );
-        if (this.supervisorDraftSignature !== baselineSignature) {
-            this.supervisorDraftSignature = baselineSignature;
-            this.supervisorDraftByRoom = new Map(currentByRoom);
-        } else {
-            for (const room of unlockedRooms) {
-                if (!this.supervisorDraftByRoom.has(room.room_id)) {
-                    this.supervisorDraftByRoom.set(room.room_id, currentByRoom.get(room.room_id) ?? null);
-                }
-            }
-        }
-        for (const roomId of Array.from(this.supervisorDraftByRoom.keys())) {
-            if (!currentByRoom.has(roomId)) this.supervisorDraftByRoom.delete(roomId);
-        }
-
-        const currentBySupervisor = assignmentsBySupervisor(currentByRoom);
-        const draftBySupervisor = assignmentsBySupervisor(this.supervisorDraftByRoom);
-        const swapsUsed = countSupervisorSwapUnits(currentBySupervisor, draftBySupervisor);
+        const swapsUsed = this.computeSwapsUsed(this.placementsDraft, this.placementsBaseline);
         const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) < 4 ? 1 : 2);
         const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
         const overBudget = swapsUsed > swapBudget;
-        const changed = !assignmentMapsEqual(currentByRoom, this.supervisorDraftByRoom);
+        const changed = !this.isPlacementMapEqual(this.placementsDraft, this.placementsBaseline);
 
         const summary = document.createElement("div");
         summary.style.fontSize = "11px";
         summary.style.marginBottom = "8px";
         summary.innerHTML = [
             `<div>Swap budget: <strong>${swapBudget}</strong> • used: <strong>${swapsUsed}</strong> • remaining: <strong>${swapsRemaining}</strong></div>`,
+            `<div>Selected: ${this.selectedRoomId !== null ? `room ${this.selectedRoomId}` : "none"}${this.selectedSupId ? ` -> ${this.selectedSupId}` : ""}</div>`,
             overBudget ? `<div style="color:#ffd8cf;">Placement draft exceeds daily swap budget.</div>` : "",
             controlsDisabled ? `<div style="color:#f3c76a;">Placements locked while phase is ${wm?.phase ?? "unknown"}.</div>` : "",
         ].join("");
@@ -621,6 +786,11 @@ export class SimSimScene {
             row.style.gap = "8px";
             row.style.fontSize = "11px";
             row.style.marginBottom = "6px";
+            if (this.selectedRoomId === room.room_id) {
+                row.style.background = "rgba(243, 199, 106, 0.16)";
+                row.style.borderRadius = "6px";
+                row.style.padding = "2px 4px";
+            }
 
             const label = document.createElement("label");
             label.textContent = `Room ${room.room_id} • ${room.name}`;
@@ -649,25 +819,83 @@ export class SimSimScene {
                 select.appendChild(opt);
             }
 
-            const selectedCode = this.supervisorDraftByRoom.get(room.room_id) ?? null;
+            const selectedCode = this.placementsDraft[room.room_id] ?? null;
             select.value = selectedCode ?? "__none__";
+            select.addEventListener("focus", () => {
+                this.selectedRoomId = room.room_id;
+                this.selectedSupId = this.placementsDraft[room.room_id] ?? null;
+            });
             select.addEventListener("change", () => {
                 const raw = select.value;
                 const nextCode = raw === "__none__" ? null : raw;
+                const currentCode = this.placementsDraft[room.room_id] ?? null;
+                if (nextCode === currentCode) return;
+
+                this.pushHistory();
                 if (nextCode) {
-                    for (const [roomId, code] of this.supervisorDraftByRoom.entries()) {
-                        if (roomId !== room.room_id && code === nextCode) {
-                            this.supervisorDraftByRoom.set(roomId, null);
+                    for (const otherRoom of unlockedRooms) {
+                        if (otherRoom.room_id !== room.room_id && this.placementsDraft[otherRoom.room_id] === nextCode) {
+                            this.placementsDraft[otherRoom.room_id] = null;
                         }
                     }
                 }
-                this.supervisorDraftByRoom.set(room.room_id, nextCode);
+                this.placementsDraft[room.room_id] = nextCode;
+                this.selectedRoomId = room.room_id;
+                this.selectedSupId = nextCode;
                 this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
             });
             row.appendChild(select);
 
             panel.appendChild(row);
         }
+
+        const editorActions = document.createElement("div");
+        editorActions.style.display = "flex";
+        editorActions.style.alignItems = "center";
+        editorActions.style.gap = "6px";
+        editorActions.style.marginTop = "8px";
+        editorActions.style.marginBottom = "4px";
+
+        const undoButton = document.createElement("button");
+        undoButton.type = "button";
+        undoButton.textContent = "Undo";
+        undoButton.disabled = controlsDisabled || this.placementsHistory.length === 0;
+        styleSecondaryButton(undoButton, undoButton.disabled);
+        if (!undoButton.disabled) {
+            undoButton.addEventListener("click", () => {
+                this.undo();
+                this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+            });
+        }
+        editorActions.appendChild(undoButton);
+
+        const resetButton = document.createElement("button");
+        resetButton.type = "button";
+        resetButton.textContent = "Reset";
+        resetButton.disabled = controlsDisabled || !changed;
+        styleSecondaryButton(resetButton, resetButton.disabled);
+        if (!resetButton.disabled) {
+            resetButton.addEventListener("click", () => {
+                this.resetDraftToBaseline();
+                this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+            });
+        }
+        editorActions.appendChild(resetButton);
+
+        const unselectButton = document.createElement("button");
+        unselectButton.type = "button";
+        unselectButton.textContent = "Unselect";
+        unselectButton.disabled = controlsDisabled || (this.selectedRoomId === null && this.selectedSupId === null);
+        styleSecondaryButton(unselectButton, unselectButton.disabled);
+        if (!unselectButton.disabled) {
+            unselectButton.addEventListener("click", () => {
+                this.unselect();
+                this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+            });
+        }
+        editorActions.appendChild(unselectButton);
+
+        panel.appendChild(editorActions);
 
         const actions = document.createElement("div");
         actions.style.display = "flex";
@@ -695,7 +923,7 @@ export class SimSimScene {
             applyButton.addEventListener("click", () => {
                 const setSupervisors: Record<string, string | null> = {};
                 for (const room of unlockedRooms) {
-                    setSupervisors[String(room.room_id)] = this.supervisorDraftByRoom.get(room.room_id) ?? null;
+                    setSupervisors[String(room.room_id)] = this.placementsDraft[room.room_id] ?? null;
                 }
                 this.onApplySupervisorPlacements?.({
                     tickTarget,
@@ -862,33 +1090,13 @@ function fmtPair(a: number | null | undefined, b: number | null | undefined): st
     return `${left}/${right}`;
 }
 
-function assignmentsBySupervisor(roomToCode: Map<number, string | null>): Map<string, number | null> {
-    const out = new Map<string, number | null>();
-    for (const [roomId, code] of roomToCode.entries()) {
-        if (!code) continue;
-        out.set(code, roomId);
-    }
-    return out;
-}
-
-function countSupervisorSwapUnits(
-    currentBySupervisor: Map<string, number | null>,
-    proposedBySupervisor: Map<string, number | null>
-): number {
-    const allCodes = new Set<string>([...currentBySupervisor.keys(), ...proposedBySupervisor.keys()]);
-    let changedSupervisors = 0;
-    for (const code of Array.from(allCodes.values()).sort((a, b) => a.localeCompare(b))) {
-        if ((currentBySupervisor.get(code) ?? null) !== (proposedBySupervisor.get(code) ?? null)) {
-            changedSupervisors += 1;
-        }
-    }
-    return Math.floor((changedSupervisors + 1) / 2);
-}
-
-function assignmentMapsEqual(left: Map<number, string | null>, right: Map<number, string | null>): boolean {
-    if (left.size !== right.size) return false;
-    for (const [roomId, code] of left.entries()) {
-        if ((right.get(roomId) ?? null) !== (code ?? null)) return false;
-    }
-    return true;
+function styleSecondaryButton(btn: HTMLButtonElement, disabled: boolean): void {
+    btn.style.border = "1px solid rgba(140, 214, 200, 0.46)";
+    btn.style.background = "rgba(12, 25, 31, 0.78)";
+    btn.style.color = "#f3efe3";
+    btn.style.borderRadius = "7px";
+    btn.style.padding = "4px 9px";
+    btn.style.fontSize = "11px";
+    btn.style.cursor = disabled ? "not-allowed" : "pointer";
+    btn.style.opacity = disabled ? "0.5" : "1";
 }
