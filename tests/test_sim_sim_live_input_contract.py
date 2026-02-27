@@ -545,3 +545,93 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
             and "already queued" in str(ev.get("details", {}).get("reason", ""))
         ]
         self.assertEqual(len(queued_rejections), 0, "prompt response should not hit already-queued rejection")
+
+    async def test_live_ui_driven_loop_planning_prompt_resolve_planning_advance(self) -> None:
+        self.assertEqual(self.host.current_tick, 0)
+        self.assertEqual(self.host.current_state.phase, "planning")
+
+        # UI no-op advance: planning tick0 -> tick1.
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "schema": "sim_sim_1",
+                "tick_target": 1,
+                "payload": {},
+            },
+        )
+        self.assertEqual(self.host.current_tick, 1)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        events = self._latest_stream_events()
+        self.assertTrue(any(ev.get("kind") == "dispatch_applied" and int(ev.get("tick", -1)) == 1 for ev in events))
+
+        # Next no-op should hit prompt gate for deterministic seed=7.
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "schema": "sim_sim_1",
+                "tick_target": 2,
+                "payload": {},
+            },
+        )
+        self.assertEqual(self.host.current_tick, 1)
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        unresolved = [prompt for prompt in self.host.current_state.prompts if prompt.status != "resolved"]
+        self.assertGreater(len(unresolved), 0)
+
+        # Resolve all unresolved prompts using prompt-only SIM_INPUT.
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "schema": "sim_sim_1",
+                "tick_target": 2,
+                "payload": {
+                    "prompt_responses": {prompt.prompt_id: str(prompt.choices[0]) for prompt in unresolved},
+                },
+            },
+        )
+        self.assertEqual(self.host.current_tick, 2)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        events = self._latest_stream_events()
+        self.assertTrue(any(ev.get("kind") == "dispatch_applied" and int(ev.get("tick", -1)) == 2 for ev in events))
+
+        # Continue from planning via no-op UI advance; if a prompt appears again, resolve it.
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "schema": "sim_sim_1",
+                "tick_target": 3,
+                "payload": {},
+            },
+        )
+        if self.host.current_state.phase == "awaiting_prompts":
+            unresolved = [prompt for prompt in self.host.current_state.prompts if prompt.status != "resolved"]
+            self.assertGreater(len(unresolved), 0)
+            await self._send_message(
+                "SIM_INPUT",
+                {
+                    "schema": "sim_sim_1",
+                    "tick_target": 3,
+                    "payload": {
+                        "prompt_responses": {prompt.prompt_id: str(prompt.choices[0]) for prompt in unresolved},
+                    },
+                },
+            )
+        self.assertEqual(self.host.current_tick, 3)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        events = self._latest_stream_events()
+        self.assertTrue(any(ev.get("kind") == "dispatch_applied" and int(ev.get("tick", -1)) == 3 for ev in events))
+
+        # Contract guard: set_workers is never accepted.
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "schema": "sim_sim_1",
+                "tick_target": 4,
+                "payload": {
+                    "set_workers": {"2": {"dumb": 1, "smart": 0}},
+                },
+            },
+        )
+        self.assertEqual(self.host.current_tick, 3)
+        reject = self._latest_ack_event("input_rejected")
+        self.assertEqual(reject.get("details", {}).get("reason_code"), "DISALLOWED_FIELD_SET_WORKERS")
