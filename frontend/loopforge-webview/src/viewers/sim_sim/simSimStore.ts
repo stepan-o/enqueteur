@@ -193,6 +193,10 @@ export class SimSimStore {
         return () => this.subs.delete(cb);
     }
 
+    getState(): SimSimViewerState {
+        return this.state;
+    }
+
     setKernelHello(hello: KernelHello): void {
         this.state = {
             ...this.state,

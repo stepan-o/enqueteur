@@ -125,7 +125,12 @@ export function boot(opts: BootOpts): ViewerHandle {
             lastMsgType: s.lastMsgType ?? null,
             lastAppliedDiffCount: s.lastAppliedDiffCount,
         });
-        simSimScene?.renderFromState(s);
+        try {
+            simSimScene?.renderFromState(s);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error("[webview] sim_sim render error:", msg);
+        }
     });
 
     const env = (import.meta as any).env ?? {};
@@ -169,6 +174,9 @@ export function boot(opts: BootOpts): ViewerHandle {
                 });
             },
         });
+        // Force an immediate paint using the latest known store state so the overlay
+        // never appears blank while waiting for the next websocket tick.
+        simSimScene.renderFromState(simSimStore.getState());
         simSimScene.setVisible(false);
         return simSimScene;
     };

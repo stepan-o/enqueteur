@@ -224,8 +224,29 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
         ack = self._latest_ack_event("input_rejected")
         details = ack.get("details", {})
-        self.assertEqual(details.get("reason_code"), "AWAITING_PROMPTS_ONLY_PROMPT_RESPONSES")
+        self.assertEqual(details.get("reason_code"), "AWAITING_PROMPTS_DISALLOWED_FIELDS_PRESENT")
         self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+
+    async def test_live_awaiting_prompts_requires_prompt_responses(self) -> None:
+        await self._drive_to_awaiting_prompts()
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        blocked_tick = self.host.current_tick
+        tick_target = blocked_tick + 1
+
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": tick_target,
+            },
+        )
+
+        self.assertEqual(self.host.current_tick, blocked_tick)
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        rejected = self._latest_ack_event("input_rejected")
+        self.assertEqual(
+            rejected.get("details", {}).get("reason_code"),
+            "AWAITING_PROMPTS_PROMPT_RESPONSES_REQUIRED",
+        )
 
     async def test_live_allows_multiple_prompt_response_updates_same_tick_target(self) -> None:
         await self._drive_to_awaiting_prompts()
@@ -245,7 +266,7 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.host.current_tick, blocked_tick)
         self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
         rejected = self._latest_ack_event("input_rejected")
-        self.assertEqual(rejected.get("details", {}).get("reason_code"), "INVALID_PROMPT_CHOICE")
+        self.assertEqual(rejected.get("details", {}).get("reason_code"), "PROMPT_CHOICE_INVALID")
 
         # Second attempt: valid choice should advance, without queue-collision rejection.
         await self._send_message(
@@ -258,6 +279,25 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.host.current_tick, blocked_tick + 1)
         self.assertEqual(self.host.current_state.phase, "planning")
         self.assertFalse(self.host._pending_inputs)  # type: ignore[attr-defined]
+
+    async def test_live_rejects_unknown_prompt_id_with_specific_code(self) -> None:
+        await self._drive_to_awaiting_prompts()
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        blocked_tick = self.host.current_tick
+        tick_target = blocked_tick + 1
+
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": tick_target,
+                "prompt_responses": [{"prompt_id": "prompt_does_not_exist", "choice": "support_A"}],
+            },
+        )
+
+        self.assertEqual(self.host.current_tick, blocked_tick)
+        self.assertEqual(self.host.current_state.phase, "awaiting_prompts")
+        rejected = self._latest_ack_event("input_rejected")
+        self.assertEqual(rejected.get("details", {}).get("reason_code"), "PROMPT_ID_UNKNOWN")
 
     async def test_live_accepts_wrapped_prompt_response_payload_shape(self) -> None:
         await self._drive_to_awaiting_prompts()

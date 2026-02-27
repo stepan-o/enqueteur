@@ -414,7 +414,7 @@ export class SimSimScene {
             })
             .join("");
 
-        this.renderPromptsPanel(state, prompts, awaitingPrompts);
+        this.renderPromptsPanel(state, prompts, awaitingPrompts, events);
 
         const eventRows = events.slice(-10).map((event) => {
             const room = event.room_id ? ` room=${event.room_id}` : "";
@@ -435,7 +435,12 @@ export class SimSimScene {
         ].join("");
     }
 
-    private renderPromptsPanel(state: SimSimViewerState, prompts: SimSimPrompt[], awaitingPrompts: boolean): void {
+    private renderPromptsPanel(
+        state: SimSimViewerState,
+        prompts: SimSimPrompt[],
+        awaitingPrompts: boolean,
+        events: SimSimEvent[]
+    ): void {
         if (!this.promptsEl) return;
         if (prompts.length === 0) {
             this.promptsEl.style.display = "none";
@@ -461,6 +466,20 @@ export class SimSimScene {
             ? "Choose a response to continue day advancement."
             : "Prompt history (resolved prompts are read-only).";
         this.promptsEl.appendChild(hint);
+
+        const latestRejection = findLatestInputRejection(events);
+        if (latestRejection) {
+            const warning = document.createElement("div");
+            warning.style.fontSize = "11px";
+            warning.style.marginBottom = "8px";
+            warning.style.padding = "6px 7px";
+            warning.style.borderRadius = "7px";
+            warning.style.border = "1px solid rgba(232, 159, 143, 0.45)";
+            warning.style.background = "rgba(58, 22, 22, 0.75)";
+            warning.style.color = "#ffd8cf";
+            warning.textContent = `Last rejection: ${latestRejection.reasonCode} — ${latestRejection.reason}`;
+            this.promptsEl.appendChild(warning);
+        }
 
         const tickTarget = state.tick + 1;
 
@@ -529,6 +548,24 @@ function sortedEvents(events: Map<string, SimSimEvent>): SimSimEvent[] {
 
 function sortedPrompts(prompts: Map<string, SimSimPrompt>): SimSimPrompt[] {
     return Array.from(prompts.values()).sort((a, b) => (a.tick_created - b.tick_created) || a.prompt_id.localeCompare(b.prompt_id));
+}
+
+function findLatestInputRejection(events: SimSimEvent[]): { reasonCode: string; reason: string } | null {
+    for (let idx = events.length - 1; idx >= 0; idx -= 1) {
+        const event = events[idx];
+        if (event.kind !== "input_rejected") continue;
+        const details = event.details;
+        if (!details || typeof details !== "object") continue;
+        const dict = details as Record<string, unknown>;
+        const reasonCode = typeof dict["reason_code"] === "string" ? dict["reason_code"] : "";
+        const reason = typeof dict["reason"] === "string" ? dict["reason"] : "";
+        if (!reasonCode && !reason) continue;
+        return {
+            reasonCode: reasonCode || "UNKNOWN",
+            reason: reason || "(no reason provided)",
+        };
+    }
+    return null;
 }
 
 function pct(value: number | null | undefined): string {

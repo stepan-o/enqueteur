@@ -474,11 +474,11 @@ class SessionHost:
             if disallowed_keys:
                 return (
                     None,
-                    "AWAITING_PROMPTS_ONLY_PROMPT_RESPONSES",
+                    "AWAITING_PROMPTS_DISALLOWED_FIELDS_PRESENT",
                     f"while awaiting prompts, SIM_INPUT may include only prompt_responses (found: {','.join(disallowed_keys)})",
                 )
             if "prompt_responses" not in command_payload:
-                return None, "PROMPT_RESPONSES_REQUIRED", "while awaiting prompts, prompt_responses are required"
+                return None, "AWAITING_PROMPTS_PROMPT_RESPONSES_REQUIRED", "while awaiting prompts, prompt_responses are required"
 
         if not is_awaiting_prompts:
             raw_sup = command_payload.get("set_supervisors", {})
@@ -584,9 +584,9 @@ class SessionHost:
             seen_prompt_ids.add(prompt_id)
             allowed_choices = prompt_by_id.get(prompt_id)
             if allowed_choices is None:
-                return None, "UNKNOWN_PROMPT_ID", f"unknown prompt_id={prompt_id}"
+                return None, "PROMPT_ID_UNKNOWN", f"unknown prompt_id={prompt_id}"
             if choice not in allowed_choices:
-                return None, "INVALID_PROMPT_CHOICE", f"invalid choice for prompt_id={prompt_id}"
+                return None, "PROMPT_CHOICE_INVALID", f"invalid choice for prompt_id={prompt_id}"
             prompt_responses.append(PromptResponse(prompt_id=prompt_id, choice=choice))
 
         return (
