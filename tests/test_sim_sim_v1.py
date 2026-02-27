@@ -365,6 +365,49 @@ def test_sim_sim_invariants_and_unlock_pacing() -> None:
         assert sum(1 for e in events_today if e.get("kind") == "critical_triggered") <= 1
 
 
+def test_default_worker_template_applies_when_set_workers_absent_and_is_deterministic() -> None:
+    kernel_a = SimSimKernel(seed=13)
+    kernel_b = SimSimKernel(seed=13)
+
+    _advance_one_tick(kernel_a, tick_target=1, day_input=DayInput(tick_target=1, advance=True))
+    _advance_one_tick(kernel_b, tick_target=1, day_input=DayInput(tick_target=1, advance=True))
+
+    room2_a = kernel_a.state.rooms[2]
+    room2_b = kernel_b.state.rooms[2]
+    total_a = int(room2_a.workers_assigned_dumb or 0) + int(room2_a.workers_assigned_smart or 0)
+    total_b = int(room2_b.workers_assigned_dumb or 0) + int(room2_b.workers_assigned_smart or 0)
+
+    assert total_a > 0
+    assert total_a == total_b
+    assert kernel_a.state.assignment_template[2] == kernel_b.state.assignment_template[2]
+
+    # Room 3 just unlocked on day 2; default assignment remains 0 until explicitly set.
+    _advance_one_tick(kernel_a, tick_target=2, day_input=DayInput(tick_target=2, advance=True))
+    assert int(kernel_a.state.rooms[3].workers_assigned_dumb or 0) == 0
+    assert int(kernel_a.state.rooms[3].workers_assigned_smart or 0) == 0
+
+
+def test_set_workers_fully_overrides_default_worker_template() -> None:
+    kernel = SimSimKernel(seed=17)
+    _advance_one_tick(kernel, tick_target=1, day_input=DayInput(tick_target=1, advance=True))
+    assert int(kernel.state.rooms[2].workers_assigned_dumb or 0) + int(kernel.state.rooms[2].workers_assigned_smart or 0) > 0
+
+    # Explicit set_workers map is authoritative; unspecified rooms are treated as zero.
+    _advance_one_tick(
+        kernel,
+        tick_target=2,
+        day_input=DayInput(
+            tick_target=2,
+            advance=True,
+            set_workers={3: WorkerAssignment(dumb=2, smart=0)},
+        ),
+    )
+    assert int(kernel.state.rooms[2].workers_assigned_dumb or 0) == 0
+    assert int(kernel.state.rooms[2].workers_assigned_smart or 0) == 0
+    assert int(kernel.state.rooms[3].workers_assigned_dumb or 0) == 2
+    assert int(kernel.state.rooms[3].workers_assigned_smart or 0) == 0
+
+
 def test_limen_security_hours_penalty_caps_and_persists() -> None:
     kernel = SimSimKernel(seed=31)
     observed_hours: list[float] = []

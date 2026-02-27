@@ -37,6 +37,13 @@ ROOM_CODES: Dict[int, str] = {
     6: "cortex",
 }
 
+DEFAULT_BASELINE_ROOM_TARGETS: Tuple[Tuple[int, int], ...] = (
+    (2, 4),
+    (3, 2),
+    (4, 1),
+    (5, 1),
+)
+
 ROOM_NEIGHBORS: Dict[int, Tuple[int, ...]] = {
     1: (2, 4),
     2: (1, 3, 5),
@@ -1200,18 +1207,18 @@ class SimSimKernel:
         day: int,
         emit: Any,
     ) -> Dict[int, WorkerAssignment]:
-        proposed: Dict[int, WorkerAssignment] = {
-            room_id: WorkerAssignment(
-                dumb=int(start.assignment_template.get(room_id, WorkerAssignment(0, 0)).dumb),
-                smart=int(start.assignment_template.get(room_id, WorkerAssignment(0, 0)).smart),
-            )
-            for room_id in ROOM_IDS
-        }
-
-        for room_id, assignment in day_input.set_workers.items():
-            if room_id in (1, 6) or not self._is_room_unlocked(room_id, day):
-                continue
-            proposed[room_id] = WorkerAssignment(dumb=max(0, int(assignment.dumb)), smart=max(0, int(assignment.smart)))
+        if day_input.set_workers:
+            # SIM_INPUT set_workers is authoritative: explicit map fully replaces defaults.
+            proposed = {room_id: WorkerAssignment(0, 0) for room_id in ROOM_IDS}
+            for room_id, assignment in day_input.set_workers.items():
+                if room_id in (1, 6) or not self._is_room_unlocked(room_id, day):
+                    continue
+                proposed[room_id] = WorkerAssignment(
+                    dumb=max(0, int(assignment.dumb)),
+                    smart=max(0, int(assignment.smart)),
+                )
+        else:
+            proposed = self._compute_default_worker_proposal(start, day=day)
 
         # capacity validation/clamp by room
         for room_id in ROOM_IDS:
@@ -1263,6 +1270,67 @@ class SimSimKernel:
             emit("worker_proposal_clamped", details={"reason": "smart_availability"})
 
         # rooms without supervisor are still allowed workers (player intent), no extra constraints here.
+        return proposed
+
+    def _compute_default_worker_proposal(self, start: SimSimState, *, day: int) -> Dict[int, WorkerAssignment]:
+        proposed: Dict[int, WorkerAssignment] = {room_id: WorkerAssignment(0, 0) for room_id in ROOM_IDS}
+        active_room_ids = [room_id for room_id in (2, 3, 4, 5) if self._is_room_unlocked(room_id, day)]
+
+        template_nonzero = False
+        for room_id in active_room_ids:
+            just_unlocked = not self._is_room_unlocked(room_id, day - 1)
+            if just_unlocked:
+                continue
+            prev = start.assignment_template.get(room_id, WorkerAssignment(0, 0))
+            proposed[room_id] = WorkerAssignment(
+                dumb=max(0, int(prev.dumb)),
+                smart=max(0, int(prev.smart)),
+            )
+            if proposed[room_id].dumb + proposed[room_id].smart > 0:
+                template_nonzero = True
+
+        if template_nonzero:
+            return proposed
+
+        # Early-run deterministic baseline when no prior template exists.
+        remaining_dumb = max(0, int(start.worker_pools.dumb_total))
+        remaining_smart = max(0, int(start.worker_pools.smart_total))
+
+        for room_id, target_total in DEFAULT_BASELINE_ROOM_TARGETS:
+            if room_id not in active_room_ids or target_total <= 0:
+                continue
+            cap = self._config.room_capacities.get(room_id)
+            if cap is None:
+                continue
+
+            max_room_total = max(0, min(cap.max_total, target_total))
+            room_d = 0
+            room_s = 0
+
+            smart_first = room_id in (4, 5)
+            for _ in range(max_room_total):
+                if smart_first:
+                    if remaining_smart > 0 and room_s < cap.max_smart:
+                        remaining_smart -= 1
+                        room_s += 1
+                        continue
+                    if remaining_dumb > 0 and room_d < cap.max_dumb:
+                        remaining_dumb -= 1
+                        room_d += 1
+                        continue
+                else:
+                    if remaining_dumb > 0 and room_d < cap.max_dumb:
+                        remaining_dumb -= 1
+                        room_d += 1
+                        continue
+                    if remaining_smart > 0 and room_s < cap.max_smart:
+                        remaining_smart -= 1
+                        room_s += 1
+                        continue
+                break
+
+            proposed[room_id] = WorkerAssignment(room_d, room_s)
+
         return proposed
 
     def _determine_security_lead(self, assignments: Mapping[str, int | None]) -> str:
