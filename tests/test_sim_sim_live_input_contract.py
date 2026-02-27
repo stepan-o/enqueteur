@@ -130,20 +130,12 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(details.get("reason_code"), "UNSUPPORTED_MSG_TYPE")
         self.assertEqual(details.get("msg_type"), "INPUT_COMMAND")
 
-    async def test_malformed_sim_input_is_rejected_with_reason_code(self) -> None:
+    async def test_set_workers_is_rejected_with_reason_code(self) -> None:
         await self._send_message(
             "SIM_INPUT",
             {
-                "tick_target": 2,
+                "tick_target": 1,
                 "set_workers": {"2": {"dumb": 1, "smart": 1}},
-                "end_of_day": {
-                    "sell_washed_dumb": 0,
-                    "sell_washed_smart": 0,
-                    "convert_workers_dumb": 0,
-                    "convert_workers_smart": 0,
-                    "upgrade_brains": 0,
-                },
-                "prompt_responses": [],
             },
         )
 
@@ -152,24 +144,16 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
 
         ack = self._latest_ack_event("input_rejected")
         details = ack.get("details", {})
-        self.assertEqual(details.get("reason_code"), "INVALID_TICK_TARGET")
+        self.assertEqual(details.get("reason_code"), "DISALLOWED_FIELD_SET_WORKERS")
         self.assertEqual(details.get("msg_type"), "SIM_INPUT")
 
-    async def test_valid_sim_input_is_accepted(self) -> None:
+    async def test_accepts_noop_planning_input_with_wrapped_payload(self) -> None:
         await self._send_message(
             "SIM_INPUT",
             {
+                "schema": "sim_sim_1",
                 "tick_target": 1,
-                "set_supervisors": {"2": "S"},
-                "set_workers": {"2": {"dumb": 2, "smart": 1}},
-                "end_of_day": {
-                    "sell_washed_dumb": 0,
-                    "sell_washed_smart": 0,
-                    "convert_workers_dumb": 0,
-                    "convert_workers_smart": 0,
-                    "upgrade_brains": 0,
-                },
-                "prompt_responses": [],
+                "payload": {},
             },
         )
 
@@ -180,6 +164,40 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         details = ack.get("details", {})
         self.assertEqual(details.get("reason_code"), "INPUT_ACCEPTED")
         self.assertEqual(details.get("tick_target"), 1)
+        self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+
+    async def test_accepts_noop_planning_input_without_wrapped_payload(self) -> None:
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": 1,
+            },
+        )
+
+        self.assertEqual(self.host.current_tick, 0)
+        self.assertIn(1, self.host._pending_inputs)  # type: ignore[attr-defined]
+
+        ack = self._latest_ack_event("input_accepted")
+        details = ack.get("details", {})
+        self.assertEqual(details.get("reason_code"), "INPUT_ACCEPTED")
+        self.assertEqual(details.get("tick_target"), 1)
+        self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+
+    async def test_planning_rejects_prompt_responses(self) -> None:
+        self.assertEqual(self.host.current_state.phase, "planning")
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": 1,
+                "prompt_responses": [{"prompt_id": "prompt_conflict_1_L_S", "choice": "support_A"}],
+            },
+        )
+
+        self.assertEqual(self.host.current_tick, 0)
+        self.assertEqual(set(self.host._pending_inputs.keys()), set())  # type: ignore[attr-defined]
+        ack = self._latest_ack_event("input_rejected")
+        details = ack.get("details", {})
+        self.assertEqual(details.get("reason_code"), "DISALLOWED_FIELD_PROMPT_RESPONSES_IN_PLANNING")
         self.assertEqual(details.get("msg_type"), "SIM_INPUT")
 
     async def test_live_prompt_response_unblocks_without_queue_collision(self) -> None:
@@ -215,7 +233,7 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
             "SIM_INPUT",
             {
                 "tick_target": tick_target,
-                "set_workers": {"2": {"dumb": 1, "smart": 0}},
+                "set_supervisors": {"2": "S"},
                 "prompt_responses": [],
             },
         )

@@ -103,31 +103,53 @@ Determinism guarantees:
 
 ```json
 {
+  "schema": "sim_sim_1",
   "tick_target": 3,
-  "set_supervisors": { "2": "S", "4": "W" },
-  "set_workers": {
-    "2": { "dumb": 4, "smart": 2 },
-    "3": { "dumb": 1, "smart": 1 }
-  },
-  "end_of_day": {
-    "sell_washed_dumb": 0,
-    "sell_washed_smart": 0,
-    "convert_workers_dumb": 0,
-    "convert_workers_smart": 0,
-    "upgrade_brains": 0
-  },
-  "prompt_responses": [
-    { "prompt_id": "prompt_conflict_3_L_S", "choice": "support_A" },
-    { "prompt_id": "prompt_critical_7_W", "choice": "allow" }
-  ]
+  "payload": {
+    "set_supervisors": { "2": "S", "4": "W" },
+    "end_of_day": {
+      "sell_washed_dumb": 0,
+      "sell_washed_smart": 0,
+      "convert_workers_dumb": 0,
+      "convert_workers_smart": 0,
+      "upgrade_brains": 0
+    }
+  }
+}
+```
+
+Planning no-op advance (supported):
+
+```json
+{
+  "schema": "sim_sim_1",
+  "tick_target": 4,
+  "payload": {}
+}
+```
+
+Awaiting-prompts response (only allowed shape in `phase=awaiting_prompts`):
+
+```json
+{
+  "schema": "sim_sim_1",
+  "tick_target": 4,
+  "payload": {
+    "prompt_responses": {
+      "prompt_conflict_3_L_S": "support_A"
+    }
+  }
 }
 ```
 
 Protocol policy:
 - `SIM_INPUT` is the only supported live input message type for `sim_sim`.
 - Legacy `INPUT_COMMAND` / `SIM_SIM_DAY_INPUT` shims are not supported.
+- `set_workers` is disallowed in all phases.
+- In `phase=planning`, `prompt_responses` is disallowed.
+- In `phase=awaiting_prompts`, `prompt_responses` is required and no other input fields are accepted.
 - Unsupported inbound msg types are rejected and surfaced as `input_rejected` events with machine-readable `details.reason_code`.
-- Current reason-code examples: `UNSUPPORTED_MSG_TYPE`, `INVALID_ENVELOPE`, `INVALID_TICK_TARGET`, `INVALID_SET_SUPERVISORS`, `INVALID_SET_WORKERS`, `INVALID_END_OF_DAY`, `UNKNOWN_PROMPT_ID`, `INVALID_PROMPT_CHOICE`.
+- Current reason-code examples: `UNSUPPORTED_MSG_TYPE`, `INVALID_ENVELOPE`, `INVALID_TICK_TARGET`, `INVALID_SET_SUPERVISORS`, `INVALID_END_OF_DAY`, `DISALLOWED_FIELD_SET_WORKERS`, `DISALLOWED_FIELD_PROMPT_RESPONSES_IN_PLANNING`, `AWAITING_PROMPTS_PROMPT_RESPONSES_REQUIRED`, `AWAITING_PROMPTS_DISALLOWED_FIELDS_PRESENT`, `PROMPT_ID_UNKNOWN`, `PROMPT_CHOICE_INVALID`.
 
 Acknowledgement behavior:
 - Backend emits `input_accepted` / `input_rejected` rows into `events[]` (same KVP snapshot/diff stream).
@@ -151,7 +173,7 @@ Acknowledgement behavior:
    - confirm HUD tick/day, at least one room metric/inventory number, and live feed update
 6. Optional SIM input (DevTools Console):
    - Use the live client hook to send:
-   - `window.__loopforge?.kvpClient?.sendSimInput({ tick_target: 2, set_supervisors: {\"2\":\"S\"}, set_workers: {\"2\": {dumb: 4, smart: 2}}, end_of_day: { sell_washed_dumb: 0, sell_washed_smart: 0, convert_workers_dumb: 0, convert_workers_smart: 0, upgrade_brains: 0 }, prompt_responses: [] })`
+   - `window.__loopforge?.kvpClient?.sendSimInput({ schema: \"sim_sim_1\", tick_target: 2, payload: {} })`
    - confirm next snapshot/feed includes `input_accepted` event (or `input_rejected` with reason)
 7. Click `Exit to menu`:
    - confirm socket closes cleanly

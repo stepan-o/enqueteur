@@ -22,7 +22,6 @@ from backend.sim_sim.kernel.state import (
     ROOM_IDS,
     SimSimKernel,
     SimSimState,
-    WorkerAssignment,
     format_state_for_cli,
     resolve_supervisor_code,
 )
@@ -425,7 +424,6 @@ class SessionHost:
         next_tick = self.current_tick + 1
         tick_target: int = next_tick
         set_supervisors: Dict[int, str | None] = {}
-        set_workers: Dict[int, WorkerAssignment] = {}
         end_of_day = EndOfDayActions()
         prompt_responses: List[PromptResponse] = []
 
@@ -434,8 +432,8 @@ class SessionHost:
             return None, "INVALID_PAYLOAD", "payload must be an object"
 
         # Support both direct payload shape and wrapped payload shape:
-        # direct: {tick_target,set_supervisors,set_workers,end_of_day,prompt_responses}
-        # wrapped: {schema,tick_target,payload:{prompt_responses: {...}}}
+        # direct: {tick_target,set_supervisors,end_of_day,prompt_responses}
+        # wrapped: {schema,tick_target,payload:{...}}
         command_payload = payload_obj
         if "payload" in payload_obj:
             allowed_wrapper_keys = {"schema", "tick_target", "payload"}
@@ -468,9 +466,12 @@ class SessionHost:
                 return None, "INVALID_TICK_TARGET", f"tick_target must equal next day tick ({next_tick})"
             tick_target = int(tick_raw)
 
+        if "set_workers" in command_payload:
+            return None, "DISALLOWED_FIELD_SET_WORKERS", "set_workers is not supported by sim_sim LIVE contract"
+
         is_awaiting_prompts = self.current_state.phase == "awaiting_prompts"
         if is_awaiting_prompts:
-            disallowed_keys = [key for key in ("set_supervisors", "set_workers", "end_of_day") if key in command_payload]
+            disallowed_keys = [key for key in ("set_supervisors", "end_of_day") if key in command_payload]
             if disallowed_keys:
                 return (
                     None,
@@ -479,6 +480,13 @@ class SessionHost:
                 )
             if "prompt_responses" not in command_payload:
                 return None, "AWAITING_PROMPTS_PROMPT_RESPONSES_REQUIRED", "while awaiting prompts, prompt_responses are required"
+        else:
+            if "prompt_responses" in command_payload:
+                return (
+                    None,
+                    "DISALLOWED_FIELD_PROMPT_RESPONSES_IN_PLANNING",
+                    "prompt_responses are only accepted while phase=awaiting_prompts",
+                )
 
         if not is_awaiting_prompts:
             raw_sup = command_payload.get("set_supervisors", {})
@@ -500,30 +508,6 @@ class SessionHost:
                 if parsed_code is None:
                     return None, "INVALID_SET_SUPERVISORS", f"unknown supervisor code for room {room_id}"
                 set_supervisors[room_id] = parsed_code
-
-            raw_workers = command_payload.get("set_workers", {})
-            if not isinstance(raw_workers, dict):
-                return None, "INVALID_SET_WORKERS", "set_workers must be an object"
-            for room_raw, worker_raw in raw_workers.items():
-                try:
-                    room_id = int(room_raw)
-                except Exception:
-                    return None, "INVALID_SET_WORKERS", "set_workers keys must be integer room ids"
-                if room_id not in ROOM_IDS:
-                    return None, "INVALID_SET_WORKERS", f"set_workers includes invalid room_id={room_id}"
-                if not isinstance(worker_raw, dict):
-                    return None, "INVALID_SET_WORKERS", "set_workers entries must be objects"
-                allowed_worker_keys = {"dumb", "smart"}
-                unknown_worker_keys = [k for k in worker_raw.keys() if k not in allowed_worker_keys]
-                if unknown_worker_keys:
-                    return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}] has unsupported key(s): {','.join(sorted(str(k) for k in unknown_worker_keys))}"
-                dumb = worker_raw.get("dumb")
-                smart = worker_raw.get("smart")
-                if not isinstance(dumb, int) or dumb < 0:
-                    return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}].dumb must be a non-negative integer"
-                if not isinstance(smart, int) or smart < 0:
-                    return None, "INVALID_SET_WORKERS", f"set_workers[{room_id}].smart must be a non-negative integer"
-                set_workers[room_id] = WorkerAssignment(dumb=int(dumb), smart=int(smart))
 
             raw_eod = command_payload.get("end_of_day", {})
             if not isinstance(raw_eod, dict):
@@ -595,7 +579,6 @@ class SessionHost:
                 advance=True,
                 supervisor_swaps=tuple(),
                 set_supervisors=set_supervisors,
-                set_workers=set_workers,
                 end_of_day=end_of_day,
                 prompt_responses=tuple(prompt_responses),
             ),
