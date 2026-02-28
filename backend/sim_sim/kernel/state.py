@@ -10,7 +10,7 @@ from backend.sim_sim.config import LoadedSimSimConfig, load_sim_sim_config
 
 
 ROOM_IDS: Tuple[int, ...] = (1, 2, 3, 4, 5, 6)
-PHASES: Tuple[str, ...] = ("planning", "awaiting_prompts", "production", "audit", "close")
+PHASES: Tuple[str, ...] = ("planning", "awaiting_prompts", "end_of_day", "production", "audit", "close")
 RESOURCE_KEYS: Tuple[str, ...] = (
     "raw_brains_dumb",
     "raw_brains_smart",
@@ -675,22 +675,25 @@ class SimSimKernel:
             return False, "advance must be true"
 
         unresolved = [prompt for prompt in self._state.prompts if prompt.status != "resolved"]
+        eod = day_input.end_of_day
+        eod_fields: Tuple[Tuple[str, int], ...] = (
+            ("sell_washed_dumb", int(eod.sell_washed_dumb)),
+            ("sell_washed_smart", int(eod.sell_washed_smart)),
+            ("convert_workers_dumb", int(eod.convert_workers_dumb)),
+            ("convert_workers_smart", int(eod.convert_workers_smart)),
+            ("upgrade_brains", int(eod.upgrade_brains)),
+        )
+        for label, value in eod_fields:
+            if value < 0:
+                return False, f"{label} must be >= 0"
+        has_end_of_day_actions = any(value != 0 for _, value in eod_fields)
+
         if self._state.phase == "awaiting_prompts":
             if not unresolved:
                 return False, "phase awaiting_prompts requires unresolved prompts"
             if day_input.supervisor_swaps or day_input.set_supervisors:
                 return False, "while awaiting prompts, only prompt_responses are accepted"
-            eod = day_input.end_of_day
-            if any(
-                int(value) != 0
-                for value in (
-                    eod.sell_washed_dumb,
-                    eod.sell_washed_smart,
-                    eod.convert_workers_dumb,
-                    eod.convert_workers_smart,
-                    eod.upgrade_brains,
-                )
-            ):
+            if has_end_of_day_actions:
                 return False, "while awaiting prompts, end_of_day actions are not accepted"
             if not day_input.prompt_responses:
                 return False, "while awaiting prompts, prompt_responses are required"
@@ -715,12 +718,23 @@ class SimSimKernel:
                 return False, f"missing prompt responses for: {','.join(missing)}"
             return True, "ok"
 
+        if self._state.phase == "end_of_day":
+            if unresolved:
+                return False, "cannot apply end_of_day actions while unresolved prompts exist"
+            if day_input.supervisor_swaps or day_input.set_supervisors:
+                return False, "while end_of_day, only end_of_day actions are accepted"
+            if day_input.prompt_responses:
+                return False, "prompt_responses only accepted while awaiting prompts"
+            return True, "ok"
+
         if self._state.phase not in ("planning", "close"):
             return False, f"inputs only accepted during planning/close; current phase={self._state.phase}"
         if unresolved:
             return False, "cannot advance while unresolved prompts exist"
         if day_input.prompt_responses:
             return False, "prompt_responses only accepted while awaiting prompts"
+        if has_end_of_day_actions:
+            return False, "end_of_day actions are only accepted while phase=end_of_day"
 
         # Supervisor assignments.
         set_supervisors = self._normalize_supervisor_input(day_input)
@@ -766,17 +780,6 @@ class SimSimKernel:
                     f"SUPERVISOR_SWAP_BUDGET_EXCEEDED: used={swaps_used} budget={swap_budget}",
                 )
 
-        eod = day_input.end_of_day
-        for label, value in (
-            ("sell_washed_dumb", eod.sell_washed_dumb),
-            ("sell_washed_smart", eod.sell_washed_smart),
-            ("convert_workers_dumb", eod.convert_workers_dumb),
-            ("convert_workers_smart", eod.convert_workers_smart),
-            ("upgrade_brains", eod.upgrade_brains),
-        ):
-            if int(value) < 0:
-                return False, f"{label} must be >= 0"
-
         return True, "ok"
 
     def _normalize_supervisor_input(self, day_input: DayInput) -> Dict[int, str | None]:
@@ -795,6 +798,11 @@ class SimSimKernel:
         previous = self._state
         day = previous.day_tick + 1
         start = previous
+
+        if previous.phase == "end_of_day":
+            # Ticket 01 introduces only phase gating. End-of-day action application and
+            # day advancement are intentionally deferred to a follow-up ticket.
+            return previous, self._state
 
         if previous.phase == "awaiting_prompts":
             pending_input = previous.pending_day_input
@@ -1129,14 +1137,9 @@ class SimSimKernel:
             smart_total=max(0, start.worker_pools.smart_total),
         )
 
-        # 27) End-of-day crafting: upgrades -> selling -> conversions.
-        inventory_after_eod, worker_pools = self._apply_end_of_day_actions(
-            inventory=inventory_after_units,
-            worker_pools=worker_pools,
-            actions=effective_input.end_of_day,
-            day=day,
-            emit=emit,
-        )
+        # 27) End-of-day actions are now phase-gated. The resolved day enters
+        # phase=end_of_day first so UI can render outcomes before EOD choices apply.
+        inventory_after_resolution = inventory_after_units
 
         if any(value > 0 for value in output_by_room.get(5, _resource_zeroes()).values()):
             weaving_boost_pending = True
@@ -1152,7 +1155,8 @@ class SimSimKernel:
             runtime_rooms=runtime_rooms,
             security_lead=security_lead,
             output_by_room=output_by_room,
-            upgrade_count=effective_input.end_of_day.upgrade_brains,
+            # Upgrades are part of end_of_day actions and are not applied yet.
+            upgrade_count=0,
             casualties=casualties_total,
         )
 
@@ -1188,7 +1192,7 @@ class SimSimKernel:
             for code, sup in supervisors_next.items()
         }
 
-        # 30) Persist + increment day.
+        # 30) Persist resolved day state and gate in phase=end_of_day.
         rooms_next = self._finalize_rooms(
             day=day,
             assignments=assignments,
@@ -1234,27 +1238,18 @@ class SimSimKernel:
                     },
                 )
 
-        emit(
-            "day_advanced",
-            details={
-                "day": day,
-                "phase": "planning",
-                "security_lead": security_lead,
-                "config_id": self._loaded_config.config_id,
-            },
-        )
-
         self._state = SimSimState(
-            day_tick=day,
-            phase="planning",
-            time_label=f"{6 + (day % 12):02d}:00",
+            # Hold on the current day until explicit end_of_day input is applied.
+            day_tick=start.day_tick,
+            phase="end_of_day",
+            time_label=start.time_label,
             config_hash=self._loaded_config.config_hash,
             config_id=self._loaded_config.config_id,
             assignments=assignments,
             assignment_template=assignment_template,
             rooms=rooms_next,
             supervisors=supervisors_next,
-            inventory=inventory_after_eod,
+            inventory=inventory_after_resolution,
             worker_pools=worker_pools,
             regime=regime_next,
             security_lead=security_lead,
@@ -1266,9 +1261,9 @@ class SimSimKernel:
             limen_security_count=limen_security_count,
             next_event_id=next_event_id,
             previous_day_assignments=dict(start.assignments),
-            swap_budget=self._supervisor_swap_budget_for_day(day),
-            swaps_used_if_applied=0,
-            swaps_remaining=self._supervisor_swap_budget_for_day(day),
+            swap_budget=int(current_day_budget),
+            swaps_used_if_applied=int(swaps_used_for_input),
+            swaps_remaining=max(0, int(current_day_budget) - int(swaps_used_for_input)),
         )
 
         return previous, self._state
