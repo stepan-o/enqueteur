@@ -508,10 +508,9 @@ class SessionHost:
                 if room_id not in ROOM_IDS:
                     return None, "INVALID_SET_SUPERVISORS", f"set_supervisors includes invalid room_id={room_id}"
                 if code_raw is None:
-                    set_supervisors[room_id] = None
-                    continue
+                    return None, "INVALID_SET_SUPERVISORS", f"set_supervisors[{room_id}] cannot be null (unassign is not supported)"
                 if not isinstance(code_raw, str):
-                    return None, "INVALID_SET_SUPERVISORS", f"set_supervisors[{room_id}] must be supervisor code string or null"
+                    return None, "INVALID_SET_SUPERVISORS", f"set_supervisors[{room_id}] must be supervisor code string"
                 parsed_code = resolve_supervisor_code(code_raw)
                 if parsed_code is None:
                     return None, "INVALID_SET_SUPERVISORS", f"unknown supervisor code for room {room_id}"

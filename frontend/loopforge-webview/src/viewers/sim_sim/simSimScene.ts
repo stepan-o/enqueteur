@@ -571,7 +571,7 @@ export class SimSimScene {
 
         const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
         const swapsUsed = this.computeSwapsUsed(this.placementsDraft, this.placementsBaseline);
-        const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) < 4 ? 1 : 2);
+        const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) <= 2 ? 1 : 2);
         const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
         const changed = !this.isPlacementMapEqual(this.placementsDraft, this.placementsBaseline);
         this.renderPlacementControlsCluster(state, awaitingPrompts, {
@@ -580,6 +580,7 @@ export class SimSimScene {
             swapBudget,
             swapsRemaining,
             changed,
+            latestRejection,
         });
         this.roomCardsEl.innerHTML = rooms
             .map((room) => {
@@ -839,6 +840,7 @@ export class SimSimScene {
             swapBudget: number;
             swapsRemaining: number;
             changed: boolean;
+            latestRejection: { reasonCode: string; reason: string } | null;
         }
     ): void {
         if (!this.placementControlsEl) return;
@@ -920,6 +922,60 @@ export class SimSimScene {
         controls.appendChild(unselectButton);
 
         cluster.appendChild(controls);
+
+        const applyDraftButton = document.createElement("button");
+        applyDraftButton.type = "button";
+        applyDraftButton.textContent = "Apply Draft";
+        const applyDisabled = data.controlsDisabled || data.swapsUsed > data.swapBudget || !data.changed;
+        applyDraftButton.disabled = applyDisabled;
+        applyDraftButton.style.marginTop = "8px";
+        applyDraftButton.style.border = "1px solid rgba(243, 199, 106, 0.75)";
+        applyDraftButton.style.background = "rgba(38, 29, 12, 0.95)";
+        applyDraftButton.style.color = "#f3efe3";
+        applyDraftButton.style.borderRadius = "8px";
+        applyDraftButton.style.padding = "6px 10px";
+        applyDraftButton.style.fontSize = "12px";
+        applyDraftButton.style.fontWeight = "700";
+        applyDraftButton.style.letterSpacing = "0.03em";
+        applyDraftButton.style.cursor = applyDisabled ? "not-allowed" : "pointer";
+        applyDraftButton.style.opacity = applyDisabled ? "0.55" : "1";
+        if (!applyDisabled) {
+            applyDraftButton.addEventListener("click", () => {
+                const setSupervisors: Record<string, string | null> = {};
+                for (const [roomId, supervisorCode] of Object.entries(this.placementsDraft)) {
+                    setSupervisors[String(roomId)] = supervisorCode ?? null;
+                }
+                this.onApplySupervisorPlacements?.({
+                    tickTarget: state.tick + 1,
+                    setSupervisors,
+                });
+            });
+        }
+        cluster.appendChild(applyDraftButton);
+
+        const applyValidation = document.createElement("div");
+        applyValidation.style.marginTop = "6px";
+        applyValidation.style.fontSize = "11px";
+        applyValidation.style.opacity = "0.95";
+        if (data.latestRejection?.reasonCode === "SUPERVISOR_SWAP_BUDGET_EXCEEDED") {
+            applyValidation.style.color = "#ffd8cf";
+            applyValidation.textContent = "Too many swaps for today. Undo or Reset.";
+        } else if (!data.changed) {
+            applyValidation.style.color = "#d3d6da";
+            applyValidation.textContent = "No draft changes to apply.";
+        } else if (data.swapsUsed > data.swapBudget) {
+            applyValidation.style.color = "#ffd8cf";
+            applyValidation.textContent = "Too many swaps for today. Undo or Reset.";
+        } else if (data.controlsDisabled) {
+            applyValidation.style.color = "#f3c76a";
+            applyValidation.textContent = awaitingPrompts
+                ? "Placements locked while awaiting prompt resolution."
+                : "Placements unavailable in current phase.";
+        } else {
+            applyValidation.style.color = "#d3d6da";
+            applyValidation.textContent = `Draft ready for tick ${state.tick + 1}.`;
+        }
+        cluster.appendChild(applyValidation);
 
         if (awaitingPrompts) {
             const promptLock = document.createElement("div");
@@ -1110,54 +1166,6 @@ export class SimSimScene {
 
             panel.appendChild(row);
         }
-
-        const actions = document.createElement("div");
-        actions.style.display = "flex";
-        actions.style.alignItems = "center";
-        actions.style.gap = "8px";
-        actions.style.marginTop = "8px";
-
-        const applyButton = document.createElement("button");
-        applyButton.type = "button";
-        applyButton.textContent = "Apply Placements";
-        applyButton.style.border = "1px solid rgba(140, 214, 200, 0.65)";
-        applyButton.style.background = "rgba(12, 25, 31, 0.95)";
-        applyButton.style.color = "#f3efe3";
-        applyButton.style.borderRadius = "8px";
-        applyButton.style.padding = "5px 10px";
-        applyButton.style.fontSize = "11px";
-        applyButton.style.fontWeight = "700";
-        applyButton.style.cursor = "pointer";
-
-        const applyDisabled = data.controlsDisabled || data.swapsUsed > data.swapBudget || !data.changed;
-        applyButton.disabled = applyDisabled;
-        applyButton.style.opacity = applyDisabled ? "0.55" : "1";
-        applyButton.style.cursor = applyDisabled ? "not-allowed" : "pointer";
-        if (!applyDisabled) {
-            applyButton.addEventListener("click", () => {
-                const setSupervisors: Record<string, string | null> = {};
-                for (const room of unlockedRooms) {
-                    setSupervisors[String(room.room_id)] = this.placementsDraft[room.room_id] ?? null;
-                }
-                this.onApplySupervisorPlacements?.({
-                    tickTarget,
-                    setSupervisors,
-                });
-            });
-        }
-        actions.appendChild(applyButton);
-
-        const applyHint = document.createElement("div");
-        applyHint.style.fontSize = "11px";
-        applyHint.style.opacity = "0.88";
-        applyHint.textContent = !data.changed
-            ? "No placement changes."
-            : data.swapsUsed > data.swapBudget
-              ? "Reduce changes to fit swap budget."
-              : `Ready for tick ${tickTarget}.`;
-        actions.appendChild(applyHint);
-
-        panel.appendChild(actions);
     }
 
     private renderPromptsPanel(

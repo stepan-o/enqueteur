@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
+import os
+import tempfile
 import unittest
 import uuid
 from typing import Any, Dict, List
 
+from backend.sim_sim.config import load_sim_sim_config
 from backend.sim_sim.kernel.state import DayInput, PromptResponse
 from backend.sim_sim.live.session_host import SessionHost
 
@@ -156,6 +160,23 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         ack = self._latest_ack_event("input_rejected")
         details = ack.get("details", {})
         self.assertEqual(details.get("reason_code"), "DISALLOWED_FIELD_SET_WORKERS")
+        self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+
+    async def test_set_supervisors_null_is_rejected(self) -> None:
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": 1,
+                "set_supervisors": {"1": None},
+            },
+        )
+
+        self.assertEqual(self.host.current_tick, 0)
+        self.assertEqual(set(self.host._pending_inputs.keys()), set())  # type: ignore[attr-defined]
+
+        ack = self._latest_ack_event("input_rejected")
+        details = ack.get("details", {})
+        self.assertEqual(details.get("reason_code"), "INVALID_SET_SUPERVISORS")
         self.assertEqual(details.get("msg_type"), "SIM_INPUT")
 
     async def test_accepts_noop_planning_input_with_wrapped_payload(self) -> None:
@@ -635,3 +656,240 @@ class TestSimSimLiveInputContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.host.current_tick, 3)
         reject = self._latest_ack_event("input_rejected")
         self.assertEqual(reject.get("details", {}).get("reason_code"), "DISALLOWED_FIELD_SET_WORKERS")
+
+
+class TestSimSimLiveSwapBudgetFlow(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.sent: List[bytes] = []
+        self.config_path = self._write_no_prompt_config()
+        self.host = SessionHost(seed=11, config_path=self.config_path)
+
+        async def _send_bytes(data: bytes) -> None:
+            self.sent.append(data)
+
+        self.ctx = await self.host.register_connection(send_bytes=_send_bytes)
+        await self._handshake_and_subscribe()
+        self.sent.clear()
+
+    async def asyncTearDown(self) -> None:
+        await self.host.unregister_connection(self.ctx)
+        try:
+            os.unlink(self.config_path)
+        except FileNotFoundError:
+            pass
+
+    def _write_no_prompt_config(self) -> str:
+        loaded = load_sim_sim_config()
+        raw = copy.deepcopy(loaded.raw)
+        raw["conflicts"]["hostile_pairs"] = []
+        raw["guardrails"]["prevent_critical_before_day"] = 9999
+        raw["confidence"]["threshold_critical"] = 2.0
+        # Enable enough unlocked supervisors at day 3 to exercise 3-action over-budget rejection.
+        raw["unlock_schedule"]["rooms"]["5"] = 3
+        raw["unlock_schedule"]["supervisors"]["T"] = 3
+
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
+            json.dump(raw, fh)
+            return fh.name
+
+    async def _handshake_and_subscribe(self) -> None:
+        await self.host.handle_client_message(
+            self.ctx,
+            _make_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "test-viewer",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["1", "sim_sim_1"],
+                    "supports": {"diff_stream": True, "full_snapshot": True, "replay_seek": False},
+                },
+            ),
+        )
+        await self.host.handle_client_message(
+            self.ctx,
+            _make_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+        )
+        await asyncio.sleep(0.02)
+
+    def _decoded_sent(self) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        for item in self.sent:
+            out.append(json.loads(item.decode("utf-8")))
+        return out
+
+    def _latest_stream_events(self) -> List[Dict[str, Any]]:
+        decoded = self._decoded_sent()
+        stream_events: List[Dict[str, Any]] = []
+        for env in decoded:
+            msg_type = env.get("msg_type")
+            payload = env.get("payload", {})
+            if not isinstance(payload, dict):
+                continue
+            if msg_type == "FULL_SNAPSHOT":
+                state = payload.get("state", {})
+                if isinstance(state, dict):
+                    events = state.get("events", [])
+                    if isinstance(events, list):
+                        stream_events.extend([ev for ev in events if isinstance(ev, dict)])
+            elif msg_type == "FRAME_DIFF":
+                events = payload.get("events_append", [])
+                if isinstance(events, list):
+                    stream_events.extend([ev for ev in events if isinstance(ev, dict)])
+        self.assertGreater(len(stream_events), 0, "expected streamed events after input")
+        return stream_events
+
+    def _latest_ack(self) -> Dict[str, Any]:
+        events = self._latest_stream_events()
+        for idx in range(len(events) - 1, -1, -1):
+            event = events[idx]
+            if event.get("kind") in {"input_accepted", "input_rejected"}:
+                return event
+        self.fail("expected input_accepted/input_rejected event")
+
+    def _latest_rejection(self) -> Dict[str, Any]:
+        events = self._latest_stream_events()
+        for idx in range(len(events) - 1, -1, -1):
+            event = events[idx]
+            if event.get("kind") == "input_rejected":
+                return event
+        self.fail("expected input_rejected event")
+
+    def _current_room_assignments(self) -> Dict[int, str]:
+        state = self.host.current_state
+        out: Dict[int, str] = {}
+        for room_id in sorted(state.rooms.keys()):
+            room = state.rooms[room_id]
+            if room.locked or room_id == 6:
+                continue
+            self.assertIsNotNone(room.supervisor, f"room {room_id} must have a supervisor")
+            out[room_id] = str(room.supervisor)
+        return out
+
+    async def _submit(self, *, tick_target: int, set_supervisors: Dict[int, str] | None = None) -> None:
+        self.sent.clear()
+        payload: Dict[str, Any] = {
+            "schema": "sim_sim_1",
+            "tick_target": int(tick_target),
+            "payload": {},
+        }
+        if set_supervisors is not None:
+            payload["payload"]["set_supervisors"] = {str(room_id): code for room_id, code in sorted(set_supervisors.items())}
+        await self.host.handle_client_message(self.ctx, _make_envelope("SIM_INPUT", payload))
+        await asyncio.sleep(0.02)
+
+    def _assert_rejection_reason(self, expected_reason_code: str) -> None:
+        ack = self._latest_rejection()
+        details = ack.get("details", {})
+        self.assertIsInstance(details, dict)
+        self.assertEqual(details.get("reason_code"), expected_reason_code)
+        self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+
+    async def test_live_swap_budget_input_control_flow_and_assignments(self) -> None:
+        self.assertEqual(self.host.current_tick, 0)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertEqual(self._current_room_assignments(), {1: "L"})
+
+        # day0 advance -> day1
+        await self._submit(tick_target=1)
+        self.assertEqual(self.host.current_tick, 1)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertEqual(self._current_room_assignments(), {1: "L", 2: "S"})
+
+        # day1: one swap and advance -> day2
+        await self._submit(
+            tick_target=2,
+            set_supervisors={1: "S", 2: "L", 3: "C"},
+        )
+        self.assertEqual(self.host.current_tick, 2)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertEqual(self._current_room_assignments(), {1: "S", 2: "L", 3: "C"})
+
+        # day2: try 2 swaps -> fail (blocked), reset, single swap -> success -> day3
+        tick_before = self.host.current_tick
+        layout_before = self._current_room_assignments()
+        await self._submit(
+            tick_target=3,
+            set_supervisors={1: "C", 2: "S", 3: "L", 4: "W", 5: "T"},
+        )
+        self._assert_rejection_reason("SUPERVISOR_SWAP_BUDGET_EXCEEDED")
+        self.assertEqual(self.host.current_tick, tick_before)
+        self.assertEqual(self._current_room_assignments(), layout_before)
+
+        await self._submit(
+            tick_target=3,
+            set_supervisors={1: "L", 2: "S", 3: "C", 4: "W", 5: "T"},
+        )
+        self.assertEqual(self.host.current_tick, 3)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertEqual(self._current_room_assignments(), {1: "L", 2: "S", 3: "C", 4: "W", 5: "T"})
+
+        # day3: try 3 swaps -> fail, undo, advance -> day4
+        tick_before = self.host.current_tick
+        layout_before = self._current_room_assignments()
+        await self._submit(
+            tick_target=4,
+            set_supervisors={1: "S", 2: "C", 3: "W", 4: "T", 5: "L"},
+        )
+        self._assert_rejection_reason("SUPERVISOR_SWAP_BUDGET_EXCEEDED")
+        self.assertEqual(self.host.current_tick, tick_before)
+        self.assertEqual(self._current_room_assignments(), layout_before)
+
+        await self._submit(
+            tick_target=4,
+            set_supervisors={1: "S", 2: "L", 3: "W", 4: "C", 5: "T"},
+        )
+        self.assertEqual(self.host.current_tick, 4)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertEqual(self._current_room_assignments(), {1: "S", 2: "L", 3: "W", 4: "C", 5: "T"})
+
+        # day4: 1 swap and advance -> day5
+        await self._submit(
+            tick_target=5,
+            set_supervisors={1: "S", 2: "L", 3: "W", 4: "T", 5: "C"},
+        )
+        self.assertEqual(self.host.current_tick, 5)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertEqual(self._current_room_assignments(), {1: "S", 2: "L", 3: "W", 4: "T", 5: "C"})
+
+        # day5: 2 swaps and advance -> day6
+        await self._submit(
+            tick_target=6,
+            set_supervisors={1: "W", 2: "C", 3: "S", 4: "T", 5: "L"},
+        )
+        self.assertEqual(self.host.current_tick, 6)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertEqual(self._current_room_assignments(), {1: "W", 2: "C", 3: "S", 4: "T", 5: "L"})
+
+        # day6: 3 swaps -> fail, reset, 2 swaps -> success -> day7
+        tick_before = self.host.current_tick
+        layout_before = self._current_room_assignments()
+        await self._submit(
+            tick_target=7,
+            set_supervisors={1: "C", 2: "S", 3: "T", 4: "L", 5: "W"},
+        )
+        self._assert_rejection_reason("SUPERVISOR_SWAP_BUDGET_EXCEEDED")
+        self.assertEqual(self.host.current_tick, tick_before)
+        self.assertEqual(self._current_room_assignments(), layout_before)
+
+        await self._submit(
+            tick_target=7,
+            set_supervisors={1: "C", 2: "W", 3: "S", 4: "L", 5: "T"},
+        )
+        self.assertEqual(self.host.current_tick, 7)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertEqual(self._current_room_assignments(), {1: "C", 2: "W", 3: "S", 4: "L", 5: "T"})
+
+        # day7: no-op advance with no swaps
+        await self._submit(tick_target=8)
+        self.assertEqual(self.host.current_tick, 8)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        self.assertEqual(self._current_room_assignments(), {1: "C", 2: "W", 3: "S", 4: "L", 5: "T"})

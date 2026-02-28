@@ -391,9 +391,9 @@ class SimSimKernel:
             limen_security_count=0,
             next_event_id=1,
             previous_day_assignments=dict(initial_assignments),
-            swap_budget=self._supervisor_swap_budget_for_day(1),
+            swap_budget=self._supervisor_swap_budget_for_day(0),
             swaps_used_if_applied=0,
-            swaps_remaining=self._supervisor_swap_budget_for_day(1),
+            swaps_remaining=self._supervisor_swap_budget_for_day(0),
         )
 
     @property
@@ -474,12 +474,48 @@ class SimSimKernel:
     def _is_supervisor_unlocked(self, code: str, day_tick: int) -> bool:
         return int(day_tick) >= self._supervisor_unlock_day(code)
 
+    def _unlocked_room_ids_for_day(self, day_tick: int) -> Tuple[int, ...]:
+        return tuple(
+            room_id
+            for room_id in ROOM_IDS
+            if room_id != 6 and self._is_room_unlocked(room_id, day_tick)
+        )
+
+    def _unlocked_supervisor_codes_for_day(self, day_tick: int) -> Tuple[str, ...]:
+        return tuple(
+            profile.code
+            for profile in SUPERVISOR_PROFILES
+            if self._is_supervisor_unlocked(profile.code, day_tick)
+        )
+
+    def _first_available_room(
+        self,
+        *,
+        unlocked_rooms: Sequence[int],
+        occupied: Mapping[int, str],
+    ) -> int | None:
+        for room_id in unlocked_rooms:
+            if room_id not in occupied:
+                return int(room_id)
+        return None
+
     def _initial_assignments(self, *, day_tick: int) -> Dict[str, int | None]:
         assignments: Dict[str, int | None] = {}
+        unlocked_rooms = self._unlocked_room_ids_for_day(day_tick)
+        occupied: Dict[int, str] = {}
         for profile in SUPERVISOR_PROFILES:
             if not self._is_supervisor_unlocked(profile.code, day_tick):
                 continue
-            assignments[profile.code] = profile.native_room if self._is_room_unlocked(profile.native_room, day_tick) else None
+            if profile.native_room in unlocked_rooms and profile.native_room not in occupied:
+                assignments[profile.code] = profile.native_room
+                occupied[profile.native_room] = profile.code
+                continue
+            fallback_room = self._first_available_room(unlocked_rooms=unlocked_rooms, occupied=occupied)
+            if fallback_room is None:
+                assignments[profile.code] = None
+                continue
+            assignments[profile.code] = fallback_room
+            occupied[fallback_room] = profile.code
         assignments["L"] = 1
         return assignments
 
@@ -599,7 +635,8 @@ class SimSimKernel:
         return lo + (hi - lo) * t
 
     def _supervisor_swap_budget_for_day(self, day_tick: int) -> int:
-        return 1 if int(day_tick) < 4 else 2
+        day = int(day_tick)
+        return 1 if day <= 2 else 2
 
     def _count_supervisor_swaps(
         self,
@@ -608,7 +645,9 @@ class SimSimKernel:
         next_assignments: Mapping[str, int | None],
     ) -> int:
         changed_supervisors = 0
-        for code in sorted(set(previous_assignments.keys()) | set(next_assignments.keys())):
+        # Unlock-driven additions do not consume swap budget: only supervisors that
+        # existed at start-of-day are counted toward daily swap actions.
+        for code in sorted(set(previous_assignments.keys()) & set(next_assignments.keys())):
             prev_room = previous_assignments.get(code)
             next_room = next_assignments.get(code)
             if prev_room != next_room:
@@ -693,7 +732,7 @@ class SimSimKernel:
             if not self._is_room_unlocked(room_id, expected_tick_target):
                 return False, f"room_id={room_id} not unlocked for day {expected_tick_target}"
             if code is None:
-                continue
+                return False, "set_supervisors cannot assign null (unassign is not supported)"
             if not self._is_supervisor_unlocked(code, expected_tick_target):
                 return False, f"supervisor {code} not unlocked for day {expected_tick_target}"
 
@@ -704,12 +743,23 @@ class SimSimKernel:
                 day=expected_tick_target,
                 emit=lambda *args, **kwargs: None,
             )
+            unlocked_sup_codes = set(self._unlocked_supervisor_codes_for_day(expected_tick_target))
+            unlocked_rooms = set(self._unlocked_room_ids_for_day(expected_tick_target))
+            assigned_by_unlocked = {
+                code: room
+                for code, room in proposed_assignments.items()
+                if code in unlocked_sup_codes and isinstance(room, int)
+            }
+            if set(assigned_by_unlocked.keys()) != unlocked_sup_codes:
+                return False, "INVALID_SUPERVISOR_LAYOUT: every unlocked supervisor must be assigned to a room"
+            if set(assigned_by_unlocked.values()) != unlocked_rooms:
+                return False, "INVALID_SUPERVISOR_LAYOUT: every unlocked room must have exactly one supervisor"
             swaps_used = self._swaps_used_for_input(
                 day_input=day_input,
                 previous_assignments=self._state.assignments,
                 next_assignments=proposed_assignments,
             )
-            swap_budget = self._supervisor_swap_budget_for_day(expected_tick_target)
+            swap_budget = self._supervisor_swap_budget_for_day(self._state.day_tick)
             if swaps_used > swap_budget:
                 return (
                     False,
@@ -834,7 +884,7 @@ class SimSimKernel:
 
         # 2) Validate supervisor assignments.
         assignments = self._compute_assignments(start, day_input=effective_input, day=day, emit=emit)
-        swap_budget_for_day = self._supervisor_swap_budget_for_day(day)
+        current_day_budget = self._supervisor_swap_budget_for_day(start.day_tick)
         swaps_used_for_input = self._swaps_used_for_input(
             day_input=effective_input,
             previous_assignments=start.assignments,
@@ -914,7 +964,7 @@ class SimSimKernel:
         if bool(conflict_resolution.get("awaiting_prompt", False)):
             return enter_awaiting_prompts(
                 prompts=runtime_prompts,
-                swap_budget=swap_budget_for_day,
+                swap_budget=current_day_budget,
                 swaps_used_if_applied=swaps_used_for_input,
                 conflict_discovered=conflict_resolution.get("discovered_next", start.conflict.discovered),
             )
@@ -1055,7 +1105,7 @@ class SimSimKernel:
         if bool(critical_effects.get("awaiting_prompt", False)):
             return enter_awaiting_prompts(
                 prompts=runtime_prompts,
-                swap_budget=swap_budget_for_day,
+                swap_budget=current_day_budget,
                 swaps_used_if_applied=swaps_used_for_input,
                 conflict_discovered=conflict_resolution.get("discovered_next", start.conflict.discovered),
             )
@@ -1216,9 +1266,9 @@ class SimSimKernel:
             limen_security_count=limen_security_count,
             next_event_id=next_event_id,
             previous_day_assignments=dict(start.assignments),
-            swap_budget=self._supervisor_swap_budget_for_day(day + 1),
+            swap_budget=self._supervisor_swap_budget_for_day(day),
             swaps_used_if_applied=0,
-            swaps_remaining=self._supervisor_swap_budget_for_day(day + 1),
+            swaps_remaining=self._supervisor_swap_budget_for_day(day),
         )
 
         return previous, self._state
@@ -1231,27 +1281,31 @@ class SimSimKernel:
         day: int,
         emit: Any,
     ) -> Dict[str, int | None]:
+        unlocked_rooms = self._unlocked_room_ids_for_day(day)
         assignments: Dict[str, int | None] = {}
+        occupied: Dict[int, str] = {}
         for profile in SUPERVISOR_PROFILES:
             if not self._is_supervisor_unlocked(profile.code, day):
                 continue
             prev_room = start.assignments.get(profile.code)
-            if isinstance(prev_room, int) and self._is_room_unlocked(prev_room, day) and prev_room != 6:
+            if isinstance(prev_room, int) and prev_room in unlocked_rooms and prev_room not in occupied:
                 assignments[profile.code] = prev_room
-            elif self._is_room_unlocked(profile.native_room, day):
+                occupied[prev_room] = profile.code
+            elif profile.native_room in unlocked_rooms and profile.native_room not in occupied:
                 assignments[profile.code] = profile.native_room
+                occupied[profile.native_room] = profile.code
             else:
-                assignments[profile.code] = None
+                fallback_room = self._first_available_room(unlocked_rooms=unlocked_rooms, occupied=occupied)
+                if fallback_room is None:
+                    assignments[profile.code] = None
+                else:
+                    assignments[profile.code] = fallback_room
+                    occupied[fallback_room] = profile.code
 
         overrides = self._normalize_supervisor_input(day_input)
-        for room_id, code in overrides.items():
+        for room_id, code in sorted(overrides.items(), key=lambda item: int(item[0])):
             if room_id == 6 or not self._is_room_unlocked(room_id, day):
                 continue
-
-            # Clear any current room occupant.
-            for sup_code, assigned_room in list(assignments.items()):
-                if assigned_room == room_id:
-                    assignments[sup_code] = None
 
             if code is None:
                 continue
@@ -1259,21 +1313,41 @@ class SimSimKernel:
             if code not in assignments:
                 continue
 
-            # Move supervisor to target room, clearing previous assignment.
-            for sup_code, assigned_room in list(assignments.items()):
+            source_room = assignments.get(code)
+            if source_room == room_id:
+                continue
+            if not isinstance(source_room, int):
+                continue
+
+            occupant_code: str | None = None
+            for sup_code, assigned_room in assignments.items():
                 if sup_code != code and assigned_room == room_id:
-                    assignments[sup_code] = None
+                    occupant_code = sup_code
+                    break
+            if occupant_code is not None:
+                assignments[occupant_code] = source_room
             assignments[code] = room_id
 
-        # uniqueness per room (L owns room1).
+        # Guarantee unique occupancy with deterministic fallback reassignment.
         occupied: Dict[int, str] = {}
         for code in sorted(assignments.keys()):
             room_id = assignments.get(code)
             if room_id is None:
                 continue
             if room_id in occupied:
-                assignments[code] = None
-                emit("assignment_resolved", supervisor=code, room_id=None, details={"reason": "room_occupied"})
+                fallback_room = self._first_available_room(unlocked_rooms=unlocked_rooms, occupied=occupied)
+                if fallback_room is None:
+                    assignments[code] = None
+                    emit("assignment_resolved", supervisor=code, room_id=None, details={"reason": "room_occupied"})
+                    continue
+                assignments[code] = fallback_room
+                occupied[fallback_room] = code
+                emit(
+                    "assignment_resolved",
+                    supervisor=code,
+                    room_id=fallback_room,
+                    details={"reason": "room_occupied_reassigned"},
+                )
             else:
                 occupied[room_id] = code
 

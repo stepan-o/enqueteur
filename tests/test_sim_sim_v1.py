@@ -411,12 +411,25 @@ def test_dispatch_changes_with_stiletto_on_security() -> None:
 
 def test_supervisor_swap_budget_counting_and_enforcement() -> None:
     kernel = SimSimKernel(seed=23)
-    for day in range(1, 5):
+    for day in range(1, 4):
         _advance_one_tick(kernel, tick_target=day, day_input=DayInput(tick_target=day, advance=True))
 
-    assert kernel.state.day_tick == 4
+    assert kernel.state.day_tick == 3
     assert kernel.state.swap_budget == 2
     assert kernel.state.swaps_remaining == 2
+
+    # Day-2 unlock (CATHEXIS) is system-driven and must not consume swap budget.
+    kernel_day1 = SimSimKernel(seed=23)
+    _advance_one_tick(kernel_day1, tick_target=1, day_input=DayInput(tick_target=1, advance=True))
+    day2_single_swap = DayInput(
+        tick_target=2,
+        advance=True,
+        set_supervisors={1: "S"},
+    )
+    valid, reason = kernel_day1.validate_day_input(day2_single_swap, expected_tick_target=2)
+    assert valid, reason
+
+    _advance_one_tick(kernel, tick_target=4, day_input=DayInput(tick_target=4, advance=True))
 
     over_budget_input = DayInput(
         tick_target=5,
@@ -434,6 +447,20 @@ def test_supervisor_swap_budget_counting_and_enforcement() -> None:
     )
     valid, reason = kernel.validate_day_input(within_budget_input, expected_tick_target=5)
     assert valid, reason
+
+
+def test_unlocked_rooms_and_supervisors_never_unassigned() -> None:
+    kernel = SimSimKernel(seed=29)
+    for day in range(1, 6):
+        _advance_one_tick(kernel, tick_target=day, day_input=DayInput(tick_target=day, advance=True))
+        state = kernel.state
+        unlocked_rooms = [room_id for room_id, room in state.rooms.items() if not room.locked and room_id != 6]
+        for room_id in unlocked_rooms:
+            assert state.rooms[room_id].supervisor is not None
+
+        unlocked_supervisors = [sup.code for sup in state.supervisors.values() if sup.unlocked_day <= state.day_tick]
+        for code in unlocked_supervisors:
+            assert state.assignments.get(code) is not None
 
 
 def test_limen_security_hours_penalty_caps_and_persists() -> None:
