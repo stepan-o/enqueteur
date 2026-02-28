@@ -52,7 +52,7 @@ export class SimSimScene {
     private advanceStatusEl?: HTMLDivElement;
     private supervisorPanelEl?: HTMLDivElement;
     private placementControlsEl?: HTMLDivElement;
-    private debugVisible = true;
+    private debugVisible = false;
     private lastState?: SimSimViewerState;
     private placementsBaseline: PlacementDraft = {};
     private placementsDraft: PlacementDraft = {};
@@ -66,6 +66,7 @@ export class SimSimScene {
     private advanceInFlightStateKey: string | null = null;
     private advanceStatusOverride: { text: string; color: string; untilMs: number } | null = null;
     private promptsFlashTimer: number | null = null;
+    private liveFeedCollapsed = true;
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     private readonly onAdvanceDay?: (payload: AdvanceDayPayload) => void;
     private readonly onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
@@ -291,25 +292,28 @@ export class SimSimScene {
         hud.style.position = "absolute";
         hud.style.left = "14px";
         hud.style.top = "12px";
-        hud.style.padding = "10px 12px";
+        hud.style.padding = "9px 11px";
         hud.style.borderRadius = "10px";
-        hud.style.background = "rgba(10, 13, 18, 0.76)";
+        hud.style.background = "rgba(10, 13, 18, 0.82)";
         hud.style.border = "1px solid rgba(140, 214, 200, 0.36)";
-        hud.style.fontSize = "12px";
-        hud.style.lineHeight = "1.45";
+        hud.style.fontSize = "11px";
+        hud.style.lineHeight = "1.4";
         hud.style.pointerEvents = "auto";
+        hud.style.width = "min(350px, 26vw)";
+        hud.style.maxHeight = "20vh";
+        hud.style.overflow = "hidden auto";
         root.appendChild(hud);
 
         const advanceControls = document.createElement("div");
         advanceControls.style.position = "absolute";
         advanceControls.style.left = "14px";
-        advanceControls.style.top = "150px";
+        advanceControls.style.top = "188px";
         advanceControls.style.padding = "10px 12px";
         advanceControls.style.borderRadius = "10px";
         advanceControls.style.border = "1px solid rgba(243, 199, 106, 0.45)";
         advanceControls.style.background = "rgba(24, 17, 9, 0.82)";
         advanceControls.style.pointerEvents = "auto";
-        advanceControls.style.minWidth = "240px";
+        advanceControls.style.width = "min(350px, 26vw)";
 
         const advanceButton = document.createElement("button");
         advanceButton.type = "button";
@@ -336,63 +340,62 @@ export class SimSimScene {
         const supervisorPanel = document.createElement("div");
         supervisorPanel.style.position = "absolute";
         supervisorPanel.style.left = "14px";
-        supervisorPanel.style.top = "332px";
+        supervisorPanel.style.top = "500px";
         supervisorPanel.style.padding = "10px 12px";
         supervisorPanel.style.borderRadius = "10px";
         supervisorPanel.style.border = "1px solid rgba(140, 214, 200, 0.42)";
         supervisorPanel.style.background = "rgba(13, 20, 28, 0.86)";
         supervisorPanel.style.pointerEvents = "auto";
-        supervisorPanel.style.minWidth = "320px";
-        supervisorPanel.style.maxWidth = "min(420px, 38vw)";
-        supervisorPanel.style.maxHeight = "40vh";
+        supervisorPanel.style.width = "min(350px, 26vw)";
+        supervisorPanel.style.maxHeight = "30vh";
         supervisorPanel.style.overflowY = "auto";
         root.appendChild(supervisorPanel);
 
         const placementControls = document.createElement("div");
         placementControls.style.position = "absolute";
         placementControls.style.left = "14px";
-        placementControls.style.top = "250px";
+        placementControls.style.top = "320px";
         placementControls.style.padding = "10px 12px";
         placementControls.style.borderRadius = "10px";
         placementControls.style.border = "1px solid rgba(243, 199, 106, 0.45)";
         placementControls.style.background = "rgba(24, 17, 9, 0.86)";
         placementControls.style.pointerEvents = "auto";
-        placementControls.style.minWidth = "320px";
-        placementControls.style.maxWidth = "min(420px, 38vw)";
+        placementControls.style.width = "min(350px, 26vw)";
         root.appendChild(placementControls);
 
         const roomCards = document.createElement("div");
         roomCards.style.position = "absolute";
         roomCards.style.right = "14px";
-        roomCards.style.top = "12px";
-        roomCards.style.width = "min(460px, 34vw)";
-        roomCards.style.maxHeight = "66vh";
+        roomCards.style.top = "14px";
+        roomCards.style.width = "min(400px, 28vw)";
+        roomCards.style.maxHeight = "72vh";
         roomCards.style.overflowY = "auto";
         roomCards.style.display = "grid";
-        roomCards.style.gap = "8px";
-        roomCards.style.padding = "2px";
+        roomCards.style.gap = "7px";
+        roomCards.style.padding = "2px 0";
         root.appendChild(roomCards);
 
         const events = document.createElement("div");
         events.style.position = "absolute";
         events.style.left = "14px";
         events.style.bottom = "14px";
-        events.style.width = "min(540px, 46vw)";
-        events.style.maxHeight = "28vh";
-        events.style.overflow = "hidden";
-        events.style.padding = "10px 12px";
+        events.style.width = "min(460px, 34vw)";
+        events.style.maxHeight = "24vh";
+        events.style.overflow = "hidden auto";
+        events.style.padding = "8px 10px";
         events.style.borderRadius = "10px";
-        events.style.background = "rgba(10, 13, 18, 0.78)";
+        events.style.background = "rgba(10, 13, 18, 0.7)";
         events.style.border = "1px solid rgba(243, 199, 106, 0.34)";
-        events.style.fontSize = "12px";
-        events.style.lineHeight = "1.35";
+        events.style.fontSize = "11px";
+        events.style.lineHeight = "1.3";
+        events.style.pointerEvents = "auto";
         root.appendChild(events);
 
         const prompts = document.createElement("div");
         prompts.style.position = "absolute";
         prompts.style.right = "14px";
-        prompts.style.bottom = "84px";
-        prompts.style.width = "min(460px, 34vw)";
+        prompts.style.bottom = "88px";
+        prompts.style.width = "min(400px, 28vw)";
         prompts.style.maxHeight = "30vh";
         prompts.style.overflowY = "auto";
         prompts.style.padding = "10px 12px";
@@ -486,7 +489,7 @@ export class SimSimScene {
             };
         }
         const tickTarget = state.tick + 1;
-        this.roomCardsEl.style.pointerEvents = awaitingPrompts ? "none" : "auto";
+        this.roomCardsEl.style.pointerEvents = "none";
 
         const activeFlags: string[] = [];
         if (regime) {
@@ -503,14 +506,16 @@ export class SimSimScene {
             .join(" • ");
 
         this.hudEl.innerHTML = [
-            `<div style="font-size:13px;font-weight:700;letter-spacing:0.03em;margin-bottom:4px;">sim_sim LIVE</div>`,
+            `<div style="font-size:12px;font-weight:700;letter-spacing:0.04em;margin-bottom:4px;">sim_sim LIVE</div>`,
             `<div>day <strong>${wm?.day ?? "-"}</strong> • tick <strong>${wm?.tick ?? state.tick}</strong> • ${wm?.phase ?? "-"} @ ${wm?.time ?? "-"}</div>`,
-            `<div>cash <strong>${inv?.cash ?? "-"}</strong> • raw ${inv?.inventories.raw_brains_dumb ?? 0}/${inv?.inventories.raw_brains_smart ?? 0} • washed ${inv?.inventories.washed_dumb ?? 0}/${inv?.inventories.washed_smart ?? 0}</div>`,
-            `<div>substrate ${inv?.inventories.substrate_gallons ?? 0} • ribbon ${inv?.inventories.ribbon_yards ?? 0}</div>`,
-            `<div>workers ${inv?.worker_pools?.dumb_total ?? "-"}d / ${inv?.worker_pools?.smart_total ?? "-"}s</div>`,
+            `<div>cash <strong>${inv?.cash ?? "-"}</strong> • workers ${inv?.worker_pools?.dumb_total ?? "-"}d / ${inv?.worker_pools?.smart_total ?? "-"}s</div>`,
             `<div>security lead <strong>${wm?.security_lead ?? "-"}</strong></div>`,
-            `<div>supervisors: ${supervisorSummary || "none unlocked"}</div>`,
-            `<div>regime: ${activeFlags.length ? activeFlags.join(", ") : "none"}</div>`,
+            `<div style="opacity:0.84;">raw ${inv?.inventories.raw_brains_dumb ?? 0}/${inv?.inventories.raw_brains_smart ?? 0} • washed ${inv?.inventories.washed_dumb ?? 0}/${inv?.inventories.washed_smart ?? 0} • sub ${inv?.inventories.substrate_gallons ?? 0} • rib ${inv?.inventories.ribbon_yards ?? 0}</div>`,
+            `<div style="opacity:0.84;">${supervisorSummary || "none unlocked"}</div>`,
+            `<div style="opacity:0.78;">regime: ${activeFlags.length ? activeFlags.join(", ") : "none"}</div>`,
+            planningPhase
+                ? `<div style="color:#c4d6e1;opacity:0.86;">Flow: swap on map → Apply Draft → Advance Day</div>`
+                : "",
             awaitingPrompts
                 ? `<div style="color:#f3c76a;">phase awaiting_prompts: placements and advance disabled until prompt resolution</div>`
                 : "",
@@ -582,7 +587,7 @@ export class SimSimScene {
             changed,
             latestRejection,
         });
-        this.roomCardsEl.innerHTML = rooms
+        const inspectionCards = rooms
             .map((room) => {
                 const acc = room.accidents_today ?? { count: 0, casualties: 0 };
                 const draftCode = this.placementsDraft[room.room_id] ?? room.supervisor ?? null;
@@ -592,19 +597,24 @@ export class SimSimScene {
                     ? roomCardSupervisorTokenHtml("LK", "")
                     : roomCardSupervisorTokenHtml(draftCode ?? "—", supervisorLabel);
                 return [
-                    `<div style="pointer-events:none;border:1px solid ${room.locked ? "rgba(232,159,143,0.45)" : "rgba(140,214,200,0.34)"};`,
-                    `background:${room.locked ? "rgba(44,23,23,0.80)" : "rgba(13,20,28,0.82)"};border-radius:10px;padding:8px 10px;">`,
+                    `<div style="pointer-events:none;border:1px solid ${room.locked ? "rgba(232,159,143,0.42)" : "rgba(140,214,200,0.28)"};`,
+                    `background:${room.locked ? "rgba(44,23,23,0.72)" : "rgba(13,20,28,0.72)"};border-radius:10px;padding:8px 10px;">`,
                     `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;">`,
-                    `<span>${room.name} (unlock day ${room.unlocked_day >= 0 ? room.unlocked_day : "never"})</span>`,
+                    `<span>${room.name}</span>`,
                     `<span style="display:inline-flex;align-items:center;gap:6px;">${supervisorToken}<span>${room.locked ? "LOCKED" : supervisorLabel}</span></span></div>`,
-                    `<div style="font-size:11px;opacity:0.95;">assigned ${fmtPair(room.workers_assigned.dumb, room.workers_assigned.smart)} • present ${fmtPair(room.workers_present.dumb, room.workers_present.smart)}</div>`,
-                    `<div style="font-size:11px;opacity:0.95;">equip ${pct(room.equipment_condition)} • S ${pct(room.stress)} • D ${pct(room.discipline)} • A ${pct(room.alignment)}</div>`,
-                    `<div style="font-size:11px;opacity:0.95;">out rb ${room.output_today.raw_brains_dumb}/${room.output_today.raw_brains_smart} • w ${room.output_today.washed_dumb}/${room.output_today.washed_smart} • sub ${room.output_today.substrate_gallons} • rib ${room.output_today.ribbon_yards}</div>`,
-                    `<div style="font-size:11px;opacity:0.95;">accidents ${acc.count} • casualties ${acc.casualties}</div>`,
+                    `<div style="font-size:10px;opacity:0.78;margin-top:2px;">inspection • unlock day ${room.unlocked_day >= 0 ? room.unlocked_day : "never"}</div>`,
+                    `<div style="font-size:11px;opacity:0.92;">assigned ${fmtPair(room.workers_assigned.dumb, room.workers_assigned.smart)} • present ${fmtPair(room.workers_present.dumb, room.workers_present.smart)}</div>`,
+                    `<div style="font-size:11px;opacity:0.92;">equip ${pct(room.equipment_condition)} • S ${pct(room.stress)} • D ${pct(room.discipline)} • A ${pct(room.alignment)}</div>`,
+                    `<div style="font-size:11px;opacity:0.92;">out rb ${room.output_today.raw_brains_dumb}/${room.output_today.raw_brains_smart} • w ${room.output_today.washed_dumb}/${room.output_today.washed_smart} • sub ${room.output_today.substrate_gallons} • rib ${room.output_today.ribbon_yards}</div>`,
+                    `<div style="font-size:11px;opacity:0.92;">accidents ${acc.count} • casualties ${acc.casualties}</div>`,
                     `</div>`,
                 ].join("");
             })
             .join("");
+        this.roomCardsEl.innerHTML = [
+            `<div style="pointer-events:none;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.75;margin:0 0 4px 2px;">Inspection</div>`,
+            inspectionCards,
+        ].join("");
 
         this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts, {
             controlsDisabled,
@@ -618,13 +628,27 @@ export class SimSimScene {
             this.focusPromptsPanel();
         }
 
-        const eventRows = events.slice(-10).map((event) => {
+        const eventRows = events.slice(-14).map((event) => {
             const room = event.room_id ? ` room=${event.room_id}` : "";
             const sup = event.supervisor ? ` ${event.supervisor}` : "";
             const details = event.details ? ` ${JSON.stringify(event.details)}` : "";
             return `<div>t${event.tick} #${event.event_id} <strong>${event.kind}</strong>${room}${sup}${details}</div>`;
         });
-        this.eventsEl.innerHTML = `<div style="font-size:12px;font-weight:700;margin-bottom:4px;">Live Feed</div>${eventRows.join("")}`;
+        const visibleRows = this.liveFeedCollapsed ? eventRows.slice(-3) : eventRows;
+        this.eventsEl.innerHTML = [
+            `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">`,
+            `<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.8;">Live Feed</div>`,
+            `<button data-live-feed-toggle="1" type="button" style="pointer-events:auto;border:1px solid rgba(243,199,106,0.55);background:rgba(24,17,9,0.9);color:#f3efe3;border-radius:7px;padding:3px 8px;font-size:10px;cursor:pointer;">${this.liveFeedCollapsed ? "Expand" : "Collapse"}</button>`,
+            `</div>`,
+            `<div style="max-height:${this.liveFeedCollapsed ? "68px" : "22vh"};overflow:hidden auto;display:grid;gap:2px;">${visibleRows.join("")}</div>`,
+        ].join("");
+        const liveFeedToggle = this.eventsEl.querySelector<HTMLButtonElement>("[data-live-feed-toggle='1']");
+        if (liveFeedToggle) {
+            liveFeedToggle.onclick = () => {
+                this.liveFeedCollapsed = !this.liveFeedCollapsed;
+                this.renderFromState(state);
+            };
+        }
 
         this.debugPanelEl.style.display = this.debugVisible ? "block" : "none";
         this.debugPanelEl.innerHTML = [
@@ -1011,17 +1035,20 @@ export class SimSimScene {
         this.syncPlacementEditorState(state, rooms);
 
         const title = document.createElement("div");
-        title.style.fontSize = "12px";
+        title.style.fontSize = "11px";
         title.style.fontWeight = "700";
         title.style.marginBottom = "6px";
-        title.textContent = "Supervisor Placements";
+        title.style.letterSpacing = "0.08em";
+        title.style.textTransform = "uppercase";
+        title.style.opacity = "0.82";
+        title.textContent = "Placement Board";
         panel.appendChild(title);
 
         const hint = document.createElement("div");
         hint.style.fontSize = "11px";
-        hint.style.opacity = "0.92";
+        hint.style.opacity = "0.9";
         hint.style.marginBottom = "8px";
-        hint.textContent = "Click a room token to select, then click another room token to swap.";
+        hint.textContent = "Select a room token on the map, then click another room token to swap.";
         panel.appendChild(hint);
 
         if (unlockedRooms.length === 0) {
@@ -1036,6 +1063,7 @@ export class SimSimScene {
         const summary = document.createElement("div");
         summary.style.fontSize = "11px";
         summary.style.marginBottom = "8px";
+        summary.style.opacity = "0.9";
         summary.innerHTML = `<div>Selected: ${this.selectedRoomId !== null ? `room ${this.selectedRoomId}` : "none"}${this.selectedSupId ? ` -> ${this.selectedSupId}` : ""}</div>`;
         panel.appendChild(summary);
 
@@ -1094,77 +1122,58 @@ export class SimSimScene {
         }
         panel.appendChild(supervisorBar);
 
-        for (const room of unlockedRooms) {
-            const row = document.createElement("div");
-            row.style.display = "block";
-            row.style.fontSize = "11px";
-            row.style.marginBottom = "8px";
-            if (this.selectedRoomId === room.room_id) {
-                row.style.background = "rgba(243, 199, 106, 0.16)";
+        if (this.debugVisible) {
+            const debugHeader = document.createElement("div");
+            debugHeader.style.fontSize = "10px";
+            debugHeader.style.letterSpacing = "0.06em";
+            debugHeader.style.textTransform = "uppercase";
+            debugHeader.style.opacity = "0.6";
+            debugHeader.style.marginTop = "2px";
+            debugHeader.style.marginBottom = "6px";
+            debugHeader.textContent = "Debug placement rows";
+            panel.appendChild(debugHeader);
+
+            for (const room of unlockedRooms) {
+                const row = document.createElement("div");
+                row.style.display = "flex";
+                row.style.alignItems = "center";
+                row.style.justifyContent = "space-between";
+                row.style.gap = "8px";
+                row.style.fontSize = "11px";
+                row.style.marginBottom = "6px";
+                row.style.padding = "5px 6px";
                 row.style.borderRadius = "6px";
-                row.style.padding = "4px 6px";
+                row.style.background = this.selectedRoomId === room.room_id ? "rgba(243, 199, 106, 0.14)" : "rgba(10, 13, 18, 0.25)";
+
+                const label = document.createElement("span");
+                label.textContent = `Room ${room.room_id} • ${room.name}`;
+                label.style.opacity = "0.88";
+                row.appendChild(label);
+
+                const selectedCode = this.placementsDraft[room.room_id] ?? null;
+                const hardDisabled = data.controlsDisabled || !selectedCode;
+                const currentToken = createSupervisorToken({
+                    label: selectedCode ?? "—",
+                    name: selectedCode ? (unlockedSupervisors.find((sup) => sup.code === selectedCode)?.name ?? selectedCode) : "Unassigned",
+                    selected: this.selectedRoomId === room.room_id,
+                    disabled: hardDisabled,
+                    highlighted: false,
+                    ineligible: false,
+                    sizePx: 40,
+                    onClick: hardDisabled
+                        ? undefined
+                        : () =>
+                              this.onRoomSupervisorTokenClick({
+                                  roomId: room.room_id,
+                                  supervisorCode: selectedCode,
+                                  swapBudget: data.swapBudget,
+                                  controlsDisabled: data.controlsDisabled,
+                                  state,
+                              }),
+                });
+                row.appendChild(currentToken);
+                panel.appendChild(row);
             }
-
-            const label = document.createElement("label");
-            label.textContent = `Room ${room.room_id} • ${room.name}`;
-            label.style.display = "block";
-            label.style.marginBottom = "6px";
-            row.appendChild(label);
-
-            const selectedCode = this.placementsDraft[room.room_id] ?? null;
-            const currentWrap = document.createElement("div");
-            currentWrap.style.display = "flex";
-            currentWrap.style.alignItems = "center";
-            currentWrap.style.gap = "8px";
-            currentWrap.style.marginBottom = "8px";
-            const currentLabel = document.createElement("span");
-            currentLabel.textContent = "Current:";
-            currentLabel.style.opacity = "0.84";
-            currentWrap.appendChild(currentLabel);
-
-            let highlighted = false;
-            let ineligible = false;
-            const hasSelection = this.selectedRoomId !== null;
-            if (hasSelection && this.selectedRoomId !== room.room_id && selectedCode) {
-                if (data.swapsRemaining <= 0) {
-                    ineligible = true;
-                } else {
-                    const nextDraft = this.swapDraftBetweenRooms({
-                        roomId: this.selectedRoomId!,
-                        otherRoomId: room.room_id,
-                    });
-                    const swapsUsedIfApplied = this.computeSwapsUsed(nextDraft, this.placementsBaseline);
-                    highlighted = swapsUsedIfApplied <= data.swapBudget;
-                    ineligible = !highlighted;
-                }
-            }
-            if (hasSelection && this.selectedRoomId !== room.room_id && !selectedCode) {
-                ineligible = true;
-            }
-            const hardDisabled = data.controlsDisabled || !selectedCode;
-            const currentToken = createSupervisorToken({
-                label: selectedCode ?? "—",
-                name: selectedCode ? (unlockedSupervisors.find((sup) => sup.code === selectedCode)?.name ?? selectedCode) : "Unassigned",
-                selected: this.selectedRoomId === room.room_id,
-                disabled: hardDisabled,
-                highlighted,
-                ineligible,
-                sizePx: 54,
-                onClick: hardDisabled
-                    ? undefined
-                    : () =>
-                          this.onRoomSupervisorTokenClick({
-                              roomId: room.room_id,
-                              supervisorCode: selectedCode,
-                              swapBudget: data.swapBudget,
-                              controlsDisabled: data.controlsDisabled,
-                              state,
-                          }),
-            });
-            currentWrap.appendChild(currentToken);
-            row.appendChild(currentWrap);
-
-            panel.appendChild(row);
         }
     }
 
