@@ -51,6 +51,7 @@ export class SimSimScene {
     private advanceDayButtonEl?: HTMLButtonElement;
     private advanceStatusEl?: HTMLDivElement;
     private supervisorPanelEl?: HTMLDivElement;
+    private placementControlsEl?: HTMLDivElement;
     private debugVisible = true;
     private lastState?: SimSimViewerState;
     private placementsBaseline: PlacementDraft = {};
@@ -335,7 +336,7 @@ export class SimSimScene {
         const supervisorPanel = document.createElement("div");
         supervisorPanel.style.position = "absolute";
         supervisorPanel.style.left = "14px";
-        supervisorPanel.style.top = "250px";
+        supervisorPanel.style.top = "332px";
         supervisorPanel.style.padding = "10px 12px";
         supervisorPanel.style.borderRadius = "10px";
         supervisorPanel.style.border = "1px solid rgba(140, 214, 200, 0.42)";
@@ -346,6 +347,19 @@ export class SimSimScene {
         supervisorPanel.style.maxHeight = "40vh";
         supervisorPanel.style.overflowY = "auto";
         root.appendChild(supervisorPanel);
+
+        const placementControls = document.createElement("div");
+        placementControls.style.position = "absolute";
+        placementControls.style.left = "14px";
+        placementControls.style.top = "250px";
+        placementControls.style.padding = "10px 12px";
+        placementControls.style.borderRadius = "10px";
+        placementControls.style.border = "1px solid rgba(243, 199, 106, 0.45)";
+        placementControls.style.background = "rgba(24, 17, 9, 0.86)";
+        placementControls.style.pointerEvents = "auto";
+        placementControls.style.minWidth = "320px";
+        placementControls.style.maxWidth = "min(420px, 38vw)";
+        root.appendChild(placementControls);
 
         const roomCards = document.createElement("div");
         roomCards.style.position = "absolute";
@@ -435,6 +449,7 @@ export class SimSimScene {
         this.advanceDayButtonEl = advanceButton;
         this.advanceStatusEl = advanceStatus;
         this.supervisorPanelEl = supervisorPanel;
+        this.placementControlsEl = placementControls;
 
         mountEl.appendChild(root);
     }
@@ -445,13 +460,23 @@ export class SimSimScene {
         prompts: SimSimPrompt[],
         previousState?: SimSimViewerState
     ): void {
-        if (!this.hudEl || !this.roomCardsEl || !this.eventsEl || !this.promptsEl || !this.debugPanelEl || !this.supervisorPanelEl) return;
+        if (
+            !this.hudEl ||
+            !this.roomCardsEl ||
+            !this.eventsEl ||
+            !this.promptsEl ||
+            !this.debugPanelEl ||
+            !this.supervisorPanelEl ||
+            !this.placementControlsEl
+        )
+            return;
         const wm = state.worldMeta;
         const inv = state.inventory;
         const regime = state.regime;
         const previousPhase = (previousState?.worldMeta?.phase ?? "").toLowerCase();
         const awaitingPrompts = (wm?.phase ?? "").toLowerCase() === "awaiting_prompts";
         const planningPhase = (wm?.phase ?? "").toLowerCase() === "planning";
+        const controlsDisabled = !planningPhase || awaitingPrompts || state.desynced;
         const enteredAwaitingPrompts = previousPhase === "planning" && awaitingPrompts;
         if (enteredAwaitingPrompts) {
             this.advanceStatusOverride = {
@@ -545,6 +570,17 @@ export class SimSimScene {
         }
 
         const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
+        const swapsUsed = this.computeSwapsUsed(this.placementsDraft, this.placementsBaseline);
+        const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) < 4 ? 1 : 2);
+        const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
+        const changed = !this.isPlacementMapEqual(this.placementsDraft, this.placementsBaseline);
+        this.renderPlacementControlsCluster(state, awaitingPrompts, {
+            controlsDisabled,
+            swapsUsed,
+            swapBudget,
+            swapsRemaining,
+            changed,
+        });
         this.roomCardsEl.innerHTML = rooms
             .map((room) => {
                 const acc = room.accidents_today ?? { count: 0, casualties: 0 };
@@ -569,7 +605,13 @@ export class SimSimScene {
             })
             .join("");
 
-        this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+        this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts, {
+            controlsDisabled,
+            swapBudget,
+            swapsUsed,
+            swapsRemaining,
+            changed,
+        });
         this.renderPromptsPanel(state, prompts, awaitingPrompts, events);
         if (enteredAwaitingPrompts && prompts.length > 0) {
             this.focusPromptsPanel();
@@ -686,9 +728,9 @@ export class SimSimScene {
     }
 
     private resetDraftToBaseline(): void {
-        if (this.isPlacementMapEqual(this.placementsDraft, this.placementsBaseline)) return;
-        this.pushHistory();
         this.placementsDraft = this.clonePlacementMap(this.placementsBaseline);
+        this.placementsHistory = [];
+        this.placementInteractionStatus = null;
         this.unselect();
     }
 
@@ -742,30 +784,28 @@ export class SimSimScene {
         swapBudget: number;
         controlsDisabled: boolean;
         state: SimSimViewerState;
-        rooms: SimSimRoom[];
-        awaitingPrompts: boolean;
     }): void {
-        const { roomId, supervisorCode, swapBudget, controlsDisabled, state, rooms, awaitingPrompts } = args;
+        const { roomId, supervisorCode, swapBudget, controlsDisabled, state } = args;
         if (controlsDisabled || !supervisorCode) return;
 
         if (this.selectedRoomId === null) {
             this.selectedRoomId = roomId;
             this.selectedSupId = supervisorCode;
             this.placementInteractionStatus = null;
-            this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+            this.renderFromState(state);
             return;
         }
 
         if (this.selectedRoomId === roomId) {
             this.unselect();
             this.placementInteractionStatus = null;
-            this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+            this.renderFromState(state);
             return;
         }
 
         if (swapBudget - this.computeSwapsUsed(this.placementsDraft, this.placementsBaseline) <= 0) {
             this.placementInteractionStatus = { text: "No swaps remaining.", color: "#ffd8cf" };
-            this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+            this.renderFromState(state);
             return;
         }
 
@@ -776,7 +816,7 @@ export class SimSimScene {
         const swapsUsedIfApplied = this.computeSwapsUsed(nextDraft, this.placementsBaseline);
         if (swapsUsedIfApplied > swapBudget) {
             this.placementInteractionStatus = { text: "No swaps remaining.", color: "#ffd8cf" };
-            this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+            this.renderFromState(state);
             return;
         }
 
@@ -787,17 +827,126 @@ export class SimSimScene {
             color: "#f3efe3",
         };
         this.unselect();
-        this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+        this.renderFromState(state);
     }
 
-    private renderSupervisorPlacementsPanel(state: SimSimViewerState, rooms: SimSimRoom[], awaitingPrompts: boolean): void {
+    private renderPlacementControlsCluster(
+        state: SimSimViewerState,
+        awaitingPrompts: boolean,
+        data: {
+            controlsDisabled: boolean;
+            swapsUsed: number;
+            swapBudget: number;
+            swapsRemaining: number;
+            changed: boolean;
+        }
+    ): void {
+        if (!this.placementControlsEl) return;
+        const cluster = this.placementControlsEl;
+        cluster.innerHTML = "";
+
+        const title = document.createElement("div");
+        title.style.fontSize = "12px";
+        title.style.fontWeight = "700";
+        title.style.marginBottom = "6px";
+        title.textContent = "Placement Controls";
+        cluster.appendChild(title);
+
+        const budget = document.createElement("div");
+        budget.style.fontSize = "11px";
+        budget.style.opacity = "0.95";
+        budget.style.marginBottom = "8px";
+        budget.textContent = `Swaps: used ${data.swapsUsed} / budget ${data.swapBudget} (remaining ${data.swapsRemaining})`;
+        cluster.appendChild(budget);
+
+        if (this.placementInteractionStatus) {
+            const status = document.createElement("div");
+            status.style.fontSize = "11px";
+            status.style.marginBottom = "8px";
+            status.style.color = this.placementInteractionStatus.color;
+            status.textContent = this.placementInteractionStatus.text;
+            cluster.appendChild(status);
+        }
+
+        const controls = document.createElement("div");
+        controls.style.display = "flex";
+        controls.style.alignItems = "center";
+        controls.style.gap = "6px";
+        controls.style.marginBottom = "2px";
+
+        const undoButton = document.createElement("button");
+        undoButton.type = "button";
+        undoButton.textContent = "Undo";
+        undoButton.disabled = data.controlsDisabled || this.placementsHistory.length === 0;
+        styleSecondaryButton(undoButton, undoButton.disabled);
+        if (!undoButton.disabled) {
+            undoButton.addEventListener("click", () => {
+                this.undo();
+                this.placementInteractionStatus = null;
+                this.renderFromState(state);
+            });
+        }
+        controls.appendChild(undoButton);
+
+        const canReset =
+            !data.controlsDisabled &&
+            (data.changed || this.placementsHistory.length > 0 || this.selectedRoomId !== null || this.selectedSupId !== null);
+        const resetButton = document.createElement("button");
+        resetButton.type = "button";
+        resetButton.textContent = "Reset";
+        resetButton.disabled = !canReset;
+        styleSecondaryButton(resetButton, resetButton.disabled);
+        if (!resetButton.disabled) {
+            resetButton.addEventListener("click", () => {
+                this.resetDraftToBaseline();
+                this.renderFromState(state);
+            });
+        }
+        controls.appendChild(resetButton);
+
+        const canUnselect = this.selectedRoomId !== null || this.selectedSupId !== null;
+        const unselectButton = document.createElement("button");
+        unselectButton.type = "button";
+        unselectButton.textContent = "Unselect";
+        unselectButton.disabled = !canUnselect;
+        styleSecondaryButton(unselectButton, unselectButton.disabled);
+        if (!unselectButton.disabled) {
+            unselectButton.addEventListener("click", () => {
+                this.unselect();
+                this.placementInteractionStatus = null;
+                this.renderFromState(state);
+            });
+        }
+        controls.appendChild(unselectButton);
+
+        cluster.appendChild(controls);
+
+        if (awaitingPrompts) {
+            const promptLock = document.createElement("div");
+            promptLock.style.marginTop = "6px";
+            promptLock.style.fontSize = "11px";
+            promptLock.style.color = "#f3c76a";
+            promptLock.textContent = "Placements locked while awaiting prompt resolution.";
+            cluster.appendChild(promptLock);
+        }
+    }
+
+    private renderSupervisorPlacementsPanel(
+        state: SimSimViewerState,
+        rooms: SimSimRoom[],
+        awaitingPrompts: boolean,
+        data: {
+            controlsDisabled: boolean;
+            swapBudget: number;
+            swapsUsed: number;
+            swapsRemaining: number;
+            changed: boolean;
+        }
+    ): void {
         if (!this.supervisorPanelEl) return;
         const panel = this.supervisorPanelEl;
         panel.innerHTML = "";
 
-        const wm = state.worldMeta;
-        const planningPhase = (wm?.phase ?? "").toLowerCase() === "planning";
-        const controlsDisabled = !planningPhase || awaitingPrompts || state.desynced;
         const tickTarget = state.tick + 1;
         const unlockedRooms = rooms.filter((room) => !room.locked).sort((a, b) => a.room_id - b.room_id);
         const unlockedSupervisors = Array.from(state.supervisors.values())
@@ -828,29 +977,10 @@ export class SimSimScene {
             return;
         }
 
-        const swapsUsed = this.computeSwapsUsed(this.placementsDraft, this.placementsBaseline);
-        const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) < 4 ? 1 : 2);
-        const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
-        const overBudget = swapsUsed > swapBudget;
-        const changed = !this.isPlacementMapEqual(this.placementsDraft, this.placementsBaseline);
-
         const summary = document.createElement("div");
         summary.style.fontSize = "11px";
         summary.style.marginBottom = "8px";
-        const summaryLines = [
-            `<div>Swap budget: <strong>${swapBudget}</strong> • used: <strong>${swapsUsed}</strong> • remaining: <strong>${swapsRemaining}</strong></div>`,
-            `<div>Selected: ${this.selectedRoomId !== null ? `room ${this.selectedRoomId}` : "none"}${this.selectedSupId ? ` -> ${this.selectedSupId}` : ""}</div>`,
-        ];
-        if (this.placementInteractionStatus) {
-            summaryLines.push(`<div style="color:${this.placementInteractionStatus.color};">${this.placementInteractionStatus.text}</div>`);
-        }
-        if (overBudget) {
-            summaryLines.push(`<div style="color:#ffd8cf;">Placement draft exceeds daily swap budget.</div>`);
-        }
-        if (controlsDisabled) {
-            summaryLines.push(`<div style="color:#f3c76a;">Placements locked while phase is ${wm?.phase ?? "unknown"}.</div>`);
-        }
-        summary.innerHTML = summaryLines.join("");
+        summary.innerHTML = `<div>Selected: ${this.selectedRoomId !== null ? `room ${this.selectedRoomId}` : "none"}${this.selectedSupId ? ` -> ${this.selectedSupId}` : ""}</div>`;
         panel.appendChild(summary);
 
         const supervisorBar = document.createElement("div");
@@ -867,13 +997,41 @@ export class SimSimScene {
             const assignedRoom = Object.keys(this.placementsDraft)
                 .map((roomId) => Number(roomId))
                 .find((roomId) => this.placementsDraft[roomId] === supervisor.code);
+            let highlighted = false;
+            let ineligible = false;
+            if (this.selectedRoomId !== null && assignedRoom !== undefined && this.selectedRoomId !== assignedRoom) {
+                if (data.swapsRemaining <= 0) {
+                    ineligible = true;
+                } else {
+                    const nextDraft = this.swapDraftBetweenRooms({
+                        roomId: this.selectedRoomId,
+                        otherRoomId: assignedRoom,
+                    });
+                    const swapsUsedIfApplied = this.computeSwapsUsed(nextDraft, this.placementsBaseline);
+                    highlighted = swapsUsedIfApplied <= data.swapBudget;
+                    ineligible = !highlighted;
+                }
+            }
+            const hardDisabled = data.controlsDisabled || assignedRoom === undefined;
             const token = createSupervisorToken({
                 label: supervisor.code,
                 name: supervisor.name,
                 selected: this.selectedSupId === supervisor.code,
-                disabled: true,
-                highlighted: this.selectedSupId === supervisor.code,
+                disabled: hardDisabled,
+                highlighted: this.selectedSupId === supervisor.code || highlighted,
+                ineligible,
                 sizePx: 56,
+                onClick:
+                    hardDisabled || assignedRoom === undefined
+                        ? undefined
+                        : () =>
+                              this.onRoomSupervisorTokenClick({
+                                  roomId: assignedRoom,
+                                  supervisorCode: supervisor.code,
+                                  swapBudget: data.swapBudget,
+                                  controlsDisabled: data.controlsDisabled,
+                                  state,
+                              }),
             });
             token.title = assignedRoom ? `Room ${assignedRoom}` : "Unassigned";
             supervisorBar.appendChild(token);
@@ -912,7 +1070,7 @@ export class SimSimScene {
             let ineligible = false;
             const hasSelection = this.selectedRoomId !== null;
             if (hasSelection && this.selectedRoomId !== room.room_id && selectedCode) {
-                if (swapsRemaining <= 0) {
+                if (data.swapsRemaining <= 0) {
                     ineligible = true;
                 } else {
                     const nextDraft = this.swapDraftBetweenRooms({
@@ -920,14 +1078,14 @@ export class SimSimScene {
                         otherRoomId: room.room_id,
                     });
                     const swapsUsedIfApplied = this.computeSwapsUsed(nextDraft, this.placementsBaseline);
-                    highlighted = swapsUsedIfApplied <= swapBudget;
+                    highlighted = swapsUsedIfApplied <= data.swapBudget;
                     ineligible = !highlighted;
                 }
             }
             if (hasSelection && this.selectedRoomId !== room.room_id && !selectedCode) {
                 ineligible = true;
             }
-            const hardDisabled = controlsDisabled || !selectedCode;
+            const hardDisabled = data.controlsDisabled || !selectedCode;
             const currentToken = createSupervisorToken({
                 label: selectedCode ?? "—",
                 name: selectedCode ? (unlockedSupervisors.find((sup) => sup.code === selectedCode)?.name ?? selectedCode) : "Unassigned",
@@ -942,11 +1100,9 @@ export class SimSimScene {
                           this.onRoomSupervisorTokenClick({
                               roomId: room.room_id,
                               supervisorCode: selectedCode,
-                              swapBudget,
-                              controlsDisabled,
+                              swapBudget: data.swapBudget,
+                              controlsDisabled: data.controlsDisabled,
                               state,
-                              rooms,
-                              awaitingPrompts,
                           }),
             });
             currentWrap.appendChild(currentToken);
@@ -954,54 +1110,6 @@ export class SimSimScene {
 
             panel.appendChild(row);
         }
-
-        const editorActions = document.createElement("div");
-        editorActions.style.display = "flex";
-        editorActions.style.alignItems = "center";
-        editorActions.style.gap = "6px";
-        editorActions.style.marginTop = "8px";
-        editorActions.style.marginBottom = "4px";
-
-        const undoButton = document.createElement("button");
-        undoButton.type = "button";
-        undoButton.textContent = "Undo";
-        undoButton.disabled = controlsDisabled || this.placementsHistory.length === 0;
-        styleSecondaryButton(undoButton, undoButton.disabled);
-        if (!undoButton.disabled) {
-            undoButton.addEventListener("click", () => {
-                this.undo();
-                this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
-            });
-        }
-        editorActions.appendChild(undoButton);
-
-        const resetButton = document.createElement("button");
-        resetButton.type = "button";
-        resetButton.textContent = "Reset";
-        resetButton.disabled = controlsDisabled || !changed;
-        styleSecondaryButton(resetButton, resetButton.disabled);
-        if (!resetButton.disabled) {
-            resetButton.addEventListener("click", () => {
-                this.resetDraftToBaseline();
-                this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
-            });
-        }
-        editorActions.appendChild(resetButton);
-
-        const unselectButton = document.createElement("button");
-        unselectButton.type = "button";
-        unselectButton.textContent = "Unselect";
-        unselectButton.disabled = controlsDisabled || (this.selectedRoomId === null && this.selectedSupId === null);
-        styleSecondaryButton(unselectButton, unselectButton.disabled);
-        if (!unselectButton.disabled) {
-            unselectButton.addEventListener("click", () => {
-                this.unselect();
-                this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
-            });
-        }
-        editorActions.appendChild(unselectButton);
-
-        panel.appendChild(editorActions);
 
         const actions = document.createElement("div");
         actions.style.display = "flex";
@@ -1021,7 +1129,7 @@ export class SimSimScene {
         applyButton.style.fontWeight = "700";
         applyButton.style.cursor = "pointer";
 
-        const applyDisabled = controlsDisabled || overBudget || !changed;
+        const applyDisabled = data.controlsDisabled || data.swapsUsed > data.swapBudget || !data.changed;
         applyButton.disabled = applyDisabled;
         applyButton.style.opacity = applyDisabled ? "0.55" : "1";
         applyButton.style.cursor = applyDisabled ? "not-allowed" : "pointer";
@@ -1042,9 +1150,9 @@ export class SimSimScene {
         const applyHint = document.createElement("div");
         applyHint.style.fontSize = "11px";
         applyHint.style.opacity = "0.88";
-        applyHint.textContent = !changed
+        applyHint.textContent = !data.changed
             ? "No placement changes."
-            : overBudget
+            : data.swapsUsed > data.swapBudget
               ? "Reduce changes to fit swap budget."
               : `Ready for tick ${tickTarget}.`;
         actions.appendChild(applyHint);
