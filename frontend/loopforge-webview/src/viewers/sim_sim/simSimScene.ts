@@ -1,5 +1,5 @@
 import * as PIXI from "pixi.js";
-import type { SimSimEvent, SimSimPrompt, SimSimRoom, SimSimSupervisor, SimSimViewerState } from "./simSimStore";
+import type { SimSimEvent, SimSimPrompt, SimSimRoom, SimSimViewerState } from "./simSimStore";
 
 type Vec2 = { x: number; y: number };
 type Bounds = { min_x: number; min_y: number; max_x: number; max_y: number };
@@ -133,21 +133,14 @@ export class SimSimScene {
         this.uiLayer.removeChildren();
 
         const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
+        this.syncPlacementEditorState(state, rooms);
         const stageBounds = this.computeStageBounds(rooms);
         const toScreen = this.makeProjector(stageBounds);
 
         for (const room of rooms) {
-            this.drawRoom(room, toScreen);
+            const draftSupervisorCode = this.placementsDraft[room.room_id] ?? room.supervisor ?? null;
+            this.drawRoom(room, toScreen, draftSupervisorCode);
         }
-
-        const roomCenters = new Map<number, Vec2>();
-        for (const room of rooms) {
-            const b = this.roomBounds(room);
-            roomCenters.set(room.room_id, toScreen((b.min_x + b.max_x) * 0.5, (b.min_y + b.max_y) * 0.5));
-        }
-
-        const supervisors = Array.from(state.supervisors.values()).sort((a, b) => a.code.localeCompare(b.code));
-        this.drawSupervisors(supervisors, roomCenters);
 
         const events = sortedEvents(state.events);
         const eventLines = events.slice(-3).map((ev) => `t${ev.tick} #${ev.event_id} ${ev.kind}`);
@@ -215,7 +208,7 @@ export class SimSimScene {
         });
     }
 
-    private drawRoom(room: SimSimRoom, toScreen: (x: number, y: number) => Vec2): void {
+    private drawRoom(room: SimSimRoom, toScreen: (x: number, y: number) => Vec2, draftSupervisorCode: string | null): void {
         const b = this.roomBounds(room);
         const topLeft = toScreen(b.min_x, b.min_y);
         const bottomRight = toScreen(b.max_x, b.max_y);
@@ -242,40 +235,40 @@ export class SimSimScene {
         label.x = topLeft.x + 8;
         label.y = topLeft.y + 7;
         this.roomLayer.addChild(label);
+        if (!locked) {
+            this.drawRoomSupervisorAnchor(topLeft, width, height, draftSupervisorCode);
+        }
     }
 
-    private drawSupervisors(supervisors: SimSimSupervisor[], roomCenters: Map<number, Vec2>): void {
-        const roomSlots = new Map<number, number>();
-        for (const supervisor of supervisors) {
-            if (!Number.isFinite(supervisor.assigned_room ?? NaN)) continue;
-            const roomId = supervisor.assigned_room ?? -1;
-            const center = roomCenters.get(roomId);
-            if (!center) continue;
-            const slot = roomSlots.get(roomId) ?? 0;
-            roomSlots.set(roomId, slot + 1);
-            const offsetX = (slot % 2 === 0 ? -1 : 1) * (10 + (slot % 3) * 4);
-            const offsetY = Math.floor(slot / 2) * 10;
-            const x = center.x + offsetX;
-            const y = center.y + offsetY;
+    private drawRoomSupervisorAnchor(topLeft: Vec2, width: number, height: number, code: string | null): void {
+        const radius = Math.max(10, Math.min(16, Math.min(width, height) * 0.14));
+        const x = topLeft.x + width - radius - 8;
+        const y = topLeft.y + radius + 8;
+        const assigned = Boolean(code);
 
-            const node = new PIXI.Graphics();
-            node.circle(x, y, 7);
-            node.fill({ color: 0xf3c76a, alpha: 0.98 });
-            node.stroke({ width: 2, color: 0x1a2128, alpha: 0.95 });
-            this.supervisorLayer.addChild(node);
+        const token = new PIXI.Graphics();
+        token.circle(x, y, radius);
+        token.fill({ color: assigned ? 0x2a3944 : 0x22252a, alpha: 0.96 });
+        token.stroke({
+            width: assigned ? 2.2 : 1.4,
+            color: assigned ? 0xf3c76a : 0x8b98a4,
+            alpha: assigned ? 0.98 : 0.76,
+        });
+        this.supervisorLayer.addChild(token);
 
-            const label = new PIXI.Text({
-                text: supervisor.code,
-                style: {
-                    fontFamily: "Chivo Mono, monospace",
-                    fontSize: 10,
-                    fill: 0x161b20,
-                },
-            });
-            label.x = x - label.width * 0.5;
-            label.y = y - 5;
-            this.supervisorLayer.addChild(label);
-        }
+        const label = new PIXI.Text({
+            text: code ?? "—",
+            style: {
+                fontFamily: "Chivo Mono, monospace",
+                fontSize: Math.max(10, Math.floor(radius * 0.95)),
+                fill: assigned ? 0xf3efe3 : 0xb4bec8,
+                fontWeight: "700",
+                stroke: { color: 0x151a1f, width: 2 },
+            },
+        });
+        label.x = x - label.width * 0.5;
+        label.y = y - label.height * 0.52;
+        this.supervisorLayer.addChild(label);
     }
 
     private roomBounds(room: SimSimRoom): Bounds {
@@ -554,13 +547,18 @@ export class SimSimScene {
         this.roomCardsEl.innerHTML = rooms
             .map((room) => {
                 const acc = room.accidents_today ?? { count: 0, casualties: 0 };
-                const supervisor = room.supervisor ? supervisorByCode.get(room.supervisor) : undefined;
-                const supervisorLabel = supervisor ? `${supervisor.code} ${supervisor.name}` : room.supervisor ?? "—";
+                const draftCode = this.placementsDraft[room.room_id] ?? room.supervisor ?? null;
+                const supervisor = draftCode ? supervisorByCode.get(draftCode) : undefined;
+                const supervisorLabel = supervisor ? supervisor.name : draftCode ?? "Unassigned";
+                const supervisorToken = room.locked
+                    ? roomCardSupervisorTokenHtml("LK", "")
+                    : roomCardSupervisorTokenHtml(draftCode ?? "—", supervisorLabel);
                 return [
                     `<div style="pointer-events:none;border:1px solid ${room.locked ? "rgba(232,159,143,0.45)" : "rgba(140,214,200,0.34)"};`,
                     `background:${room.locked ? "rgba(44,23,23,0.80)" : "rgba(13,20,28,0.82)"};border-radius:10px;padding:8px 10px;">`,
                     `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;">`,
-                    `<span>${room.name} (unlock day ${room.unlocked_day >= 0 ? room.unlocked_day : "never"})</span><span>${supervisorLabel}</span></div>`,
+                    `<span>${room.name} (unlock day ${room.unlocked_day >= 0 ? room.unlocked_day : "never"})</span>`,
+                    `<span style="display:inline-flex;align-items:center;gap:6px;">${supervisorToken}<span>${room.locked ? "LOCKED" : supervisorLabel}</span></span></div>`,
                     `<div style="font-size:11px;opacity:0.95;">assigned ${fmtPair(room.workers_assigned.dumb, room.workers_assigned.smart)} • present ${fmtPair(room.workers_present.dumb, room.workers_present.smart)}</div>`,
                     `<div style="font-size:11px;opacity:0.95;">equip ${pct(room.equipment_condition)} • S ${pct(room.stress)} • D ${pct(room.discipline)} • A ${pct(room.alignment)}</div>`,
                     `<div style="font-size:11px;opacity:0.95;">out rb ${room.output_today.raw_brains_dumb}/${room.output_today.raw_brains_smart} • w ${room.output_today.washed_dumb}/${room.output_today.washed_smart} • sub ${room.output_today.substrate_gallons} • rib ${room.output_today.ribbon_yards}</div>`,
@@ -1207,6 +1205,25 @@ function styleSecondaryButton(btn: HTMLButtonElement, disabled: boolean): void {
     btn.style.fontSize = "11px";
     btn.style.cursor = disabled ? "not-allowed" : "pointer";
     btn.style.opacity = disabled ? "0.5" : "1";
+}
+
+function roomCardSupervisorTokenHtml(code: string, name: string): string {
+    const safeCode = escapeHtml(code);
+    const safeName = escapeHtml(name);
+    return [
+        `<span title="${safeName}" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;`,
+        `border:1px solid rgba(243, 199, 106, 0.78);background:radial-gradient(circle at 35% 30%, rgba(243,199,106,0.28), rgba(20,29,37,0.95) 72%);`,
+        `font-size:11px;font-weight:700;line-height:1;color:#f3efe3;box-shadow:0 0 10px rgba(243,199,106,0.22);">${safeCode}</span>`,
+    ].join("");
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 }
 
 type SupervisorTokenOpts = {
