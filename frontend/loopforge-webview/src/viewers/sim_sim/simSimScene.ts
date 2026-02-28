@@ -723,6 +723,52 @@ export class SimSimScene {
         return Math.floor((changed + 1) / 2);
     }
 
+    private candidateDraftForPlacement(roomId: number, nextCode: string | null, unlockedRooms: SimSimRoom[]): PlacementDraft {
+        const candidate = this.clonePlacementMap(this.placementsDraft);
+        if (nextCode) {
+            for (const room of unlockedRooms) {
+                if (room.room_id !== roomId && candidate[room.room_id] === nextCode) {
+                    candidate[room.room_id] = null;
+                }
+            }
+        }
+        candidate[roomId] = nextCode;
+        return candidate;
+    }
+
+    private isPlacementTokenDisabled(args: {
+        roomId: number;
+        nextCode: string | null;
+        swapBudget: number;
+        controlsDisabled: boolean;
+        unlockedRooms: SimSimRoom[];
+    }): boolean {
+        const { roomId, nextCode, swapBudget, controlsDisabled, unlockedRooms } = args;
+        if (controlsDisabled) return true;
+        if ((this.placementsDraft[roomId] ?? null) === nextCode) return true;
+        const candidate = this.candidateDraftForPlacement(roomId, nextCode, unlockedRooms);
+        const swapsUsed = this.computeSwapsUsed(candidate, this.placementsBaseline);
+        return swapsUsed > swapBudget;
+    }
+
+    private applyPlacementFromToken(args: {
+        roomId: number;
+        nextCode: string | null;
+        state: SimSimViewerState;
+        rooms: SimSimRoom[];
+        awaitingPrompts: boolean;
+        unlockedRooms: SimSimRoom[];
+    }): void {
+        const { roomId, nextCode, state, rooms, awaitingPrompts, unlockedRooms } = args;
+        const currentCode = this.placementsDraft[roomId] ?? null;
+        if (currentCode === nextCode) return;
+        this.pushHistory();
+        this.placementsDraft = this.candidateDraftForPlacement(roomId, nextCode, unlockedRooms);
+        this.selectedRoomId = roomId;
+        this.selectedSupId = nextCode;
+        this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+    }
+
     private renderSupervisorPlacementsPanel(state: SimSimViewerState, rooms: SimSimRoom[], awaitingPrompts: boolean): void {
         if (!this.supervisorPanelEl) return;
         const panel = this.supervisorPanelEl;
@@ -778,73 +824,135 @@ export class SimSimScene {
         ].join("");
         panel.appendChild(summary);
 
+        const supervisorBar = document.createElement("div");
+        supervisorBar.style.display = "flex";
+        supervisorBar.style.flexWrap = "wrap";
+        supervisorBar.style.gap = "8px";
+        supervisorBar.style.marginBottom = "10px";
+        supervisorBar.style.padding = "8px";
+        supervisorBar.style.borderRadius = "8px";
+        supervisorBar.style.border = "1px solid rgba(140, 214, 200, 0.25)";
+        supervisorBar.style.background = "rgba(8, 12, 18, 0.45)";
+
+        for (const supervisor of unlockedSupervisors) {
+            const token = createSupervisorToken({
+                label: supervisor.code,
+                name: supervisor.name,
+                selected: this.selectedSupId === supervisor.code && this.selectedRoomId === null,
+                disabled: controlsDisabled,
+                sizePx: 56,
+                onClick: controlsDisabled
+                    ? undefined
+                    : () => {
+                          this.selectedSupId = supervisor.code;
+                          this.selectedRoomId = null;
+                          this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
+                      },
+            });
+            supervisorBar.appendChild(token);
+        }
+        panel.appendChild(supervisorBar);
+
         for (const room of unlockedRooms) {
             const row = document.createElement("div");
-            row.style.display = "grid";
-            row.style.gridTemplateColumns = "1fr auto";
-            row.style.alignItems = "center";
-            row.style.gap = "8px";
+            row.style.display = "block";
             row.style.fontSize = "11px";
-            row.style.marginBottom = "6px";
+            row.style.marginBottom = "8px";
             if (this.selectedRoomId === room.room_id) {
                 row.style.background = "rgba(243, 199, 106, 0.16)";
                 row.style.borderRadius = "6px";
-                row.style.padding = "2px 4px";
+                row.style.padding = "4px 6px";
             }
 
             const label = document.createElement("label");
             label.textContent = `Room ${room.room_id} • ${room.name}`;
+            label.style.display = "block";
+            label.style.marginBottom = "6px";
             row.appendChild(label);
 
-            const select = document.createElement("select");
-            select.style.minWidth = "156px";
-            select.style.maxWidth = "220px";
-            select.style.fontSize = "11px";
-            select.style.borderRadius = "6px";
-            select.style.padding = "4px 6px";
-            select.style.background = "rgba(16, 22, 28, 0.96)";
-            select.style.color = "#f3efe3";
-            select.style.border = "1px solid rgba(140, 214, 200, 0.45)";
-            select.disabled = controlsDisabled;
+            const selectedCode = this.placementsDraft[room.room_id] ?? null;
+            const currentWrap = document.createElement("div");
+            currentWrap.style.display = "flex";
+            currentWrap.style.alignItems = "center";
+            currentWrap.style.gap = "8px";
+            currentWrap.style.marginBottom = "6px";
+            const currentLabel = document.createElement("span");
+            currentLabel.textContent = "Current:";
+            currentLabel.style.opacity = "0.84";
+            currentWrap.appendChild(currentLabel);
+            const currentToken = createSupervisorToken({
+                label: selectedCode ?? "—",
+                name: selectedCode ? (unlockedSupervisors.find((sup) => sup.code === selectedCode)?.name ?? selectedCode) : "Unassigned",
+                selected: false,
+                disabled: true,
+                sizePx: 48,
+            });
+            currentWrap.appendChild(currentToken);
+            row.appendChild(currentWrap);
 
-            const noneOpt = document.createElement("option");
-            noneOpt.value = "__none__";
-            noneOpt.textContent = "Unassigned";
-            select.appendChild(noneOpt);
+            const tokenRail = document.createElement("div");
+            tokenRail.style.display = "flex";
+            tokenRail.style.flexWrap = "wrap";
+            tokenRail.style.gap = "6px";
+
+            const clearDisabled = this.isPlacementTokenDisabled({
+                roomId: room.room_id,
+                nextCode: null,
+                swapBudget,
+                controlsDisabled,
+                unlockedRooms,
+            });
+            tokenRail.appendChild(
+                createSupervisorToken({
+                    label: "×",
+                    name: "Unassign",
+                    selected: selectedCode === null,
+                    disabled: clearDisabled,
+                    sizePx: 50,
+                    onClick: clearDisabled
+                        ? undefined
+                        : () =>
+                              this.applyPlacementFromToken({
+                                  roomId: room.room_id,
+                                  nextCode: null,
+                                  state,
+                                  rooms,
+                                  awaitingPrompts,
+                                  unlockedRooms,
+                              }),
+                })
+            );
 
             for (const supervisor of unlockedSupervisors) {
-                const opt = document.createElement("option");
-                opt.value = supervisor.code;
-                opt.textContent = `${supervisor.code} ${supervisor.name}`;
-                select.appendChild(opt);
+                const tokenDisabled = this.isPlacementTokenDisabled({
+                    roomId: room.room_id,
+                    nextCode: supervisor.code,
+                    swapBudget,
+                    controlsDisabled,
+                    unlockedRooms,
+                });
+                tokenRail.appendChild(
+                    createSupervisorToken({
+                        label: supervisor.code,
+                        name: supervisor.name,
+                        selected: selectedCode === supervisor.code,
+                        disabled: tokenDisabled,
+                        sizePx: 50,
+                        onClick: tokenDisabled
+                            ? undefined
+                            : () =>
+                                  this.applyPlacementFromToken({
+                                      roomId: room.room_id,
+                                      nextCode: supervisor.code,
+                                      state,
+                                      rooms,
+                                      awaitingPrompts,
+                                      unlockedRooms,
+                                  }),
+                    })
+                );
             }
-
-            const selectedCode = this.placementsDraft[room.room_id] ?? null;
-            select.value = selectedCode ?? "__none__";
-            select.addEventListener("focus", () => {
-                this.selectedRoomId = room.room_id;
-                this.selectedSupId = this.placementsDraft[room.room_id] ?? null;
-            });
-            select.addEventListener("change", () => {
-                const raw = select.value;
-                const nextCode = raw === "__none__" ? null : raw;
-                const currentCode = this.placementsDraft[room.room_id] ?? null;
-                if (nextCode === currentCode) return;
-
-                this.pushHistory();
-                if (nextCode) {
-                    for (const otherRoom of unlockedRooms) {
-                        if (otherRoom.room_id !== room.room_id && this.placementsDraft[otherRoom.room_id] === nextCode) {
-                            this.placementsDraft[otherRoom.room_id] = null;
-                        }
-                    }
-                }
-                this.placementsDraft[room.room_id] = nextCode;
-                this.selectedRoomId = room.room_id;
-                this.selectedSupId = nextCode;
-                this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts);
-            });
-            row.appendChild(select);
+            row.appendChild(tokenRail);
 
             panel.appendChild(row);
         }
@@ -1099,4 +1207,81 @@ function styleSecondaryButton(btn: HTMLButtonElement, disabled: boolean): void {
     btn.style.fontSize = "11px";
     btn.style.cursor = disabled ? "not-allowed" : "pointer";
     btn.style.opacity = disabled ? "0.5" : "1";
+}
+
+type SupervisorTokenOpts = {
+    label: string;
+    name?: string;
+    selected: boolean;
+    disabled: boolean;
+    sizePx: number;
+    onClick?: () => void;
+};
+
+function createSupervisorToken(opts: SupervisorTokenOpts): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.disabled = opts.disabled;
+    btn.style.display = "inline-flex";
+    btn.style.flexDirection = "column";
+    btn.style.alignItems = "center";
+    btn.style.justifyContent = "flex-start";
+    btn.style.gap = "4px";
+    btn.style.minWidth = `${opts.sizePx + 8}px`;
+    btn.style.padding = "2px 3px";
+    btn.style.border = "0";
+    btn.style.background = "transparent";
+    btn.style.color = "#f3efe3";
+    btn.style.cursor = opts.disabled ? "not-allowed" : "pointer";
+    btn.style.opacity = opts.disabled ? "0.45" : "1";
+    btn.style.pointerEvents = "auto";
+
+    const circle = document.createElement("div");
+    circle.textContent = opts.label;
+    circle.style.width = `${opts.sizePx}px`;
+    circle.style.height = `${opts.sizePx}px`;
+    circle.style.borderRadius = "999px";
+    circle.style.display = "flex";
+    circle.style.alignItems = "center";
+    circle.style.justifyContent = "center";
+    circle.style.fontSize = `${Math.max(18, Math.floor(opts.sizePx * 0.42))}px`;
+    circle.style.fontWeight = "700";
+    circle.style.letterSpacing = "0.02em";
+    circle.style.border = opts.selected ? "2px solid rgba(243, 199, 106, 0.95)" : "1px solid rgba(140, 214, 200, 0.48)";
+    circle.style.background = opts.selected ? "radial-gradient(circle at 35% 30%, rgba(243,199,106,0.28), rgba(20,29,37,0.94) 70%)" : "radial-gradient(circle at 35% 30%, rgba(140,214,200,0.24), rgba(18,24,30,0.94) 72%)";
+    circle.style.boxShadow = opts.selected
+        ? "0 0 0 2px rgba(243,199,106,0.26), 0 0 18px rgba(243,199,106,0.35)"
+        : "0 0 10px rgba(140,214,200,0.18)";
+    circle.style.transition = "box-shadow 120ms ease, border-color 120ms ease, transform 120ms ease";
+    btn.appendChild(circle);
+
+    if (opts.name) {
+        const name = document.createElement("div");
+        name.textContent = opts.name;
+        name.style.fontSize = "10px";
+        name.style.lineHeight = "1.1";
+        name.style.maxWidth = `${opts.sizePx + 16}px`;
+        name.style.textAlign = "center";
+        name.style.opacity = opts.selected ? "1" : "0.88";
+        name.style.wordBreak = "break-word";
+        btn.appendChild(name);
+    }
+
+    if (!opts.disabled && opts.onClick) {
+        btn.addEventListener("click", opts.onClick);
+        btn.addEventListener("mouseenter", () => {
+            if (opts.selected) return;
+            circle.style.borderColor = "rgba(243, 199, 106, 0.66)";
+            circle.style.boxShadow = "0 0 0 1px rgba(243,199,106,0.2), 0 0 14px rgba(243,199,106,0.30)";
+            circle.style.transform = "translateY(-1px)";
+        });
+        btn.addEventListener("mouseleave", () => {
+            if (opts.selected) return;
+            circle.style.borderColor = "rgba(140, 214, 200, 0.48)";
+            circle.style.boxShadow = "0 0 10px rgba(140,214,200,0.18)";
+            circle.style.transform = "translateY(0)";
+        });
+    }
+
+    return btn;
 }
