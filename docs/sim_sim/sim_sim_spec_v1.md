@@ -1016,5 +1016,3 @@ The sim must expose enough metrics per day (room-by-room results, casualties, eq
 * [ ] Config centralization for tunables
 
 ---
-
-If you want, the next thing I can produce (still **systems-only**) is a **machine-readable JSON/YAML config schema** for all tunables + tables (L/I, outcome tables, critical events), so Codex can implement `sim_sim` without hardcoding constants.
