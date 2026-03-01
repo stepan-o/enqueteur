@@ -14,6 +14,9 @@ import {
     listScaledDirectorRegions,
 } from "./ui/layout";
 import type { DirectorConsoleLayout, Rect } from "./ui/layout";
+import { createBezelPanel, type BezelPanelHandle } from "./ui/bezelPanel";
+import { loadConsoleAssets, type ConsoleAssets } from "./ui/assets";
+import { createGlobalNoiseOverlay, type GlobalNoiseOverlay } from "./ui/fx";
 
 type Vec2 = { x: number; y: number };
 type SubmitPromptChoice = {
@@ -115,6 +118,11 @@ export class SimSimScene {
     private readonly supervisorLayer = new PIXI.Container();
     private readonly uiLayer = new PIXI.Container();
     private overlayRoot?: HTMLDivElement;
+    private topStripPanel?: BezelPanelHandle;
+    private rightColumnPanel?: BezelPanelHandle;
+    private commandDeckPanel?: BezelPanelHandle;
+    private consoleAssets?: ConsoleAssets;
+    private globalNoiseOverlay?: GlobalNoiseOverlay;
     private hudEl?: HTMLDivElement;
     private roomCardsEl?: HTMLDivElement;
     private eventsEl?: HTMLDivElement;
@@ -194,7 +202,17 @@ export class SimSimScene {
         mountEl.appendChild(this.app.canvas);
         this.root.addChild(this.roomLayer, this.supervisorLayer, this.uiLayer);
         this.app.stage.addChild(this.root);
-        this.installOverlay(mountEl);
+        try {
+            this.consoleAssets = await loadConsoleAssets();
+        } catch (error) {
+            console.warn("[sim_sim] console asset load failed; using fallback skin URLs.", error);
+            this.consoleAssets = undefined;
+        }
+        this.installOverlay(mountEl, this.consoleAssets);
+        if (this.consoleAssets) {
+            this.globalNoiseOverlay = createGlobalNoiseOverlay(this.app, this.consoleAssets.noiseTile);
+            this.globalNoiseOverlay.setClarity("normal", 0.85);
+        }
         this.updateLayoutModel();
         this.installDevModeHotkey();
         this.ready = true;
@@ -230,12 +248,16 @@ export class SimSimScene {
         this.directorLayout = buildDirectorConsoleLayout(width, height);
         this.root.position.set(this.directorLayout.safeFrame.x, this.directorLayout.safeFrame.y);
         this.root.scale.set(this.directorLayout.safeFrame.scale, this.directorLayout.safeFrame.scale);
+        this.globalNoiseOverlay?.resize(width, height);
         this.applyOverlayRegionLayout();
     }
 
     private applyOverlayRegionLayout(): void {
         if (!this.overlayRoot) return;
         const scaled = this.directorLayout.scaled;
+        if (this.topStripPanel) applyAbsoluteRect(this.topStripPanel.root, scaled.topStrip);
+        if (this.rightColumnPanel) applyAbsoluteRect(this.rightColumnPanel.root, scaled.rightColumn);
+        if (this.commandDeckPanel) applyAbsoluteRect(this.commandDeckPanel.root, scaled.commandDeck);
         if (this.hudEl) {
             applyAbsoluteRect(this.hudEl, scaled.topStripClusters.left);
             this.hudEl.style.maxHeight = `${Math.max(64, scaled.topStripClusters.left.h)}px`;
@@ -291,6 +313,10 @@ export class SimSimScene {
 
     private renderLayoutDebugOverlay(): void {
         if (!this.layoutDebugOverlayEl) return;
+        if (!this.devMode) {
+            this.layoutDebugOverlayEl.innerHTML = "";
+            return;
+        }
         const regions = listScaledDirectorRegions(this.directorLayout);
         const html = regions
             .map((region) => {
@@ -947,7 +973,7 @@ export class SimSimScene {
         this.roomLayer.addChild(wear);
     }
 
-    private installOverlay(mountEl: HTMLElement): void {
+    private installOverlay(mountEl: HTMLElement, consoleAssets?: ConsoleAssets): void {
         const root = document.createElement("div");
         root.style.position = "absolute";
         root.style.inset = "0";
@@ -964,25 +990,48 @@ export class SimSimScene {
         layoutDebugOverlay.style.zIndex = "26";
         root.appendChild(layoutDebugOverlay);
 
+        const topStripPanel = createBezelPanel({
+            title: "Director Status",
+            chips: ["Console Live"],
+            tone: "active",
+            pointerEvents: "none",
+            assets: consoleAssets,
+        });
+        root.appendChild(topStripPanel.root);
+
+        const rightColumnPanel = createBezelPanel({
+            title: "Right Column",
+            chips: ["Directive", "Docket"],
+            tone: "neutral",
+            pointerEvents: "none",
+            assets: consoleAssets,
+        });
+        root.appendChild(rightColumnPanel.root);
+
+        const commandDeckPanel = createBezelPanel({
+            title: "Command Deck",
+            chips: ["Run Shift"],
+            tone: "active",
+            pointerEvents: "none",
+            assets: consoleAssets,
+        });
+        root.appendChild(commandDeckPanel.root);
+
         const hud = document.createElement("div");
         hud.style.position = "absolute";
-        hud.style.padding = "9px 11px";
-        hud.style.borderRadius = "10px";
-        hud.style.background = "rgba(10, 13, 18, 0.82)";
-        hud.style.border = "1px solid rgba(140, 214, 200, 0.36)";
+        hud.style.padding = "6px 8px";
+        hud.style.background = "transparent";
         hud.style.fontSize = "11px";
         hud.style.lineHeight = "1.4";
         hud.style.pointerEvents = "auto";
         hud.style.maxHeight = "20vh";
-        hud.style.overflow = "hidden auto";
+        hud.style.overflow = "hidden";
         root.appendChild(hud);
 
         const advanceControls = document.createElement("div");
         advanceControls.style.position = "absolute";
-        advanceControls.style.padding = "10px 12px";
-        advanceControls.style.borderRadius = "10px";
-        advanceControls.style.border = "1px solid rgba(243, 199, 106, 0.45)";
-        advanceControls.style.background = "rgba(24, 17, 9, 0.82)";
+        advanceControls.style.padding = "8px 10px";
+        advanceControls.style.background = "transparent";
         advanceControls.style.pointerEvents = "auto";
 
         const advanceButton = document.createElement("button");
@@ -1021,28 +1070,24 @@ export class SimSimScene {
 
         const supervisorPanel = document.createElement("div");
         supervisorPanel.style.position = "absolute";
-        supervisorPanel.style.padding = "10px 12px";
-        supervisorPanel.style.borderRadius = "10px";
-        supervisorPanel.style.border = "1px solid rgba(140, 214, 200, 0.42)";
-        supervisorPanel.style.background = "rgba(13, 20, 28, 0.86)";
+        supervisorPanel.style.padding = "8px 10px";
+        supervisorPanel.style.background = "transparent";
         supervisorPanel.style.pointerEvents = "auto";
         supervisorPanel.style.maxHeight = "30vh";
-        supervisorPanel.style.overflowY = "auto";
+        supervisorPanel.style.overflow = "hidden";
         root.appendChild(supervisorPanel);
 
         const placementControls = document.createElement("div");
         placementControls.style.position = "absolute";
-        placementControls.style.padding = "10px 12px";
-        placementControls.style.borderRadius = "10px";
-        placementControls.style.border = "1px solid rgba(243, 199, 106, 0.45)";
-        placementControls.style.background = "rgba(24, 17, 9, 0.86)";
+        placementControls.style.padding = "8px 10px";
+        placementControls.style.background = "transparent";
         placementControls.style.pointerEvents = "auto";
         root.appendChild(placementControls);
 
         const roomCards = document.createElement("div");
         roomCards.style.position = "absolute";
         roomCards.style.maxHeight = "58vh";
-        roomCards.style.overflowY = "auto";
+        roomCards.style.overflow = "hidden";
         roomCards.style.display = "grid";
         roomCards.style.gap = "7px";
         roomCards.style.padding = "2px 0";
@@ -1050,11 +1095,10 @@ export class SimSimScene {
 
         const securityDirectivePanel = document.createElement("div");
         securityDirectivePanel.style.position = "absolute";
-        securityDirectivePanel.style.padding = "10px 12px";
-        securityDirectivePanel.style.borderRadius = "10px";
+        securityDirectivePanel.style.padding = "8px 10px";
         securityDirectivePanel.style.pointerEvents = "auto";
-        securityDirectivePanel.style.border = "1px solid rgba(140, 214, 200, 0.42)";
-        securityDirectivePanel.style.background = "rgba(13, 20, 28, 0.86)";
+        securityDirectivePanel.style.border = "0";
+        securityDirectivePanel.style.background = "transparent";
         securityDirectivePanel.style.overflow = "hidden";
         root.appendChild(securityDirectivePanel);
 
@@ -1170,6 +1214,9 @@ export class SimSimScene {
         root.appendChild(debugPanel);
 
         this.overlayRoot = root;
+        this.topStripPanel = topStripPanel;
+        this.rightColumnPanel = rightColumnPanel;
+        this.commandDeckPanel = commandDeckPanel;
         this.hudEl = hud;
         this.roomCardsEl = roomCards;
         this.securityDirectivePanelEl = securityDirectivePanel;
@@ -1271,6 +1318,18 @@ export class SimSimScene {
             .sort((a, b) => a.code.localeCompare(b.code))
             .map((supervisor) => `${supervisor.code} ${supervisor.name} @ ${supervisor.assigned_room ?? "-"}`)
             .join(" • ");
+        if (this.topStripPanel) {
+            const phaseChip = (wm?.phase ?? "planning").replaceAll("_", " ");
+            this.topStripPanel.setTone(resolvingPhase ? "critical" : "active");
+            this.topStripPanel.setChips([`Day ${wm?.day ?? "-"}`, phaseChip]);
+        }
+        if (this.commandDeckPanel) {
+            this.commandDeckPanel.setTone(controlsDisabled ? "neutral" : "active");
+            this.commandDeckPanel.setChips([
+                controlsDisabled ? "Controls Locked" : "Controls Armed",
+                `Swaps ${wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) <= 2 ? 1 : 2)}`,
+            ]);
+        }
 
         this.hudEl.innerHTML = [
             `<div style="font-size:12px;font-weight:700;letter-spacing:0.04em;margin-bottom:4px;">sim_sim LIVE</div>`,
@@ -1685,6 +1744,9 @@ export class SimSimScene {
         const panel = this.securityDirectivePanelEl;
         panel.innerHTML = "";
         const crisp = directive.display.clarityTreatment === "crisp";
+        this.rightColumnPanel?.setTone(crisp ? "active" : "critical");
+        this.rightColumnPanel?.setChips([`Lead ${directive.lead}`, directive.display.label]);
+        this.globalNoiseOverlay?.setClarity(crisp ? "crisp" : "noisy", directive.clarity);
 
         panel.style.border = crisp ? "1px solid rgba(140, 214, 200, 0.56)" : "1px solid rgba(232, 159, 143, 0.62)";
         panel.style.boxShadow = crisp
