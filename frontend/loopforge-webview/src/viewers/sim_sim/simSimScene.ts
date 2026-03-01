@@ -476,14 +476,21 @@ export class SimSimScene {
         const wm = state.worldMeta;
         const inv = state.inventory;
         const regime = state.regime;
-        const previousPhase = (previousState?.worldMeta?.phase ?? "").toLowerCase();
-        const awaitingPrompts = (wm?.phase ?? "").toLowerCase() === "awaiting_prompts";
-        const planningPhase = (wm?.phase ?? "").toLowerCase() === "planning";
-        const controlsDisabled = !planningPhase || awaitingPrompts || state.desynced;
+        const currentPhase = normalizePhaseToken(wm?.phase);
+        const previousPhase = normalizePhaseToken(previousState?.worldMeta?.phase);
+        const awaitingPrompts = currentPhase === "awaiting_prompts";
+        const planningPhase = currentPhase === "planning";
+        const endOfDayPhase = currentPhase === "end_of_day";
+        const controlsDisabled = !planningPhase || state.desynced;
+        const enteredDecisionGate =
+            (previousPhase === "planning" && (awaitingPrompts || endOfDayPhase)) ||
+            (previousPhase === "awaiting_prompts" && endOfDayPhase);
         const enteredAwaitingPrompts = previousPhase === "planning" && awaitingPrompts;
-        if (enteredAwaitingPrompts) {
+        if (enteredDecisionGate) {
             this.advanceStatusOverride = {
-                text: "Day requires a decision - resolve prompts to continue.",
+                text: awaitingPrompts
+                    ? "Day requires a decision - resolve prompts to continue."
+                    : "Planning closed - submit end-of-day actions to continue.",
                 color: "#f3c76a",
                 untilMs: Date.now() + 4000,
             };
@@ -518,6 +525,9 @@ export class SimSimScene {
                 : "",
             awaitingPrompts
                 ? `<div style="color:#f3c76a;">phase awaiting_prompts: placements and advance disabled until prompt resolution</div>`
+                : "",
+            endOfDayPhase
+                ? `<div style="color:#f3c76a;">phase end_of_day: planning controls disabled until end-of-day actions are submitted</div>`
                 : "",
         ].join("");
 
@@ -565,6 +575,9 @@ export class SimSimScene {
             } else if (awaitingPrompts) {
                 this.advanceStatusEl.style.color = "#f3c76a";
                 this.advanceStatusEl.textContent = "Resolve pending prompts before advancing.";
+            } else if (endOfDayPhase) {
+                this.advanceStatusEl.style.color = "#f3c76a";
+                this.advanceStatusEl.textContent = "End-of-day phase: submit EOD actions to continue.";
             } else if (latestRejection) {
                 this.advanceStatusEl.style.color = "#ffd8cf";
                 this.advanceStatusEl.textContent = `Last rejection: ${latestRejection.reasonCode} — ${latestRejection.reason}`;
@@ -579,7 +592,7 @@ export class SimSimScene {
         const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) <= 2 ? 1 : 2);
         const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
         const changed = !this.isPlacementMapEqual(this.placementsDraft, this.placementsBaseline);
-        this.renderPlacementControlsCluster(state, awaitingPrompts, {
+        this.renderPlacementControlsCluster(state, currentPhase, {
             controlsDisabled,
             swapsUsed,
             swapBudget,
@@ -616,7 +629,7 @@ export class SimSimScene {
             inspectionCards,
         ].join("");
 
-        this.renderSupervisorPlacementsPanel(state, rooms, awaitingPrompts, {
+        this.renderSupervisorPlacementsPanel(state, rooms, {
             controlsDisabled,
             swapBudget,
             swapsUsed,
@@ -857,7 +870,7 @@ export class SimSimScene {
 
     private renderPlacementControlsCluster(
         state: SimSimViewerState,
-        awaitingPrompts: boolean,
+        phase: string,
         data: {
             controlsDisabled: boolean;
             swapsUsed: number;
@@ -992,16 +1005,19 @@ export class SimSimScene {
             applyValidation.textContent = "Too many swaps for today. Undo or Reset.";
         } else if (data.controlsDisabled) {
             applyValidation.style.color = "#f3c76a";
-            applyValidation.textContent = awaitingPrompts
-                ? "Placements locked while awaiting prompt resolution."
-                : "Placements unavailable in current phase.";
+            applyValidation.textContent =
+                phase === "awaiting_prompts"
+                    ? "Placements locked while awaiting prompt resolution."
+                    : phase === "end_of_day"
+                      ? "Placements locked during end_of_day."
+                      : "Placements unavailable in current phase.";
         } else {
             applyValidation.style.color = "#d3d6da";
             applyValidation.textContent = `Draft ready for tick ${state.tick + 1}.`;
         }
         cluster.appendChild(applyValidation);
 
-        if (awaitingPrompts) {
+        if (phase === "awaiting_prompts") {
             const promptLock = document.createElement("div");
             promptLock.style.marginTop = "6px";
             promptLock.style.fontSize = "11px";
@@ -1014,7 +1030,6 @@ export class SimSimScene {
     private renderSupervisorPlacementsPanel(
         state: SimSimViewerState,
         rooms: SimSimRoom[],
-        awaitingPrompts: boolean,
         data: {
             controlsDisabled: boolean;
             swapBudget: number;
@@ -1319,6 +1334,10 @@ function fmtPair(a: number | null | undefined, b: number | null | undefined): st
     const left = a === null || a === undefined ? "--" : String(a);
     const right = b === null || b === undefined ? "--" : String(b);
     return `${left}/${right}`;
+}
+
+function normalizePhaseToken(phase: string | undefined | null): string {
+    return (phase ?? "").trim().toLowerCase();
 }
 
 function styleSecondaryButton(btn: HTMLButtonElement, disabled: boolean): void {

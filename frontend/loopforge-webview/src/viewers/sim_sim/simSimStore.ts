@@ -2,6 +2,8 @@ import type { KernelHello } from "../../state/worldStore";
 
 export const SIM_SIM_SCHEMA_VERSION = "sim_sim_1";
 
+export type SimSimPhase = "planning" | "awaiting_prompts" | "end_of_day" | (string & {});
+
 export type SimSimSupervisorSwaps = {
     swap_budget: number;
     swaps_used_if_applied: number;
@@ -12,7 +14,7 @@ export type SimSimSupervisorSwaps = {
 export type SimSimWorldMeta = {
     day: number;
     tick: number;
-    phase: string;
+    phase: SimSimPhase;
     time: string;
     tick_hz: number;
     seed: number;
@@ -257,7 +259,7 @@ export class SimSimStore {
             schemaVersion: payload.schema_version,
             lastMsgType: "FULL_SNAPSHOT",
             lastAppliedDiffCount: 0,
-            worldMeta: payload.state.world_meta ?? null,
+            worldMeta: normalizeWorldMeta(payload.state.world_meta),
             inventory: payload.state.inventory ?? null,
             regime: payload.state.regime ?? null,
             rooms,
@@ -299,7 +301,7 @@ export class SimSimStore {
         let appliedCount = 0;
 
         if (payload.world_meta_update) {
-            worldMeta = payload.world_meta_update;
+            worldMeta = normalizeWorldMeta(payload.world_meta_update);
             appliedCount += 1;
         }
         for (const room of payload.room_updates ?? []) {
@@ -357,6 +359,21 @@ export class SimSimStore {
 
 function eventKey(ev: SimSimEvent): string {
     return `${ev.tick}:${ev.event_id}`;
+}
+
+function normalizeWorldMeta(raw: unknown): SimSimWorldMeta | null {
+    if (!raw || typeof raw !== "object") return null;
+    const meta = raw as SimSimWorldMeta;
+    return {
+        ...meta,
+        phase: normalizePhase(meta.phase),
+    };
+}
+
+function normalizePhase(raw: unknown): SimSimPhase {
+    if (raw === "planning" || raw === "awaiting_prompts" || raw === "end_of_day") return raw;
+    if (typeof raw === "string" && raw.trim().length > 0) return raw as SimSimPhase;
+    return "planning";
 }
 
 function normalizePrompt(raw: unknown, fallbackTick: number): SimSimPrompt | null {
