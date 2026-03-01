@@ -74,7 +74,7 @@ class TestSimSimLiveEndOfDayInputContract(unittest.IsolatedAsyncioTestCase):
                 "SUBSCRIBE",
                 {
                     "stream": "LIVE",
-                    "channels": ["EVENTS"],
+                    "channels": ["WORLD", "EVENTS"],
                     "diff_policy": "DIFF_ONLY",
                     "snapshot_policy": "ON_JOIN",
                     "compression": "NONE",
@@ -132,6 +132,18 @@ class TestSimSimLiveEndOfDayInputContract(unittest.IsolatedAsyncioTestCase):
         matching = [ev for ev in events if isinstance(ev, dict) and ev.get("kind") == kind]
         self.assertGreater(len(matching), 0, f"expected at least one event kind={kind}")
         return matching[-1]
+
+    def _latest_full_snapshot(self) -> Dict[str, Any]:
+        decoded = self._decoded_sent()
+        snapshots = [env for env in decoded if env.get("msg_type") == "FULL_SNAPSHOT" and isinstance(env.get("payload"), dict)]
+        self.assertGreater(len(snapshots), 0, "expected at least one FULL_SNAPSHOT in stream")
+        return snapshots[-1]
+
+    def _latest_frame_diff(self) -> Dict[str, Any]:
+        decoded = self._decoded_sent()
+        diffs = [env for env in decoded if env.get("msg_type") == "FRAME_DIFF" and isinstance(env.get("payload"), dict)]
+        self.assertGreater(len(diffs), 0, "expected at least one FRAME_DIFF in stream")
+        return diffs[-1]
 
     def _assert_snapshot_rebroadcast(self, *, tick: int) -> None:
         decoded = self._decoded_sent()
@@ -194,7 +206,43 @@ class TestSimSimLiveEndOfDayInputContract(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(self.host.current_tick, 1)
         self.assertEqual(self.host.current_state.phase, "planning")
-        ack = self._latest_ack_event("input_accepted")
-        details = ack.get("details", {})
-        self.assertEqual(details.get("reason_code"), "INPUT_ACCEPTED")
-        self.assertEqual(details.get("msg_type"), "SIM_INPUT")
+        stream_events = self._latest_stream_events()
+        self.assertTrue(any(isinstance(ev, dict) and ev.get("kind") == "eod_confirmed" for ev in stream_events))
+
+    async def test_live_stream_exposes_end_of_day_phase_and_phase_transition_diff(self) -> None:
+        self.assertEqual(self.host.current_state.phase, "planning")
+
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": 1,
+            },
+        )
+
+        self.assertEqual(self.host.current_tick, 0)
+        self.assertEqual(self.host.current_state.phase, "end_of_day")
+        snapshot_payload = self._latest_full_snapshot().get("payload", {})
+        state = snapshot_payload.get("state", {}) if isinstance(snapshot_payload, dict) else {}
+        world_meta = state.get("world_meta", {}) if isinstance(state, dict) else {}
+        self.assertEqual(world_meta.get("phase"), "end_of_day")
+        snapshot_events = state.get("events", []) if isinstance(state, dict) else []
+        self.assertTrue(any(isinstance(ev, dict) and ev.get("kind") == "eod_opened" for ev in snapshot_events))
+
+        self.sent.clear()
+        await self._send_message(
+            "SIM_INPUT",
+            {
+                "tick_target": 1,
+                "end_of_day": {},
+            },
+        )
+
+        self.assertEqual(self.host.current_tick, 1)
+        self.assertEqual(self.host.current_state.phase, "planning")
+        diff_payload = self._latest_frame_diff().get("payload", {})
+        self.assertEqual(int(diff_payload.get("from_tick", -1)), 0)
+        self.assertEqual(int(diff_payload.get("to_tick", -1)), 1)
+        world_meta_update = diff_payload.get("world_meta_update", {})
+        self.assertEqual(world_meta_update.get("phase"), "planning")
+        events_append = diff_payload.get("events_append", [])
+        self.assertTrue(any(isinstance(ev, dict) and ev.get("kind") == "eod_confirmed" for ev in events_append))
