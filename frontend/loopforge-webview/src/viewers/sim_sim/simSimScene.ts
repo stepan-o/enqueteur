@@ -545,19 +545,10 @@ export class SimSimScene {
 
         const prompts = document.createElement("div");
         prompts.style.position = "absolute";
-        prompts.style.right = "14px";
-        prompts.style.bottom = "88px";
-        prompts.style.width = "min(400px, 28vw)";
-        prompts.style.maxHeight = "30vh";
-        prompts.style.overflowY = "auto";
-        prompts.style.padding = "10px 12px";
-        prompts.style.borderRadius = "10px";
-        prompts.style.border = "1px solid rgba(243, 199, 106, 0.45)";
-        prompts.style.background = "rgba(24, 17, 9, 0.86)";
-        prompts.style.fontSize = "12px";
-        prompts.style.lineHeight = "1.35";
+        prompts.style.inset = "0";
         prompts.style.display = "none";
-        prompts.style.pointerEvents = "auto";
+        prompts.style.pointerEvents = "none";
+        prompts.style.zIndex = "60";
         root.appendChild(prompts);
 
         if (this.showDevUi) {
@@ -834,7 +825,7 @@ export class SimSimScene {
             changed,
         });
         this.renderPromptsPanel(state, prompts, awaitingPrompts, events);
-        if (enteredAwaitingPrompts && prompts.length > 0) {
+        if (enteredAwaitingPrompts && firstUnresolvedPrompt(prompts)) {
             this.focusPromptsPanel();
         }
 
@@ -994,17 +985,22 @@ export class SimSimScene {
 
     private focusPromptsPanel(): void {
         if (!this.promptsEl) return;
-        this.promptsEl.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
-        this.promptsEl.style.transition = "box-shadow 120ms ease, border-color 120ms ease";
-        this.promptsEl.style.borderColor = "rgba(243, 199, 106, 0.95)";
-        this.promptsEl.style.boxShadow = "0 0 0 2px rgba(243, 199, 106, 0.32)";
+        const popup = this.promptsEl.querySelector<HTMLElement>("[data-spotlight-popup='1']");
+        if (!popup) return;
+        popup.style.transition = "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease";
+        popup.style.transform = "scale(1.01)";
+        popup.style.borderColor = "rgba(243, 199, 106, 0.95)";
+        popup.style.boxShadow = "0 0 0 2px rgba(243, 199, 106, 0.28), 0 26px 56px rgba(5, 8, 12, 0.72)";
         if (this.promptsFlashTimer !== null) {
             window.clearTimeout(this.promptsFlashTimer);
         }
         this.promptsFlashTimer = window.setTimeout(() => {
             if (!this.promptsEl) return;
-            this.promptsEl.style.borderColor = "rgba(243, 199, 106, 0.45)";
-            this.promptsEl.style.boxShadow = "none";
+            const activePopup = this.promptsEl.querySelector<HTMLElement>("[data-spotlight-popup='1']");
+            if (!activePopup) return;
+            activePopup.style.transform = "scale(1)";
+            activePopup.style.borderColor = "rgba(243, 199, 106, 0.52)";
+            activePopup.style.boxShadow = "0 24px 52px rgba(4, 8, 13, 0.72)";
             this.promptsFlashTimer = null;
         }, 800);
     }
@@ -1517,103 +1513,215 @@ export class SimSimScene {
         events: SimSimEvent[]
     ): void {
         if (!this.promptsEl) return;
-        if (prompts.length === 0) {
+        const prompt = firstUnresolvedPrompt(prompts);
+        if (!awaitingPrompts || !prompt) {
             this.promptsEl.style.display = "none";
+            this.promptsEl.style.pointerEvents = "none";
             this.promptsEl.innerHTML = "";
             return;
         }
-
         this.promptsEl.style.display = "block";
+        this.promptsEl.style.pointerEvents = "auto";
         this.promptsEl.innerHTML = "";
-
-        const title = document.createElement("div");
-        title.style.fontSize = "12px";
-        title.style.fontWeight = "700";
-        title.style.marginBottom = "6px";
-        title.textContent = "Prompts";
-        this.promptsEl.appendChild(title);
-
-        const hint = document.createElement("div");
-        hint.style.fontSize = "11px";
-        hint.style.opacity = "0.9";
-        hint.style.marginBottom = "8px";
-        hint.textContent = awaitingPrompts
-            ? "Choose a response to continue day advancement."
-            : "Prompt history (resolved prompts are read-only).";
-        this.promptsEl.appendChild(hint);
-
+        const inFlight = this.advanceInFlight || state.desynced;
+        const tickTarget = state.tick + 1;
         const latestRejection = findLatestInputRejection(events);
+        const backdrop = document.createElement("div");
+        backdrop.style.position = "absolute";
+        backdrop.style.inset = "0";
+        backdrop.style.display = "flex";
+        backdrop.style.alignItems = "center";
+        backdrop.style.justifyContent = "center";
+        backdrop.style.padding = "26px";
+        backdrop.style.background = "radial-gradient(circle at 50% 22%, rgba(243, 199, 106, 0.08), rgba(4, 8, 13, 0.72) 35%, rgba(3, 5, 8, 0.88) 100%)";
+        backdrop.style.backdropFilter = "blur(1.6px)";
+        backdrop.style.pointerEvents = "auto";
+
+        const card = document.createElement("div");
+        card.dataset.spotlightPopup = "1";
+        card.style.position = "relative";
+        card.style.width = "min(680px, 94vw)";
+        card.style.borderRadius = "16px";
+        card.style.border = "1px solid rgba(243, 199, 106, 0.52)";
+        card.style.background = "linear-gradient(160deg, rgba(8, 15, 24, 0.96) 0%, rgba(20, 16, 9, 0.94) 100%)";
+        card.style.boxShadow = "0 24px 52px rgba(4, 8, 13, 0.72)";
+        card.style.overflow = "hidden";
+
+        const frameGlow = document.createElement("div");
+        frameGlow.style.position = "absolute";
+        frameGlow.style.inset = "0";
+        frameGlow.style.pointerEvents = "none";
+        frameGlow.style.background =
+            "linear-gradient(120deg, rgba(243, 199, 106, 0.12), rgba(243, 199, 106, 0) 18%), radial-gradient(circle at 80% 12%, rgba(140, 214, 200, 0.12), rgba(140, 214, 200, 0) 32%)";
+        card.appendChild(frameGlow);
+
+        const body = document.createElement("div");
+        body.style.position = "relative";
+        body.style.zIndex = "1";
+        body.style.display = "grid";
+        body.style.gap = "12px";
+        body.style.padding = "16px 16px 15px";
+        card.appendChild(body);
+
+        const titleRow = document.createElement("div");
+        titleRow.style.display = "flex";
+        titleRow.style.alignItems = "flex-start";
+        titleRow.style.justifyContent = "space-between";
+        titleRow.style.gap = "12px";
+
+        const titleWrap = document.createElement("div");
+        const title = document.createElement("div");
+        title.style.fontSize = "13px";
+        title.style.fontWeight = "800";
+        title.style.letterSpacing = "0.08em";
+        title.style.textTransform = "uppercase";
+        title.style.color = "#f5dfae";
+        title.textContent = spotlightTitleForPrompt(prompt);
+        titleWrap.appendChild(title);
+
+        const subtitle = document.createElement("div");
+        subtitle.style.marginTop = "4px";
+        subtitle.style.fontSize = "11px";
+        subtitle.style.opacity = "0.9";
+        subtitle.textContent = `${prompt.kind} • ${prompt.prompt_id} • created t${prompt.tick_created}`;
+        titleWrap.appendChild(subtitle);
+        titleRow.appendChild(titleWrap);
+
+        const gateTag = document.createElement("div");
+        gateTag.style.border = "1px solid rgba(243, 199, 106, 0.52)";
+        gateTag.style.background = "rgba(38, 28, 12, 0.64)";
+        gateTag.style.borderRadius = "999px";
+        gateTag.style.padding = "4px 8px";
+        gateTag.style.fontSize = "10px";
+        gateTag.style.fontWeight = "700";
+        gateTag.style.letterSpacing = "0.07em";
+        gateTag.style.textTransform = "uppercase";
+        gateTag.textContent = "Decision Gate";
+        titleRow.appendChild(gateTag);
+        body.appendChild(titleRow);
+
+        const art = document.createElement("div");
+        art.style.borderRadius = "12px";
+        art.style.border = "1px solid rgba(140, 214, 200, 0.36)";
+        art.style.background =
+            "linear-gradient(128deg, rgba(12, 20, 31, 0.94), rgba(30, 21, 12, 0.9)), repeating-linear-gradient(145deg, rgba(243, 199, 106, 0.09), rgba(243, 199, 106, 0.09) 2px, rgba(0, 0, 0, 0) 2px, rgba(0, 0, 0, 0) 10px)";
+        art.style.height = "160px";
+        art.style.display = "flex";
+        art.style.alignItems = "center";
+        art.style.justifyContent = "center";
+        art.style.textAlign = "center";
+        art.style.padding = "12px";
+        art.innerHTML = `<div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.84;">Spotlight Art Placeholder<br/><span style="font-size:10px;opacity:0.72;">${escapeHtml(spotlightArtLabelForPrompt(prompt))}</span></div>`;
+        body.appendChild(art);
+
+        const deltas = document.createElement("div");
+        deltas.style.display = "grid";
+        deltas.style.gridTemplateColumns = "repeat(auto-fit, minmax(120px, 1fr))";
+        deltas.style.gap = "7px";
+        for (const item of spotlightDeltaChips(prompt)) {
+            const chip = document.createElement("div");
+            chip.style.display = "grid";
+            chip.style.gap = "2px";
+            chip.style.padding = "7px 8px";
+            chip.style.borderRadius = "8px";
+            chip.style.border = deltaToneBorder(item.tone);
+            chip.style.background = deltaToneBackground(item.tone);
+
+            const top = document.createElement("div");
+            top.style.fontSize = "10px";
+            top.style.letterSpacing = "0.05em";
+            top.style.textTransform = "uppercase";
+            top.style.opacity = "0.86";
+            top.textContent = `${item.icon} ${item.label}`;
+            chip.appendChild(top);
+
+            const value = document.createElement("div");
+            value.style.fontFamily = "\"Chivo Mono\", monospace";
+            value.style.fontSize = "12px";
+            value.style.fontWeight = "700";
+            value.textContent = item.delta;
+            chip.appendChild(value);
+            deltas.appendChild(chip);
+        }
+        body.appendChild(deltas);
+
         if (latestRejection) {
             const warning = document.createElement("div");
             warning.style.fontSize = "11px";
-            warning.style.marginBottom = "8px";
-            warning.style.padding = "6px 7px";
-            warning.style.borderRadius = "7px";
+            warning.style.padding = "7px 8px";
+            warning.style.borderRadius = "8px";
             warning.style.border = "1px solid rgba(232, 159, 143, 0.45)";
-            warning.style.background = "rgba(58, 22, 22, 0.75)";
+            warning.style.background = "rgba(58, 22, 22, 0.74)";
             warning.style.color = "#ffd8cf";
-            warning.textContent = `Last rejection: ${latestRejection.reasonCode} — ${latestRejection.reason}`;
-            this.promptsEl.appendChild(warning);
+            warning.textContent = `Last rejection: ${latestRejection.reasonCode} - ${latestRejection.reason}`;
+            body.appendChild(warning);
         }
 
-        const tickTarget = state.tick + 1;
-
-        for (const prompt of prompts) {
-            const row = document.createElement("div");
-            row.style.border = "1px solid rgba(243, 199, 106, 0.32)";
-            row.style.borderRadius = "8px";
-            row.style.padding = "8px";
-            row.style.marginBottom = "7px";
-            row.style.background = "rgba(11, 10, 10, 0.42)";
-
-            const header = document.createElement("div");
-            header.style.fontSize = "11px";
-            header.style.marginBottom = "6px";
-            header.innerHTML = `<strong>${prompt.kind}</strong> • ${prompt.prompt_id}<br/>created t${prompt.tick_created} • status=${prompt.status}`;
-            row.appendChild(header);
-
-            const choices = prompt.choices ?? [];
-            if (choices.length === 0) {
-                const none = document.createElement("div");
-                none.style.fontSize = "11px";
-                none.style.opacity = "0.75";
-                none.textContent = "No valid choices declared.";
-                row.appendChild(none);
+        const choicesRow = document.createElement("div");
+        choicesRow.style.display = "grid";
+        choicesRow.style.gridTemplateColumns = "repeat(auto-fit, minmax(150px, 1fr))";
+        choicesRow.style.gap = "8px";
+        const choices = (prompt.choices ?? []).slice(0, 3);
+        for (const [index, choice] of choices.entries()) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.textContent = choice;
+            btn.style.border = "1px solid rgba(243, 199, 106, 0.72)";
+            btn.style.borderRadius = "8px";
+            btn.style.padding = "8px 10px";
+            btn.style.fontSize = "12px";
+            btn.style.fontWeight = "700";
+            btn.style.letterSpacing = "0.03em";
+            btn.style.cursor = inFlight ? "not-allowed" : "pointer";
+            btn.style.pointerEvents = "auto";
+            if (index === 0) {
+                btn.style.background = "linear-gradient(160deg, rgba(48, 34, 12, 0.94), rgba(66, 45, 14, 0.9))";
+            } else if (index === 1) {
+                btn.style.background = "linear-gradient(160deg, rgba(16, 28, 33, 0.95), rgba(19, 37, 45, 0.9))";
             } else {
-                const buttons = document.createElement("div");
-                buttons.style.display = "flex";
-                buttons.style.flexWrap = "wrap";
-                buttons.style.gap = "6px";
-                for (const choice of choices) {
-                    const btn = document.createElement("button");
-                    btn.type = "button";
-                    btn.textContent = choice;
-                    btn.style.border = "1px solid rgba(243, 199, 106, 0.55)";
-                    btn.style.background = "rgba(28, 24, 16, 0.9)";
-                    btn.style.color = "#f3efe3";
-                    btn.style.borderRadius = "7px";
-                    btn.style.padding = "4px 8px";
-                    btn.style.fontSize = "11px";
-                    btn.style.pointerEvents = "auto";
-                    const disabled = !awaitingPrompts || prompt.status === "resolved" || state.desynced;
-                    btn.disabled = disabled;
-                    btn.style.opacity = disabled ? "0.55" : "1";
-                    if (!disabled) {
-                        btn.addEventListener("click", () => {
-                            this.onSubmitPromptChoice?.({
-                                tickTarget,
-                                promptId: prompt.prompt_id,
-                                choice,
-                            });
-                        });
-                    }
-                    buttons.appendChild(btn);
-                }
-                row.appendChild(buttons);
+                btn.style.background = "linear-gradient(160deg, rgba(31, 24, 16, 0.95), rgba(37, 30, 19, 0.9))";
             }
-
-            this.promptsEl.appendChild(row);
+            btn.style.color = "#f3efe3";
+            btn.disabled = inFlight;
+            btn.style.opacity = inFlight ? "0.62" : "1";
+            if (!inFlight) {
+                btn.addEventListener("click", () => {
+                    if (this.advanceInFlight) return;
+                    this.advanceInFlight = true;
+                    this.advanceInFlightStateKey = this.stateUpdateKey(state);
+                    this.advanceStatusOverride = {
+                        text: "Submitting prompt response...",
+                        color: "#f3efe3",
+                        untilMs: Date.now() + 3000,
+                    };
+                    const allButtons = choicesRow.querySelectorAll<HTMLButtonElement>("button");
+                    for (const button of allButtons) {
+                        button.disabled = true;
+                        button.style.opacity = "0.62";
+                        button.style.cursor = "not-allowed";
+                    }
+                    this.onSubmitPromptChoice?.({
+                        tickTarget,
+                        promptId: prompt.prompt_id,
+                        choice,
+                    });
+                });
+            }
+            choicesRow.appendChild(btn);
         }
+        body.appendChild(choicesRow);
+
+        const gateHint = document.createElement("div");
+        gateHint.style.fontSize = "11px";
+        gateHint.style.opacity = "0.88";
+        gateHint.style.color = inFlight ? "#f3efe3" : "#f5ddaa";
+        gateHint.textContent = inFlight
+            ? "Submitting response..."
+            : "Progression paused. Select one response to resolve this prompt.";
+        body.appendChild(gateHint);
+
+        backdrop.appendChild(card);
+        this.promptsEl.appendChild(backdrop);
     }
 }
 
@@ -1896,6 +2004,68 @@ function roomCardSupervisorTokenHtml(code: string, name: string): string {
         `border:1px solid rgba(243, 199, 106, 0.78);background:radial-gradient(circle at 35% 30%, rgba(243,199,106,0.28), rgba(20,29,37,0.95) 72%);`,
         `font-size:11px;font-weight:700;line-height:1;color:#f3efe3;box-shadow:0 0 10px rgba(243,199,106,0.22);">${safeCode}</span>`,
     ].join("");
+}
+
+type SpotlightDeltaTone = "good" | "bad" | "neutral";
+
+type SpotlightDeltaChip = {
+    icon: string;
+    label: string;
+    delta: string;
+    tone: SpotlightDeltaTone;
+};
+
+function firstUnresolvedPrompt(prompts: SimSimPrompt[]): SimSimPrompt | null {
+    for (const prompt of prompts) {
+        if (prompt.status !== "resolved") return prompt;
+    }
+    return null;
+}
+
+function spotlightTitleForPrompt(prompt: SimSimPrompt): string {
+    if (prompt.kind === "conflict") return "Conflict Spotlight";
+    if (prompt.kind === "critical") return "Critical Spotlight";
+    return "Directive Spotlight";
+}
+
+function spotlightArtLabelForPrompt(prompt: SimSimPrompt): string {
+    if (prompt.kind === "conflict") return "Supervisor feud at sector edge";
+    if (prompt.kind === "critical") return "High-confidence supervisor incident";
+    return "Decision branch requires command";
+}
+
+function spotlightDeltaChips(prompt: SimSimPrompt): SpotlightDeltaChip[] {
+    if (prompt.kind === "conflict") {
+        return [
+            { icon: "⚖", label: "Influence", delta: "±0.10", tone: "neutral" },
+            { icon: "⚠", label: "Stress", delta: "+0.00..+0.05", tone: "bad" },
+            { icon: "◈", label: "Discipline", delta: "-0.03..+0.03", tone: "neutral" },
+        ];
+    }
+    if (prompt.kind === "critical") {
+        return [
+            { icon: "☢", label: "Regime", delta: "event shift", tone: "bad" },
+            { icon: "⚙", label: "Output", delta: "multiplier", tone: "neutral" },
+            { icon: "◈", label: "Factory", delta: "metric delta", tone: "neutral" },
+        ];
+    }
+    return [
+        { icon: "⚑", label: "Directive", delta: "branch", tone: "neutral" },
+        { icon: "⚙", label: "Systems", delta: "pending", tone: "neutral" },
+        { icon: "◈", label: "State", delta: "unknown", tone: "neutral" },
+    ];
+}
+
+function deltaToneBorder(tone: SpotlightDeltaTone): string {
+    if (tone === "good") return "1px solid rgba(140, 214, 200, 0.48)";
+    if (tone === "bad") return "1px solid rgba(232, 159, 143, 0.52)";
+    return "1px solid rgba(243, 199, 106, 0.5)";
+}
+
+function deltaToneBackground(tone: SpotlightDeltaTone): string {
+    if (tone === "good") return "rgba(9, 26, 29, 0.64)";
+    if (tone === "bad") return "rgba(44, 17, 18, 0.62)";
+    return "rgba(37, 28, 14, 0.52)";
 }
 
 type EventRailStampTone = "info" | "warning" | "danger" | "success";
