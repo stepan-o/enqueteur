@@ -17,6 +17,7 @@ import type { DirectorConsoleLayout, Rect } from "./ui/layout";
 import { createBezelPanel, type BezelPanelHandle } from "./ui/bezelPanel";
 import { loadConsoleAssets, type ConsoleAssets } from "./ui/assets";
 import { createGlobalNoiseOverlay, type GlobalNoiseOverlay } from "./ui/fx";
+import { roomArtKeyForRoomId } from "./ui/roomArt";
 
 type Vec2 = { x: number; y: number };
 type SubmitPromptChoice = {
@@ -668,6 +669,47 @@ export class SimSimScene {
         return CCTV_FEED_RECTS[6] ?? { x: 956, y: 503, w: 440, h: 317 };
     }
 
+    private drawRoomArtBackdrop(topLeft: Vec2, width: number, height: number, roomId: number): void {
+        const inset = 2;
+        const glassX = topLeft.x + inset;
+        const glassY = topLeft.y + inset;
+        const glassW = Math.max(2, width - (inset * 2));
+        const glassH = Math.max(2, height - (inset * 2));
+        const glassRadius = 8;
+
+        const fallback = new PIXI.Graphics();
+        fallback.roundRect(glassX, glassY, glassW, glassH, glassRadius);
+        fallback.fill({ color: 0x101820, alpha: 0.92 });
+        this.roomLayer.addChild(fallback);
+
+        const roomCards = this.consoleAssets?.roomCards;
+        if (!roomCards) return;
+        const roomArtKey = roomArtKeyForRoomId(roomId);
+        const texture = roomCards[roomArtKey];
+        if (!texture) return;
+
+        const mask = new PIXI.Graphics();
+        mask.roundRect(glassX, glassY, glassW, glassH, glassRadius);
+        mask.fill({ color: 0xffffff, alpha: 1 });
+        this.roomLayer.addChild(mask);
+
+        const art = new PIXI.Sprite(texture);
+        art.anchor.set(0.5, 0.5);
+        const textureW = Math.max(1, texture.width);
+        const textureH = Math.max(1, texture.height);
+        const scale = Math.max(glassW / textureW, glassH / textureH);
+        art.scale.set(scale, scale);
+        art.position.set(glassX + (glassW * 0.5), glassY + (glassH * 0.5));
+        art.mask = mask;
+        this.roomLayer.addChild(art);
+
+        const readabilityOverlay = new PIXI.Graphics();
+        readabilityOverlay.roundRect(glassX, glassY, glassW, glassH, glassRadius);
+        readabilityOverlay.fill({ color: 0x05080d, alpha: 0.14 });
+        readabilityOverlay.mask = mask;
+        this.roomLayer.addChild(readabilityOverlay);
+    }
+
     private drawRoom(
         room: SimSimRoom,
         rect: Rect,
@@ -684,13 +726,15 @@ export class SimSimScene {
         const width = Math.max(8, rect.w);
         const height = Math.max(8, rect.h);
         const locked = room.locked;
-        const fill = locked ? 0x402d2d : 0x223644;
         const line = locked ? 0xe89f8f : 0x8cd6c8;
         const frame = new PIXI.Graphics();
         frame.roundRect(topLeft.x, topLeft.y, width, height, 10);
-        frame.fill({ color: fill, alpha: locked ? 0.92 : 0.82 });
+        frame.fill({ color: 0x0d1219, alpha: 0.95 });
         frame.stroke({ width: locked ? 3 : 2, color: line, alpha: 0.95 });
         this.roomLayer.addChild(frame);
+
+        this.drawRoomArtBackdrop(topLeft, width, height, room.room_id);
+
         const selectedAsSource = !locked && this.selectedRoomId === room.room_id;
         const previewAsTarget =
             !locked &&
