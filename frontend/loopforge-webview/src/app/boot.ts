@@ -173,9 +173,16 @@ export function boot(opts: BootOpts): ViewerHandle {
                     },
                 });
             },
-            onAdvanceDay: ({ tickTarget }) => {
+            onAdvanceDay: ({ tickTarget, endOfDay }) => {
                 if (!client) {
                     console.warn("[webview] sim_sim advance ignored: live client not connected");
+                    return;
+                }
+                if (endOfDay) {
+                    client.sendSimInput({
+                        tick_target: tickTarget,
+                        end_of_day: endOfDay,
+                    });
                     return;
                 }
                 client.sendSimInput({

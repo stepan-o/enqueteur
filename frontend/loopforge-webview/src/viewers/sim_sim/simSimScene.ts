@@ -10,8 +10,16 @@ type SubmitPromptChoice = {
     promptId: string;
     choice: string;
 };
+type EndOfDayActionsPayload = {
+    sell_washed_dumb: number;
+    sell_washed_smart: number;
+    convert_workers_dumb: number;
+    convert_workers_smart: number;
+    upgrade_brains: number;
+};
 type AdvanceDayPayload = {
     tickTarget: number;
+    endOfDay?: EndOfDayActionsPayload;
 };
 type ApplySupervisorPlacementsPayload = {
     tickTarget: number;
@@ -23,6 +31,16 @@ type SimSimSceneOpts = {
     onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
 };
 type PlacementDraft = Record<number, string | null>;
+type EndOfDayDraft = EndOfDayActionsPayload;
+type EndOfDayPlan = {
+    max: EndOfDayDraft;
+    effective: EndOfDayDraft;
+    preview: {
+        cashDelta: number;
+        workersDumbDelta: number;
+        workersSmartDelta: number;
+    };
+};
 
 const FALLBACK_LAYOUT: Record<number, Bounds> = {
     1: { min_x: 0, min_y: 0, max_x: 12, max_y: 8 },
@@ -32,6 +50,9 @@ const FALLBACK_LAYOUT: Record<number, Bounds> = {
     5: { min_x: 12, min_y: 8, max_x: 24, max_y: 16 },
     6: { min_x: 24, min_y: 8, max_x: 36, max_y: 16 },
 };
+const EOD_CONVERT_COST = 5;
+const EOD_SELL_WASHED_DUMB_PRICE = 10;
+const EOD_SELL_WASHED_SMART_PRICE = 25;
 
 export class SimSimScene {
     public readonly app: PIXI.Application;
@@ -53,6 +74,7 @@ export class SimSimScene {
     private debugPanelEl?: HTMLDivElement;
     private advanceDayButtonEl?: HTMLButtonElement;
     private advanceStatusEl?: HTMLDivElement;
+    private eodLayerEl?: HTMLDivElement;
     private securityDirectivePanelEl?: HTMLDivElement;
     private supervisorPanelEl?: HTMLDivElement;
     private placementControlsEl?: HTMLDivElement;
@@ -73,6 +95,8 @@ export class SimSimScene {
     private eventRailExpandedCardId: string | null = null;
     private liveFeedCollapsed = true;
     private debugFeedVisible = false;
+    private eodDraft: EndOfDayDraft = makeZeroEndOfDayDraft();
+    private lastEodDraftTick: number | null = null;
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     private readonly onAdvanceDay?: (payload: AdvanceDayPayload) => void;
     private readonly onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
@@ -473,6 +497,21 @@ export class SimSimScene {
         advanceControls.appendChild(advanceStatus);
         root.appendChild(advanceControls);
 
+        const eodLayer = document.createElement("div");
+        eodLayer.style.position = "absolute";
+        eodLayer.style.left = "14px";
+        eodLayer.style.top = "188px";
+        eodLayer.style.padding = "10px 12px";
+        eodLayer.style.borderRadius = "10px";
+        eodLayer.style.border = "1px solid rgba(243, 199, 106, 0.45)";
+        eodLayer.style.background = "linear-gradient(165deg, rgba(24, 17, 9, 0.92), rgba(17, 23, 28, 0.92))";
+        eodLayer.style.pointerEvents = "auto";
+        eodLayer.style.width = "min(350px, 26vw)";
+        eodLayer.style.maxHeight = "48vh";
+        eodLayer.style.overflow = "hidden auto";
+        eodLayer.style.display = "none";
+        root.appendChild(eodLayer);
+
         const supervisorPanel = document.createElement("div");
         supervisorPanel.style.position = "absolute";
         supervisorPanel.style.left = "14px";
@@ -622,6 +661,7 @@ export class SimSimScene {
         this.debugPanelEl = debugPanel;
         this.advanceDayButtonEl = advanceButton;
         this.advanceStatusEl = advanceStatus;
+        this.eodLayerEl = eodLayer;
         this.supervisorPanelEl = supervisorPanel;
         this.placementControlsEl = placementControls;
 
@@ -643,6 +683,7 @@ export class SimSimScene {
             !this.roomCardsEl ||
             !this.promptsEl ||
             !this.securityDirectivePanelEl ||
+            !this.eodLayerEl ||
             !this.supervisorPanelEl ||
             !this.placementControlsEl
         )
@@ -707,6 +748,18 @@ export class SimSimScene {
         ].join("");
 
         const latestRejection = findLatestInputRejection(events);
+        const advanceControlsEl = this.advanceDayButtonEl?.parentElement;
+        if (advanceControlsEl) {
+            advanceControlsEl.style.display = endOfDayPhase ? "none" : "block";
+        }
+        if (endOfDayPhase) {
+            this.renderEndOfDayLayer(state, latestRejection);
+        } else if (this.eodLayerEl) {
+            this.eodLayerEl.style.display = "none";
+            this.eodLayerEl.innerHTML = "";
+            this.lastEodDraftTick = null;
+            this.eodDraft = makeZeroEndOfDayDraft();
+        }
         if (this.advanceDayButtonEl) {
             const disabled = !planningPhase || state.desynced || this.advanceInFlight;
             this.advanceDayButtonEl.disabled = disabled;
@@ -775,14 +828,22 @@ export class SimSimScene {
         const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) <= 2 ? 1 : 2);
         const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
         const changed = !this.isPlacementMapEqual(this.placementsDraft, this.placementsBaseline);
-        this.renderPlacementControlsCluster(state, currentPhase, {
-            controlsDisabled,
-            swapsUsed,
-            swapBudget,
-            swapsRemaining,
-            changed,
-            latestRejection,
-        });
+        if (this.placementControlsEl) {
+            this.placementControlsEl.style.display = endOfDayPhase ? "none" : "block";
+        }
+        if (this.supervisorPanelEl) {
+            this.supervisorPanelEl.style.display = endOfDayPhase ? "none" : "block";
+        }
+        if (!endOfDayPhase) {
+            this.renderPlacementControlsCluster(state, currentPhase, {
+                controlsDisabled,
+                swapsUsed,
+                swapBudget,
+                swapsRemaining,
+                changed,
+                latestRejection,
+            });
+        }
         const inspectionCards = rooms
             .map((room) => {
                 const acc = room.accidents_today ?? { count: 0, casualties: 0 };
@@ -817,13 +878,15 @@ export class SimSimScene {
             };
         }
 
-        this.renderSupervisorPlacementsPanel(state, rooms, {
-            controlsDisabled,
-            swapBudget,
-            swapsUsed,
-            swapsRemaining,
-            changed,
-        });
+        if (!endOfDayPhase) {
+            this.renderSupervisorPlacementsPanel(state, rooms, {
+                controlsDisabled,
+                swapBudget,
+                swapsUsed,
+                swapsRemaining,
+                changed,
+            });
+        }
         this.renderPromptsPanel(state, prompts, awaitingPrompts, events);
         if (enteredAwaitingPrompts && firstUnresolvedPrompt(prompts)) {
             this.focusPromptsPanel();
@@ -1339,6 +1402,356 @@ export class SimSimScene {
             promptLock.textContent = "Placements locked while awaiting prompt resolution.";
             cluster.appendChild(promptLock);
         }
+    }
+
+    private renderEndOfDayLayer(
+        state: SimSimViewerState,
+        latestRejection: { reasonCode: string; reason: string } | null
+    ): void {
+        if (!this.eodLayerEl) return;
+        if (this.lastEodDraftTick !== state.tick) {
+            this.lastEodDraftTick = state.tick;
+            this.eodDraft = makeZeroEndOfDayDraft();
+        }
+
+        const panel = this.eodLayerEl;
+        panel.style.display = "block";
+        panel.innerHTML = "";
+
+        const plan = this.buildEndOfDayPlan(state.inventory, this.eodDraft);
+        this.eodDraft = { ...plan.effective };
+        const disabled = state.desynced || this.advanceInFlight;
+
+        const title = document.createElement("div");
+        title.style.fontSize = "12px";
+        title.style.fontWeight = "700";
+        title.style.letterSpacing = "0.06em";
+        title.style.textTransform = "uppercase";
+        title.textContent = "EOD Layer";
+        panel.appendChild(title);
+
+        const subtitle = document.createElement("div");
+        subtitle.style.marginTop = "4px";
+        subtitle.style.fontSize = "11px";
+        subtitle.style.opacity = "0.9";
+        subtitle.textContent = "Finalize SELL / CONVERT / UPGRADE actions, then confirm.";
+        panel.appendChild(subtitle);
+
+        const crates = document.createElement("div");
+        crates.style.display = "grid";
+        crates.style.gridTemplateColumns = "repeat(2, minmax(0, 1fr))";
+        crates.style.gap = "6px";
+        crates.style.marginTop = "9px";
+        const inv = state.inventory?.inventories;
+        const crateRows = [
+            { label: "RAW BRAINS", value: `${inv?.raw_brains_dumb ?? 0}D / ${inv?.raw_brains_smart ?? 0}S` },
+            { label: "WASHED BRAINS", value: `${inv?.washed_dumb ?? 0}D / ${inv?.washed_smart ?? 0}S` },
+            { label: "SUBSTRATE", value: `${inv?.substrate_gallons ?? 0}` },
+            { label: "RIBBON", value: `${inv?.ribbon_yards ?? 0}` },
+        ];
+        for (const crate of crateRows) {
+            const card = document.createElement("div");
+            card.style.border = "1px solid rgba(140, 214, 200, 0.3)";
+            card.style.background = "rgba(7, 15, 22, 0.6)";
+            card.style.borderRadius = "8px";
+            card.style.padding = "6px 7px";
+
+            const label = document.createElement("div");
+            label.style.fontSize = "9px";
+            label.style.letterSpacing = "0.06em";
+            label.style.textTransform = "uppercase";
+            label.style.opacity = "0.72";
+            label.textContent = crate.label;
+            card.appendChild(label);
+
+            const value = document.createElement("div");
+            value.style.marginTop = "2px";
+            value.style.fontFamily = "\"Chivo Mono\", monospace";
+            value.style.fontSize = "12px";
+            value.style.fontWeight = "700";
+            value.textContent = crate.value;
+            card.appendChild(value);
+            crates.appendChild(card);
+        }
+        panel.appendChild(crates);
+
+        const setDraftValue = (key: keyof EndOfDayDraft, nextValue: number): void => {
+            this.eodDraft = {
+                ...this.eodDraft,
+                [key]: Math.max(0, Math.floor(nextValue)),
+            };
+            this.renderFromState(state);
+        };
+
+        const renderMachineSection = (args: {
+            title: string;
+            note: string;
+            controls: Array<{
+                key: keyof EndOfDayDraft;
+                label: string;
+                value: number;
+                max: number;
+            }>;
+        }): void => {
+            const section = document.createElement("section");
+            section.style.marginTop = "10px";
+            section.style.border = "1px solid rgba(243, 199, 106, 0.32)";
+            section.style.borderRadius = "8px";
+            section.style.background = "rgba(33, 21, 12, 0.5)";
+            section.style.padding = "8px";
+            section.style.display = "grid";
+            section.style.gap = "6px";
+
+            const header = document.createElement("div");
+            header.style.display = "flex";
+            header.style.alignItems = "center";
+            header.style.justifyContent = "space-between";
+            header.style.gap = "8px";
+            header.innerHTML = `<span style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(args.title)}</span><span style="font-size:10px;opacity:0.7;">${escapeHtml(args.note)}</span>`;
+            section.appendChild(header);
+
+            for (const control of args.controls) {
+                const row = document.createElement("div");
+                row.style.display = "grid";
+                row.style.gap = "4px";
+
+                const labelRow = document.createElement("div");
+                labelRow.style.display = "flex";
+                labelRow.style.alignItems = "center";
+                labelRow.style.justifyContent = "space-between";
+                labelRow.style.gap = "8px";
+                labelRow.innerHTML = `<span style="font-size:11px;opacity:0.94;">${escapeHtml(control.label)}</span><span style="font-size:10px;opacity:0.72;">max ${control.max}</span>`;
+                row.appendChild(labelRow);
+
+                const stepper = document.createElement("div");
+                stepper.style.display = "grid";
+                stepper.style.gridTemplateColumns = "26px 1fr 26px";
+                stepper.style.gap = "5px";
+                const minusBtn = document.createElement("button");
+                minusBtn.type = "button";
+                minusBtn.textContent = "−";
+                minusBtn.disabled = disabled || control.value <= 0;
+                styleSecondaryButton(minusBtn, disabled || control.value <= 0);
+                minusBtn.style.padding = "4px 0";
+                if (!minusBtn.disabled) {
+                    minusBtn.onclick = () => setDraftValue(control.key, control.value - 1);
+                }
+                stepper.appendChild(minusBtn);
+
+                const input = document.createElement("input");
+                input.type = "number";
+                input.min = "0";
+                input.max = String(control.max);
+                input.step = "1";
+                input.value = String(control.value);
+                input.disabled = disabled;
+                input.style.width = "100%";
+                input.style.border = "1px solid rgba(140, 214, 200, 0.42)";
+                input.style.background = "rgba(7, 15, 22, 0.72)";
+                input.style.color = "#f3efe3";
+                input.style.borderRadius = "7px";
+                input.style.padding = "4px 8px";
+                input.style.fontFamily = "\"Chivo Mono\", monospace";
+                input.style.fontSize = "12px";
+                input.style.outline = "none";
+                input.onchange = () => {
+                    const parsed = Number.parseInt(input.value, 10);
+                    setDraftValue(control.key, Number.isFinite(parsed) ? parsed : 0);
+                };
+                stepper.appendChild(input);
+
+                const plusBtn = document.createElement("button");
+                plusBtn.type = "button";
+                plusBtn.textContent = "+";
+                plusBtn.disabled = disabled || control.value >= control.max;
+                styleSecondaryButton(plusBtn, disabled || control.value >= control.max);
+                plusBtn.style.padding = "4px 0";
+                if (!plusBtn.disabled) {
+                    plusBtn.onclick = () => setDraftValue(control.key, control.value + 1);
+                }
+                stepper.appendChild(plusBtn);
+                row.appendChild(stepper);
+
+                const presets = document.createElement("div");
+                presets.style.display = "flex";
+                presets.style.flexWrap = "wrap";
+                presets.style.gap = "4px";
+                for (const preset of [
+                    { label: "0", value: 0 },
+                    { label: "25%", value: pctOfMax(control.max, 0.25) },
+                    { label: "50%", value: pctOfMax(control.max, 0.5) },
+                    { label: "75%", value: pctOfMax(control.max, 0.75) },
+                    { label: "Max", value: control.max },
+                ]) {
+                    const btn = document.createElement("button");
+                    btn.type = "button";
+                    btn.textContent = preset.label;
+                    btn.disabled = disabled || control.max <= 0;
+                    styleSecondaryButton(btn, btn.disabled);
+                    btn.style.padding = "3px 7px";
+                    btn.style.fontSize = "10px";
+                    if (preset.value === control.value) {
+                        btn.style.borderColor = "rgba(243, 199, 106, 0.78)";
+                        btn.style.background = "rgba(43, 30, 12, 0.82)";
+                    }
+                    if (!btn.disabled) {
+                        btn.onclick = () => setDraftValue(control.key, preset.value);
+                    }
+                    presets.appendChild(btn);
+                }
+                row.appendChild(presets);
+                section.appendChild(row);
+            }
+            panel.appendChild(section);
+        };
+
+        renderMachineSection({
+            title: "SELL",
+            note: "washed -> cash",
+            controls: [
+                {
+                    key: "sell_washed_dumb",
+                    label: "Sell washed dumb",
+                    value: plan.effective.sell_washed_dumb,
+                    max: plan.max.sell_washed_dumb,
+                },
+                {
+                    key: "sell_washed_smart",
+                    label: "Sell washed smart",
+                    value: plan.effective.sell_washed_smart,
+                    max: plan.max.sell_washed_smart,
+                },
+            ],
+        });
+        renderMachineSection({
+            title: "CONVERT",
+            note: `${EOD_CONVERT_COST} washed -> 1 worker`,
+            controls: [
+                {
+                    key: "convert_workers_dumb",
+                    label: "Convert dumb workers",
+                    value: plan.effective.convert_workers_dumb,
+                    max: plan.max.convert_workers_dumb,
+                },
+                {
+                    key: "convert_workers_smart",
+                    label: "Convert smart workers",
+                    value: plan.effective.convert_workers_smart,
+                    max: plan.max.convert_workers_smart,
+                },
+            ],
+        });
+        renderMachineSection({
+            title: "UPGRADE",
+            note: "dumb washed -> smart washed",
+            controls: [
+                {
+                    key: "upgrade_brains",
+                    label: "Upgrade brains",
+                    value: plan.effective.upgrade_brains,
+                    max: plan.max.upgrade_brains,
+                },
+            ],
+        });
+
+        const preview = document.createElement("div");
+        preview.style.marginTop = "9px";
+        preview.style.fontSize = "11px";
+        preview.style.opacity = "0.92";
+        preview.textContent = `Projected Δ: cash +${plan.preview.cashDelta}, workers +${plan.preview.workersDumbDelta}D / +${plan.preview.workersSmartDelta}S`;
+        panel.appendChild(preview);
+
+        if (latestRejection) {
+            const warning = document.createElement("div");
+            warning.style.marginTop = "6px";
+            warning.style.fontSize = "11px";
+            warning.style.color = "#ffd8cf";
+            warning.textContent = `Last rejection: ${latestRejection.reasonCode} — ${latestRejection.reason}`;
+            panel.appendChild(warning);
+        }
+
+        const confirmButton = document.createElement("button");
+        confirmButton.type = "button";
+        confirmButton.textContent = "CONFIRM EOD";
+        confirmButton.style.marginTop = "10px";
+        confirmButton.style.width = "100%";
+        confirmButton.style.border = "1px solid rgba(243, 199, 106, 0.75)";
+        confirmButton.style.background = "rgba(38, 29, 12, 0.95)";
+        confirmButton.style.color = "#f3efe3";
+        confirmButton.style.borderRadius = "8px";
+        confirmButton.style.padding = "8px 10px";
+        confirmButton.style.fontSize = "12px";
+        confirmButton.style.fontWeight = "700";
+        confirmButton.style.letterSpacing = "0.05em";
+        confirmButton.disabled = disabled;
+        confirmButton.style.cursor = disabled ? "not-allowed" : "pointer";
+        confirmButton.style.opacity = disabled ? "0.56" : "1";
+        if (!disabled) {
+            confirmButton.onclick = () => {
+                if (this.advanceInFlight) return;
+                this.advanceInFlight = true;
+                this.advanceInFlightStateKey = this.stateUpdateKey(state);
+                this.advanceStatusOverride = {
+                    text: "Submitting end-of-day actions...",
+                    color: "#f3efe3",
+                    untilMs: Date.now() + 3000,
+                };
+                this.onAdvanceDay?.({
+                    tickTarget: state.tick + 1,
+                    endOfDay: { ...this.eodDraft },
+                });
+            };
+        }
+        panel.appendChild(confirmButton);
+    }
+
+    private buildEndOfDayPlan(inventory: SimSimViewerState["inventory"], draft: EndOfDayDraft): EndOfDayPlan {
+        const inv = inventory?.inventories;
+        const washedDumb = nonNegativeInt(inv?.washed_dumb);
+        const washedSmart = nonNegativeInt(inv?.washed_smart);
+        const substrate = nonNegativeInt(inv?.substrate_gallons);
+        const ribbon = nonNegativeInt(inv?.ribbon_yards);
+
+        const upgradeMax = Math.min(washedDumb, substrate, ribbon);
+        const upgradeBrains = clampInt(draft.upgrade_brains, 0, upgradeMax);
+
+        const washedDumbAfterUpgrade = washedDumb - upgradeBrains;
+        const washedSmartAfterUpgrade = washedSmart + upgradeBrains;
+
+        const sellDumbMax = washedDumbAfterUpgrade;
+        const sellSmartMax = washedSmartAfterUpgrade;
+        const sellWashedDumb = clampInt(draft.sell_washed_dumb, 0, sellDumbMax);
+        const sellWashedSmart = clampInt(draft.sell_washed_smart, 0, sellSmartMax);
+
+        const washedDumbAfterSell = washedDumbAfterUpgrade - sellWashedDumb;
+        const washedSmartAfterSell = washedSmartAfterUpgrade - sellWashedSmart;
+
+        const convertDumbMax = Math.floor(washedDumbAfterSell / EOD_CONVERT_COST);
+        const convertSmartMax = Math.floor(washedSmartAfterSell / EOD_CONVERT_COST);
+        const convertWorkersDumb = clampInt(draft.convert_workers_dumb, 0, convertDumbMax);
+        const convertWorkersSmart = clampInt(draft.convert_workers_smart, 0, convertSmartMax);
+
+        return {
+            max: {
+                sell_washed_dumb: sellDumbMax,
+                sell_washed_smart: sellSmartMax,
+                convert_workers_dumb: convertDumbMax,
+                convert_workers_smart: convertSmartMax,
+                upgrade_brains: upgradeMax,
+            },
+            effective: {
+                sell_washed_dumb: sellWashedDumb,
+                sell_washed_smart: sellWashedSmart,
+                convert_workers_dumb: convertWorkersDumb,
+                convert_workers_smart: convertWorkersSmart,
+                upgrade_brains: upgradeBrains,
+            },
+            preview: {
+                cashDelta: (sellWashedDumb * EOD_SELL_WASHED_DUMB_PRICE) + (sellWashedSmart * EOD_SELL_WASHED_SMART_PRICE),
+                workersDumbDelta: convertWorkersDumb,
+                workersSmartDelta: convertWorkersSmart,
+            },
+        };
     }
 
     private renderSupervisorPlacementsPanel(
@@ -1979,6 +2392,30 @@ function pct(value: number | null | undefined): string {
 
 function clamp(min: number, value: number, max: number): number {
     return Math.max(min, Math.min(max, value));
+}
+
+function clampInt(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function nonNegativeInt(value: number | null | undefined): number {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.floor(value ?? 0));
+}
+
+function pctOfMax(max: number, factor: number): number {
+    if (max <= 0) return 0;
+    return Math.max(0, Math.min(max, Math.floor(max * factor)));
+}
+
+function makeZeroEndOfDayDraft(): EndOfDayDraft {
+    return {
+        sell_washed_dumb: 0,
+        sell_washed_smart: 0,
+        convert_workers_dumb: 0,
+        convert_workers_smart: 0,
+        upgrade_brains: 0,
+    };
 }
 
 function normalizePhaseToken(phase: string | undefined | null): string {
