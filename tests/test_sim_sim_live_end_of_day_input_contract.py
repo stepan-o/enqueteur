@@ -192,8 +192,8 @@ class TestSimSimLiveEndOfDayInputContract(unittest.IsolatedAsyncioTestCase):
             },
         )
 
-        self.assertEqual(self.host.current_tick, 0)
-        self.assertEqual(self.host.current_state.phase, "end_of_day")
+        self.assertEqual(self.host.current_tick, 1)
+        self.assertEqual(self.host.current_state.phase, "planning")
         ack = self._latest_ack_event("input_accepted")
         details = ack.get("details", {})
         self.assertEqual(details.get("reason_code"), "INPUT_ACCEPTED")

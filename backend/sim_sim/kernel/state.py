@@ -800,8 +800,76 @@ class SimSimKernel:
         start = previous
 
         if previous.phase == "end_of_day":
-            # Ticket 01 introduces only phase gating. End-of-day action application and
-            # day advancement are intentionally deferred to a follow-up ticket.
+            valid, reason = self.validate_day_input(day_input, expected_tick_target=day)
+            if not valid:
+                raise ValueError(reason)
+
+            runtime_events: List[dict] = []
+            next_event_id = int(previous.next_event_id)
+
+            def emit(
+                kind: str,
+                *,
+                room_id: int | None = None,
+                supervisor: str | None = None,
+                details: Mapping[str, Any] | None = None,
+            ) -> None:
+                nonlocal next_event_id
+                event: Dict[str, Any] = {"tick": int(day), "event_id": int(next_event_id), "kind": str(kind)}
+                if room_id is not None:
+                    event["room_id"] = int(room_id)
+                if supervisor is not None:
+                    event["supervisor"] = str(supervisor)
+                if details:
+                    event["details"] = dict(details)
+                runtime_events.append(event)
+                next_event_id += 1
+
+            inventory_after_eod, worker_pools_after_eod = self._apply_end_of_day_actions(
+                inventory=start.inventory,
+                worker_pools=start.worker_pools,
+                actions=day_input.end_of_day,
+                day=day,
+                emit=emit,
+            )
+            emit(
+                "eod_confirmed",
+                details={
+                    "sell_washed_dumb": int(day_input.end_of_day.sell_washed_dumb),
+                    "sell_washed_smart": int(day_input.end_of_day.sell_washed_smart),
+                    "convert_workers_dumb": int(day_input.end_of_day.convert_workers_dumb),
+                    "convert_workers_smart": int(day_input.end_of_day.convert_workers_smart),
+                    "upgrade_brains": int(day_input.end_of_day.upgrade_brains),
+                },
+            )
+
+            next_day_swap_budget = self._supervisor_swap_budget_for_day(day)
+            self._state = SimSimState(
+                day_tick=day,
+                phase="planning",
+                time_label=start.time_label,
+                config_hash=self._loaded_config.config_hash,
+                config_id=self._loaded_config.config_id,
+                assignments=dict(start.assignments),
+                assignment_template=dict(start.assignment_template),
+                rooms=dict(start.rooms),
+                supervisors=dict(start.supervisors),
+                inventory=inventory_after_eod,
+                worker_pools=worker_pools_after_eod,
+                regime=start.regime,
+                security_lead=start.security_lead,
+                events=start.events + runtime_events,
+                prompts=[],
+                pending_day_input=None,
+                conflict=start.conflict,
+                hidden_accumulators=start.hidden_accumulators,
+                limen_security_count=start.limen_security_count,
+                next_event_id=next_event_id,
+                previous_day_assignments=dict(start.assignments),
+                swap_budget=int(next_day_swap_budget),
+                swaps_used_if_applied=0,
+                swaps_remaining=int(next_day_swap_budget),
+            )
             return previous, self._state
 
         if previous.phase == "awaiting_prompts":
@@ -1237,6 +1305,7 @@ class SimSimKernel:
                         "unlocked_day": self._supervisor_unlock_day(code),
                     },
                 )
+        emit("eod_opened")
 
         self._state = SimSimState(
             # Hold on the current day until explicit end_of_day input is applied.
