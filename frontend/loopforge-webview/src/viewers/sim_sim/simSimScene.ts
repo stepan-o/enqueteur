@@ -87,7 +87,9 @@ const FALLBACK_LAYOUT: Record<number, Bounds> = {
 const EOD_CONVERT_COST = 5;
 const EOD_SELL_WASHED_DUMB_PRICE = 10;
 const EOD_SELL_WASHED_SMART_PRICE = 25;
-const RESOLVING_BEAT_CADENCE_MS = 180;
+const RESOLVING_BEAT_CADENCE_MS = 420;
+const RESOLVING_REPLAY_START_DELAY_MS = 180;
+const RESOLVING_FINAL_HOLD_MS = 900;
 const FX_PICKUP_MS = 280;
 const FX_MAGNET_MS = 360;
 const FX_IMPACT_MS = 560;
@@ -1812,7 +1814,7 @@ export class SimSimScene {
         session.beatIndex = -1;
         window.setTimeout(() => {
             this.playNextResolvingBeat();
-        }, 0);
+        }, RESOLVING_REPLAY_START_DELAY_MS);
     }
 
     private playNextResolvingBeat(): void {
@@ -1822,7 +1824,9 @@ export class SimSimScene {
 
         const nextBeatIndex = session.beatIndex + 1;
         if (nextBeatIndex >= session.beats.length) {
-            this.finishResolvingPhase();
+            session.timerId = window.setTimeout(() => {
+                this.finishResolvingPhase();
+            }, RESOLVING_FINAL_HOLD_MS);
             return;
         }
 
