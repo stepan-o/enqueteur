@@ -74,6 +74,7 @@ type RecapStripModel = {
     netResultLines: string[];
     recapPanels: RecapPanel[];
 };
+type UiAudioCue = "pickup" | "magnet" | "drop" | "illegal" | "undo" | "rivet";
 
 const FALLBACK_LAYOUT: Record<number, Bounds> = {
     1: { min_x: 0, min_y: 0, max_x: 12, max_y: 8 },
@@ -87,6 +88,12 @@ const EOD_CONVERT_COST = 5;
 const EOD_SELL_WASHED_DUMB_PRICE = 10;
 const EOD_SELL_WASHED_SMART_PRICE = 25;
 const RESOLVING_BEAT_CADENCE_MS = 180;
+const FX_PICKUP_MS = 280;
+const FX_MAGNET_MS = 360;
+const FX_IMPACT_MS = 560;
+const FX_ILLEGAL_MS = 520;
+const FX_STEAM_REWIND_MS = 760;
+const FX_RIVET_POP_MS = 420;
 
 export class SimSimScene {
     public readonly app: PIXI.Application;
@@ -137,6 +144,19 @@ export class SimSimScene {
     private resolvingSession: ResolvingSession | null = null;
     private recapStripModel: RecapStripModel | null = null;
     private lastRecapTriggerKey: string | null = null;
+    private previewTargetRoomId: number | null = null;
+    private pickupFxKey: string | null = null;
+    private pickupFxUntilMs = 0;
+    private magnetFxRoomId: number | null = null;
+    private magnetFxUntilMs = 0;
+    private impactFxRoomIds = new Set<number>();
+    private impactFxUntilMs = 0;
+    private illegalFxRoomId: number | null = null;
+    private illegalFxUntilMs = 0;
+    private steamRewindFxUntilMs = 0;
+    private rivetPopIndices: number[] = [];
+    private rivetPopUntilMs = 0;
+    private audioCtx: AudioContext | null = null;
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     private readonly onAdvanceDay?: (payload: AdvanceDayPayload) => void;
     private readonly onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
@@ -187,6 +207,191 @@ export class SimSimScene {
         if (opts?.forceAutoFit && this.lastState) this.renderFromState(this.lastState);
     }
 
+    private nowMs(): number {
+        return Date.now();
+    }
+
+    private scheduleFxRefresh(delayMs: number): void {
+        if (typeof window === "undefined") return;
+        window.setTimeout(() => {
+            if (!this.lastState) return;
+            this.renderFromState(this.lastState);
+        }, Math.max(0, Math.floor(delayMs)));
+    }
+
+    private ensureAudioContext(): AudioContext | null {
+        if (typeof globalThis === "undefined") return null;
+        if (this.audioCtx) return this.audioCtx;
+        const audioGlobal = globalThis as unknown as {
+            AudioContext?: new () => AudioContext;
+            webkitAudioContext?: new () => AudioContext;
+        };
+        const Ctor = audioGlobal.AudioContext ?? audioGlobal.webkitAudioContext;
+        if (!Ctor) return null;
+        try {
+            this.audioCtx = new Ctor();
+        } catch {
+            this.audioCtx = null;
+        }
+        return this.audioCtx;
+    }
+
+    private playTone(args: {
+        type: "sine" | "square" | "sawtooth" | "triangle";
+        fromHz: number;
+        toHz: number;
+        durationMs: number;
+        gain: number;
+    }): void {
+        const ctx = this.ensureAudioContext();
+        if (!ctx) return;
+        if (ctx.state === "suspended") {
+            void ctx.resume().catch(() => undefined);
+        }
+        const start = ctx.currentTime + 0.002;
+        const end = start + (Math.max(40, args.durationMs) / 1000);
+        const osc = ctx.createOscillator();
+        const amp = ctx.createGain();
+        osc.type = args.type;
+        osc.frequency.setValueAtTime(Math.max(40, args.fromHz), start);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(30, args.toHz), end);
+        amp.gain.setValueAtTime(0.0001, start);
+        amp.gain.exponentialRampToValueAtTime(Math.max(0.0002, args.gain), start + 0.02);
+        amp.gain.exponentialRampToValueAtTime(0.0001, end);
+        osc.connect(amp);
+        amp.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(end + 0.02);
+    }
+
+    private playUiCue(cue: UiAudioCue): void {
+        if (typeof window === "undefined") return;
+        switch (cue) {
+            case "pickup":
+                this.playTone({ type: "triangle", fromHz: 420, toHz: 620, durationMs: 110, gain: 0.045 });
+                break;
+            case "magnet":
+                this.playTone({ type: "sine", fromHz: 560, toHz: 760, durationMs: 90, gain: 0.032 });
+                break;
+            case "drop":
+                this.playTone({ type: "square", fromHz: 980, toHz: 260, durationMs: 190, gain: 0.03 });
+                this.playTone({ type: "triangle", fromHz: 360, toHz: 180, durationMs: 220, gain: 0.04 });
+                break;
+            case "illegal":
+                this.playTone({ type: "sawtooth", fromHz: 320, toHz: 90, durationMs: 220, gain: 0.05 });
+                break;
+            case "undo":
+                this.playTone({ type: "triangle", fromHz: 320, toHz: 120, durationMs: 260, gain: 0.036 });
+                break;
+            case "rivet":
+                this.playTone({ type: "square", fromHz: 880, toHz: 520, durationMs: 80, gain: 0.026 });
+                break;
+            default:
+                break;
+        }
+    }
+
+    private isPickupFxActive(roomId: number, supervisorCode: string): boolean {
+        if (this.nowMs() > this.pickupFxUntilMs) return false;
+        return this.pickupFxKey === `${roomId}:${supervisorCode}`;
+    }
+
+    private isMagnetFxActive(roomId: number): boolean {
+        return this.magnetFxRoomId === roomId && this.nowMs() <= this.magnetFxUntilMs;
+    }
+
+    private isImpactFxActive(roomId: number): boolean {
+        if (this.nowMs() > this.impactFxUntilMs) return false;
+        return this.impactFxRoomIds.has(roomId);
+    }
+
+    private isIllegalFxActive(roomId: number): boolean {
+        return this.illegalFxRoomId === roomId && this.nowMs() <= this.illegalFxUntilMs;
+    }
+
+    private isSteamRewindActive(): boolean {
+        return this.nowMs() <= this.steamRewindFxUntilMs;
+    }
+
+    private triggerPickupFx(roomId: number, supervisorCode: string): void {
+        this.pickupFxKey = `${roomId}:${supervisorCode}`;
+        this.pickupFxUntilMs = this.nowMs() + FX_PICKUP_MS;
+        this.playUiCue("pickup");
+        this.scheduleFxRefresh(FX_PICKUP_MS + 30);
+    }
+
+    private triggerMagnetFx(roomId: number): void {
+        this.magnetFxRoomId = roomId;
+        this.magnetFxUntilMs = this.nowMs() + FX_MAGNET_MS;
+        this.playUiCue("magnet");
+        this.scheduleFxRefresh(FX_MAGNET_MS + 24);
+    }
+
+    private triggerImpactFx(roomIds: number[]): void {
+        this.impactFxRoomIds = new Set<number>(roomIds.filter((roomId) => Number.isFinite(roomId)));
+        this.impactFxUntilMs = this.nowMs() + FX_IMPACT_MS;
+        this.playUiCue("drop");
+        this.scheduleFxRefresh(FX_IMPACT_MS + 30);
+    }
+
+    private triggerIllegalFx(roomId: number): void {
+        this.illegalFxRoomId = roomId;
+        this.illegalFxUntilMs = this.nowMs() + FX_ILLEGAL_MS;
+        this.playUiCue("illegal");
+        this.scheduleFxRefresh(FX_ILLEGAL_MS + 24);
+    }
+
+    private triggerUndoFx(): void {
+        this.steamRewindFxUntilMs = this.nowMs() + FX_STEAM_REWIND_MS;
+        this.playUiCue("undo");
+        this.scheduleFxRefresh(FX_STEAM_REWIND_MS + 24);
+    }
+
+    private triggerRivetPop(previousSwapsUsed: number, nextSwapsUsed: number): void {
+        if (nextSwapsUsed <= previousSwapsUsed) return;
+        const nextIndices: number[] = [];
+        for (let idx = previousSwapsUsed; idx < nextSwapsUsed; idx += 1) {
+            nextIndices.push(idx);
+        }
+        this.rivetPopIndices = nextIndices;
+        this.rivetPopUntilMs = this.nowMs() + FX_RIVET_POP_MS;
+        this.playUiCue("rivet");
+        this.scheduleFxRefresh(FX_RIVET_POP_MS + 24);
+    }
+
+    private setPreviewTargetRoom(roomId: number | null, state: SimSimViewerState): void {
+        const nextRoomId = roomId ?? null;
+        if (this.previewTargetRoomId === nextRoomId) return;
+        this.previewTargetRoomId = nextRoomId;
+        if (
+            nextRoomId !== null &&
+            this.selectedRoomId !== null &&
+            nextRoomId !== this.selectedRoomId &&
+            !this.isIllegalFxActive(nextRoomId)
+        ) {
+            this.triggerMagnetFx(nextRoomId);
+        }
+        this.renderFromState(state);
+    }
+
+    private canSwapRoomPair(args: {
+        sourceRoomId: number;
+        targetRoomId: number;
+        swapBudget: number;
+    }): boolean {
+        if (args.sourceRoomId === args.targetRoomId) return false;
+        const nextDraft = this.swapDraftBetweenRooms({
+            roomId: args.sourceRoomId,
+            otherRoomId: args.targetRoomId,
+        });
+        return this.computeSwapsUsed(nextDraft, this.placementsBaseline) <= args.swapBudget;
+    }
+
+    private clearSelectionPreviewFx(): void {
+        this.previewTargetRoomId = null;
+        this.magnetFxRoomId = null;
+    }
+
     renderFromState(state: SimSimViewerState): void {
         if (!this.ready) {
             this.pendingState = state;
@@ -215,6 +420,8 @@ export class SimSimScene {
         const forecastByRoom = new Map<number, ForecastRoomBands>(
             deriveForecastBandsPerRoom(rooms, securityDirective).map((forecast) => [forecast.roomId, forecast])
         );
+        const fallbackSwapBudget = ((state.worldMeta?.day ?? state.tick) <= 2 ? 1 : 2);
+        const swapBudget = Math.max(0, nonNegativeInt(state.worldMeta?.supervisor_swaps?.swap_budget ?? fallbackSwapBudget));
 
         for (const room of rooms) {
             const draftSupervisorCode = this.placementsDraft[room.room_id] ?? room.supervisor ?? null;
@@ -224,6 +431,7 @@ export class SimSimScene {
                 supervisorName,
                 forecast: forecastByRoom.get(room.room_id),
                 tick: state.tick,
+                swapBudget,
             });
         }
 
@@ -304,9 +512,10 @@ export class SimSimScene {
             supervisorName: string;
             forecast: ForecastRoomBands | undefined;
             tick: number;
+            swapBudget: number;
         }
     ): void {
-        const { draftSupervisorCode, supervisorName, forecast, tick } = data;
+        const { draftSupervisorCode, supervisorName, forecast, tick, swapBudget } = data;
         const b = this.roomBounds(room);
         const topLeft = toScreen(b.min_x, b.min_y);
         const bottomRight = toScreen(b.max_x, b.max_y);
@@ -320,6 +529,29 @@ export class SimSimScene {
         rect.fill({ color: fill, alpha: locked ? 0.92 : 0.82 });
         rect.stroke({ width: locked ? 3 : 2, color: line, alpha: 0.95 });
         this.roomLayer.addChild(rect);
+        const selectedAsSource = !locked && this.selectedRoomId === room.room_id;
+        const previewAsTarget =
+            !locked &&
+            this.previewTargetRoomId === room.room_id &&
+            this.selectedRoomId !== null &&
+            this.selectedRoomId !== room.room_id;
+        const previewIsLegal =
+            previewAsTarget &&
+            this.selectedRoomId !== null &&
+            this.canSwapRoomPair({
+                sourceRoomId: this.selectedRoomId,
+                targetRoomId: room.room_id,
+                swapBudget,
+            });
+        if (selectedAsSource) {
+            this.drawRoomSelectionLiftAura(topLeft, width, height, tick);
+        }
+        if (previewAsTarget) {
+            this.drawRoomMagnetPreview(topLeft, width, height, tick, previewIsLegal);
+        }
+        if (this.isIllegalFxActive(room.room_id)) {
+            this.drawRoomSealedStamp(topLeft, width, height, tick);
+        }
         const hazardCritical = isHazardCriticalForecast(forecast);
         const equipmentLow = isEquipmentLow(room.equipment_condition);
         if (!locked && hazardCritical) {
@@ -358,47 +590,151 @@ export class SimSimScene {
             this.roomLayer.addChild(stats);
         }
         if (!locked) {
-            this.drawRoomSupervisorAnchor(topLeft, width, height, draftSupervisorCode, supervisorName);
+            this.drawRoomSupervisorAnchor(topLeft, width, height, room.room_id, draftSupervisorCode, supervisorName, tick);
         }
     }
 
-    private drawRoomSupervisorAnchor(topLeft: Vec2, width: number, height: number, code: string | null, supervisorName: string): void {
+    private drawRoomSelectionLiftAura(topLeft: Vec2, width: number, height: number, tick: number): void {
+        const pulse = 0.32 + ((((Math.sin((tick + 2) * 0.95) + 1) * 0.5) * 0.3));
+        const glow = new PIXI.Graphics();
+        glow.roundRect(topLeft.x - 4, topLeft.y - 4, width + 8, height + 8, 13);
+        glow.stroke({
+            width: 2.2,
+            color: 0xf3c76a,
+            alpha: pulse,
+        });
+        glow.fill({ color: 0xf3c76a, alpha: 0.07 + (pulse * 0.08) });
+        this.roomLayer.addChild(glow);
+    }
+
+    private drawRoomMagnetPreview(topLeft: Vec2, width: number, height: number, tick: number, legal: boolean): void {
+        const pulse = 0.22 + ((((Math.sin((tick + 4) * 1.1) + 1) * 0.5) * 0.38));
+        const color = legal ? 0x8cd6c8 : 0xe89f8f;
+        const ring = new PIXI.Graphics();
+        ring.roundRect(topLeft.x - 5, topLeft.y - 5, width + 10, height + 10, 14);
+        ring.stroke({
+            width: legal ? 2.6 : 2.3,
+            color,
+            alpha: pulse,
+        });
+        this.roomLayer.addChild(ring);
+    }
+
+    private drawRoomSealedStamp(topLeft: Vec2, width: number, height: number, tick: number): void {
+        const pulse = 0.35 + ((((Math.sin((tick + 3) * 1.25) + 1) * 0.5) * 0.4));
+        const stampW = Math.min(112, Math.max(74, width * 0.45));
+        const stampH = Math.min(28, Math.max(20, height * 0.19));
+        const stampX = topLeft.x + (width - stampW) * 0.5;
+        const stampY = topLeft.y + (height - stampH) * 0.5;
+
+        const plate = new PIXI.Graphics();
+        plate.roundRect(stampX, stampY, stampW, stampH, 5);
+        plate.fill({ color: 0x4a1312, alpha: 0.62 + (pulse * 0.18) });
+        plate.stroke({ width: 1.8, color: 0xe89f8f, alpha: 0.86 });
+        plate.rotation = -0.06;
+        plate.pivot.set(stampX + (stampW * 0.5), stampY + (stampH * 0.5));
+        plate.position.set(stampX + (stampW * 0.5), stampY + (stampH * 0.5));
+        this.roomLayer.addChild(plate);
+
+        const seal = new PIXI.Text({
+            text: "SEALED",
+            style: {
+                fontFamily: "Chivo Mono, monospace",
+                fontSize: Math.max(11, Math.floor(stampH * 0.58)),
+                fill: 0xffd8cf,
+                fontWeight: "700",
+                letterSpacing: 1,
+                stroke: { color: 0x2e0f0f, width: 3 },
+            },
+        });
+        seal.x = stampX + ((stampW - seal.width) * 0.5);
+        seal.y = stampY + ((stampH - seal.height) * 0.5);
+        seal.rotation = -0.06;
+        this.roomLayer.addChild(seal);
+    }
+
+    private drawRoomSupervisorAnchor(
+        topLeft: Vec2,
+        width: number,
+        height: number,
+        roomId: number,
+        code: string | null,
+        supervisorName: string,
+        tick: number
+    ): void {
         const radius = Math.max(10, Math.min(16, Math.min(width, height) * 0.14));
         const x = topLeft.x + width - radius - 8;
         const y = topLeft.y + radius + 8;
         const assigned = Boolean(code);
+        const selected = this.selectedRoomId === roomId;
+        const picked = assigned && !!code && this.isPickupFxActive(roomId, code);
+        const liftOffsetY = picked ? -2.8 : selected ? -1.2 : 0;
+        const scaledRadius = radius * (picked ? 1.13 : selected ? 1.06 : 1);
+        const impactFx = this.isImpactFxActive(roomId);
+        const illegalFx = this.isIllegalFxActive(roomId);
+        const magnetFx = this.isMagnetFxActive(roomId);
+
+        if (selected || picked) {
+            const shadow = new PIXI.Graphics();
+            shadow.ellipse(x, y + radius + 3, scaledRadius * 0.95, Math.max(3, scaledRadius * 0.34));
+            shadow.fill({ color: 0x05090d, alpha: picked ? 0.38 : 0.28 });
+            this.supervisorLayer.addChild(shadow);
+        }
 
         const socket = new PIXI.Graphics();
-        socket.circle(x, y, radius + 3);
+        socket.circle(x, y, radius + (impactFx ? 6 : 3));
         socket.stroke({
-            width: 1.5,
-            color: assigned ? 0xf3c76a : 0x8b98a4,
-            alpha: assigned ? 0.55 : 0.4,
+            width: magnetFx ? 2.1 : 1.5,
+            color: illegalFx ? 0xe89f8f : assigned ? 0xf3c76a : 0x8b98a4,
+            alpha: magnetFx ? 0.74 : assigned ? 0.55 : 0.4,
         });
         this.supervisorLayer.addChild(socket);
 
         const token = new PIXI.Graphics();
-        token.circle(x, y, radius);
+        token.circle(x, y + liftOffsetY, scaledRadius);
         token.fill({ color: assigned ? 0x2a3944 : 0x22252a, alpha: 0.96 });
         token.stroke({
-            width: assigned ? 2.2 : 1.4,
-            color: assigned ? 0xf3c76a : 0x8b98a4,
+            width: selected || picked ? 2.6 : assigned ? 2.2 : 1.4,
+            color: illegalFx ? 0xe89f8f : assigned ? 0xf3c76a : 0x8b98a4,
             alpha: assigned ? 0.98 : 0.76,
         });
         this.supervisorLayer.addChild(token);
+        if (impactFx) {
+            const burst = new PIXI.Graphics();
+            const phase = 0.28 + ((((Math.sin((tick + roomId + 3) * 1.45) + 1) * 0.5) * 0.62));
+            burst.circle(x, y + liftOffsetY, scaledRadius + 9);
+            burst.stroke({ width: 2.4, color: 0xf3c76a, alpha: phase });
+            this.supervisorLayer.addChild(burst);
+
+            const sparks = new PIXI.Graphics();
+            const sparkCount = 7;
+            for (let index = 0; index < sparkCount; index += 1) {
+                const angle = ((Math.PI * 2) / sparkCount) * index + (((tick + index + roomId) % 3) * 0.18);
+                const fromR = scaledRadius + 3;
+                const toR = scaledRadius + 10 + ((index % 3) * 2);
+                const x0 = x + Math.cos(angle) * fromR;
+                const y0 = y + liftOffsetY + Math.sin(angle) * fromR;
+                const x1 = x + Math.cos(angle) * toR;
+                const y1 = y + liftOffsetY + Math.sin(angle) * toR;
+                sparks.moveTo(x0, y0);
+                sparks.lineTo(x1, y1);
+            }
+            sparks.stroke({ width: 1.6, color: 0xffd08b, alpha: 0.7 });
+            this.supervisorLayer.addChild(sparks);
+        }
 
         const label = new PIXI.Text({
             text: code ?? "—",
             style: {
                 fontFamily: "Chivo Mono, monospace",
-                fontSize: Math.max(10, Math.floor(radius * 0.95)),
+                fontSize: Math.max(10, Math.floor(scaledRadius * 0.95)),
                 fill: assigned ? 0xf3efe3 : 0xb4bec8,
                 fontWeight: "700",
                 stroke: { color: 0x151a1f, width: 2 },
             },
         });
         label.x = x - label.width * 0.5;
-        label.y = y - label.height * 0.52;
+        label.y = y + liftOffsetY - label.height * 0.52;
         this.supervisorLayer.addChild(label);
 
         const nameplate = new PIXI.Text({
@@ -488,6 +824,7 @@ export class SimSimScene {
         root.style.zIndex = "22";
         root.style.fontFamily = "\"Bricolage Grotesque\", sans-serif";
         root.style.color = "#f3efe3";
+        installSwapFxStyles(root);
 
         const hud = document.createElement("div");
         hud.style.position = "absolute";
@@ -916,6 +1253,16 @@ export class SimSimScene {
         const swapsUsed = this.computeSwapsUsed(this.placementsDraft, this.placementsBaseline);
         const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) <= 2 ? 1 : 2);
         const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
+        const backendSwapsUsedRaw = wm?.supervisor_swaps?.swaps_used_if_applied;
+        const backendSwapsUsed =
+            typeof backendSwapsUsedRaw === "number" && Number.isFinite(backendSwapsUsedRaw)
+                ? Math.max(0, Math.floor(backendSwapsUsedRaw))
+                : null;
+        const backendSwapsRemainingRaw = wm?.supervisor_swaps?.swaps_remaining;
+        const backendSwapsRemaining =
+            typeof backendSwapsRemainingRaw === "number" && Number.isFinite(backendSwapsRemainingRaw)
+                ? Math.max(0, Math.floor(backendSwapsRemainingRaw))
+                : null;
         const changed = !this.isPlacementMapEqual(this.placementsDraft, this.placementsBaseline);
         if (this.placementControlsEl) {
             this.placementControlsEl.style.display = endOfDayPhase || recapPhase || resolvingPhase ? "none" : "block";
@@ -929,6 +1276,8 @@ export class SimSimScene {
                 swapsUsed,
                 swapBudget,
                 swapsRemaining,
+                backendSwapsUsed,
+                backendSwapsRemaining,
                 changed,
                 latestRejection,
             });
@@ -1628,6 +1977,11 @@ export class SimSimScene {
             this.placementsDraft = this.clonePlacementMap(baseline);
             this.placementsHistory = [];
             this.placementInteractionStatus = null;
+            this.clearSelectionPreviewFx();
+            this.pickupFxUntilMs = 0;
+            this.illegalFxUntilMs = 0;
+            this.rivetPopUntilMs = 0;
+            this.rivetPopIndices = [];
             this.unselect();
             this.lastPlacementSyncTick = state.tick;
             this.lastPlacementSyncSignature = signature;
@@ -1698,22 +2052,21 @@ export class SimSimScene {
     }
 
     private pushHistory(): void {
-        this.placementsHistory.push(this.clonePlacementMap(this.placementsDraft));
-        if (this.placementsHistory.length > 50) {
-            this.placementsHistory.shift();
-        }
+        this.placementsHistory = [this.clonePlacementMap(this.placementsDraft)];
     }
 
     private undo(): void {
         const previous = this.placementsHistory.pop();
         if (!previous) return;
         this.placementsDraft = this.clonePlacementMap(previous);
+        this.triggerUndoFx();
         this.unselect();
     }
 
     private unselect(): void {
         this.selectedSupId = null;
         this.selectedRoomId = null;
+        this.clearSelectionPreviewFx();
     }
 
     private computeSwapsUsed(draft: PlacementDraft, baseline: PlacementDraft): number {
@@ -1755,6 +2108,7 @@ export class SimSimScene {
             this.selectedRoomId = roomId;
             this.selectedSupId = supervisorCode;
             this.placementInteractionStatus = null;
+            this.triggerPickupFx(roomId, supervisorCode);
             this.renderFromState(state);
             return;
         }
@@ -1767,26 +2121,32 @@ export class SimSimScene {
         }
 
         if (swapBudget - this.computeSwapsUsed(this.placementsDraft, this.placementsBaseline) <= 0) {
-            this.placementInteractionStatus = { text: "No swaps remaining.", color: "#ffd8cf" };
+            this.triggerIllegalFx(roomId);
+            this.placementInteractionStatus = { text: "SEALED: no swaps remaining.", color: "#ffd8cf" };
             this.renderFromState(state);
             return;
         }
 
+        const sourceRoomId = this.selectedRoomId;
         const nextDraft = this.swapDraftBetweenRooms({
-            roomId: this.selectedRoomId,
+            roomId: sourceRoomId,
             otherRoomId: roomId,
         });
+        const swapsUsedBefore = this.computeSwapsUsed(this.placementsDraft, this.placementsBaseline);
         const swapsUsedIfApplied = this.computeSwapsUsed(nextDraft, this.placementsBaseline);
         if (swapsUsedIfApplied > swapBudget) {
-            this.placementInteractionStatus = { text: "No swaps remaining.", color: "#ffd8cf" };
+            this.triggerIllegalFx(roomId);
+            this.placementInteractionStatus = { text: "SEALED: no swaps remaining.", color: "#ffd8cf" };
             this.renderFromState(state);
             return;
         }
 
         this.pushHistory();
         this.placementsDraft = nextDraft;
+        this.triggerImpactFx([sourceRoomId, roomId]);
+        this.triggerRivetPop(swapsUsedBefore, swapsUsedIfApplied);
         this.placementInteractionStatus = {
-            text: `Swapped room ${this.selectedRoomId} with room ${roomId}.`,
+            text: `Swapped room ${sourceRoomId} with room ${roomId}.`,
             color: "#f3efe3",
         };
         this.unselect();
@@ -1801,6 +2161,8 @@ export class SimSimScene {
             swapsUsed: number;
             swapBudget: number;
             swapsRemaining: number;
+            backendSwapsUsed: number | null;
+            backendSwapsRemaining: number | null;
             changed: boolean;
             latestRejection: { reasonCode: string; reason: string } | null;
         }
@@ -1816,12 +2178,69 @@ export class SimSimScene {
         title.textContent = "Placement Controls";
         cluster.appendChild(title);
 
-        const budget = document.createElement("div");
-        budget.style.fontSize = "11px";
-        budget.style.opacity = "0.95";
-        budget.style.marginBottom = "8px";
-        budget.textContent = `Swaps: used ${data.swapsUsed} / budget ${data.swapBudget} (remaining ${data.swapsRemaining})`;
-        cluster.appendChild(budget);
+        const rivetRack = document.createElement("div");
+        rivetRack.style.marginBottom = "8px";
+        rivetRack.style.padding = "7px 8px";
+        rivetRack.style.border = "1px solid rgba(243, 199, 106, 0.34)";
+        rivetRack.style.borderRadius = "8px";
+        rivetRack.style.background = "linear-gradient(165deg, rgba(31, 20, 9, 0.92), rgba(11, 17, 23, 0.9))";
+        rivetRack.style.display = "grid";
+        rivetRack.style.gap = "6px";
+
+        const rivetTitle = document.createElement("div");
+        rivetTitle.style.fontSize = "10px";
+        rivetTitle.style.letterSpacing = "0.08em";
+        rivetTitle.style.textTransform = "uppercase";
+        rivetTitle.style.opacity = "0.82";
+        rivetTitle.textContent = "Swap Rivets";
+        rivetRack.appendChild(rivetTitle);
+
+        const rivetRow = document.createElement("div");
+        rivetRow.className = "simsim-rivet-row";
+        const consumedSwapsForDisplay = data.changed ? data.swapsUsed : (data.backendSwapsUsed ?? data.swapsUsed);
+        const remainingSwapsForDisplay = data.changed ? data.swapsRemaining : (data.backendSwapsRemaining ?? data.swapsRemaining);
+        const activeRivetPop = this.nowMs() <= this.rivetPopUntilMs;
+        const popIndexSet = new Set<number>(activeRivetPop ? this.rivetPopIndices : []);
+        const slotCount = Math.max(0, Math.floor(data.swapBudget));
+        for (let slot = 0; slot < slotCount; slot += 1) {
+            const consumed = slot < consumedSwapsForDisplay;
+            const rivet = document.createElement("div");
+            rivet.className = `simsim-rivet ${consumed ? "is-consumed" : "is-armed"}${popIndexSet.has(slot) ? " is-pop" : ""}`;
+            rivet.textContent = consumed ? "✖" : "⛓";
+            rivetRow.appendChild(rivet);
+        }
+        if (slotCount <= 0) {
+            const empty = document.createElement("div");
+            empty.style.fontSize = "11px";
+            empty.style.opacity = "0.8";
+            empty.textContent = "No swaps available this day.";
+            rivetRow.appendChild(empty);
+        }
+        rivetRack.appendChild(rivetRow);
+
+        const rivetLegend = document.createElement("div");
+        rivetLegend.style.fontSize = "11px";
+        rivetLegend.style.opacity = "0.94";
+        rivetLegend.style.color = remainingSwapsForDisplay > 0 ? "#f3efe3" : "#ffd8cf";
+        rivetLegend.textContent = `${remainingSwapsForDisplay} remaining • ${consumedSwapsForDisplay} spent • budget ${data.swapBudget}`;
+        rivetRack.appendChild(rivetLegend);
+
+        if (data.backendSwapsRemaining !== null) {
+            const kernelLedger = document.createElement("div");
+            kernelLedger.style.fontSize = "10px";
+            kernelLedger.style.opacity = "0.82";
+            const backendUsedLabel = data.backendSwapsUsed !== null ? ` (${data.backendSwapsUsed} used)` : "";
+            if (data.changed) {
+                kernelLedger.style.color = "#f5ddaa";
+                kernelLedger.textContent =
+                    `Kernel ledger: ${data.backendSwapsRemaining} remaining${backendUsedLabel} • draft preview: ${data.swapsRemaining} remaining`;
+            } else {
+                kernelLedger.style.color = "#d2d8de";
+                kernelLedger.textContent = `Kernel ledger: ${data.backendSwapsRemaining} remaining${backendUsedLabel}`;
+            }
+            rivetRack.appendChild(kernelLedger);
+        }
+        cluster.appendChild(rivetRack);
 
         if (this.placementInteractionStatus) {
             const status = document.createElement("div");
@@ -1832,6 +2251,20 @@ export class SimSimScene {
             cluster.appendChild(status);
         }
 
+        if (this.illegalFxRoomId !== null && this.isIllegalFxActive(this.illegalFxRoomId)) {
+            const stamp = document.createElement("div");
+            stamp.className = "simsim-sealed-stamp";
+            stamp.textContent = "SEALED";
+            cluster.appendChild(stamp);
+        }
+
+        if (this.isSteamRewindActive()) {
+            const steam = document.createElement("div");
+            steam.className = "simsim-steam-rewind";
+            steam.innerHTML = `<span>Steam rewind engaged</span>`;
+            cluster.appendChild(steam);
+        }
+
         const controls = document.createElement("div");
         controls.style.display = "flex";
         controls.style.alignItems = "center";
@@ -1840,7 +2273,7 @@ export class SimSimScene {
 
         const undoButton = document.createElement("button");
         undoButton.type = "button";
-        undoButton.textContent = "Undo";
+        undoButton.textContent = "Undo (1-step)";
         undoButton.disabled = data.controlsDisabled || this.placementsHistory.length === 0;
         styleSecondaryButton(undoButton, undoButton.disabled);
         if (!undoButton.disabled) {
@@ -2323,6 +2756,11 @@ export class SimSimScene {
             .filter((supervisor) => supervisor.unlocked_day <= tickTarget)
             .sort((a, b) => a.code.localeCompare(b.code));
         this.syncPlacementEditorState(state, rooms);
+        if (this.selectedRoomId === null) {
+            this.previewTargetRoomId = null;
+        } else if (!unlockedRooms.some((room) => room.room_id === this.previewTargetRoomId)) {
+            this.previewTargetRoomId = null;
+        }
 
         const title = document.createElement("div");
         title.style.fontSize = "11px";
@@ -2338,7 +2776,7 @@ export class SimSimScene {
         hint.style.fontSize = "11px";
         hint.style.opacity = "0.9";
         hint.style.marginBottom = "8px";
-        hint.textContent = "Select a room token on the map, then click another room token to swap.";
+        hint.textContent = "Click to pick a token, then click target token to place (mouse + trackpad friendly).";
         panel.appendChild(hint);
 
         if (unlockedRooms.length === 0) {
@@ -2354,7 +2792,10 @@ export class SimSimScene {
         summary.style.fontSize = "11px";
         summary.style.marginBottom = "8px";
         summary.style.opacity = "0.9";
-        summary.innerHTML = `<div>Selected: ${this.selectedRoomId !== null ? `room ${this.selectedRoomId}` : "none"}${this.selectedSupId ? ` -> ${this.selectedSupId}` : ""}</div>`;
+        summary.innerHTML = [
+            `<div>Selected: ${this.selectedRoomId !== null ? `room ${this.selectedRoomId}` : "none"}${this.selectedSupId ? ` -> ${this.selectedSupId}` : ""}</div>`,
+            `<div style="opacity:0.78;">Target: ${this.previewTargetRoomId !== null ? `room ${this.previewTargetRoomId} (magnet preview)` : "none"}</div>`,
+        ].join("");
         panel.appendChild(summary);
 
         const supervisorBar = document.createElement("div");
@@ -2377,23 +2818,34 @@ export class SimSimScene {
                 if (data.swapsRemaining <= 0) {
                     ineligible = true;
                 } else {
-                    const nextDraft = this.swapDraftBetweenRooms({
-                        roomId: this.selectedRoomId,
-                        otherRoomId: assignedRoom,
+                    highlighted = this.canSwapRoomPair({
+                        sourceRoomId: this.selectedRoomId,
+                        targetRoomId: assignedRoom,
+                        swapBudget: data.swapBudget,
                     });
-                    const swapsUsedIfApplied = this.computeSwapsUsed(nextDraft, this.placementsBaseline);
-                    highlighted = swapsUsedIfApplied <= data.swapBudget;
                     ineligible = !highlighted;
                 }
             }
             const hardDisabled = data.controlsDisabled || assignedRoom === undefined;
+            const pickupActive = assignedRoom !== undefined && this.isPickupFxActive(assignedRoom, supervisor.code);
+            const impactActive = assignedRoom !== undefined && this.isImpactFxActive(assignedRoom);
+            const illegalActive = assignedRoom !== undefined && this.isIllegalFxActive(assignedRoom);
+            const magnetPreviewed =
+                assignedRoom !== undefined &&
+                this.previewTargetRoomId !== null &&
+                this.previewTargetRoomId === assignedRoom &&
+                this.selectedRoomId !== null &&
+                this.selectedRoomId !== assignedRoom;
             const token = createSupervisorToken({
                 label: supervisor.code,
                 name: supervisor.name,
                 selected: this.selectedSupId === supervisor.code,
                 disabled: hardDisabled,
-                highlighted: this.selectedSupId === supervisor.code || highlighted,
+                highlighted: this.selectedSupId === supervisor.code || highlighted || magnetPreviewed,
                 ineligible,
+                picked: pickupActive,
+                impacted: impactActive,
+                illegal: illegalActive,
                 sizePx: 56,
                 onClick:
                     hardDisabled || assignedRoom === undefined
@@ -2406,6 +2858,16 @@ export class SimSimScene {
                                   controlsDisabled: data.controlsDisabled,
                                   state,
                               }),
+                onHoverChange:
+                    hardDisabled || assignedRoom === undefined
+                        ? undefined
+                        : (hovered: boolean) => {
+                              if (this.selectedRoomId === null || this.selectedRoomId === assignedRoom) {
+                                  if (!hovered) this.setPreviewTargetRoom(null, state);
+                                  return;
+                              }
+                              this.setPreviewTargetRoom(hovered ? assignedRoom : null, state);
+                          },
             });
             token.title = assignedRoom ? `Room ${assignedRoom}` : "Unassigned";
             supervisorBar.appendChild(token);
@@ -2449,6 +2911,9 @@ export class SimSimScene {
                     disabled: hardDisabled,
                     highlighted: false,
                     ineligible: false,
+                    picked: !!selectedCode && this.isPickupFxActive(room.room_id, selectedCode),
+                    impacted: this.isImpactFxActive(room.room_id),
+                    illegal: this.isIllegalFxActive(room.room_id),
                     sizePx: 40,
                     onClick: hardDisabled
                         ? undefined
@@ -2460,6 +2925,15 @@ export class SimSimScene {
                                   controlsDisabled: data.controlsDisabled,
                                   state,
                               }),
+                    onHoverChange: hardDisabled
+                        ? undefined
+                        : (hovered: boolean) => {
+                              if (this.selectedRoomId === null || this.selectedRoomId === room.room_id) {
+                                  if (!hovered) this.setPreviewTargetRoom(null, state);
+                                  return;
+                              }
+                              this.setPreviewTargetRoom(hovered ? room.room_id : null, state);
+                          },
                 });
                 row.appendChild(currentToken);
                 panel.appendChild(row);
@@ -3022,6 +3496,56 @@ function normalizePhaseToken(phase: string | undefined | null): string {
     return (phase ?? "").trim().toLowerCase();
 }
 
+function installSwapFxStyles(root: HTMLElement): void {
+    if (root.querySelector("style[data-simsim-swap-fx='1']")) return;
+    const style = document.createElement("style");
+    style.dataset.simsimSwapFx = "1";
+    style.textContent = [
+        "@keyframes simsimTokenLift {",
+        "  0% { transform: translateY(0) scale(1); }",
+        "  40% { transform: translateY(-5px) scale(1.09); }",
+        "  100% { transform: translateY(-2px) scale(1.04); }",
+        "}",
+        "@keyframes simsimImpactPulse {",
+        "  0% { box-shadow: 0 0 0 1px rgba(243,199,106,0.22), 0 0 10px rgba(243,199,106,0.28); }",
+        "  45% { box-shadow: 0 0 0 3px rgba(243,199,106,0.45), 0 0 24px rgba(243,199,106,0.6); }",
+        "  100% { box-shadow: 0 0 0 1px rgba(243,199,106,0.2), 0 0 12px rgba(243,199,106,0.3); }",
+        "}",
+        "@keyframes simsimIllegalBounce {",
+        "  0% { transform: translateY(0) scale(1); }",
+        "  30% { transform: translateY(-3px) scale(1.04); }",
+        "  55% { transform: translateY(3px) scale(0.94); }",
+        "  100% { transform: translateY(0) scale(1); }",
+        "}",
+        "@keyframes simsimRivetPop {",
+        "  0% { transform: scale(1); }",
+        "  25% { transform: scale(1.35); }",
+        "  100% { transform: scale(1); }",
+        "}",
+        "@keyframes simsimSteamRewind {",
+        "  0% { opacity: 0; transform: translateY(6px); filter: blur(2px); }",
+        "  30% { opacity: 1; transform: translateY(0); filter: blur(0); }",
+        "  100% { opacity: 0.85; transform: translateY(-2px); filter: blur(0.4px); }",
+        "}",
+        "@keyframes simsimSealStamp {",
+        "  0% { transform: rotate(-8deg) scale(1.25); opacity: 0; }",
+        "  35% { transform: rotate(-8deg) scale(1); opacity: 1; }",
+        "  100% { transform: rotate(-8deg) scale(1); opacity: 1; }",
+        "}",
+        ".simsim-token-picked { animation: simsimTokenLift 180ms ease-out; }",
+        ".simsim-token-impact { animation: simsimImpactPulse 320ms ease-out; }",
+        ".simsim-token-illegal { animation: simsimIllegalBounce 220ms cubic-bezier(.16,.67,.32,1.03); }",
+        ".simsim-rivet-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }",
+        ".simsim-rivet { width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }",
+        ".simsim-rivet.is-armed { color: #f5ddaa; border: 1px solid rgba(243, 199, 106, 0.72); background: radial-gradient(circle at 33% 32%, rgba(243, 199, 106, 0.34), rgba(31, 22, 11, 0.94) 72%); box-shadow: 0 0 12px rgba(243, 199, 106, 0.24); }",
+        ".simsim-rivet.is-consumed { color: #ffd8cf; border: 1px solid rgba(232, 159, 143, 0.68); background: radial-gradient(circle at 33% 32%, rgba(232, 159, 143, 0.30), rgba(36, 19, 16, 0.94) 72%); box-shadow: 0 0 10px rgba(232, 159, 143, 0.18); }",
+        ".simsim-rivet.is-pop { animation: simsimRivetPop 260ms ease-out; }",
+        ".simsim-steam-rewind { margin-top: 8px; border: 1px solid rgba(140, 214, 200, 0.46); border-radius: 8px; padding: 6px 8px; background: linear-gradient(160deg, rgba(12, 24, 30, 0.86), rgba(19, 29, 24, 0.72)); font-size: 11px; color: #d6efe7; letter-spacing: 0.03em; text-transform: uppercase; animation: simsimSteamRewind 380ms ease-out; }",
+        ".simsim-sealed-stamp { margin-bottom: 8px; width: fit-content; border: 2px solid rgba(232, 159, 143, 0.86); color: #ffd8cf; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.14em; background: rgba(64, 19, 19, 0.66); transform: rotate(-8deg); animation: simsimSealStamp 210ms ease-out; }",
+    ].join("\n");
+    root.appendChild(style);
+}
+
 function styleSecondaryButton(btn: HTMLButtonElement, disabled: boolean): void {
     btn.style.border = "1px solid rgba(140, 214, 200, 0.46)";
     btn.style.background = "rgba(12, 25, 31, 0.78)";
@@ -3473,8 +3997,12 @@ type SupervisorTokenOpts = {
     disabled: boolean;
     highlighted?: boolean;
     ineligible?: boolean;
+    picked?: boolean;
+    impacted?: boolean;
+    illegal?: boolean;
     sizePx: number;
     onClick?: () => void;
+    onHoverChange?: (hovered: boolean) => void;
 };
 
 function createSupervisorToken(opts: SupervisorTokenOpts): HTMLButtonElement {
@@ -3494,6 +4022,8 @@ function createSupervisorToken(opts: SupervisorTokenOpts): HTMLButtonElement {
     btn.style.cursor = opts.disabled || opts.ineligible ? "not-allowed" : "pointer";
     btn.style.opacity = opts.disabled ? "0.45" : opts.ineligible ? "0.65" : "1";
     btn.style.pointerEvents = "auto";
+    btn.style.transition = "transform 110ms ease";
+    btn.style.transform = opts.picked ? "translateY(-4px) scale(1.05)" : "translateY(0) scale(1)";
 
     const circle = document.createElement("div");
     circle.textContent = opts.label;
@@ -3508,17 +4038,21 @@ function createSupervisorToken(opts: SupervisorTokenOpts): HTMLButtonElement {
     circle.style.letterSpacing = "0.02em";
     circle.style.border = opts.selected
         ? "2px solid rgba(243, 199, 106, 0.98)"
-        : opts.ineligible
+        : opts.illegal || opts.ineligible
           ? "1px solid rgba(232, 159, 143, 0.58)"
-          : opts.highlighted
+          : opts.highlighted || opts.impacted
             ? "1px solid rgba(243, 199, 106, 0.74)"
             : "1px solid rgba(140, 214, 200, 0.48)";
-    circle.style.background = opts.selected
+    circle.style.background = opts.illegal
+        ? "radial-gradient(circle at 35% 30%, rgba(232,159,143,0.26), rgba(26,20,22,0.95) 72%)"
+        : opts.selected
         ? "radial-gradient(circle at 35% 30%, rgba(243,199,106,0.28), rgba(20,29,37,0.94) 70%)"
         : opts.ineligible
           ? "radial-gradient(circle at 35% 30%, rgba(232,159,143,0.20), rgba(26,20,22,0.95) 72%)"
           : "radial-gradient(circle at 35% 30%, rgba(140,214,200,0.24), rgba(18,24,30,0.94) 72%)";
-    circle.style.boxShadow = opts.selected
+    circle.style.boxShadow = opts.impacted
+        ? "0 0 0 2px rgba(243,199,106,0.38), 0 0 20px rgba(243,199,106,0.54)"
+        : opts.selected
         ? "0 0 0 2px rgba(243,199,106,0.26), 0 0 18px rgba(243,199,106,0.35)"
         : opts.highlighted
           ? "0 0 0 1px rgba(243,199,106,0.24), 0 0 14px rgba(243,199,106,0.30)"
@@ -3526,6 +4060,15 @@ function createSupervisorToken(opts: SupervisorTokenOpts): HTMLButtonElement {
             ? "0 0 8px rgba(232,159,143,0.20)"
             : "0 0 10px rgba(140,214,200,0.18)";
     circle.style.transition = "box-shadow 120ms ease, border-color 120ms ease, transform 120ms ease";
+    if (opts.picked) {
+        circle.classList.add("simsim-token-picked");
+    }
+    if (opts.impacted) {
+        circle.classList.add("simsim-token-impact");
+    }
+    if (opts.illegal) {
+        circle.classList.add("simsim-token-illegal");
+    }
     btn.appendChild(circle);
 
     if (opts.name) {
@@ -3540,18 +4083,23 @@ function createSupervisorToken(opts: SupervisorTokenOpts): HTMLButtonElement {
         btn.appendChild(name);
     }
 
+    if (!opts.disabled && opts.onHoverChange) {
+        btn.addEventListener("mouseenter", () => opts.onHoverChange?.(true));
+        btn.addEventListener("mouseleave", () => opts.onHoverChange?.(false));
+    }
+
     if (!opts.disabled && opts.onClick) {
         btn.addEventListener("click", opts.onClick);
         btn.addEventListener("mouseenter", () => {
-            if (opts.selected || opts.ineligible) return;
+            if (opts.selected || opts.ineligible || opts.illegal) return;
             circle.style.borderColor = "rgba(243, 199, 106, 0.66)";
             circle.style.boxShadow = "0 0 0 1px rgba(243,199,106,0.2), 0 0 14px rgba(243,199,106,0.30)";
             circle.style.transform = "translateY(-1px)";
         });
         btn.addEventListener("mouseleave", () => {
-            if (opts.selected || opts.ineligible) return;
-            circle.style.borderColor = opts.highlighted ? "rgba(243, 199, 106, 0.74)" : "rgba(140, 214, 200, 0.48)";
-            circle.style.boxShadow = opts.highlighted
+            if (opts.selected || opts.ineligible || opts.illegal) return;
+            circle.style.borderColor = opts.highlighted || opts.impacted ? "rgba(243, 199, 106, 0.74)" : "rgba(140, 214, 200, 0.48)";
+            circle.style.boxShadow = opts.highlighted || opts.impacted
                 ? "0 0 0 1px rgba(243,199,106,0.24), 0 0 14px rgba(243,199,106,0.30)"
                 : "0 0 10px rgba(140,214,200,0.18)";
             circle.style.transform = "translateY(0)";
