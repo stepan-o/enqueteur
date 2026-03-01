@@ -1,6 +1,7 @@
 import * as PIXI from "pixi.js";
 import type { SimSimEvent, SimSimPrompt, SimSimRoom, SimSimViewerState } from "./simSimStore";
-import { deriveSecurityDirective } from "./viewModel";
+import { deriveForecastBandsPerRoom, deriveSecurityDirective } from "./viewModel";
+import type { ForecastBand, ForecastRoomBands, SecurityDirective } from "./viewModel";
 
 type Vec2 = { x: number; y: number };
 type Bounds = { min_x: number; min_y: number; max_x: number; max_y: number };
@@ -141,13 +142,23 @@ export class SimSimScene {
         this.syncPlacementEditorState(state, rooms);
         const stageBounds = this.computeStageBounds(rooms);
         const toScreen = this.makeProjector(stageBounds);
+        const events = sortedEvents(state.events);
+        const securityDirective = deriveSecurityDirective(this.resolveSecurityLeadCode(state, rooms), events);
+        const forecastByRoom = new Map<number, ForecastRoomBands>(
+            deriveForecastBandsPerRoom(rooms, securityDirective).map((forecast) => [forecast.roomId, forecast])
+        );
 
         for (const room of rooms) {
             const draftSupervisorCode = this.placementsDraft[room.room_id] ?? room.supervisor ?? null;
-            this.drawRoom(room, toScreen, draftSupervisorCode);
+            const supervisorName = draftSupervisorCode ? (state.supervisors.get(draftSupervisorCode)?.name ?? draftSupervisorCode) : "Unassigned";
+            this.drawRoom(room, toScreen, {
+                draftSupervisorCode,
+                supervisorName,
+                forecast: forecastByRoom.get(room.room_id),
+                tick: state.tick,
+            });
         }
 
-        const events = sortedEvents(state.events);
         const eventLines = events.slice(-3).map((ev) => `t${ev.tick} #${ev.event_id} ${ev.kind}`);
         const caption = new PIXI.Text({
             text: `sim_sim   tick=${state.tick}\n${eventLines.join("\n")}`,
@@ -178,7 +189,11 @@ export class SimSimScene {
         }
 
         const prompts = sortedPrompts(state.prompts);
-        this.renderOverlay(state, events, prompts, previousState);
+        this.renderOverlay(state, events, prompts, {
+            previousState,
+            securityDirective,
+            forecastByRoom,
+        });
     }
 
     private computeStageBounds(rooms: SimSimRoom[]): Bounds {
@@ -213,7 +228,17 @@ export class SimSimScene {
         });
     }
 
-    private drawRoom(room: SimSimRoom, toScreen: (x: number, y: number) => Vec2, draftSupervisorCode: string | null): void {
+    private drawRoom(
+        room: SimSimRoom,
+        toScreen: (x: number, y: number) => Vec2,
+        data: {
+            draftSupervisorCode: string | null;
+            supervisorName: string;
+            forecast: ForecastRoomBands | undefined;
+            tick: number;
+        }
+    ): void {
+        const { draftSupervisorCode, supervisorName, forecast, tick } = data;
         const b = this.roomBounds(room);
         const topLeft = toScreen(b.min_x, b.min_y);
         const bottomRight = toScreen(b.max_x, b.max_y);
@@ -227,6 +252,14 @@ export class SimSimScene {
         rect.fill({ color: fill, alpha: locked ? 0.92 : 0.82 });
         rect.stroke({ width: locked ? 3 : 2, color: line, alpha: 0.95 });
         this.roomLayer.addChild(rect);
+        const hazardCritical = isHazardCriticalForecast(forecast);
+        const equipmentLow = isEquipmentLow(room.equipment_condition);
+        if (!locked && hazardCritical) {
+            this.drawHazardStripes(topLeft, width, height, tick);
+        }
+        if (!locked && equipmentLow) {
+            this.drawEquipmentWear(topLeft, width, height, room.room_id);
+        }
 
         const label = new PIXI.Text({
             text: room.name ?? `Room ${room.room_id}`,
@@ -240,16 +273,41 @@ export class SimSimScene {
         label.x = topLeft.x + 8;
         label.y = topLeft.y + 7;
         this.roomLayer.addChild(label);
+        const microStats = roomMicroStatsLabel(room);
+        if (microStats) {
+            const stats = new PIXI.Text({
+                text: microStats,
+                style: {
+                    fontFamily: "Chivo Mono, monospace",
+                    fontSize: 10,
+                    fill: 0xd6dde2,
+                    stroke: { color: 0x12161a, width: 2 },
+                    letterSpacing: 0.3,
+                },
+            });
+            stats.x = topLeft.x + 8;
+            stats.y = topLeft.y + Math.max(24, height - stats.height - 7);
+            this.roomLayer.addChild(stats);
+        }
         if (!locked) {
-            this.drawRoomSupervisorAnchor(topLeft, width, height, draftSupervisorCode);
+            this.drawRoomSupervisorAnchor(topLeft, width, height, draftSupervisorCode, supervisorName);
         }
     }
 
-    private drawRoomSupervisorAnchor(topLeft: Vec2, width: number, height: number, code: string | null): void {
+    private drawRoomSupervisorAnchor(topLeft: Vec2, width: number, height: number, code: string | null, supervisorName: string): void {
         const radius = Math.max(10, Math.min(16, Math.min(width, height) * 0.14));
         const x = topLeft.x + width - radius - 8;
         const y = topLeft.y + radius + 8;
         const assigned = Boolean(code);
+
+        const socket = new PIXI.Graphics();
+        socket.circle(x, y, radius + 3);
+        socket.stroke({
+            width: 1.5,
+            color: assigned ? 0xf3c76a : 0x8b98a4,
+            alpha: assigned ? 0.55 : 0.4,
+        });
+        this.supervisorLayer.addChild(socket);
 
         const token = new PIXI.Graphics();
         token.circle(x, y, radius);
@@ -274,6 +332,79 @@ export class SimSimScene {
         label.x = x - label.width * 0.5;
         label.y = y - label.height * 0.52;
         this.supervisorLayer.addChild(label);
+
+        const nameplate = new PIXI.Text({
+            text: assigned ? `${code ?? "—"} • ${supervisorName}` : "UNASSIGNED",
+            style: {
+                fontFamily: "Bricolage Grotesque, sans-serif",
+                fontSize: 9,
+                fill: assigned ? 0xe8edf2 : 0xc2c8cf,
+                stroke: { color: 0x0f151a, width: 2 },
+                letterSpacing: 0.2,
+            },
+        });
+        const platePadX = 6;
+        const platePadY = 2;
+        const plateHeight = nameplate.height + platePadY * 2;
+        const maxPlateWidth = Math.max(36, width - 12);
+        const plateWidth = Math.min(maxPlateWidth, Math.max(56, nameplate.width + platePadX * 2));
+        const plateX = clamp(topLeft.x + 6, x - plateWidth * 0.5, topLeft.x + width - plateWidth - 6);
+        const plateY = y + radius + 4;
+
+        const plate = new PIXI.Graphics();
+        plate.roundRect(plateX, plateY, plateWidth, plateHeight, 6);
+        plate.fill({ color: 0x141f27, alpha: 0.86 });
+        plate.stroke({
+            width: 1,
+            color: assigned ? 0xf3c76a : 0x9ba7b2,
+            alpha: assigned ? 0.46 : 0.34,
+        });
+        this.supervisorLayer.addChild(plate);
+
+        nameplate.x = plateX + (plateWidth - nameplate.width) * 0.5;
+        nameplate.y = plateY + platePadY;
+        this.supervisorLayer.addChild(nameplate);
+    }
+
+    private drawHazardStripes(topLeft: Vec2, width: number, height: number, tick: number): void {
+        const pulse = 0.15 + ((((Math.sin((tick + 1) * 0.9) + 1) * 0.5) * 0.16));
+        const stripes = new PIXI.Graphics();
+        const spacing = 12;
+        for (let offset = -height; offset < width + height; offset += spacing) {
+            stripes.moveTo(topLeft.x + offset, topLeft.y);
+            stripes.lineTo(topLeft.x + offset + height, topLeft.y + height);
+        }
+        stripes.stroke({
+            width: 3,
+            color: 0xe77b4b,
+            alpha: pulse,
+        });
+        this.roomLayer.addChild(stripes);
+    }
+
+    private drawEquipmentWear(topLeft: Vec2, width: number, height: number, roomId: number): void {
+        const wear = new PIXI.Graphics();
+        const seed = (roomId % 7) + 1;
+        const crackAStartX = topLeft.x + width * (0.12 + (seed * 0.03));
+        const crackAStartY = topLeft.y + height * 0.28;
+        const crackAEndX = topLeft.x + width * 0.62;
+        const crackAEndY = topLeft.y + height * 0.76;
+        const crackBStartX = topLeft.x + width * (0.55 + (seed * 0.01));
+        const crackBStartY = topLeft.y + height * 0.22;
+        const crackBEndX = topLeft.x + width * 0.86;
+        const crackBEndY = topLeft.y + height * 0.54;
+
+        wear.moveTo(crackAStartX, crackAStartY);
+        wear.lineTo(crackAEndX, crackAEndY);
+        wear.moveTo(crackAStartX + 10, crackAStartY + 8);
+        wear.lineTo(crackAEndX - 8, crackAEndY - 10);
+        wear.moveTo(crackBStartX, crackBStartY);
+        wear.lineTo(crackBEndX, crackBEndY);
+        wear.stroke({ width: 1.6, color: 0x8d5b40, alpha: 0.36 });
+        wear.circle(topLeft.x + width * 0.18, topLeft.y + height * 0.74, 4.2);
+        wear.circle(topLeft.x + width * 0.76, topLeft.y + height * 0.19, 3.1);
+        wear.fill({ color: 0x8f4f2f, alpha: 0.2 });
+        this.roomLayer.addChild(wear);
     }
 
     private roomBounds(room: SimSimRoom): Bounds {
@@ -477,7 +608,11 @@ export class SimSimScene {
         state: SimSimViewerState,
         events: SimSimEvent[],
         prompts: SimSimPrompt[],
-        previousState?: SimSimViewerState
+        overlayData: {
+            previousState?: SimSimViewerState;
+            securityDirective: SecurityDirective;
+            forecastByRoom: Map<number, ForecastRoomBands>;
+        }
     ): void {
         if (
             !this.hudEl ||
@@ -490,6 +625,7 @@ export class SimSimScene {
             !this.placementControlsEl
         )
             return;
+        const previousState = overlayData.previousState;
         const wm = state.worldMeta;
         const inv = state.inventory;
         const regime = state.regime;
@@ -513,7 +649,7 @@ export class SimSimScene {
             };
         }
         const tickTarget = state.tick + 1;
-        this.roomCardsEl.style.pointerEvents = "none";
+        this.roomCardsEl.style.pointerEvents = "auto";
 
         const activeFlags: string[] = [];
         if (regime) {
@@ -605,7 +741,7 @@ export class SimSimScene {
         }
 
         const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
-        this.renderSecurityDirectivePanel(state, rooms, events);
+        this.renderSecurityDirectivePanel(overlayData.securityDirective);
         const swapsUsed = this.computeSwapsUsed(this.placementsDraft, this.placementsBaseline);
         const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) <= 2 ? 1 : 2);
         const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
@@ -627,23 +763,19 @@ export class SimSimScene {
                 const supervisorToken = room.locked
                     ? roomCardSupervisorTokenHtml("LK", "")
                     : roomCardSupervisorTokenHtml(draftCode ?? "—", supervisorLabel);
-                return [
-                    `<div style="pointer-events:none;border:1px solid ${room.locked ? "rgba(232,159,143,0.42)" : "rgba(140,214,200,0.28)"};`,
-                    `background:${room.locked ? "rgba(44,23,23,0.72)" : "rgba(13,20,28,0.72)"};border-radius:10px;padding:8px 10px;">`,
-                    `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;">`,
-                    `<span>${room.name}</span>`,
-                    `<span style="display:inline-flex;align-items:center;gap:6px;">${supervisorToken}<span>${room.locked ? "LOCKED" : supervisorLabel}</span></span></div>`,
-                    `<div style="font-size:10px;opacity:0.78;margin-top:2px;">inspection • unlock day ${room.unlocked_day >= 0 ? room.unlocked_day : "never"}</div>`,
-                    `<div style="font-size:11px;opacity:0.92;">assigned ${fmtPair(room.workers_assigned.dumb, room.workers_assigned.smart)} • present ${fmtPair(room.workers_present.dumb, room.workers_present.smart)}</div>`,
-                    `<div style="font-size:11px;opacity:0.92;">equip ${pct(room.equipment_condition)} • S ${pct(room.stress)} • D ${pct(room.discipline)} • A ${pct(room.alignment)}</div>`,
-                    `<div style="font-size:11px;opacity:0.92;">out rb ${room.output_today.raw_brains_dumb}/${room.output_today.raw_brains_smart} • w ${room.output_today.washed_dumb}/${room.output_today.washed_smart} • sub ${room.output_today.substrate_gallons} • rib ${room.output_today.ribbon_yards}</div>`,
-                    `<div style="font-size:11px;opacity:0.92;">accidents ${acc.count} • casualties ${acc.casualties}</div>`,
-                    `</div>`,
-                ].join("");
+                return renderInspectionRoomCardHtml({
+                    room,
+                    phase: currentPhase,
+                    tick: state.tick,
+                    supervisorLabel,
+                    supervisorToken,
+                    accidents: acc,
+                    forecast: overlayData.forecastByRoom.get(room.room_id),
+                });
             })
             .join("");
         this.roomCardsEl.innerHTML = [
-            `<div style="pointer-events:none;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.75;margin:0 0 4px 2px;">Inspection</div>`,
+            `<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.75;margin:0 0 4px 2px;">Inspection</div>`,
             inspectionCards,
         ].join("");
 
@@ -692,13 +824,10 @@ export class SimSimScene {
         ].join("");
     }
 
-    private renderSecurityDirectivePanel(state: SimSimViewerState, rooms: SimSimRoom[], events: SimSimEvent[]): void {
+    private renderSecurityDirectivePanel(directive: SecurityDirective): void {
         if (!this.securityDirectivePanelEl) return;
         const panel = this.securityDirectivePanelEl;
         panel.innerHTML = "";
-
-        const lead = this.resolveSecurityLeadCode(state, rooms);
-        const directive = deriveSecurityDirective(lead, events);
         const crisp = directive.display.clarityTreatment === "crisp";
 
         panel.style.border = crisp ? "1px solid rgba(140, 214, 200, 0.56)" : "1px solid rgba(232, 159, 143, 0.62)";
@@ -1437,6 +1566,227 @@ export class SimSimScene {
     }
 }
 
+type InspectionRoomCardArgs = {
+    room: SimSimRoom;
+    phase: string;
+    tick: number;
+    supervisorLabel: string;
+    supervisorToken: string;
+    accidents: { count: number; casualties: number };
+    forecast: ForecastRoomBands | undefined;
+};
+
+type ForecastTone = "good" | "watch" | "bad" | "neutral";
+
+type ForecastBandDisplay = {
+    label: string;
+    tone: ForecastTone;
+};
+
+function renderInspectionRoomCardHtml(args: InspectionRoomCardArgs): string {
+    const { room, phase, tick, supervisorLabel, supervisorToken, accidents, forecast } = args;
+    const staffing = staffingForPhase(phase, room);
+    const hazard = describeHazardBand(forecast);
+    const throughput = describeThroughputBand(forecast);
+    const staffingBand = describeStaffingBand(forecast);
+    const crewState = describeCrewStateBand(forecast);
+    const whyLine = extractForecastWhyLine(room, forecast);
+    const hazardCritical = isHazardCriticalForecast(forecast);
+    const equipmentLow = isEquipmentLow(room.equipment_condition);
+    const pulse = 0.18 + ((((Math.sin((tick + room.room_id + 1) * 0.85) + 1) * 0.5) * 0.24));
+
+    const borderColor = room.locked
+        ? "rgba(232,159,143,0.42)"
+        : hazardCritical
+          ? `rgba(231,123,75,${(0.56 + pulse).toFixed(2)})`
+          : "rgba(140,214,200,0.28)";
+    const background = room.locked
+        ? "rgba(44,23,23,0.72)"
+        : hazardCritical
+          ? "linear-gradient(165deg, rgba(35,17,17,0.84), rgba(24,20,18,0.86))"
+          : "rgba(13,20,28,0.72)";
+
+    const hazardOverlay = hazardCritical
+        ? `<div aria-hidden="true" style="position:absolute;inset:0;pointer-events:none;opacity:${(0.14 + pulse).toFixed(2)};background:repeating-linear-gradient(135deg, rgba(231,123,75,0.45), rgba(231,123,75,0.45) 6px, rgba(0,0,0,0) 6px, rgba(0,0,0,0) 13px);"></div>`
+        : "";
+    const wearOverlay = equipmentLow
+        ? `<div aria-hidden="true" style="position:absolute;inset:0;pointer-events:none;background:linear-gradient(108deg, rgba(144,89,58,0) 14%, rgba(144,89,58,0.26) 15%, rgba(144,89,58,0) 17%),linear-gradient(46deg, rgba(130,80,52,0) 56%, rgba(130,80,52,0.24) 57%, rgba(130,80,52,0) 59%),radial-gradient(circle at 18% 76%, rgba(148,88,56,0.24), rgba(0,0,0,0) 38%),radial-gradient(circle at 78% 22%, rgba(148,88,56,0.22), rgba(0,0,0,0) 34%);"></div>`
+        : "";
+    // success/fiasco/accident stamp overlays are scheduled for a follow-up ticket.
+
+    const title = escapeHtml(room.name ?? `Room ${room.room_id}`);
+    const supervisorText = escapeHtml(room.locked ? "LOCKED" : supervisorLabel);
+    const infoLine = `inspection • unlock day ${room.unlocked_day >= 0 ? room.unlocked_day : "never"}`;
+    return [
+        `<article style="position:relative;overflow:hidden;border:1px solid ${borderColor};background:${background};border-radius:10px;padding:8px 10px;box-shadow:${hazardCritical ? `0 0 0 1px rgba(231,123,75,${(0.16 + pulse).toFixed(2)}),0 6px 18px rgba(53,16,12,0.32)` : "none"};">`,
+        hazardOverlay,
+        wearOverlay,
+        `<div style="position:relative;z-index:1;display:grid;gap:6px;">`,
+        `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;">`,
+        `<span>${title}</span>`,
+        `<span style="display:inline-flex;align-items:center;gap:6px;">${supervisorToken}<span>${supervisorText}</span></span>`,
+        `</div>`,
+        `<div style="font-size:10px;opacity:0.78;">${infoLine}</div>`,
+        `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">`,
+        `<span style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;border:1px solid rgba(243,199,106,0.6);border-radius:999px;padding:2px 6px;background:rgba(41,30,14,0.46);">${staffing.label}</span>`,
+        `<span style="font-size:10px;border:1px solid rgba(140,214,200,0.4);border-radius:999px;padding:2px 6px;background:rgba(8,18,24,0.4);">D ${fmtCount(staffing.dumb)}</span>`,
+        `<span style="font-size:10px;border:1px solid rgba(140,214,200,0.4);border-radius:999px;padding:2px 6px;background:rgba(8,18,24,0.4);">S ${fmtCount(staffing.smart)}</span>`,
+        `</div>`,
+        `<div style="font-size:11px;opacity:0.94;">equip ${pct(room.equipment_condition)} • S ${pct(room.stress)} • D ${pct(room.discipline)}${room.alignment !== null && room.alignment !== undefined ? ` • A ${pct(room.alignment)}` : ""}</div>`,
+        `<div style="font-size:11px;opacity:0.92;">out rb ${room.output_today.raw_brains_dumb}/${room.output_today.raw_brains_smart} • w ${room.output_today.washed_dumb}/${room.output_today.washed_smart} • sub ${room.output_today.substrate_gallons} • rib ${room.output_today.ribbon_yards}</div>`,
+        `<div style="font-size:11px;opacity:0.92;">accidents ${accidents.count} • casualties ${accidents.casualties}</div>`,
+        `<details style="margin-top:2px;border:1px solid rgba(140,214,200,0.24);border-radius:8px;background:rgba(8,14,20,0.38);padding:6px 7px;">`,
+        `<summary style="cursor:pointer;user-select:none;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;opacity:0.9;">Forecast Bands</summary>`,
+        `<div style="margin-top:6px;display:grid;gap:4px;">`,
+        renderForecastBandRowHtml("hazard", hazard),
+        renderForecastBandRowHtml("throughput", throughput),
+        renderForecastBandRowHtml("staffing", staffingBand),
+        renderForecastBandRowHtml("crew_state", crewState),
+        whyLine ? `<div style="font-size:10px;line-height:1.35;opacity:0.88;">why: ${escapeHtml(whyLine)}</div>` : "",
+        `</div>`,
+        `</details>`,
+        `</div>`,
+        `</article>`,
+    ].join("");
+}
+
+function renderForecastBandRowHtml(label: string, band: ForecastBandDisplay): string {
+    return [
+        `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">`,
+        `<span style="font-size:10px;opacity:0.78;letter-spacing:0.03em;text-transform:uppercase;">${label}</span>`,
+        `<span style="font-size:10px;padding:2px 6px;border-radius:999px;${forecastBandStyle(band.tone)}">${band.label}</span>`,
+        `</div>`,
+    ].join("");
+}
+
+function staffingForPhase(phase: string, room: SimSimRoom): { label: "DISPATCHED" | "PRESENT"; dumb: number | null; smart: number | null } {
+    if (phase === "planning" || phase === "awaiting_prompts" || phase === "resolving") {
+        return {
+            label: "DISPATCHED",
+            dumb: room.workers_assigned.dumb,
+            smart: room.workers_assigned.smart,
+        };
+    }
+    return {
+        label: "PRESENT",
+        dumb: room.workers_present.dumb,
+        smart: room.workers_present.smart,
+    };
+}
+
+function describeHazardBand(forecast: ForecastRoomBands | undefined): ForecastBandDisplay {
+    if (!forecast) return { label: "UNKNOWN", tone: "neutral" };
+    switch (forecast.incidentRisk.band) {
+        case "high":
+            return { label: "CRITICAL", tone: "bad" };
+        case "mid":
+            return { label: "WATCH", tone: "watch" };
+        case "low":
+            return { label: "LOW", tone: "good" };
+        default:
+            return { label: "UNKNOWN", tone: "neutral" };
+    }
+}
+
+function describeThroughputBand(forecast: ForecastRoomBands | undefined): ForecastBandDisplay {
+    return describePositiveBand(forecast?.throughput.band);
+}
+
+function describeStaffingBand(forecast: ForecastRoomBands | undefined): ForecastBandDisplay {
+    if (!forecast) return { label: "UNKNOWN", tone: "neutral" };
+    switch (forecast.absenteeismRisk.band) {
+        case "high":
+            return { label: "THIN", tone: "bad" };
+        case "mid":
+            return { label: "TIGHT", tone: "watch" };
+        case "low":
+            return { label: "READY", tone: "good" };
+        default:
+            return { label: "UNKNOWN", tone: "neutral" };
+    }
+}
+
+function describeCrewStateBand(forecast: ForecastRoomBands | undefined): ForecastBandDisplay {
+    if (!forecast) return { label: "UNKNOWN", tone: "neutral" };
+    switch (forecast.orderIndex.band) {
+        case "high":
+            return { label: "COHESIVE", tone: "good" };
+        case "mid":
+            return { label: "MIXED", tone: "watch" };
+        case "low":
+            return { label: "FRACTURED", tone: "bad" };
+        default:
+            return { label: "UNKNOWN", tone: "neutral" };
+    }
+}
+
+function describePositiveBand(band: ForecastBand | undefined): ForecastBandDisplay {
+    switch (band) {
+        case "high":
+            return { label: "HIGH", tone: "good" };
+        case "mid":
+            return { label: "MID", tone: "watch" };
+        case "low":
+            return { label: "LOW", tone: "bad" };
+        default:
+            return { label: "UNKNOWN", tone: "neutral" };
+    }
+}
+
+function forecastBandStyle(tone: ForecastTone): string {
+    if (tone === "good")
+        return "border:1px solid rgba(140,214,200,0.5);background:rgba(10,31,29,0.58);color:#ccf0e8;";
+    if (tone === "watch")
+        return "border:1px solid rgba(243,199,106,0.52);background:rgba(42,31,11,0.58);color:#f5ddaa;";
+    if (tone === "bad")
+        return "border:1px solid rgba(231,123,75,0.58);background:rgba(44,19,15,0.62);color:#ffd9ca;";
+    return "border:1px solid rgba(159,176,191,0.46);background:rgba(21,28,36,0.58);color:#d5dee8;";
+}
+
+function extractForecastWhyLine(room: SimSimRoom, forecast: ForecastRoomBands | undefined): string | null {
+    const roomAny = room as SimSimRoom & {
+        why?: unknown;
+        why_line?: unknown;
+        forecastWhy?: unknown;
+        forecast_why?: unknown;
+    };
+    const forecastAny = forecast as (ForecastRoomBands & { why?: unknown; reason?: unknown }) | undefined;
+    const candidates: unknown[] = [
+        roomAny.forecast_why,
+        roomAny.forecastWhy,
+        roomAny.why_line,
+        roomAny.why,
+        forecastAny?.why,
+        forecastAny?.reason,
+    ];
+    for (const candidate of candidates) {
+        if (typeof candidate !== "string") continue;
+        const line = candidate.trim();
+        if (line.length > 0) return line;
+    }
+    return null;
+}
+
+function isHazardCriticalForecast(forecast: ForecastRoomBands | undefined): boolean {
+    return forecast?.incidentRisk.band === "high";
+}
+
+function isEquipmentLow(value: number | null | undefined): boolean {
+    return value !== null && value !== undefined && Number.isFinite(value) && value < 0.45;
+}
+
+function roomMicroStatsLabel(room: SimSimRoom): string {
+    const parts = [`E ${pct(room.equipment_condition)}`, `S ${pct(room.stress)}`, `D ${pct(room.discipline)}`];
+    if (room.alignment !== null && room.alignment !== undefined) {
+        parts.push(`A ${pct(room.alignment)}`);
+    }
+    return parts.join(" · ");
+}
+
+function fmtCount(value: number | null | undefined): string {
+    return value === null || value === undefined ? "--" : String(value);
+}
+
 function sortedEvents(events: Map<string, SimSimEvent>): SimSimEvent[] {
     return Array.from(events.values()).sort((a, b) => (a.tick - b.tick) || (a.event_id - b.event_id));
 }
@@ -1468,10 +1818,8 @@ function pct(value: number | null | undefined): string {
     return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
-function fmtPair(a: number | null | undefined, b: number | null | undefined): string {
-    const left = a === null || a === undefined ? "--" : String(a);
-    const right = b === null || b === undefined ? "--" : String(b);
-    return `${left}/${right}`;
+function clamp(min: number, value: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
 }
 
 function normalizePhaseToken(phase: string | undefined | null): string {
