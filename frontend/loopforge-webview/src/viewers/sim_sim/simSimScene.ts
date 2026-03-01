@@ -94,10 +94,12 @@ const FX_IMPACT_MS = 560;
 const FX_ILLEGAL_MS = 520;
 const FX_STEAM_REWIND_MS = 760;
 const FX_RIVET_POP_MS = 420;
+const DEV_UI_QUERY_PARAM = "sim_sim_dev_ui";
+const DEV_UI_STORAGE_KEY = "loopforge.sim_sim.dev_ui";
 
 export class SimSimScene {
     public readonly app: PIXI.Application;
-    private readonly showDevUi = isSimSimDevUiEnabled();
+    private devMode = isSimSimDevUiEnabled();
 
     private mountEl?: HTMLElement;
     private ready = false;
@@ -111,6 +113,9 @@ export class SimSimScene {
     private hudEl?: HTMLDivElement;
     private roomCardsEl?: HTMLDivElement;
     private eventsEl?: HTMLDivElement;
+    private devModeMasterToggleEl?: HTMLButtonElement;
+    private devFeedToggleEl?: HTMLButtonElement;
+    private devSchemaToggleEl?: HTMLButtonElement;
     private promptsEl?: HTMLDivElement;
     private resolvingLayerEl?: HTMLDivElement;
     private recapLayerEl?: HTMLDivElement;
@@ -157,6 +162,7 @@ export class SimSimScene {
     private rivetPopIndices: number[] = [];
     private rivetPopUntilMs = 0;
     private audioCtx: AudioContext | null = null;
+    private devModeHotkeyInstalled = false;
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     private readonly onAdvanceDay?: (payload: AdvanceDayPayload) => void;
     private readonly onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
@@ -181,6 +187,7 @@ export class SimSimScene {
         this.root.addChild(this.roomLayer, this.supervisorLayer, this.uiLayer);
         this.app.stage.addChild(this.root);
         this.installOverlay(mountEl);
+        this.installDevModeHotkey();
         this.ready = true;
         this.setVisible(this.visible);
 
@@ -390,6 +397,66 @@ export class SimSimScene {
     private clearSelectionPreviewFx(): void {
         this.previewTargetRoomId = null;
         this.magnetFxRoomId = null;
+    }
+
+    private applyDevModeVisibility(): void {
+        if (this.devModeMasterToggleEl) {
+            this.devModeMasterToggleEl.textContent = this.devMode ? "Dev Panels: ON" : "Dev Panels: OFF";
+            this.devModeMasterToggleEl.style.borderColor = this.devMode ? "rgba(243, 199, 106, 0.72)" : "rgba(140, 214, 200, 0.42)";
+            this.devModeMasterToggleEl.style.background = this.devMode ? "rgba(37, 27, 12, 0.92)" : "rgba(10, 13, 18, 0.84)";
+            this.devModeMasterToggleEl.style.color = this.devMode ? "#f5ddaa" : "#dce7ef";
+        }
+        if (this.eventsEl) {
+            this.eventsEl.style.display = this.devMode && this.debugFeedVisible ? "block" : "none";
+            if (!this.devMode) this.eventsEl.innerHTML = "";
+        }
+        if (this.devFeedToggleEl) {
+            this.devFeedToggleEl.style.display = this.devMode ? "block" : "none";
+            this.devFeedToggleEl.textContent = this.debugFeedVisible ? "Hide Debug Feed" : "Debug Feed";
+        }
+        if (this.devSchemaToggleEl) {
+            this.devSchemaToggleEl.style.display = this.devMode ? "block" : "none";
+            this.devSchemaToggleEl.textContent = this.debugVisible ? "Hide Schema Debug" : "Schema Debug";
+        }
+        if (this.debugPanelEl) {
+            this.debugPanelEl.style.display = this.devMode && this.debugVisible ? "block" : "none";
+            if (!this.devMode) this.debugPanelEl.innerHTML = "";
+        }
+    }
+
+    private setAllDevPanelsVisible(enabled: boolean): void {
+        this.debugVisible = enabled;
+        this.debugFeedVisible = enabled;
+        this.liveFeedCollapsed = !enabled;
+        this.applyDevModeVisibility();
+    }
+
+    private setDevMode(enabled: boolean, opts?: { persist?: boolean; rerender?: boolean }): void {
+        const next = !!enabled;
+        if (this.devMode === next) {
+            this.applyDevModeVisibility();
+            return;
+        }
+        this.devMode = next;
+        this.setAllDevPanelsVisible(this.devMode);
+        if (opts?.persist !== false) persistSimSimDevUiFlag(this.devMode);
+        this.applyDevModeVisibility();
+        if (opts?.rerender !== false && this.lastState) {
+            this.renderFromState(this.lastState);
+        }
+    }
+
+    private installDevModeHotkey(): void {
+        if (this.devModeHotkeyInstalled || typeof window === "undefined") return;
+        window.addEventListener("keydown", (event: KeyboardEvent) => {
+            if (event.repeat) return;
+            const key = event.key.toLowerCase();
+            const commandPressed = event.ctrlKey || event.metaKey;
+            if (!commandPressed || !event.shiftKey || key !== "d") return;
+            event.preventDefault();
+            this.setDevMode(!this.devMode, { persist: true, rerender: true });
+        });
+        this.devModeHotkeyInstalled = true;
     }
 
     renderFromState(state: SimSimViewerState): void {
@@ -942,23 +1009,21 @@ export class SimSimScene {
         root.appendChild(securityDirectivePanel);
 
         const events = document.createElement("div");
-        if (this.showDevUi) {
-            events.style.position = "absolute";
-            events.style.left = "14px";
-            events.style.bottom = "14px";
-            events.style.width = "min(460px, 34vw)";
-            events.style.maxHeight = "24vh";
-            events.style.overflow = "hidden auto";
-            events.style.padding = "8px 10px";
-            events.style.borderRadius = "10px";
-            events.style.background = "rgba(10, 13, 18, 0.7)";
-            events.style.border = "1px solid rgba(243, 199, 106, 0.34)";
-            events.style.fontSize = "11px";
-            events.style.lineHeight = "1.3";
-            events.style.pointerEvents = "auto";
-            events.style.display = "none";
-            root.appendChild(events);
-        }
+        events.style.position = "absolute";
+        events.style.left = "14px";
+        events.style.bottom = "14px";
+        events.style.width = "min(460px, 34vw)";
+        events.style.maxHeight = "24vh";
+        events.style.overflow = "hidden auto";
+        events.style.padding = "8px 10px";
+        events.style.borderRadius = "10px";
+        events.style.background = "rgba(10, 13, 18, 0.7)";
+        events.style.border = "1px solid rgba(243, 199, 106, 0.34)";
+        events.style.fontSize = "11px";
+        events.style.lineHeight = "1.3";
+        events.style.pointerEvents = "auto";
+        events.style.display = "none";
+        root.appendChild(events);
 
         const prompts = document.createElement("div");
         prompts.style.position = "absolute";
@@ -984,73 +1049,95 @@ export class SimSimScene {
         recapLayer.style.zIndex = "55";
         root.appendChild(recapLayer);
 
-        if (this.showDevUi) {
-            const feedToggle = document.createElement("button");
-            feedToggle.type = "button";
-            feedToggle.textContent = "Debug Feed";
-            feedToggle.style.position = "absolute";
-            feedToggle.style.left = "14px";
-            feedToggle.style.bottom = "14px";
-            feedToggle.style.pointerEvents = "auto";
-            feedToggle.style.border = "1px solid rgba(243, 199, 106, 0.5)";
-            feedToggle.style.background = "rgba(10, 13, 18, 0.84)";
-            feedToggle.style.color = "#e9e2cf";
-            feedToggle.style.borderRadius = "8px";
-            feedToggle.style.padding = "6px 10px";
-            feedToggle.style.fontSize = "11px";
-            feedToggle.style.letterSpacing = "0.06em";
-            feedToggle.style.textTransform = "uppercase";
-            feedToggle.addEventListener("click", () => {
-                this.debugFeedVisible = !this.debugFeedVisible;
-                if (this.eventsEl) this.eventsEl.style.display = this.debugFeedVisible ? "block" : "none";
-                feedToggle.textContent = this.debugFeedVisible ? "Hide Debug Feed" : "Debug Feed";
-            });
-            root.appendChild(feedToggle);
+        const devModeToggle = document.createElement("button");
+        devModeToggle.type = "button";
+        devModeToggle.textContent = "Dev Panels: OFF";
+        devModeToggle.style.position = "absolute";
+        devModeToggle.style.left = "14px";
+        devModeToggle.style.bottom = "14px";
+        devModeToggle.style.pointerEvents = "auto";
+        devModeToggle.style.border = "1px solid rgba(140, 214, 200, 0.42)";
+        devModeToggle.style.background = "rgba(10, 13, 18, 0.84)";
+        devModeToggle.style.color = "#dce7ef";
+        devModeToggle.style.borderRadius = "8px";
+        devModeToggle.style.padding = "6px 10px";
+        devModeToggle.style.fontSize = "11px";
+        devModeToggle.style.letterSpacing = "0.06em";
+        devModeToggle.style.textTransform = "uppercase";
+        devModeToggle.style.zIndex = "70";
+        devModeToggle.addEventListener("click", () => {
+            this.setDevMode(!this.devMode, { persist: true, rerender: true });
+        });
+        root.appendChild(devModeToggle);
 
-            const debugToggle = document.createElement("button");
-            debugToggle.type = "button";
-            debugToggle.textContent = "Schema Debug";
-            debugToggle.style.position = "absolute";
-            debugToggle.style.right = "14px";
-            debugToggle.style.bottom = "14px";
-            debugToggle.style.pointerEvents = "auto";
-            debugToggle.style.border = "1px solid rgba(140, 214, 200, 0.5)";
-            debugToggle.style.background = "rgba(10, 13, 18, 0.84)";
-            debugToggle.style.color = "#e9e2cf";
-            debugToggle.style.borderRadius = "8px";
-            debugToggle.style.padding = "6px 10px";
-            debugToggle.style.fontSize = "11px";
-            debugToggle.style.letterSpacing = "0.06em";
-            debugToggle.style.textTransform = "uppercase";
-            debugToggle.addEventListener("click", () => {
-                this.debugVisible = !this.debugVisible;
-                if (this.debugPanelEl) this.debugPanelEl.style.display = this.debugVisible ? "block" : "none";
-            });
-            root.appendChild(debugToggle);
-        }
+        const feedToggle = document.createElement("button");
+        feedToggle.type = "button";
+        feedToggle.textContent = "Debug Feed";
+        feedToggle.style.position = "absolute";
+        feedToggle.style.left = "156px";
+        feedToggle.style.bottom = "14px";
+        feedToggle.style.pointerEvents = "auto";
+        feedToggle.style.border = "1px solid rgba(243, 199, 106, 0.5)";
+        feedToggle.style.background = "rgba(10, 13, 18, 0.84)";
+        feedToggle.style.color = "#e9e2cf";
+        feedToggle.style.borderRadius = "8px";
+        feedToggle.style.padding = "6px 10px";
+        feedToggle.style.fontSize = "11px";
+        feedToggle.style.letterSpacing = "0.06em";
+        feedToggle.style.textTransform = "uppercase";
+        feedToggle.addEventListener("click", () => {
+            if (!this.devMode) return;
+            this.debugFeedVisible = !this.debugFeedVisible;
+            this.applyDevModeVisibility();
+        });
+        root.appendChild(feedToggle);
+
+        const debugToggle = document.createElement("button");
+        debugToggle.type = "button";
+        debugToggle.textContent = "Schema Debug";
+        debugToggle.style.position = "absolute";
+        debugToggle.style.left = "286px";
+        debugToggle.style.bottom = "14px";
+        debugToggle.style.pointerEvents = "auto";
+        debugToggle.style.border = "1px solid rgba(140, 214, 200, 0.5)";
+        debugToggle.style.background = "rgba(10, 13, 18, 0.84)";
+        debugToggle.style.color = "#e9e2cf";
+        debugToggle.style.borderRadius = "8px";
+        debugToggle.style.padding = "6px 10px";
+        debugToggle.style.fontSize = "11px";
+        debugToggle.style.letterSpacing = "0.06em";
+        debugToggle.style.textTransform = "uppercase";
+        debugToggle.addEventListener("click", () => {
+            if (!this.devMode) return;
+            this.debugVisible = !this.debugVisible;
+            this.applyDevModeVisibility();
+            if (this.lastState) this.renderFromState(this.lastState);
+        });
+        root.appendChild(debugToggle);
 
         const debugPanel = document.createElement("div");
-        if (this.showDevUi) {
-            debugPanel.style.position = "absolute";
-            debugPanel.style.right = "14px";
-            debugPanel.style.bottom = "46px";
-            debugPanel.style.pointerEvents = "none";
-            debugPanel.style.padding = "8px 10px";
-            debugPanel.style.borderRadius = "9px";
-            debugPanel.style.border = "1px solid rgba(232, 159, 143, 0.45)";
-            debugPanel.style.background = "rgba(34, 16, 16, 0.88)";
-            debugPanel.style.fontFamily = "\"Chivo Mono\", monospace";
-            debugPanel.style.fontSize = "11px";
-            debugPanel.style.lineHeight = "1.4";
-            debugPanel.style.display = "none";
-            root.appendChild(debugPanel);
-        }
+        debugPanel.style.position = "absolute";
+        debugPanel.style.right = "14px";
+        debugPanel.style.bottom = "46px";
+        debugPanel.style.pointerEvents = "none";
+        debugPanel.style.padding = "8px 10px";
+        debugPanel.style.borderRadius = "9px";
+        debugPanel.style.border = "1px solid rgba(232, 159, 143, 0.45)";
+        debugPanel.style.background = "rgba(34, 16, 16, 0.88)";
+        debugPanel.style.fontFamily = "\"Chivo Mono\", monospace";
+        debugPanel.style.fontSize = "11px";
+        debugPanel.style.lineHeight = "1.4";
+        debugPanel.style.display = "none";
+        root.appendChild(debugPanel);
 
         this.overlayRoot = root;
         this.hudEl = hud;
         this.roomCardsEl = roomCards;
         this.securityDirectivePanelEl = securityDirectivePanel;
         this.eventsEl = events;
+        this.devModeMasterToggleEl = devModeToggle;
+        this.devFeedToggleEl = feedToggle;
+        this.devSchemaToggleEl = debugToggle;
         this.promptsEl = prompts;
         this.resolvingLayerEl = resolvingLayer;
         this.recapLayerEl = recapLayer;
@@ -1060,6 +1147,8 @@ export class SimSimScene {
         this.eodLayerEl = eodLayer;
         this.supervisorPanelEl = supervisorPanel;
         this.placementControlsEl = placementControls;
+        this.setAllDevPanelsVisible(this.devMode);
+        this.applyDevModeVisibility();
 
         mountEl.appendChild(root);
     }
@@ -1282,31 +1371,34 @@ export class SimSimScene {
                 latestRejection,
             });
         }
-        const inspectionCards = rooms
-            .map((room) => {
-                const acc = room.accidents_today ?? { count: 0, casualties: 0 };
-                const draftCode = this.placementsDraft[room.room_id] ?? room.supervisor ?? null;
-                const supervisor = draftCode ? supervisorByCode.get(draftCode) : undefined;
-                const supervisorLabel = supervisor ? supervisor.name : draftCode ?? "Unassigned";
-                const supervisorToken = room.locked
-                    ? roomCardSupervisorTokenHtml("LK", "")
-                    : roomCardSupervisorTokenHtml(draftCode ?? "—", supervisorLabel);
-                return renderInspectionRoomCardHtml({
-                    room,
-                    phase: displayPhase,
-                    tick: state.tick,
-                    supervisorLabel,
-                    supervisorToken,
-                    accidents: acc,
-                    forecast: overlayData.forecastByRoom.get(room.room_id),
-                });
-            })
-            .join("");
-        this.roomCardsEl.innerHTML = [
-            renderEventRailHtml(railCards, this.eventRailExpandedCardId),
-            `<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.75;margin:8px 0 4px 2px;">Inspection</div>`,
-            inspectionCards,
-        ].join("");
+        const roomCardsHtml: string[] = [renderEventRailHtml(railCards, this.eventRailExpandedCardId)];
+        if (this.devMode) {
+            const inspectionCards = rooms
+                .map((room) => {
+                    const acc = room.accidents_today ?? { count: 0, casualties: 0 };
+                    const draftCode = this.placementsDraft[room.room_id] ?? room.supervisor ?? null;
+                    const supervisor = draftCode ? supervisorByCode.get(draftCode) : undefined;
+                    const supervisorLabel = supervisor ? supervisor.name : draftCode ?? "Unassigned";
+                    const supervisorToken = room.locked
+                        ? roomCardSupervisorTokenHtml("LK", "")
+                        : roomCardSupervisorTokenHtml(draftCode ?? "—", supervisorLabel);
+                    return renderInspectionRoomCardHtml({
+                        room,
+                        phase: displayPhase,
+                        tick: state.tick,
+                        supervisorLabel,
+                        supervisorToken,
+                        accidents: acc,
+                        forecast: overlayData.forecastByRoom.get(room.room_id),
+                    });
+                })
+                .join("");
+            roomCardsHtml.push(
+                `<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.75;margin:8px 0 4px 2px;">Inspection (Dev)</div>`,
+                inspectionCards
+            );
+        }
+        this.roomCardsEl.innerHTML = roomCardsHtml.join("");
         const railButtons = this.roomCardsEl.querySelectorAll<HTMLButtonElement>("[data-event-rail-card-id]");
         for (const button of railButtons) {
             button.onclick = () => {
@@ -1332,7 +1424,7 @@ export class SimSimScene {
             this.focusPromptsPanel();
         }
 
-        if (this.eventsEl && this.showDevUi) {
+        if (this.eventsEl && this.devMode) {
             const eventRows = events.slice(-14).map((event) => {
                 const room = event.room_id ? ` room=${event.room_id}` : "";
                 const sup = event.supervisor ? ` ${event.supervisor}` : "";
@@ -1354,9 +1446,12 @@ export class SimSimScene {
                     this.renderFromState(state);
                 };
             }
+        } else if (this.eventsEl) {
+            this.eventsEl.style.display = "none";
+            this.eventsEl.innerHTML = "";
         }
 
-        if (this.debugPanelEl && this.showDevUi) {
+        if (this.debugPanelEl && this.devMode) {
             this.debugPanelEl.style.display = this.debugVisible ? "block" : "none";
             this.debugPanelEl.innerHTML = [
                 `<div>schema_version: ${state.schemaVersion ?? state.kernelHello?.schema_version ?? "-"}</div>`,
@@ -1366,6 +1461,9 @@ export class SimSimScene {
                 `<div>prompts: ${state.prompts.size}</div>`,
                 `<div>config: ${wm?.config_id ?? "-"}</div>`,
             ].join("");
+        } else if (this.debugPanelEl) {
+            this.debugPanelEl.style.display = "none";
+            this.debugPanelEl.innerHTML = "";
         }
     }
 
@@ -2874,7 +2972,7 @@ export class SimSimScene {
         }
         panel.appendChild(supervisorBar);
 
-        if (this.debugVisible) {
+        if (this.devMode && this.debugVisible) {
             const debugHeader = document.createElement("div");
             debugHeader.style.fontSize = "10px";
             debugHeader.style.letterSpacing = "0.06em";
@@ -3973,12 +4071,25 @@ function numberOrZero(value: number | undefined | null): number {
 }
 
 function isSimSimDevUiEnabled(): boolean {
-    const env = (import.meta as unknown as { env?: Record<string, unknown> }).env ?? {};
-    if (env["DEV"] === true) return true;
-    if (String(env["VITE_SIM_SIM_DEV_UI"] ?? "").trim() === "1") return true;
     if (typeof window === "undefined") return false;
     const query = new URLSearchParams(window.location.search);
-    return query.get("sim_sim_dev_ui") === "1";
+    const queryValue = query.get(DEV_UI_QUERY_PARAM)?.trim().toLowerCase();
+    if (queryValue === "1" || queryValue === "true" || queryValue === "on") return true;
+    if (queryValue === "0" || queryValue === "false" || queryValue === "off") return false;
+    try {
+        return window.localStorage.getItem(DEV_UI_STORAGE_KEY) === "1";
+    } catch {
+        return false;
+    }
+}
+
+function persistSimSimDevUiFlag(enabled: boolean): void {
+    if (typeof window === "undefined") return;
+    try {
+        window.localStorage.setItem(DEV_UI_STORAGE_KEY, enabled ? "1" : "0");
+    } catch {
+        // Ignore storage write failures (e.g., private mode restrictions).
+    }
 }
 
 function escapeHtml(value: string): string {
