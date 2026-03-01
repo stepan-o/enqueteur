@@ -2,9 +2,20 @@ import * as PIXI from "pixi.js";
 import type { SimSimEvent, SimSimPrompt, SimSimRoom, SimSimViewerState } from "./simSimStore";
 import { deriveEventRailCards, deriveForecastBandsPerRoom, deriveRecapPanels, deriveSecurityDirective, deriveSpotlightPrompt } from "./viewModel";
 import type { EventRailCard, ForecastBand, ForecastRoomBands, RecapDeltas, RecapPanel, SecurityDirective, SpotlightPrompt, SupervisorChange } from "./viewModel";
+import {
+    CANONICAL_VIEWPORT,
+    CCTV_FEED_RECTS,
+    TOP_STRIP_LEFT_CLUSTER_RECT,
+    anchorBottomLeft,
+    anchorBottomRight,
+    anchorTopLeft,
+    buildDirectorConsoleLayout,
+    inset,
+    listScaledDirectorRegions,
+} from "./ui/layout";
+import type { DirectorConsoleLayout, Rect } from "./ui/layout";
 
 type Vec2 = { x: number; y: number };
-type Bounds = { min_x: number; min_y: number; max_x: number; max_y: number };
 type SubmitPromptChoice = {
     tickTarget: number;
     promptId: string;
@@ -76,14 +87,6 @@ type RecapStripModel = {
 };
 type UiAudioCue = "pickup" | "magnet" | "drop" | "illegal" | "undo" | "rivet";
 
-const FALLBACK_LAYOUT: Record<number, Bounds> = {
-    1: { min_x: 0, min_y: 0, max_x: 12, max_y: 8 },
-    2: { min_x: 12, min_y: 0, max_x: 24, max_y: 8 },
-    3: { min_x: 24, min_y: 0, max_x: 36, max_y: 8 },
-    4: { min_x: 0, min_y: 8, max_x: 12, max_y: 16 },
-    5: { min_x: 12, min_y: 8, max_x: 24, max_y: 16 },
-    6: { min_x: 24, min_y: 8, max_x: 36, max_y: 16 },
-};
 const EOD_CONVERT_COST = 5;
 const EOD_SELL_WASHED_DUMB_PRICE = 10;
 const EOD_SELL_WASHED_SMART_PRICE = 25;
@@ -122,7 +125,9 @@ export class SimSimScene {
     private resolvingLayerEl?: HTMLDivElement;
     private recapLayerEl?: HTMLDivElement;
     private debugPanelEl?: HTMLDivElement;
+    private layoutDebugOverlayEl?: HTMLDivElement;
     private advanceDayButtonEl?: HTMLButtonElement;
+    private advanceControlsEl?: HTMLDivElement;
     private advanceStatusEl?: HTMLDivElement;
     private eodLayerEl?: HTMLDivElement;
     private securityDirectivePanelEl?: HTMLDivElement;
@@ -165,6 +170,7 @@ export class SimSimScene {
     private rivetPopUntilMs = 0;
     private audioCtx: AudioContext | null = null;
     private devModeHotkeyInstalled = false;
+    private directorLayout: DirectorConsoleLayout = buildDirectorConsoleLayout(CANONICAL_VIEWPORT.w, CANONICAL_VIEWPORT.h);
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     private readonly onAdvanceDay?: (payload: AdvanceDayPayload) => void;
     private readonly onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
@@ -189,6 +195,7 @@ export class SimSimScene {
         this.root.addChild(this.roomLayer, this.supervisorLayer, this.uiLayer);
         this.app.stage.addChild(this.root);
         this.installOverlay(mountEl);
+        this.updateLayoutModel();
         this.installDevModeHotkey();
         this.ready = true;
         this.setVisible(this.visible);
@@ -213,7 +220,96 @@ export class SimSimScene {
         const width = Math.max(1, Math.floor(rect.width));
         const height = Math.max(1, Math.floor(rect.height));
         this.app.renderer.resize(width, height);
+        this.updateLayoutModel();
         if (opts?.forceAutoFit && this.lastState) this.renderFromState(this.lastState);
+    }
+
+    private updateLayoutModel(): void {
+        const width = Math.max(1, this.app.renderer.width);
+        const height = Math.max(1, this.app.renderer.height);
+        this.directorLayout = buildDirectorConsoleLayout(width, height);
+        this.root.position.set(this.directorLayout.safeFrame.x, this.directorLayout.safeFrame.y);
+        this.root.scale.set(this.directorLayout.safeFrame.scale, this.directorLayout.safeFrame.scale);
+        this.applyOverlayRegionLayout();
+    }
+
+    private applyOverlayRegionLayout(): void {
+        if (!this.overlayRoot) return;
+        const scaled = this.directorLayout.scaled;
+        if (this.hudEl) {
+            applyAbsoluteRect(this.hudEl, scaled.topStripClusters.left);
+            this.hudEl.style.maxHeight = `${Math.max(64, scaled.topStripClusters.left.h)}px`;
+        }
+        if (this.advanceControlsEl) applyAbsoluteRect(this.advanceControlsEl, scaled.commandDeckZones.centerPrimary);
+        if (this.placementControlsEl) {
+            applyAbsoluteRect(this.placementControlsEl, scaled.commandDeckZones.rightSecondary);
+            this.placementControlsEl.style.maxHeight = `${Math.max(64, scaled.commandDeckZones.rightSecondary.h)}px`;
+        }
+        if (this.supervisorPanelEl) {
+            applyAbsoluteRect(this.supervisorPanelEl, scaled.commandDeckZones.leftRoster);
+            this.supervisorPanelEl.style.maxHeight = `${Math.max(64, scaled.commandDeckZones.leftRoster.h)}px`;
+        }
+        if (this.securityDirectivePanelEl) applyAbsoluteRect(this.securityDirectivePanelEl, scaled.rightColumnSplits.directive);
+        if (this.roomCardsEl) {
+            applyAbsoluteRect(this.roomCardsEl, scaled.rightColumnSplits.docket);
+            this.roomCardsEl.style.maxHeight = `${Math.max(64, scaled.rightColumnSplits.docket.h)}px`;
+        }
+        if (this.eodLayerEl) {
+            applyAbsoluteRect(this.eodLayerEl, scaled.overlays.eodBay);
+            this.eodLayerEl.style.maxHeight = `${Math.max(64, scaled.overlays.eodBay.h)}px`;
+        }
+
+        const safeInset = inset(this.directorLayout.safeFrame, 14);
+        const buttonHeight = Math.max(28, Math.round(30 * this.directorLayout.safeFrame.scale));
+        const devButtonsArea = anchorBottomLeft(safeInset, {
+            w: Math.round(420 * this.directorLayout.safeFrame.scale),
+            h: buttonHeight,
+        });
+        if (this.devModeMasterToggleEl) {
+            applyAbsoluteRect(this.devModeMasterToggleEl, anchorTopLeft(devButtonsArea, { w: Math.round(136 * this.directorLayout.safeFrame.scale), h: buttonHeight }));
+        }
+        if (this.devFeedToggleEl) {
+            applyAbsoluteRect(this.devFeedToggleEl, anchorTopLeft(devButtonsArea, { w: Math.round(120 * this.directorLayout.safeFrame.scale), h: buttonHeight }, { x: Math.round(146 * this.directorLayout.safeFrame.scale) }));
+        }
+        if (this.devSchemaToggleEl) {
+            applyAbsoluteRect(this.devSchemaToggleEl, anchorTopLeft(devButtonsArea, { w: Math.round(128 * this.directorLayout.safeFrame.scale), h: buttonHeight }, { x: Math.round(276 * this.directorLayout.safeFrame.scale) }));
+        }
+        if (this.eventsEl) {
+            applyAbsoluteRect(
+                this.eventsEl,
+                anchorBottomLeft(safeInset, { w: Math.round(460 * this.directorLayout.safeFrame.scale), h: Math.round(220 * this.directorLayout.safeFrame.scale) }, { y: buttonHeight + 8 })
+            );
+        }
+        if (this.debugPanelEl) {
+            applyAbsoluteRect(
+                this.debugPanelEl,
+                anchorBottomRight(safeInset, { w: Math.round(340 * this.directorLayout.safeFrame.scale), h: Math.round(120 * this.directorLayout.safeFrame.scale) }, { y: buttonHeight + 8 })
+            );
+        }
+        this.renderLayoutDebugOverlay();
+    }
+
+    private renderLayoutDebugOverlay(): void {
+        if (!this.layoutDebugOverlayEl) return;
+        const regions = listScaledDirectorRegions(this.directorLayout);
+        const html = regions
+            .map((region) => {
+                const color =
+                    region.group === "primary"
+                        ? "rgba(140,214,200,0.5)"
+                        : region.group === "overlay"
+                          ? "rgba(243,199,106,0.5)"
+                          : region.group === "feed"
+                            ? "rgba(232,159,143,0.42)"
+                            : "rgba(199,223,241,0.38)";
+                return [
+                    `<div style=\"position:absolute;left:${region.rect.x}px;top:${region.rect.y}px;width:${region.rect.w}px;height:${region.rect.h}px;border:1px solid ${color};border-radius:1px;box-sizing:border-box;\">`,
+                    `<div style=\"position:absolute;left:2px;top:2px;padding:1px 3px;border-radius:3px;background:rgba(5,8,13,0.62);color:#dce7ef;font-size:9px;line-height:1.2;letter-spacing:0.03em;white-space:nowrap;\">${escapeHtml(region.name)}</div>`,
+                    `</div>`,
+                ].join("");
+            })
+            .join("");
+        this.layoutDebugOverlayEl.innerHTML = html;
     }
 
     private nowMs(): number {
@@ -479,11 +575,10 @@ export class SimSimScene {
         this.roomLayer.removeChildren();
         this.supervisorLayer.removeChildren();
         this.uiLayer.removeChildren();
+        this.updateLayoutModel();
 
         const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
         this.syncPlacementEditorState(state, rooms);
-        const stageBounds = this.computeStageBounds(rooms);
-        const toScreen = this.makeProjector(stageBounds);
         const events = sortedEvents(state.events);
         const securityDirective = deriveSecurityDirective(this.resolveSecurityLeadCode(state, rooms), events);
         const forecastByRoom = new Map<number, ForecastRoomBands>(
@@ -495,7 +590,7 @@ export class SimSimScene {
         for (const room of rooms) {
             const draftSupervisorCode = this.placementsDraft[room.room_id] ?? room.supervisor ?? null;
             const supervisorName = draftSupervisorCode ? (state.supervisors.get(draftSupervisorCode)?.name ?? draftSupervisorCode) : "Unassigned";
-            this.drawRoom(room, toScreen, {
+            this.drawRoom(room, this.roomFeedRect(room.room_id), {
                 draftSupervisorCode,
                 supervisorName,
                 forecast: forecastByRoom.get(room.room_id),
@@ -514,8 +609,8 @@ export class SimSimScene {
                 stroke: { color: 0x161b20, width: 3 },
             },
         });
-        caption.x = 18;
-        caption.y = 16;
+        caption.x = TOP_STRIP_LEFT_CLUSTER_RECT.x + 4;
+        caption.y = TOP_STRIP_LEFT_CLUSTER_RECT.y + 2;
         this.uiLayer.addChild(caption);
 
         if (state.desynced) {
@@ -528,8 +623,8 @@ export class SimSimScene {
                     stroke: { color: 0x2a0f0f, width: 4 },
                 },
             });
-            banner.x = 18;
-            banner.y = this.app.renderer.height - 38;
+            banner.x = TOP_STRIP_LEFT_CLUSTER_RECT.x + 4;
+            banner.y = CANONICAL_VIEWPORT.h - 38;
             this.uiLayer.addChild(banner);
         }
 
@@ -541,41 +636,15 @@ export class SimSimScene {
         });
     }
 
-    private computeStageBounds(rooms: SimSimRoom[]): Bounds {
-        if (rooms.length === 0) return { min_x: 0, min_y: 0, max_x: 36, max_y: 16 };
-        let minX = Number.POSITIVE_INFINITY;
-        let minY = Number.POSITIVE_INFINITY;
-        let maxX = Number.NEGATIVE_INFINITY;
-        let maxY = Number.NEGATIVE_INFINITY;
-        for (const room of rooms) {
-            const b = this.roomBounds(room);
-            minX = Math.min(minX, b.min_x);
-            minY = Math.min(minY, b.min_y);
-            maxX = Math.max(maxX, b.max_x);
-            maxY = Math.max(maxY, b.max_y);
-        }
-        return { min_x: minX, min_y: minY, max_x: maxX, max_y: maxY };
-    }
-
-    private makeProjector(stage: Bounds): (x: number, y: number) => Vec2 {
-        const padX = 48;
-        const padY = 76;
-        const width = Math.max(1, this.app.renderer.width);
-        const height = Math.max(1, this.app.renderer.height);
-        const spanX = Math.max(1e-6, stage.max_x - stage.min_x);
-        const spanY = Math.max(1e-6, stage.max_y - stage.min_y);
-        const scale = Math.min((width - padX * 2) / spanX, (height - padY * 2) / spanY);
-        const baseX = (width - spanX * scale) * 0.5;
-        const baseY = (height - spanY * scale) * 0.5;
-        return (x: number, y: number) => ({
-            x: baseX + (x - stage.min_x) * scale,
-            y: baseY + (y - stage.min_y) * scale,
-        });
+    private roomFeedRect(roomId: number): Rect {
+        const roomRect = this.directorLayout.canonical.cctvFeedsByRoom[roomId];
+        if (roomRect) return roomRect;
+        return CCTV_FEED_RECTS[6] ?? { x: 956, y: 503, w: 440, h: 317 };
     }
 
     private drawRoom(
         room: SimSimRoom,
-        toScreen: (x: number, y: number) => Vec2,
+        rect: Rect,
         data: {
             draftSupervisorCode: string | null;
             supervisorName: string;
@@ -585,19 +654,17 @@ export class SimSimScene {
         }
     ): void {
         const { draftSupervisorCode, supervisorName, forecast, tick, swapBudget } = data;
-        const b = this.roomBounds(room);
-        const topLeft = toScreen(b.min_x, b.min_y);
-        const bottomRight = toScreen(b.max_x, b.max_y);
-        const width = Math.max(8, bottomRight.x - topLeft.x);
-        const height = Math.max(8, bottomRight.y - topLeft.y);
+        const topLeft: Vec2 = { x: rect.x, y: rect.y };
+        const width = Math.max(8, rect.w);
+        const height = Math.max(8, rect.h);
         const locked = room.locked;
         const fill = locked ? 0x402d2d : 0x223644;
         const line = locked ? 0xe89f8f : 0x8cd6c8;
-        const rect = new PIXI.Graphics();
-        rect.roundRect(topLeft.x, topLeft.y, width, height, 10);
-        rect.fill({ color: fill, alpha: locked ? 0.92 : 0.82 });
-        rect.stroke({ width: locked ? 3 : 2, color: line, alpha: 0.95 });
-        this.roomLayer.addChild(rect);
+        const frame = new PIXI.Graphics();
+        frame.roundRect(topLeft.x, topLeft.y, width, height, 10);
+        frame.fill({ color: fill, alpha: locked ? 0.92 : 0.82 });
+        frame.stroke({ width: locked ? 3 : 2, color: line, alpha: 0.95 });
+        this.roomLayer.addChild(frame);
         const selectedAsSource = !locked && this.selectedRoomId === room.room_id;
         const previewAsTarget =
             !locked &&
@@ -880,11 +947,6 @@ export class SimSimScene {
         this.roomLayer.addChild(wear);
     }
 
-    private roomBounds(room: SimSimRoom): Bounds {
-        if (room.bounds) return room.bounds;
-        return FALLBACK_LAYOUT[room.room_id] ?? { min_x: 0, min_y: 0, max_x: 10, max_y: 6 };
-    }
-
     private installOverlay(mountEl: HTMLElement): void {
         const root = document.createElement("div");
         root.style.position = "absolute";
@@ -895,10 +957,15 @@ export class SimSimScene {
         root.style.color = "#f3efe3";
         installSwapFxStyles(root);
 
+        const layoutDebugOverlay = document.createElement("div");
+        layoutDebugOverlay.style.position = "absolute";
+        layoutDebugOverlay.style.inset = "0";
+        layoutDebugOverlay.style.pointerEvents = "none";
+        layoutDebugOverlay.style.zIndex = "26";
+        root.appendChild(layoutDebugOverlay);
+
         const hud = document.createElement("div");
         hud.style.position = "absolute";
-        hud.style.left = "14px";
-        hud.style.top = "12px";
         hud.style.padding = "9px 11px";
         hud.style.borderRadius = "10px";
         hud.style.background = "rgba(10, 13, 18, 0.82)";
@@ -906,21 +973,17 @@ export class SimSimScene {
         hud.style.fontSize = "11px";
         hud.style.lineHeight = "1.4";
         hud.style.pointerEvents = "auto";
-        hud.style.width = "min(350px, 26vw)";
         hud.style.maxHeight = "20vh";
         hud.style.overflow = "hidden auto";
         root.appendChild(hud);
 
         const advanceControls = document.createElement("div");
         advanceControls.style.position = "absolute";
-        advanceControls.style.left = "14px";
-        advanceControls.style.top = "188px";
         advanceControls.style.padding = "10px 12px";
         advanceControls.style.borderRadius = "10px";
         advanceControls.style.border = "1px solid rgba(243, 199, 106, 0.45)";
         advanceControls.style.background = "rgba(24, 17, 9, 0.82)";
         advanceControls.style.pointerEvents = "auto";
-        advanceControls.style.width = "min(350px, 26vw)";
 
         const advanceButton = document.createElement("button");
         advanceButton.type = "button";
@@ -946,14 +1009,11 @@ export class SimSimScene {
 
         const eodLayer = document.createElement("div");
         eodLayer.style.position = "absolute";
-        eodLayer.style.left = "14px";
-        eodLayer.style.top = "188px";
         eodLayer.style.padding = "10px 12px";
         eodLayer.style.borderRadius = "10px";
         eodLayer.style.border = "1px solid rgba(243, 199, 106, 0.45)";
         eodLayer.style.background = "linear-gradient(165deg, rgba(24, 17, 9, 0.92), rgba(17, 23, 28, 0.92))";
         eodLayer.style.pointerEvents = "auto";
-        eodLayer.style.width = "min(350px, 26vw)";
         eodLayer.style.maxHeight = "48vh";
         eodLayer.style.overflow = "hidden auto";
         eodLayer.style.display = "none";
@@ -961,35 +1021,26 @@ export class SimSimScene {
 
         const supervisorPanel = document.createElement("div");
         supervisorPanel.style.position = "absolute";
-        supervisorPanel.style.left = "14px";
-        supervisorPanel.style.top = "500px";
         supervisorPanel.style.padding = "10px 12px";
         supervisorPanel.style.borderRadius = "10px";
         supervisorPanel.style.border = "1px solid rgba(140, 214, 200, 0.42)";
         supervisorPanel.style.background = "rgba(13, 20, 28, 0.86)";
         supervisorPanel.style.pointerEvents = "auto";
-        supervisorPanel.style.width = "min(350px, 26vw)";
         supervisorPanel.style.maxHeight = "30vh";
         supervisorPanel.style.overflowY = "auto";
         root.appendChild(supervisorPanel);
 
         const placementControls = document.createElement("div");
         placementControls.style.position = "absolute";
-        placementControls.style.left = "14px";
-        placementControls.style.top = "320px";
         placementControls.style.padding = "10px 12px";
         placementControls.style.borderRadius = "10px";
         placementControls.style.border = "1px solid rgba(243, 199, 106, 0.45)";
         placementControls.style.background = "rgba(24, 17, 9, 0.86)";
         placementControls.style.pointerEvents = "auto";
-        placementControls.style.width = "min(350px, 26vw)";
         root.appendChild(placementControls);
 
         const roomCards = document.createElement("div");
         roomCards.style.position = "absolute";
-        roomCards.style.right = "14px";
-        roomCards.style.top = "172px";
-        roomCards.style.width = "min(400px, 28vw)";
         roomCards.style.maxHeight = "58vh";
         roomCards.style.overflowY = "auto";
         roomCards.style.display = "grid";
@@ -999,9 +1050,6 @@ export class SimSimScene {
 
         const securityDirectivePanel = document.createElement("div");
         securityDirectivePanel.style.position = "absolute";
-        securityDirectivePanel.style.right = "14px";
-        securityDirectivePanel.style.top = "14px";
-        securityDirectivePanel.style.width = "min(400px, 28vw)";
         securityDirectivePanel.style.padding = "10px 12px";
         securityDirectivePanel.style.borderRadius = "10px";
         securityDirectivePanel.style.pointerEvents = "auto";
@@ -1012,9 +1060,6 @@ export class SimSimScene {
 
         const events = document.createElement("div");
         events.style.position = "absolute";
-        events.style.left = "14px";
-        events.style.bottom = "14px";
-        events.style.width = "min(460px, 34vw)";
         events.style.maxHeight = "24vh";
         events.style.overflow = "hidden auto";
         events.style.padding = "8px 10px";
@@ -1055,8 +1100,6 @@ export class SimSimScene {
         devModeToggle.type = "button";
         devModeToggle.textContent = "Dev Panels: OFF";
         devModeToggle.style.position = "absolute";
-        devModeToggle.style.left = "14px";
-        devModeToggle.style.bottom = "14px";
         devModeToggle.style.pointerEvents = "auto";
         devModeToggle.style.border = "1px solid rgba(140, 214, 200, 0.42)";
         devModeToggle.style.background = "rgba(10, 13, 18, 0.84)";
@@ -1076,8 +1119,6 @@ export class SimSimScene {
         feedToggle.type = "button";
         feedToggle.textContent = "Debug Feed";
         feedToggle.style.position = "absolute";
-        feedToggle.style.left = "156px";
-        feedToggle.style.bottom = "14px";
         feedToggle.style.pointerEvents = "auto";
         feedToggle.style.border = "1px solid rgba(243, 199, 106, 0.5)";
         feedToggle.style.background = "rgba(10, 13, 18, 0.84)";
@@ -1098,8 +1139,6 @@ export class SimSimScene {
         debugToggle.type = "button";
         debugToggle.textContent = "Schema Debug";
         debugToggle.style.position = "absolute";
-        debugToggle.style.left = "286px";
-        debugToggle.style.bottom = "14px";
         debugToggle.style.pointerEvents = "auto";
         debugToggle.style.border = "1px solid rgba(140, 214, 200, 0.5)";
         debugToggle.style.background = "rgba(10, 13, 18, 0.84)";
@@ -1119,8 +1158,6 @@ export class SimSimScene {
 
         const debugPanel = document.createElement("div");
         debugPanel.style.position = "absolute";
-        debugPanel.style.right = "14px";
-        debugPanel.style.bottom = "46px";
         debugPanel.style.pointerEvents = "none";
         debugPanel.style.padding = "8px 10px";
         debugPanel.style.borderRadius = "9px";
@@ -1144,13 +1181,16 @@ export class SimSimScene {
         this.resolvingLayerEl = resolvingLayer;
         this.recapLayerEl = recapLayer;
         this.debugPanelEl = debugPanel;
+        this.layoutDebugOverlayEl = layoutDebugOverlay;
         this.advanceDayButtonEl = advanceButton;
+        this.advanceControlsEl = advanceControls;
         this.advanceStatusEl = advanceStatus;
         this.eodLayerEl = eodLayer;
         this.supervisorPanelEl = supervisorPanel;
         this.placementControlsEl = placementControls;
         this.setAllDevPanelsVisible(this.devMode);
         this.applyDevModeVisibility();
+        this.applyOverlayRegionLayout();
 
         mountEl.appendChild(root);
     }
@@ -1258,7 +1298,7 @@ export class SimSimScene {
         ].join("");
 
         const latestRejection = findLatestInputRejection(events);
-        const advanceControlsEl = this.advanceDayButtonEl?.parentElement;
+        const advanceControlsEl = this.advanceControlsEl;
         if (advanceControlsEl) {
             advanceControlsEl.style.display = endOfDayPhase || recapPhase || resolvingPhase ? "none" : "block";
         }
@@ -1528,17 +1568,14 @@ export class SimSimScene {
         const backdrop = document.createElement("div");
         backdrop.style.position = "absolute";
         backdrop.style.inset = "0";
-        backdrop.style.display = "flex";
-        backdrop.style.alignItems = "center";
-        backdrop.style.justifyContent = "center";
-        backdrop.style.padding = "20px";
         backdrop.style.background = "radial-gradient(circle at 50% 12%, rgba(243, 199, 106, 0.1), rgba(4, 8, 13, 0.82) 42%, rgba(3, 5, 8, 0.92) 100%)";
         backdrop.style.backdropFilter = "blur(2px)";
         backdrop.style.pointerEvents = "auto";
 
         const card = document.createElement("section");
-        card.style.width = "min(1120px, 96vw)";
-        card.style.maxHeight = "92vh";
+        card.style.position = "absolute";
+        applyAbsoluteRect(card, this.directorLayout.scaled.overlays.recap);
+        card.style.maxHeight = `${this.directorLayout.scaled.overlays.recap.h}px`;
         card.style.overflow = "hidden auto";
         card.style.borderRadius = "16px";
         card.style.border = "1px solid rgba(243, 199, 106, 0.5)";
@@ -2011,17 +2048,14 @@ export class SimSimScene {
         const backdrop = document.createElement("div");
         backdrop.style.position = "absolute";
         backdrop.style.inset = "0";
-        backdrop.style.padding = "18px";
-        backdrop.style.display = "flex";
-        backdrop.style.alignItems = "center";
-        backdrop.style.justifyContent = "center";
         backdrop.style.background = "radial-gradient(circle at 50% 8%, rgba(243,199,106,0.14), rgba(4,8,13,0.84) 40%, rgba(4,8,13,0.92) 100%)";
         backdrop.style.backdropFilter = "blur(1.6px)";
         backdrop.style.pointerEvents = "auto";
         layer.appendChild(backdrop);
 
         const panel = document.createElement("section");
-        panel.style.width = "min(620px, 92vw)";
+        panel.style.position = "absolute";
+        applyAbsoluteRect(panel, this.directorLayout.scaled.overlays.resolvingTracker);
         panel.style.borderRadius = "14px";
         panel.style.border = "1px solid rgba(243, 199, 106, 0.55)";
         panel.style.background = "linear-gradient(165deg, rgba(8, 15, 24, 0.96), rgba(18, 14, 9, 0.94))";
@@ -2029,6 +2063,7 @@ export class SimSimScene {
         panel.style.padding = "12px 13px";
         panel.style.display = "grid";
         panel.style.gap = "8px";
+        panel.style.overflow = "hidden";
         backdrop.appendChild(panel);
 
         const revealedCount = session.awaitingResolution ? 0 : Math.max(0, session.beatIndex + 1);
@@ -2036,6 +2071,7 @@ export class SimSimScene {
             ? "Awaiting snapshot/diff from kernel..."
             : `Revealing beat ${Math.min(revealedCount, session.beats.length)}/${session.beats.length}`;
         const currentBeat = !session.awaitingResolution && session.beatIndex >= 0 ? session.beats[session.beatIndex] : null;
+        const beatListHeight = Math.max(20, Math.floor(this.directorLayout.scaled.overlays.resolvingTracker.h - 84));
 
         panel.innerHTML = [
             `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">`,
@@ -2043,7 +2079,7 @@ export class SimSimScene {
             `<div style="font-size:10px;opacity:0.78;">day ${state.worldMeta?.day ?? "-"} • tick ${state.tick}</div>`,
             `</div>`,
             `<div style="font-size:11px;opacity:0.92;color:${session.awaitingResolution ? "#f3efe3" : "#f3c76a"};">${escapeHtml(statusText)}</div>`,
-            `<div style="display:grid;gap:6px;max-height:46vh;overflow:auto;padding-right:2px;">`,
+            `<div style="display:grid;gap:6px;max-height:${beatListHeight}px;overflow:auto;padding-right:2px;">`,
             session.beats
                 .map((beat, index) => {
                     const revealed = index < revealedCount;
@@ -3066,18 +3102,14 @@ export class SimSimScene {
         const backdrop = document.createElement("div");
         backdrop.style.position = "absolute";
         backdrop.style.inset = "0";
-        backdrop.style.display = "flex";
-        backdrop.style.alignItems = "center";
-        backdrop.style.justifyContent = "center";
-        backdrop.style.padding = "26px";
         backdrop.style.background = "radial-gradient(circle at 50% 22%, rgba(243, 199, 106, 0.08), rgba(4, 8, 13, 0.72) 35%, rgba(3, 5, 8, 0.88) 100%)";
         backdrop.style.backdropFilter = "blur(1.6px)";
         backdrop.style.pointerEvents = "auto";
 
         const card = document.createElement("div");
         card.dataset.spotlightPopup = "1";
-        card.style.position = "relative";
-        card.style.width = "min(680px, 94vw)";
+        card.style.position = "absolute";
+        applyAbsoluteRect(card, this.directorLayout.scaled.overlays.spotlight);
         card.style.borderRadius = "16px";
         card.style.border = "1px solid rgba(243, 199, 106, 0.52)";
         card.style.background = "linear-gradient(160deg, rgba(8, 15, 24, 0.96) 0%, rgba(20, 16, 9, 0.94) 100%)";
@@ -3260,6 +3292,13 @@ export class SimSimScene {
         backdrop.appendChild(card);
         this.promptsEl.appendChild(backdrop);
     }
+}
+
+function applyAbsoluteRect(element: HTMLElement, rect: Rect): void {
+    element.style.left = `${Math.round(rect.x)}px`;
+    element.style.top = `${Math.round(rect.y)}px`;
+    element.style.width = `${Math.max(0, Math.round(rect.w))}px`;
+    element.style.height = `${Math.max(0, Math.round(rect.h))}px`;
 }
 
 type InspectionRoomCardArgs = {
