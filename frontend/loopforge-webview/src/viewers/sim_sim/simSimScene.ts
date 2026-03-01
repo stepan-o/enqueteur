@@ -1,7 +1,7 @@
 import * as PIXI from "pixi.js";
 import type { SimSimEvent, SimSimPrompt, SimSimRoom, SimSimViewerState } from "./simSimStore";
-import { deriveForecastBandsPerRoom, deriveSecurityDirective } from "./viewModel";
-import type { ForecastBand, ForecastRoomBands, SecurityDirective } from "./viewModel";
+import { deriveEventRailCards, deriveForecastBandsPerRoom, deriveSecurityDirective } from "./viewModel";
+import type { EventRailCard, ForecastBand, ForecastRoomBands, SecurityDirective } from "./viewModel";
 
 type Vec2 = { x: number; y: number };
 type Bounds = { min_x: number; min_y: number; max_x: number; max_y: number };
@@ -35,6 +35,7 @@ const FALLBACK_LAYOUT: Record<number, Bounds> = {
 
 export class SimSimScene {
     public readonly app: PIXI.Application;
+    private readonly showDevUi = isSimSimDevUiEnabled();
 
     private mountEl?: HTMLElement;
     private ready = false;
@@ -69,7 +70,9 @@ export class SimSimScene {
     private advanceInFlightStateKey: string | null = null;
     private advanceStatusOverride: { text: string; color: string; untilMs: number } | null = null;
     private promptsFlashTimer: number | null = null;
+    private eventRailExpandedCardId: string | null = null;
     private liveFeedCollapsed = true;
+    private debugFeedVisible = false;
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     private readonly onAdvanceDay?: (payload: AdvanceDayPayload) => void;
     private readonly onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
@@ -522,20 +525,23 @@ export class SimSimScene {
         root.appendChild(securityDirectivePanel);
 
         const events = document.createElement("div");
-        events.style.position = "absolute";
-        events.style.left = "14px";
-        events.style.bottom = "14px";
-        events.style.width = "min(460px, 34vw)";
-        events.style.maxHeight = "24vh";
-        events.style.overflow = "hidden auto";
-        events.style.padding = "8px 10px";
-        events.style.borderRadius = "10px";
-        events.style.background = "rgba(10, 13, 18, 0.7)";
-        events.style.border = "1px solid rgba(243, 199, 106, 0.34)";
-        events.style.fontSize = "11px";
-        events.style.lineHeight = "1.3";
-        events.style.pointerEvents = "auto";
-        root.appendChild(events);
+        if (this.showDevUi) {
+            events.style.position = "absolute";
+            events.style.left = "14px";
+            events.style.bottom = "14px";
+            events.style.width = "min(460px, 34vw)";
+            events.style.maxHeight = "24vh";
+            events.style.overflow = "hidden auto";
+            events.style.padding = "8px 10px";
+            events.style.borderRadius = "10px";
+            events.style.background = "rgba(10, 13, 18, 0.7)";
+            events.style.border = "1px solid rgba(243, 199, 106, 0.34)";
+            events.style.fontSize = "11px";
+            events.style.lineHeight = "1.3";
+            events.style.pointerEvents = "auto";
+            events.style.display = "none";
+            root.appendChild(events);
+        }
 
         const prompts = document.createElement("div");
         prompts.style.position = "absolute";
@@ -554,40 +560,67 @@ export class SimSimScene {
         prompts.style.pointerEvents = "auto";
         root.appendChild(prompts);
 
-        const debugToggle = document.createElement("button");
-        debugToggle.type = "button";
-        debugToggle.textContent = "Schema Debug";
-        debugToggle.style.position = "absolute";
-        debugToggle.style.right = "14px";
-        debugToggle.style.bottom = "14px";
-        debugToggle.style.pointerEvents = "auto";
-        debugToggle.style.border = "1px solid rgba(140, 214, 200, 0.5)";
-        debugToggle.style.background = "rgba(10, 13, 18, 0.84)";
-        debugToggle.style.color = "#e9e2cf";
-        debugToggle.style.borderRadius = "8px";
-        debugToggle.style.padding = "6px 10px";
-        debugToggle.style.fontSize = "11px";
-        debugToggle.style.letterSpacing = "0.06em";
-        debugToggle.style.textTransform = "uppercase";
-        debugToggle.addEventListener("click", () => {
-            this.debugVisible = !this.debugVisible;
-            if (this.debugPanelEl) this.debugPanelEl.style.display = this.debugVisible ? "block" : "none";
-        });
-        root.appendChild(debugToggle);
+        if (this.showDevUi) {
+            const feedToggle = document.createElement("button");
+            feedToggle.type = "button";
+            feedToggle.textContent = "Debug Feed";
+            feedToggle.style.position = "absolute";
+            feedToggle.style.left = "14px";
+            feedToggle.style.bottom = "14px";
+            feedToggle.style.pointerEvents = "auto";
+            feedToggle.style.border = "1px solid rgba(243, 199, 106, 0.5)";
+            feedToggle.style.background = "rgba(10, 13, 18, 0.84)";
+            feedToggle.style.color = "#e9e2cf";
+            feedToggle.style.borderRadius = "8px";
+            feedToggle.style.padding = "6px 10px";
+            feedToggle.style.fontSize = "11px";
+            feedToggle.style.letterSpacing = "0.06em";
+            feedToggle.style.textTransform = "uppercase";
+            feedToggle.addEventListener("click", () => {
+                this.debugFeedVisible = !this.debugFeedVisible;
+                if (this.eventsEl) this.eventsEl.style.display = this.debugFeedVisible ? "block" : "none";
+                feedToggle.textContent = this.debugFeedVisible ? "Hide Debug Feed" : "Debug Feed";
+            });
+            root.appendChild(feedToggle);
+
+            const debugToggle = document.createElement("button");
+            debugToggle.type = "button";
+            debugToggle.textContent = "Schema Debug";
+            debugToggle.style.position = "absolute";
+            debugToggle.style.right = "14px";
+            debugToggle.style.bottom = "14px";
+            debugToggle.style.pointerEvents = "auto";
+            debugToggle.style.border = "1px solid rgba(140, 214, 200, 0.5)";
+            debugToggle.style.background = "rgba(10, 13, 18, 0.84)";
+            debugToggle.style.color = "#e9e2cf";
+            debugToggle.style.borderRadius = "8px";
+            debugToggle.style.padding = "6px 10px";
+            debugToggle.style.fontSize = "11px";
+            debugToggle.style.letterSpacing = "0.06em";
+            debugToggle.style.textTransform = "uppercase";
+            debugToggle.addEventListener("click", () => {
+                this.debugVisible = !this.debugVisible;
+                if (this.debugPanelEl) this.debugPanelEl.style.display = this.debugVisible ? "block" : "none";
+            });
+            root.appendChild(debugToggle);
+        }
 
         const debugPanel = document.createElement("div");
-        debugPanel.style.position = "absolute";
-        debugPanel.style.right = "14px";
-        debugPanel.style.bottom = "46px";
-        debugPanel.style.pointerEvents = "none";
-        debugPanel.style.padding = "8px 10px";
-        debugPanel.style.borderRadius = "9px";
-        debugPanel.style.border = "1px solid rgba(232, 159, 143, 0.45)";
-        debugPanel.style.background = "rgba(34, 16, 16, 0.88)";
-        debugPanel.style.fontFamily = "\"Chivo Mono\", monospace";
-        debugPanel.style.fontSize = "11px";
-        debugPanel.style.lineHeight = "1.4";
-        root.appendChild(debugPanel);
+        if (this.showDevUi) {
+            debugPanel.style.position = "absolute";
+            debugPanel.style.right = "14px";
+            debugPanel.style.bottom = "46px";
+            debugPanel.style.pointerEvents = "none";
+            debugPanel.style.padding = "8px 10px";
+            debugPanel.style.borderRadius = "9px";
+            debugPanel.style.border = "1px solid rgba(232, 159, 143, 0.45)";
+            debugPanel.style.background = "rgba(34, 16, 16, 0.88)";
+            debugPanel.style.fontFamily = "\"Chivo Mono\", monospace";
+            debugPanel.style.fontSize = "11px";
+            debugPanel.style.lineHeight = "1.4";
+            debugPanel.style.display = "none";
+            root.appendChild(debugPanel);
+        }
 
         this.overlayRoot = root;
         this.hudEl = hud;
@@ -617,9 +650,7 @@ export class SimSimScene {
         if (
             !this.hudEl ||
             !this.roomCardsEl ||
-            !this.eventsEl ||
             !this.promptsEl ||
-            !this.debugPanelEl ||
             !this.securityDirectivePanelEl ||
             !this.supervisorPanelEl ||
             !this.placementControlsEl
@@ -741,6 +772,13 @@ export class SimSimScene {
         }
 
         const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
+        const railCards = deriveEventRailCards(events, rooms, prompts)
+            .filter((card) => card.source === "event")
+            .filter((card) => !isPromptLifecycleCard(card))
+            .slice(-10);
+        if (this.eventRailExpandedCardId && !railCards.some((card) => card.id === this.eventRailExpandedCardId)) {
+            this.eventRailExpandedCardId = null;
+        }
         this.renderSecurityDirectivePanel(overlayData.securityDirective);
         const swapsUsed = this.computeSwapsUsed(this.placementsDraft, this.placementsBaseline);
         const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) <= 2 ? 1 : 2);
@@ -775,9 +813,18 @@ export class SimSimScene {
             })
             .join("");
         this.roomCardsEl.innerHTML = [
-            `<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.75;margin:0 0 4px 2px;">Inspection</div>`,
+            renderEventRailHtml(railCards, this.eventRailExpandedCardId),
+            `<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.75;margin:8px 0 4px 2px;">Inspection</div>`,
             inspectionCards,
         ].join("");
+        const railButtons = this.roomCardsEl.querySelectorAll<HTMLButtonElement>("[data-event-rail-card-id]");
+        for (const button of railButtons) {
+            button.onclick = () => {
+                const cardId = button.dataset.eventRailCardId ?? "";
+                this.eventRailExpandedCardId = this.eventRailExpandedCardId === cardId ? null : cardId;
+                this.renderFromState(state);
+            };
+        }
 
         this.renderSupervisorPlacementsPanel(state, rooms, {
             controlsDisabled,
@@ -791,37 +838,41 @@ export class SimSimScene {
             this.focusPromptsPanel();
         }
 
-        const eventRows = events.slice(-14).map((event) => {
-            const room = event.room_id ? ` room=${event.room_id}` : "";
-            const sup = event.supervisor ? ` ${event.supervisor}` : "";
-            const details = event.details ? ` ${JSON.stringify(event.details)}` : "";
-            return `<div>t${event.tick} #${event.event_id} <strong>${event.kind}</strong>${room}${sup}${details}</div>`;
-        });
-        const visibleRows = this.liveFeedCollapsed ? eventRows.slice(-3) : eventRows;
-        this.eventsEl.innerHTML = [
-            `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">`,
-            `<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.8;">Live Feed</div>`,
-            `<button data-live-feed-toggle="1" type="button" style="pointer-events:auto;border:1px solid rgba(243,199,106,0.55);background:rgba(24,17,9,0.9);color:#f3efe3;border-radius:7px;padding:3px 8px;font-size:10px;cursor:pointer;">${this.liveFeedCollapsed ? "Expand" : "Collapse"}</button>`,
-            `</div>`,
-            `<div style="max-height:${this.liveFeedCollapsed ? "68px" : "22vh"};overflow:hidden auto;display:grid;gap:2px;">${visibleRows.join("")}</div>`,
-        ].join("");
-        const liveFeedToggle = this.eventsEl.querySelector<HTMLButtonElement>("[data-live-feed-toggle='1']");
-        if (liveFeedToggle) {
-            liveFeedToggle.onclick = () => {
-                this.liveFeedCollapsed = !this.liveFeedCollapsed;
-                this.renderFromState(state);
-            };
+        if (this.eventsEl && this.showDevUi) {
+            const eventRows = events.slice(-14).map((event) => {
+                const room = event.room_id ? ` room=${event.room_id}` : "";
+                const sup = event.supervisor ? ` ${event.supervisor}` : "";
+                const details = event.details ? ` ${JSON.stringify(event.details)}` : "";
+                return `<div>t${event.tick} #${event.event_id} <strong>${event.kind}</strong>${room}${sup}${details}</div>`;
+            });
+            const visibleRows = this.liveFeedCollapsed ? eventRows.slice(-3) : eventRows;
+            this.eventsEl.innerHTML = [
+                `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">`,
+                `<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.8;">Live Feed (Dev)</div>`,
+                `<button data-live-feed-toggle="1" type="button" style="pointer-events:auto;border:1px solid rgba(243,199,106,0.55);background:rgba(24,17,9,0.9);color:#f3efe3;border-radius:7px;padding:3px 8px;font-size:10px;cursor:pointer;">${this.liveFeedCollapsed ? "Expand" : "Collapse"}</button>`,
+                `</div>`,
+                `<div style="max-height:${this.liveFeedCollapsed ? "68px" : "22vh"};overflow:hidden auto;display:grid;gap:2px;">${visibleRows.join("")}</div>`,
+            ].join("");
+            const liveFeedToggle = this.eventsEl.querySelector<HTMLButtonElement>("[data-live-feed-toggle='1']");
+            if (liveFeedToggle) {
+                liveFeedToggle.onclick = () => {
+                    this.liveFeedCollapsed = !this.liveFeedCollapsed;
+                    this.renderFromState(state);
+                };
+            }
         }
 
-        this.debugPanelEl.style.display = this.debugVisible ? "block" : "none";
-        this.debugPanelEl.innerHTML = [
-            `<div>schema_version: ${state.schemaVersion ?? state.kernelHello?.schema_version ?? "-"}</div>`,
-            `<div>last_msg_type: ${state.lastMsgType ?? "-"}</div>`,
-            `<div>last_applied_diff_count: ${state.lastAppliedDiffCount}</div>`,
-            `<div>diffs_applied_total: ${state.diffsAppliedTotal}</div>`,
-            `<div>prompts: ${state.prompts.size}</div>`,
-            `<div>config: ${wm?.config_id ?? "-"}</div>`,
-        ].join("");
+        if (this.debugPanelEl && this.showDevUi) {
+            this.debugPanelEl.style.display = this.debugVisible ? "block" : "none";
+            this.debugPanelEl.innerHTML = [
+                `<div>schema_version: ${state.schemaVersion ?? state.kernelHello?.schema_version ?? "-"}</div>`,
+                `<div>last_msg_type: ${state.lastMsgType ?? "-"}</div>`,
+                `<div>last_applied_diff_count: ${state.lastAppliedDiffCount}</div>`,
+                `<div>diffs_applied_total: ${state.diffsAppliedTotal}</div>`,
+                `<div>prompts: ${state.prompts.size}</div>`,
+                `<div>config: ${wm?.config_id ?? "-"}</div>`,
+            ].join("");
+        }
     }
 
     private renderSecurityDirectivePanel(directive: SecurityDirective): void {
@@ -1845,6 +1896,133 @@ function roomCardSupervisorTokenHtml(code: string, name: string): string {
         `border:1px solid rgba(243, 199, 106, 0.78);background:radial-gradient(circle at 35% 30%, rgba(243,199,106,0.28), rgba(20,29,37,0.95) 72%);`,
         `font-size:11px;font-weight:700;line-height:1;color:#f3efe3;box-shadow:0 0 10px rgba(243,199,106,0.22);">${safeCode}</span>`,
     ].join("");
+}
+
+type EventRailStampTone = "info" | "warning" | "danger" | "success";
+
+function renderEventRailHtml(cards: EventRailCard[], expandedCardId: string | null): string {
+    const rows = cards.length === 0
+        ? `<div style="font-size:11px;opacity:0.78;padding:8px 2px;">No events yet. Advance day to populate rail.</div>`
+        : cards
+              .map((card) => {
+                  const stamp = eventRailStampForCard(card);
+                  const expanded = expandedCardId === card.id;
+                  const chips = eventRailDeltaChips(card.details);
+                  return [
+                      `<button data-event-rail-card-id="${escapeHtml(card.id)}" type="button" aria-expanded="${expanded ? "true" : "false"}" style="border:1px solid ${stamp.border};background:${stamp.background};color:#f3efe3;border-radius:9px;padding:8px 9px;width:100%;text-align:left;display:grid;gap:6px;cursor:pointer;pointer-events:auto;">`,
+                      `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">`,
+                      `<span style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;padding:2px 6px;border-radius:999px;border:1px solid ${stamp.badgeBorder};background:${stamp.badgeBg};">${stamp.label}</span>`,
+                      `<span style="font-size:10px;opacity:0.74;">${escapeHtml(card.stamp)}</span>`,
+                      `</div>`,
+                      `<div style="font-size:12px;font-weight:700;line-height:1.3;">${escapeHtml(card.title)}</div>`,
+                      `<div style="font-size:10px;opacity:0.86;">${escapeHtml(card.subtitle)}</div>`,
+                      chips.length > 0
+                          ? `<div style="display:flex;flex-wrap:wrap;gap:6px;">${chips
+                                .map(
+                                    (chip) =>
+                                        `<span style="font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid rgba(140,214,200,0.35);background:rgba(9,18,25,0.5);opacity:0.94;">${escapeHtml(chip)}</span>`
+                                )
+                                .join("")}</div>`
+                          : "",
+                      expanded
+                          ? `<div style="font-size:11px;line-height:1.35;opacity:0.92;border-top:1px solid rgba(159,176,191,0.28);padding-top:6px;">${escapeHtml(shortCaption(card))}</div>`
+                          : "",
+                      `</button>`,
+                  ].join("");
+              })
+              .join("");
+
+    return [
+        `<section style="border:1px solid rgba(243,199,106,0.36);background:rgba(12,18,24,0.74);border-radius:10px;padding:8px 8px 9px;display:grid;gap:7px;">`,
+        `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">`,
+        `<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.86;">EventRail</div>`,
+        `<div style="font-size:10px;opacity:0.68;">minor/notable</div>`,
+        `</div>`,
+        `<div style="display:grid;gap:6px;">${rows}</div>`,
+        `</section>`,
+    ].join("");
+}
+
+function isPromptLifecycleCard(card: EventRailCard): boolean {
+    const kind = card.kind.toLowerCase();
+    return kind.startsWith("prompt_") || kind.startsWith("pending_");
+}
+
+function shortCaption(card: EventRailCard): string {
+    if (card.details && card.details !== "no details") return card.details;
+    if (card.subtitle) return card.subtitle;
+    return "No additional details.";
+}
+
+function eventRailDeltaChips(details: string): string[] {
+    if (!details || details === "no details") return [];
+    return details
+        .split(",")
+        .map((token) => token.trim())
+        .filter((token) => token.includes("=") && !token.endsWith("{...}"))
+        .slice(0, 3);
+}
+
+function eventRailStampForCard(card: EventRailCard): {
+    label: Uppercase<EventRailStampTone>;
+    border: string;
+    background: string;
+    badgeBorder: string;
+    badgeBg: string;
+} {
+    const tone = eventRailStampTone(card);
+    if (tone === "danger") {
+        return {
+            label: "DANGER",
+            border: "rgba(231,123,75,0.6)",
+            background: "linear-gradient(165deg, rgba(38,16,16,0.9), rgba(24,12,12,0.9))",
+            badgeBorder: "rgba(231,123,75,0.9)",
+            badgeBg: "rgba(54,18,16,0.84)",
+        };
+    }
+    if (tone === "success") {
+        return {
+            label: "SUCCESS",
+            border: "rgba(118,214,161,0.58)",
+            background: "linear-gradient(165deg, rgba(10,31,28,0.86), rgba(10,20,22,0.88))",
+            badgeBorder: "rgba(118,214,161,0.86)",
+            badgeBg: "rgba(11,44,38,0.72)",
+        };
+    }
+    if (tone === "warning") {
+        return {
+            label: "WARNING",
+            border: "rgba(243,199,106,0.56)",
+            background: "linear-gradient(165deg, rgba(36,25,11,0.87), rgba(20,14,9,0.9))",
+            badgeBorder: "rgba(243,199,106,0.85)",
+            badgeBg: "rgba(51,34,12,0.72)",
+        };
+    }
+    return {
+        label: "INFO",
+        border: "rgba(140,214,200,0.5)",
+        background: "linear-gradient(165deg, rgba(12,22,28,0.86), rgba(11,16,22,0.88))",
+        badgeBorder: "rgba(140,214,200,0.78)",
+        badgeBg: "rgba(12,34,38,0.66)",
+    };
+}
+
+function eventRailStampTone(card: EventRailCard): EventRailStampTone {
+    const kind = card.kind.toLowerCase();
+    if (kind === "critical_suppressed" || kind === "assignment_resolved" || kind === "security_redistribution") return "success";
+    if (kind === "critical_triggered" || kind === "conflict_event" || kind === "input_rejected") return "danger";
+    if (kind.includes("casualt") || kind.includes("critical") || kind.includes("conflict")) return "danger";
+    if (card.severity === "notable") return "warning";
+    return "info";
+}
+
+function isSimSimDevUiEnabled(): boolean {
+    const env = (import.meta as unknown as { env?: Record<string, unknown> }).env ?? {};
+    if (env["DEV"] === true) return true;
+    if (String(env["VITE_SIM_SIM_DEV_UI"] ?? "").trim() === "1") return true;
+    if (typeof window === "undefined") return false;
+    const query = new URLSearchParams(window.location.search);
+    return query.get("sim_sim_dev_ui") === "1";
 }
 
 function escapeHtml(value: string): string {

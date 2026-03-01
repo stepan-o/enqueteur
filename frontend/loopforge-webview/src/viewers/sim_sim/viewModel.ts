@@ -54,6 +54,7 @@ export type EventRailSeverity = "minor" | "notable";
 export type EventRailCard = {
     id: string;
     source: "event" | "prompt";
+    kind: string;
     tick: number;
     stamp: string;
     severity: EventRailSeverity;
@@ -354,6 +355,7 @@ export function deriveEventRailCards(
         return {
             id: `e:${event.tick}:${event.event_id}`,
             source: "event" as const,
+            kind: event.kind,
             tick: event.tick,
             stamp: `T${pad2(event.tick)} · #${event.event_id}`,
             severity,
@@ -374,6 +376,7 @@ export function deriveEventRailCards(
             return {
                 id: `p:${prompt.tick_created}:${prompt.prompt_id}`,
                 source: "prompt" as const,
+                kind: `pending_${kindToken || "prompt"}`,
                 tick: prompt.tick_created,
                 stamp: `T${pad2(prompt.tick_created)} · ${prompt.prompt_id}`,
                 severity: notable ? ("notable" as const) : ("minor" as const),
