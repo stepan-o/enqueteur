@@ -41,7 +41,26 @@ type EndOfDayPlan = {
         workersSmartDelta: number;
     };
 };
-type SimSimClientUiPhase = "planning" | "recap";
+type SimSimClientUiPhase = "planning" | "resolving" | "recap";
+type ResolvingBeatTone = "info" | "warning" | "danger" | "success";
+type ResolvingBeatKind = "security" | "conflict" | "room" | "accident" | "stinger";
+type ResolvingBeat = {
+    id: string;
+    kind: ResolvingBeatKind;
+    title: string;
+    detail: string;
+    stamp: string;
+    tone: ResolvingBeatTone;
+};
+type ResolvingSession = {
+    tickTarget: number;
+    submittedStateKey: string;
+    baselineState: SimSimViewerState;
+    awaitingResolution: boolean;
+    beats: ResolvingBeat[];
+    beatIndex: number;
+    timerId: number | null;
+};
 type RecapStripModel = {
     day: number;
     spotlight: {
@@ -67,6 +86,7 @@ const FALLBACK_LAYOUT: Record<number, Bounds> = {
 const EOD_CONVERT_COST = 5;
 const EOD_SELL_WASHED_DUMB_PRICE = 10;
 const EOD_SELL_WASHED_SMART_PRICE = 25;
+const RESOLVING_BEAT_CADENCE_MS = 180;
 
 export class SimSimScene {
     public readonly app: PIXI.Application;
@@ -85,6 +105,7 @@ export class SimSimScene {
     private roomCardsEl?: HTMLDivElement;
     private eventsEl?: HTMLDivElement;
     private promptsEl?: HTMLDivElement;
+    private resolvingLayerEl?: HTMLDivElement;
     private recapLayerEl?: HTMLDivElement;
     private debugPanelEl?: HTMLDivElement;
     private advanceDayButtonEl?: HTMLButtonElement;
@@ -113,6 +134,7 @@ export class SimSimScene {
     private eodDraft: EndOfDayDraft = makeZeroEndOfDayDraft();
     private lastEodDraftTick: number | null = null;
     private uiPhase: SimSimClientUiPhase = "planning";
+    private resolvingSession: ResolvingSession | null = null;
     private recapStripModel: RecapStripModel | null = null;
     private lastRecapTriggerKey: string | null = null;
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
@@ -178,6 +200,7 @@ export class SimSimScene {
             this.advanceInFlight = false;
             this.advanceInFlightStateKey = null;
         }
+        this.maybeStartResolvingReplay(state, updateKey);
 
         this.roomLayer.removeChildren();
         this.supervisorLayer.removeChildren();
@@ -608,6 +631,14 @@ export class SimSimScene {
         prompts.style.zIndex = "60";
         root.appendChild(prompts);
 
+        const resolvingLayer = document.createElement("div");
+        resolvingLayer.style.position = "absolute";
+        resolvingLayer.style.inset = "0";
+        resolvingLayer.style.display = "none";
+        resolvingLayer.style.pointerEvents = "none";
+        resolvingLayer.style.zIndex = "58";
+        root.appendChild(resolvingLayer);
+
         const recapLayer = document.createElement("div");
         recapLayer.style.position = "absolute";
         recapLayer.style.inset = "0";
@@ -684,6 +715,7 @@ export class SimSimScene {
         this.securityDirectivePanelEl = securityDirectivePanel;
         this.eventsEl = events;
         this.promptsEl = prompts;
+        this.resolvingLayerEl = resolvingLayer;
         this.recapLayerEl = recapLayer;
         this.debugPanelEl = debugPanel;
         this.advanceDayButtonEl = advanceButton;
@@ -722,11 +754,13 @@ export class SimSimScene {
         const regime = state.regime;
         const currentPhase = normalizePhaseToken(wm?.phase);
         const previousPhase = normalizePhaseToken(previousState?.worldMeta?.phase);
+        const resolvingPhase = this.uiPhase === "resolving";
+        const displayPhase = resolvingPhase ? "resolving" : currentPhase;
         const awaitingPrompts = currentPhase === "awaiting_prompts";
         const planningPhase = currentPhase === "planning";
         const endOfDayPhase = currentPhase === "end_of_day";
         const enteredRecapGate = previousPhase === "end_of_day" && planningPhase;
-        if (enteredRecapGate) {
+        if (!resolvingPhase && enteredRecapGate) {
             const triggerKey = `${previousState?.worldMeta?.run_id ?? "run"}:${previousState?.worldMeta?.day ?? "-"}:${previousState?.tick ?? "-"}->${state.worldMeta?.day ?? "-"}:${state.tick}`;
             if (this.lastRecapTriggerKey !== triggerKey) {
                 this.lastRecapTriggerKey = triggerKey;
@@ -734,17 +768,17 @@ export class SimSimScene {
                 this.uiPhase = this.recapStripModel ? "recap" : "planning";
             }
         }
-        if (!planningPhase) {
+        if (!planningPhase && this.uiPhase === "recap") {
             this.uiPhase = "planning";
             this.recapStripModel = null;
         }
-        const recapPhase = planningPhase && this.uiPhase === "recap" && this.recapStripModel !== null;
-        const controlsDisabled = !planningPhase || recapPhase || state.desynced;
+        const recapPhase = !resolvingPhase && planningPhase && this.uiPhase === "recap" && this.recapStripModel !== null;
+        const controlsDisabled = !planningPhase || recapPhase || resolvingPhase || state.desynced;
         const enteredDecisionGate =
             (previousPhase === "planning" && (awaitingPrompts || endOfDayPhase)) ||
             (previousPhase === "awaiting_prompts" && endOfDayPhase);
         const enteredAwaitingPrompts = previousPhase === "planning" && awaitingPrompts;
-        if (enteredDecisionGate) {
+        if (enteredDecisionGate && !resolvingPhase) {
             this.advanceStatusOverride = {
                 text: awaitingPrompts
                     ? "Day requires a decision - resolve prompts to continue."
@@ -778,11 +812,14 @@ export class SimSimScene {
             `<div style="opacity:0.84;">raw ${inv?.inventories.raw_brains_dumb ?? 0}/${inv?.inventories.raw_brains_smart ?? 0} • washed ${inv?.inventories.washed_dumb ?? 0}/${inv?.inventories.washed_smart ?? 0} • sub ${inv?.inventories.substrate_gallons ?? 0} • rib ${inv?.inventories.ribbon_yards ?? 0}</div>`,
             `<div style="opacity:0.84;">${supervisorSummary || "none unlocked"}</div>`,
             `<div style="opacity:0.78;">regime: ${activeFlags.length ? activeFlags.join(", ") : "none"}</div>`,
-            planningPhase && !recapPhase
+            planningPhase && !recapPhase && !resolvingPhase
                 ? `<div style="color:#c4d6e1;opacity:0.86;">Flow: swap on map → Apply Draft → Advance Day</div>`
                 : "",
             recapPhase
                 ? `<div style="color:#f5ddaa;">phase recap: review outcomes, then click NEXT DAY to resume planning</div>`
+                : "",
+            resolvingPhase
+                ? `<div style="color:#f3c76a;">phase resolving: replaying day resolution beats...</div>`
                 : "",
             awaitingPrompts
                 ? `<div style="color:#f3c76a;">phase awaiting_prompts: placements and advance disabled until prompt resolution</div>`
@@ -795,9 +832,9 @@ export class SimSimScene {
         const latestRejection = findLatestInputRejection(events);
         const advanceControlsEl = this.advanceDayButtonEl?.parentElement;
         if (advanceControlsEl) {
-            advanceControlsEl.style.display = endOfDayPhase || recapPhase ? "none" : "block";
+            advanceControlsEl.style.display = endOfDayPhase || recapPhase || resolvingPhase ? "none" : "block";
         }
-        if (endOfDayPhase) {
+        if (endOfDayPhase && !resolvingPhase) {
             this.renderEndOfDayLayer(state, latestRejection);
         } else if (this.eodLayerEl) {
             this.eodLayerEl.style.display = "none";
@@ -806,7 +843,7 @@ export class SimSimScene {
             this.eodDraft = makeZeroEndOfDayDraft();
         }
         if (this.advanceDayButtonEl) {
-            const disabled = !planningPhase || recapPhase || state.desynced || this.advanceInFlight;
+            const disabled = !planningPhase || recapPhase || resolvingPhase || state.desynced || this.advanceInFlight;
             this.advanceDayButtonEl.disabled = disabled;
             this.advanceDayButtonEl.style.opacity = disabled ? "0.55" : "1";
             this.advanceDayButtonEl.style.cursor = disabled ? "not-allowed" : "pointer";
@@ -814,10 +851,11 @@ export class SimSimScene {
                 ? null
                 : () => {
                       if (this.advanceInFlight) return;
+                      this.startResolvingPhase(state, tickTarget);
                       this.advanceInFlight = true;
                       this.advanceInFlightStateKey = this.stateUpdateKey(state);
                       this.advanceStatusOverride = {
-                          text: "Submitting day advance...",
+                          text: "RUN SHIFT submitted. Resolving...",
                           color: "#f3efe3",
                           untilMs: Date.now() + 3000,
                       };
@@ -828,7 +866,7 @@ export class SimSimScene {
                       }
                       if (this.advanceStatusEl) {
                           this.advanceStatusEl.style.color = "#f3efe3";
-                          this.advanceStatusEl.textContent = "Submitting day advance...";
+                          this.advanceStatusEl.textContent = "RUN SHIFT submitted. Resolving...";
                       }
                       this.onAdvanceDay?.({ tickTarget });
                   };
@@ -839,6 +877,9 @@ export class SimSimScene {
             if (overrideActive && this.advanceStatusOverride) {
                 this.advanceStatusEl.style.color = this.advanceStatusOverride.color;
                 this.advanceStatusEl.textContent = this.advanceStatusOverride.text;
+            } else if (resolvingPhase) {
+                this.advanceStatusEl.style.color = "#f3c76a";
+                this.advanceStatusEl.textContent = "Resolving day outcome beats...";
             } else if (state.desynced) {
                 this.advanceStatusEl.style.color = "#ffd8cf";
                 this.advanceStatusEl.textContent = "Advance disabled while desynced.";
@@ -877,12 +918,12 @@ export class SimSimScene {
         const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
         const changed = !this.isPlacementMapEqual(this.placementsDraft, this.placementsBaseline);
         if (this.placementControlsEl) {
-            this.placementControlsEl.style.display = endOfDayPhase || recapPhase ? "none" : "block";
+            this.placementControlsEl.style.display = endOfDayPhase || recapPhase || resolvingPhase ? "none" : "block";
         }
         if (this.supervisorPanelEl) {
-            this.supervisorPanelEl.style.display = endOfDayPhase || recapPhase ? "none" : "block";
+            this.supervisorPanelEl.style.display = endOfDayPhase || recapPhase || resolvingPhase ? "none" : "block";
         }
-        if (!endOfDayPhase && !recapPhase) {
+        if (!endOfDayPhase && !recapPhase && !resolvingPhase) {
             this.renderPlacementControlsCluster(state, currentPhase, {
                 controlsDisabled,
                 swapsUsed,
@@ -903,7 +944,7 @@ export class SimSimScene {
                     : roomCardSupervisorTokenHtml(draftCode ?? "—", supervisorLabel);
                 return renderInspectionRoomCardHtml({
                     room,
-                    phase: currentPhase,
+                    phase: displayPhase,
                     tick: state.tick,
                     supervisorLabel,
                     supervisorToken,
@@ -926,7 +967,7 @@ export class SimSimScene {
             };
         }
 
-        if (!endOfDayPhase && !recapPhase) {
+        if (!endOfDayPhase && !recapPhase && !resolvingPhase) {
             this.renderSupervisorPlacementsPanel(state, rooms, {
                 controlsDisabled,
                 swapBudget,
@@ -935,9 +976,10 @@ export class SimSimScene {
                 changed,
             });
         }
-        this.renderPromptsPanel(state, prompts, awaitingPrompts && !recapPhase, events);
+        this.renderPromptsPanel(state, prompts, awaitingPrompts && !recapPhase && !resolvingPhase, events);
         this.renderRecapStripLayer(state, recapPhase);
-        if (!recapPhase && enteredAwaitingPrompts && firstUnresolvedPrompt(prompts)) {
+        this.renderResolvingLayer(state);
+        if (!recapPhase && !resolvingPhase && enteredAwaitingPrompts && firstUnresolvedPrompt(prompts)) {
             this.focusPromptsPanel();
         }
 
@@ -1289,6 +1331,289 @@ export class SimSimScene {
             activePopup.style.boxShadow = "0 24px 52px rgba(4, 8, 13, 0.72)";
             this.promptsFlashTimer = null;
         }, 800);
+    }
+
+    private startResolvingPhase(state: SimSimViewerState, tickTarget: number): void {
+        this.stopResolvingPlaybackTimer();
+        this.uiPhase = "resolving";
+        this.recapStripModel = null;
+        this.resolvingSession = {
+            tickTarget,
+            submittedStateKey: this.stateUpdateKey(state),
+            baselineState: state,
+            awaitingResolution: true,
+            beats: [],
+            beatIndex: -1,
+            timerId: null,
+        };
+        this.renderFromState(state);
+    }
+
+    private maybeStartResolvingReplay(state: SimSimViewerState, updateKey: string): void {
+        const session = this.resolvingSession;
+        if (!session || !session.awaitingResolution) return;
+        if (updateKey === session.submittedStateKey) return;
+
+        const phase = normalizePhaseToken(state.worldMeta?.phase);
+        const reachedTargetTick = state.tick >= session.tickTarget;
+        const enteredDecisionGate = phase === "awaiting_prompts" || phase === "end_of_day";
+        const returnedPlanningAtTarget = phase === "planning" && reachedTargetTick;
+        if (!enteredDecisionGate && !returnedPlanningAtTarget) return;
+
+        session.awaitingResolution = false;
+        session.beats = this.buildResolvingBeats(session.baselineState, state);
+        session.beatIndex = -1;
+        window.setTimeout(() => {
+            this.playNextResolvingBeat();
+        }, 0);
+    }
+
+    private playNextResolvingBeat(): void {
+        const session = this.resolvingSession;
+        if (!session) return;
+        this.stopResolvingPlaybackTimer();
+
+        const nextBeatIndex = session.beatIndex + 1;
+        if (nextBeatIndex >= session.beats.length) {
+            this.finishResolvingPhase();
+            return;
+        }
+
+        session.beatIndex = nextBeatIndex;
+        if (this.lastState) this.renderFromState(this.lastState);
+        session.timerId = window.setTimeout(() => {
+            this.playNextResolvingBeat();
+        }, RESOLVING_BEAT_CADENCE_MS);
+    }
+
+    private stopResolvingPlaybackTimer(): void {
+        const timerId = this.resolvingSession?.timerId;
+        if (timerId !== null && timerId !== undefined) {
+            window.clearTimeout(timerId);
+        }
+        if (this.resolvingSession) {
+            this.resolvingSession.timerId = null;
+        }
+    }
+
+    private finishResolvingPhase(): void {
+        this.stopResolvingPlaybackTimer();
+        this.resolvingSession = null;
+        this.uiPhase = "planning";
+        if (this.lastState) this.renderFromState(this.lastState);
+    }
+
+    private buildResolvingBeats(baselineState: SimSimViewerState, state: SimSimViewerState): ResolvingBeat[] {
+        const beats: ResolvingBeat[] = [];
+        const currentEvents = sortedEvents(state.events);
+        const baselineEventKeys = new Set(Array.from(baselineState.events.values()).map((event) => resolvingEventKey(event)));
+        const resolutionEvents = currentEvents.filter((event) => !baselineEventKeys.has(resolvingEventKey(event)));
+        const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
+
+        const securityDirective = deriveSecurityDirective(this.resolveSecurityLeadCode(state, rooms), currentEvents);
+        beats.push({
+            id: "security-flash",
+            kind: "security",
+            title: "Security effect flash",
+            detail: `${securityDirective.display.label} under lead ${securityDirective.lead}`,
+            stamp: securityDirective.stamp,
+            tone:
+                securityDirective.tone === "stable"
+                    ? "success"
+                    : securityDirective.tone === "watch"
+                      ? "warning"
+                      : "danger",
+        });
+
+        const conflictEvent = resolutionEvents.find(
+            (event) => event.kind === "conflict_discovered" || event.kind === "conflict_event"
+        );
+        if (conflictEvent) {
+            beats.push({
+                id: `conflict-${conflictEvent.tick}-${conflictEvent.event_id}`,
+                kind: "conflict",
+                title: "Conflict stamp",
+                detail: resolvingEventSummary(conflictEvent),
+                stamp: resolvingStamp(conflictEvent),
+                tone: "warning",
+            });
+        }
+
+        for (const room of rooms) {
+            const previousRoom = baselineState.rooms.get(room.room_id);
+            const roomEvents = resolutionEvents.filter((event) => event.room_id === room.room_id);
+            beats.push(this.buildRoomOutcomeBeat(room, previousRoom, roomEvents));
+        }
+
+        const accidentDelta = totalRoomAccidents(rooms) - totalRoomAccidents(Array.from(baselineState.rooms.values()));
+        const casualtyDelta = totalRoomCasualties(rooms) - totalRoomCasualties(Array.from(baselineState.rooms.values()));
+        if (accidentDelta > 0 || casualtyDelta > 0 || resolutionEvents.some((event) => isAccidentEvent(event.kind))) {
+            beats.push({
+                id: "accident-punch",
+                kind: "accident",
+                title: "Accident punch-in",
+                detail: `accidents +${Math.max(0, accidentDelta)} • casualties +${Math.max(0, casualtyDelta)}`,
+                stamp: `T${String(state.tick).padStart(2, "0")}`,
+                tone: casualtyDelta > 0 ? "danger" : "warning",
+            });
+        }
+
+        const stingerEvent =
+            resolutionEvents.find((event) => event.kind === "critical_triggered" || event.kind === "critical_suppressed") ??
+            resolutionEvents.find((event) => event.kind === "tension_zone");
+        if (stingerEvent) {
+            const suppressed = stingerEvent.kind === "critical_suppressed";
+            beats.push({
+                id: `stinger-${stingerEvent.tick}-${stingerEvent.event_id}`,
+                kind: "stinger",
+                title: stingerEvent.kind === "tension_zone" ? "Tension zone stinger" : "Critical stinger",
+                detail: resolvingEventSummary(stingerEvent),
+                stamp: resolvingStamp(stingerEvent),
+                tone: suppressed ? "success" : "danger",
+            });
+        }
+        return beats;
+    }
+
+    private buildRoomOutcomeBeat(
+        room: SimSimRoom,
+        previousRoom: SimSimRoom | undefined,
+        roomEvents: SimSimEvent[]
+    ): ResolvingBeat {
+        const roomTitle = `Room ${room.room_id} · ${room.name}`;
+        if (room.locked) {
+            return {
+                id: `room-${room.room_id}`,
+                kind: "room",
+                title: roomTitle,
+                detail: "locked",
+                stamp: `R${room.room_id}`,
+                tone: "info",
+            };
+        }
+
+        const notableEvent =
+            roomEvents.find((event) => event.kind === "critical_triggered" || event.kind === "conflict_event") ?? roomEvents[0];
+        if (notableEvent) {
+            return {
+                id: `room-${room.room_id}-${notableEvent.tick}-${notableEvent.event_id}`,
+                kind: "room",
+                title: roomTitle,
+                detail: resolvingEventSummary(notableEvent),
+                stamp: resolvingStamp(notableEvent),
+                tone: eventTone(notableEvent.kind),
+            };
+        }
+
+        const previousOutput = previousRoom ? totalSingleRoomOutput(previousRoom) : 0;
+        const outputNow = totalSingleRoomOutput(room);
+        const outputDelta = outputNow - previousOutput;
+        const stressDelta = previousRoom ? numberOrZero(room.stress) - numberOrZero(previousRoom.stress) : 0;
+        const disciplineDelta = previousRoom ? numberOrZero(room.discipline) - numberOrZero(previousRoom.discipline) : 0;
+
+        if (outputDelta > 0 && stressDelta <= 0.01 && disciplineDelta >= -0.01) {
+            return {
+                id: `room-${room.room_id}`,
+                kind: "room",
+                title: roomTitle,
+                detail: "throughput up, line stable",
+                stamp: `R${room.room_id}`,
+                tone: "success",
+            };
+        }
+        if (stressDelta > 0.03 || disciplineDelta < -0.03) {
+            return {
+                id: `room-${room.room_id}`,
+                kind: "room",
+                title: roomTitle,
+                detail: "stress raised or discipline dipped",
+                stamp: `R${room.room_id}`,
+                tone: "warning",
+            };
+        }
+        return {
+            id: `room-${room.room_id}`,
+            kind: "room",
+            title: roomTitle,
+            detail: "holding pattern",
+            stamp: `R${room.room_id}`,
+            tone: "info",
+        };
+    }
+
+    private renderResolvingLayer(state: SimSimViewerState): void {
+        if (!this.resolvingLayerEl) return;
+        const layer = this.resolvingLayerEl;
+        const session = this.resolvingSession;
+        const active = this.uiPhase === "resolving" && session !== null;
+        if (!active || !session) {
+            layer.style.display = "none";
+            layer.style.pointerEvents = "none";
+            layer.innerHTML = "";
+            return;
+        }
+
+        layer.style.display = "block";
+        layer.style.pointerEvents = "auto";
+        layer.innerHTML = "";
+
+        const backdrop = document.createElement("div");
+        backdrop.style.position = "absolute";
+        backdrop.style.inset = "0";
+        backdrop.style.padding = "18px";
+        backdrop.style.display = "flex";
+        backdrop.style.alignItems = "center";
+        backdrop.style.justifyContent = "center";
+        backdrop.style.background = "radial-gradient(circle at 50% 8%, rgba(243,199,106,0.14), rgba(4,8,13,0.84) 40%, rgba(4,8,13,0.92) 100%)";
+        backdrop.style.backdropFilter = "blur(1.6px)";
+        backdrop.style.pointerEvents = "auto";
+        layer.appendChild(backdrop);
+
+        const panel = document.createElement("section");
+        panel.style.width = "min(620px, 92vw)";
+        panel.style.borderRadius = "14px";
+        panel.style.border = "1px solid rgba(243, 199, 106, 0.55)";
+        panel.style.background = "linear-gradient(165deg, rgba(8, 15, 24, 0.96), rgba(18, 14, 9, 0.94))";
+        panel.style.boxShadow = "0 24px 50px rgba(4, 8, 13, 0.72)";
+        panel.style.padding = "12px 13px";
+        panel.style.display = "grid";
+        panel.style.gap = "8px";
+        backdrop.appendChild(panel);
+
+        const revealedCount = session.awaitingResolution ? 0 : Math.max(0, session.beatIndex + 1);
+        const statusText = session.awaitingResolution
+            ? "Awaiting snapshot/diff from kernel..."
+            : `Revealing beat ${Math.min(revealedCount, session.beats.length)}/${session.beats.length}`;
+        const currentBeat = !session.awaitingResolution && session.beatIndex >= 0 ? session.beats[session.beatIndex] : null;
+
+        panel.innerHTML = [
+            `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">`,
+            `<div style="font-size:12px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#f5dfae;">Resolving</div>`,
+            `<div style="font-size:10px;opacity:0.78;">day ${state.worldMeta?.day ?? "-"} • tick ${state.tick}</div>`,
+            `</div>`,
+            `<div style="font-size:11px;opacity:0.92;color:${session.awaitingResolution ? "#f3efe3" : "#f3c76a"};">${escapeHtml(statusText)}</div>`,
+            `<div style="display:grid;gap:6px;max-height:46vh;overflow:auto;padding-right:2px;">`,
+            session.beats
+                .map((beat, index) => {
+                    const revealed = index < revealedCount;
+                    const activeBeat = index === session.beatIndex;
+                    const styles = resolvingBeatStyle(beat.tone, revealed, activeBeat);
+                    return [
+                        `<div style="${styles.row}">`,
+                        `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">`,
+                        `<div style="font-size:11px;font-weight:700;line-height:1.3;">${escapeHtml(beat.title)}</div>`,
+                        `<div style="font-size:10px;opacity:0.74;">${escapeHtml(beat.stamp)}</div>`,
+                        `</div>`,
+                        `<div style="font-size:10px;opacity:0.88;line-height:1.35;">${escapeHtml(beat.detail)}</div>`,
+                        `</div>`,
+                    ].join("");
+                })
+                .join(""),
+            `</div>`,
+            currentBeat?.kind === "security"
+                ? `<div style="height:5px;border-radius:999px;background:linear-gradient(90deg, rgba(243,199,106,0.9), rgba(140,214,200,0.92));box-shadow:0 0 22px rgba(243,199,106,0.48);"></div>`
+                : "",
+        ].join("");
     }
 
     private stateUpdateKey(state: SimSimViewerState): string {
@@ -2588,6 +2913,58 @@ function sortedEvents(events: Map<string, SimSimEvent>): SimSimEvent[] {
 
 function sortedPrompts(prompts: Map<string, SimSimPrompt>): SimSimPrompt[] {
     return Array.from(prompts.values()).sort((a, b) => (a.tick_created - b.tick_created) || a.prompt_id.localeCompare(b.prompt_id));
+}
+
+function resolvingEventKey(event: SimSimEvent): string {
+    return `${event.tick}:${event.event_id}`;
+}
+
+function resolvingStamp(event: SimSimEvent): string {
+    return `T${String(event.tick).padStart(2, "0")} · #${event.event_id}`;
+}
+
+function resolvingEventSummary(event: SimSimEvent): string {
+    const bits: string[] = [humanizeEventKind(event.kind)];
+    if (typeof event.room_id === "number") bits.push(`room ${event.room_id}`);
+    if (typeof event.supervisor === "string" && event.supervisor.trim().length > 0) bits.push(`sup ${event.supervisor}`);
+    return bits.join(" • ");
+}
+
+function humanizeEventKind(kind: string): string {
+    return kind
+        .split("_")
+        .filter((token) => token.length > 0)
+        .map((token) => token[0].toUpperCase() + token.slice(1))
+        .join(" ");
+}
+
+function eventTone(kind: string): ResolvingBeatTone {
+    const token = kind.toLowerCase();
+    if (token === "critical_suppressed" || token === "assignment_resolved" || token === "security_redistribution") return "success";
+    if (token === "critical_triggered" || token === "conflict_event" || token === "input_rejected") return "danger";
+    if (token.includes("conflict") || token.includes("critical") || token.includes("tension")) return "warning";
+    return "info";
+}
+
+function isAccidentEvent(kind: string): boolean {
+    const token = kind.toLowerCase();
+    return token.includes("accident") || token.includes("casual");
+}
+
+function resolvingBeatStyle(tone: ResolvingBeatTone, revealed: boolean, activeBeat: boolean): { row: string } {
+    const palette =
+        tone === "danger"
+            ? { border: "rgba(231,123,75,0.66)", bg: "rgba(46, 19, 16, 0.76)" }
+            : tone === "warning"
+              ? { border: "rgba(243,199,106,0.62)", bg: "rgba(44, 30, 12, 0.72)" }
+              : tone === "success"
+                ? { border: "rgba(118,214,161,0.62)", bg: "rgba(12, 37, 33, 0.72)" }
+                : { border: "rgba(140,214,200,0.44)", bg: "rgba(12, 24, 30, 0.62)" };
+    const opacity = revealed ? 1 : 0.4;
+    const ring = activeBeat ? `;box-shadow:0 0 0 1px ${palette.border}, 0 0 14px rgba(243,199,106,0.24)` : "";
+    return {
+        row: `border:1px solid ${palette.border};background:${palette.bg};border-radius:9px;padding:7px 8px;display:grid;gap:3px;opacity:${opacity}${ring};`,
+    };
 }
 
 function findLatestInputRejection(events: SimSimEvent[]): { reasonCode: string; reason: string } | null {
