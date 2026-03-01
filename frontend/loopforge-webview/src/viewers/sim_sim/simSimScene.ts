@@ -1,7 +1,7 @@
 import * as PIXI from "pixi.js";
 import type { SimSimEvent, SimSimPrompt, SimSimRoom, SimSimViewerState } from "./simSimStore";
-import { deriveEventRailCards, deriveForecastBandsPerRoom, deriveSecurityDirective } from "./viewModel";
-import type { EventRailCard, ForecastBand, ForecastRoomBands, SecurityDirective } from "./viewModel";
+import { deriveEventRailCards, deriveForecastBandsPerRoom, deriveRecapPanels, deriveSecurityDirective, deriveSpotlightPrompt } from "./viewModel";
+import type { EventRailCard, ForecastBand, ForecastRoomBands, RecapDeltas, RecapPanel, SecurityDirective, SpotlightPrompt, SupervisorChange } from "./viewModel";
 
 type Vec2 = { x: number; y: number };
 type Bounds = { min_x: number; min_y: number; max_x: number; max_y: number };
@@ -41,6 +41,20 @@ type EndOfDayPlan = {
         workersSmartDelta: number;
     };
 };
+type SimSimClientUiPhase = "planning" | "recap";
+type RecapStripModel = {
+    day: number;
+    spotlight: {
+        title: string;
+        lead: string;
+        body: string;
+    };
+    topRailCards: EventRailCard[];
+    escalations: string[];
+    vibeTagline: string;
+    netResultLines: string[];
+    recapPanels: RecapPanel[];
+};
 
 const FALLBACK_LAYOUT: Record<number, Bounds> = {
     1: { min_x: 0, min_y: 0, max_x: 12, max_y: 8 },
@@ -71,6 +85,7 @@ export class SimSimScene {
     private roomCardsEl?: HTMLDivElement;
     private eventsEl?: HTMLDivElement;
     private promptsEl?: HTMLDivElement;
+    private recapLayerEl?: HTMLDivElement;
     private debugPanelEl?: HTMLDivElement;
     private advanceDayButtonEl?: HTMLButtonElement;
     private advanceStatusEl?: HTMLDivElement;
@@ -97,6 +112,9 @@ export class SimSimScene {
     private debugFeedVisible = false;
     private eodDraft: EndOfDayDraft = makeZeroEndOfDayDraft();
     private lastEodDraftTick: number | null = null;
+    private uiPhase: SimSimClientUiPhase = "planning";
+    private recapStripModel: RecapStripModel | null = null;
+    private lastRecapTriggerKey: string | null = null;
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     private readonly onAdvanceDay?: (payload: AdvanceDayPayload) => void;
     private readonly onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
@@ -590,6 +608,14 @@ export class SimSimScene {
         prompts.style.zIndex = "60";
         root.appendChild(prompts);
 
+        const recapLayer = document.createElement("div");
+        recapLayer.style.position = "absolute";
+        recapLayer.style.inset = "0";
+        recapLayer.style.display = "none";
+        recapLayer.style.pointerEvents = "none";
+        recapLayer.style.zIndex = "55";
+        root.appendChild(recapLayer);
+
         if (this.showDevUi) {
             const feedToggle = document.createElement("button");
             feedToggle.type = "button";
@@ -658,6 +684,7 @@ export class SimSimScene {
         this.securityDirectivePanelEl = securityDirectivePanel;
         this.eventsEl = events;
         this.promptsEl = prompts;
+        this.recapLayerEl = recapLayer;
         this.debugPanelEl = debugPanel;
         this.advanceDayButtonEl = advanceButton;
         this.advanceStatusEl = advanceStatus;
@@ -682,6 +709,7 @@ export class SimSimScene {
             !this.hudEl ||
             !this.roomCardsEl ||
             !this.promptsEl ||
+            !this.recapLayerEl ||
             !this.securityDirectivePanelEl ||
             !this.eodLayerEl ||
             !this.supervisorPanelEl ||
@@ -697,7 +725,21 @@ export class SimSimScene {
         const awaitingPrompts = currentPhase === "awaiting_prompts";
         const planningPhase = currentPhase === "planning";
         const endOfDayPhase = currentPhase === "end_of_day";
-        const controlsDisabled = !planningPhase || state.desynced;
+        const enteredRecapGate = previousPhase === "end_of_day" && planningPhase;
+        if (enteredRecapGate) {
+            const triggerKey = `${previousState?.worldMeta?.run_id ?? "run"}:${previousState?.worldMeta?.day ?? "-"}:${previousState?.tick ?? "-"}->${state.worldMeta?.day ?? "-"}:${state.tick}`;
+            if (this.lastRecapTriggerKey !== triggerKey) {
+                this.lastRecapTriggerKey = triggerKey;
+                this.recapStripModel = this.buildRecapStripModel(previousState, state);
+                this.uiPhase = this.recapStripModel ? "recap" : "planning";
+            }
+        }
+        if (!planningPhase) {
+            this.uiPhase = "planning";
+            this.recapStripModel = null;
+        }
+        const recapPhase = planningPhase && this.uiPhase === "recap" && this.recapStripModel !== null;
+        const controlsDisabled = !planningPhase || recapPhase || state.desynced;
         const enteredDecisionGate =
             (previousPhase === "planning" && (awaitingPrompts || endOfDayPhase)) ||
             (previousPhase === "awaiting_prompts" && endOfDayPhase);
@@ -736,8 +778,11 @@ export class SimSimScene {
             `<div style="opacity:0.84;">raw ${inv?.inventories.raw_brains_dumb ?? 0}/${inv?.inventories.raw_brains_smart ?? 0} • washed ${inv?.inventories.washed_dumb ?? 0}/${inv?.inventories.washed_smart ?? 0} • sub ${inv?.inventories.substrate_gallons ?? 0} • rib ${inv?.inventories.ribbon_yards ?? 0}</div>`,
             `<div style="opacity:0.84;">${supervisorSummary || "none unlocked"}</div>`,
             `<div style="opacity:0.78;">regime: ${activeFlags.length ? activeFlags.join(", ") : "none"}</div>`,
-            planningPhase
+            planningPhase && !recapPhase
                 ? `<div style="color:#c4d6e1;opacity:0.86;">Flow: swap on map → Apply Draft → Advance Day</div>`
+                : "",
+            recapPhase
+                ? `<div style="color:#f5ddaa;">phase recap: review outcomes, then click NEXT DAY to resume planning</div>`
                 : "",
             awaitingPrompts
                 ? `<div style="color:#f3c76a;">phase awaiting_prompts: placements and advance disabled until prompt resolution</div>`
@@ -750,7 +795,7 @@ export class SimSimScene {
         const latestRejection = findLatestInputRejection(events);
         const advanceControlsEl = this.advanceDayButtonEl?.parentElement;
         if (advanceControlsEl) {
-            advanceControlsEl.style.display = endOfDayPhase ? "none" : "block";
+            advanceControlsEl.style.display = endOfDayPhase || recapPhase ? "none" : "block";
         }
         if (endOfDayPhase) {
             this.renderEndOfDayLayer(state, latestRejection);
@@ -761,7 +806,7 @@ export class SimSimScene {
             this.eodDraft = makeZeroEndOfDayDraft();
         }
         if (this.advanceDayButtonEl) {
-            const disabled = !planningPhase || state.desynced || this.advanceInFlight;
+            const disabled = !planningPhase || recapPhase || state.desynced || this.advanceInFlight;
             this.advanceDayButtonEl.disabled = disabled;
             this.advanceDayButtonEl.style.opacity = disabled ? "0.55" : "1";
             this.advanceDayButtonEl.style.cursor = disabled ? "not-allowed" : "pointer";
@@ -806,6 +851,9 @@ export class SimSimScene {
             } else if (endOfDayPhase) {
                 this.advanceStatusEl.style.color = "#f3c76a";
                 this.advanceStatusEl.textContent = "End-of-day phase: submit EOD actions to continue.";
+            } else if (recapPhase) {
+                this.advanceStatusEl.style.color = "#f5ddaa";
+                this.advanceStatusEl.textContent = "Recap in progress. Click NEXT DAY to resume planning controls.";
             } else if (latestRejection) {
                 this.advanceStatusEl.style.color = "#ffd8cf";
                 this.advanceStatusEl.textContent = `Last rejection: ${latestRejection.reasonCode} — ${latestRejection.reason}`;
@@ -829,12 +877,12 @@ export class SimSimScene {
         const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
         const changed = !this.isPlacementMapEqual(this.placementsDraft, this.placementsBaseline);
         if (this.placementControlsEl) {
-            this.placementControlsEl.style.display = endOfDayPhase ? "none" : "block";
+            this.placementControlsEl.style.display = endOfDayPhase || recapPhase ? "none" : "block";
         }
         if (this.supervisorPanelEl) {
-            this.supervisorPanelEl.style.display = endOfDayPhase ? "none" : "block";
+            this.supervisorPanelEl.style.display = endOfDayPhase || recapPhase ? "none" : "block";
         }
-        if (!endOfDayPhase) {
+        if (!endOfDayPhase && !recapPhase) {
             this.renderPlacementControlsCluster(state, currentPhase, {
                 controlsDisabled,
                 swapsUsed,
@@ -878,7 +926,7 @@ export class SimSimScene {
             };
         }
 
-        if (!endOfDayPhase) {
+        if (!endOfDayPhase && !recapPhase) {
             this.renderSupervisorPlacementsPanel(state, rooms, {
                 controlsDisabled,
                 swapBudget,
@@ -887,8 +935,9 @@ export class SimSimScene {
                 changed,
             });
         }
-        this.renderPromptsPanel(state, prompts, awaitingPrompts, events);
-        if (enteredAwaitingPrompts && firstUnresolvedPrompt(prompts)) {
+        this.renderPromptsPanel(state, prompts, awaitingPrompts && !recapPhase, events);
+        this.renderRecapStripLayer(state, recapPhase);
+        if (!recapPhase && enteredAwaitingPrompts && firstUnresolvedPrompt(prompts)) {
             this.focusPromptsPanel();
         }
 
@@ -927,6 +976,180 @@ export class SimSimScene {
                 `<div>config: ${wm?.config_id ?? "-"}</div>`,
             ].join("");
         }
+    }
+
+    private buildRecapStripModel(previousState: SimSimViewerState | undefined, state: SimSimViewerState): RecapStripModel | null {
+        if (!previousState) return null;
+
+        const day = previousState.worldMeta?.day ?? Math.max(0, (state.worldMeta?.day ?? 1) - 1);
+        const allEvents = sortedEvents(state.events);
+        const minTick = Math.min(previousState.tick, state.tick);
+        const maxTick = Math.max(previousState.tick, state.tick);
+        const boundedEvents = allEvents.filter((event) => event.tick >= minTick && event.tick <= maxTick);
+        const recapEvents = boundedEvents.length > 0 ? boundedEvents : allEvents.slice(-10);
+
+        const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
+        const promptsForRecap = sortedPrompts(previousState.prompts);
+        const fallbackPrompts = sortedPrompts(state.prompts);
+        const activePrompts = promptsForRecap.length > 0 ? promptsForRecap : fallbackPrompts;
+        const allCards = deriveEventRailCards(recapEvents, rooms, activePrompts)
+            .filter((card) => card.source === "event")
+            .filter((card) => !isPromptLifecycleCard(card));
+        const notableCards = allCards.filter((card) => card.severity === "notable");
+        const topRailCards = (notableCards.length > 0 ? notableCards : allCards).slice(-3).reverse();
+
+        const recapDeltas = deriveRecapDeltasFromStateTransition(previousState, state);
+        const supervisorChanges = deriveSupervisorChanges(previousState, state);
+        const recapPanels = deriveRecapPanels(day, recapEvents, recapDeltas, supervisorChanges);
+
+        const spotlightPrompt = deriveSpotlightPrompt(activePrompts);
+        const spotlight = spotlightForRecap(spotlightPrompt, topRailCards[0]);
+        const escalations = summarizeEscalations(supervisorChanges);
+        const vibeTagline = deriveFactoryVibeTagline(recapPanels);
+        const netResultLines = deriveNetResultLines(recapDeltas, recapPanels);
+
+        return {
+            day,
+            spotlight,
+            topRailCards,
+            escalations,
+            vibeTagline,
+            netResultLines,
+            recapPanels,
+        };
+    }
+
+    private renderRecapStripLayer(state: SimSimViewerState, recapPhase: boolean): void {
+        if (!this.recapLayerEl) return;
+        if (!recapPhase || !this.recapStripModel) {
+            this.recapLayerEl.style.display = "none";
+            this.recapLayerEl.style.pointerEvents = "none";
+            this.recapLayerEl.innerHTML = "";
+            return;
+        }
+
+        const model = this.recapStripModel;
+        const layer = this.recapLayerEl;
+        layer.style.display = "block";
+        layer.style.pointerEvents = "auto";
+        layer.innerHTML = "";
+
+        const backdrop = document.createElement("div");
+        backdrop.style.position = "absolute";
+        backdrop.style.inset = "0";
+        backdrop.style.display = "flex";
+        backdrop.style.alignItems = "center";
+        backdrop.style.justifyContent = "center";
+        backdrop.style.padding = "20px";
+        backdrop.style.background = "radial-gradient(circle at 50% 12%, rgba(243, 199, 106, 0.1), rgba(4, 8, 13, 0.82) 42%, rgba(3, 5, 8, 0.92) 100%)";
+        backdrop.style.backdropFilter = "blur(2px)";
+        backdrop.style.pointerEvents = "auto";
+
+        const card = document.createElement("section");
+        card.style.width = "min(1120px, 96vw)";
+        card.style.maxHeight = "92vh";
+        card.style.overflow = "hidden auto";
+        card.style.borderRadius = "16px";
+        card.style.border = "1px solid rgba(243, 199, 106, 0.5)";
+        card.style.background = "linear-gradient(160deg, rgba(8, 15, 24, 0.95), rgba(18, 14, 9, 0.95))";
+        card.style.boxShadow = "0 28px 56px rgba(4, 8, 13, 0.68)";
+        card.style.padding = "16px 16px 14px";
+        card.style.display = "grid";
+        card.style.gap = "12px";
+        backdrop.appendChild(card);
+
+        const header = document.createElement("div");
+        header.style.display = "flex";
+        header.style.alignItems = "center";
+        header.style.justifyContent = "space-between";
+        header.style.gap = "10px";
+        header.innerHTML = [
+            `<div>`,
+            `<div style="font-size:14px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#f5dfae;">Recap Strip</div>`,
+            `<div style="margin-top:2px;font-size:11px;opacity:0.88;">Day ${model.day} closed. Skim outcomes before reopening planning.</div>`,
+            `</div>`,
+            `<div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.7;border:1px solid rgba(243, 199, 106, 0.52);border-radius:999px;padding:3px 8px;">phase recap</div>`,
+        ].join("");
+        card.appendChild(header);
+
+        const panels = document.createElement("div");
+        panels.style.display = "grid";
+        panels.style.gridTemplateColumns = "repeat(auto-fit, minmax(240px, 1fr))";
+        panels.style.gap = "10px";
+        card.appendChild(panels);
+
+        const happenedLines = model.topRailCards.length === 0
+            ? `<div style="font-size:11px;opacity:0.82;">No notable cards captured this cycle.</div>`
+            : model.topRailCards
+                  .map(
+                      (entry) =>
+                          `<div style="padding:6px 7px;border-radius:8px;border:1px solid rgba(140, 214, 200, 0.28);background:rgba(8, 18, 24, 0.44);display:grid;gap:2px;"><div style="font-size:10px;opacity:0.72;">${escapeHtml(entry.stamp)}</div><div style="font-size:11px;font-weight:700;line-height:1.3;">${escapeHtml(entry.title)}</div><div style="font-size:10px;opacity:0.86;">${escapeHtml(entry.subtitle)}</div></div>`
+                  )
+                  .join("");
+        panels.innerHTML = [
+            `<article style="border:1px solid rgba(243, 199, 106, 0.36);background:rgba(11, 18, 24, 0.72);border-radius:10px;padding:10px;display:grid;gap:8px;">`,
+            `<div style="font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;opacity:0.86;">What Happened</div>`,
+            `<div style="padding:8px;border-radius:8px;border:1px solid rgba(243, 199, 106, 0.35);background:rgba(38, 29, 12, 0.45);display:grid;gap:4px;">`,
+            `<div style="font-size:11px;font-weight:700;">${escapeHtml(model.spotlight.title)}</div>`,
+            `<div style="font-size:10px;opacity:0.88;">${escapeHtml(model.spotlight.lead)}</div>`,
+            `<div style="font-size:10px;opacity:0.86;">${escapeHtml(model.spotlight.body)}</div>`,
+            `</div>`,
+            `<div style="display:grid;gap:6px;">${happenedLines}</div>`,
+            `</article>`,
+            `<article style="border:1px solid rgba(140, 214, 200, 0.34);background:rgba(10, 19, 24, 0.72);border-radius:10px;padding:10px;display:grid;gap:8px;">`,
+            `<div style="font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;opacity:0.86;">Who Escalated</div>`,
+            `<div style="display:grid;gap:6px;">${model.escalations
+                .map(
+                    (line) =>
+                        `<div style="font-size:11px;line-height:1.3;padding:6px 7px;border-radius:8px;border:1px solid rgba(140, 214, 200, 0.25);background:rgba(9, 16, 22, 0.42);">${escapeHtml(line)}</div>`
+                )
+                .join("")}</div>`,
+            `</article>`,
+            `<article style="border:1px solid rgba(243, 199, 106, 0.36);background:rgba(30, 22, 12, 0.68);border-radius:10px;padding:10px;display:grid;gap:8px;">`,
+            `<div style="font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;opacity:0.86;">Factory Vibe</div>`,
+            `<div style="font-size:12px;font-weight:700;line-height:1.35;">${escapeHtml(model.vibeTagline)}</div>`,
+            `<div style="display:flex;flex-wrap:wrap;gap:6px;">${model.recapPanels
+                .map((panel) => {
+                    const tone = recapToneChipStyle(panel.tone);
+                    return `<span style="font-size:10px;padding:2px 7px;border-radius:999px;${tone}">${escapeHtml(panel.title)}</span>`;
+                })
+                .join("")}</div>`,
+            `</article>`,
+            `<article style="border:1px solid rgba(140, 214, 200, 0.34);background:rgba(10, 19, 24, 0.72);border-radius:10px;padding:10px;display:grid;gap:8px;">`,
+            `<div style="font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;opacity:0.86;">Net Results</div>`,
+            `<div style="display:grid;gap:5px;">${model.netResultLines
+                .map((line) => `<div style="font-size:11px;line-height:1.3;">${escapeHtml(line)}</div>`)
+                .join("")}</div>`,
+            `</article>`,
+        ].join("");
+
+        const ctaRow = document.createElement("div");
+        ctaRow.style.display = "flex";
+        ctaRow.style.justifyContent = "flex-end";
+        ctaRow.style.marginTop = "2px";
+        card.appendChild(ctaRow);
+
+        const nextDayButton = document.createElement("button");
+        nextDayButton.type = "button";
+        nextDayButton.textContent = "NEXT DAY";
+        nextDayButton.style.border = "1px solid rgba(243, 199, 106, 0.78)";
+        nextDayButton.style.background = "rgba(38, 29, 12, 0.95)";
+        nextDayButton.style.color = "#f3efe3";
+        nextDayButton.style.borderRadius = "9px";
+        nextDayButton.style.padding = "8px 14px";
+        nextDayButton.style.fontSize = "12px";
+        nextDayButton.style.fontWeight = "700";
+        nextDayButton.style.letterSpacing = "0.06em";
+        nextDayButton.style.cursor = "pointer";
+        nextDayButton.style.pointerEvents = "auto";
+        nextDayButton.onclick = () => {
+            this.uiPhase = "planning";
+            this.recapStripModel = null;
+            this.renderFromState(state);
+        };
+        ctaRow.appendChild(nextDayButton);
+
+        layer.appendChild(backdrop);
     }
 
     private renderSecurityDirectivePanel(directive: SecurityDirective): void {
@@ -2621,6 +2844,231 @@ function eventRailStampTone(card: EventRailCard): EventRailStampTone {
     if (kind.includes("casualt") || kind.includes("critical") || kind.includes("conflict")) return "danger";
     if (card.severity === "notable") return "warning";
     return "info";
+}
+
+function deriveRecapDeltasFromStateTransition(previousState: SimSimViewerState, state: SimSimViewerState): RecapDeltas {
+    const previousRooms = Array.from(previousState.rooms.values());
+    const currentRooms = Array.from(state.rooms.values());
+    const previousRoomsById = new Map(previousRooms.map((room) => [room.room_id, room]));
+    const currentRoomsById = new Map(currentRooms.map((room) => [room.room_id, room]));
+
+    const factoryStress = deltaNumber(averageMetric(currentRooms, "stress"), averageMetric(previousRooms, "stress"));
+    const factoryDiscipline = deltaNumber(averageMetric(currentRooms, "discipline"), averageMetric(previousRooms, "discipline"));
+    const factoryAlignment = deltaNumber(averageMetric(currentRooms, "alignment"), averageMetric(previousRooms, "alignment"));
+    const cashDelta = deltaNumber(state.inventory?.cash, previousState.inventory?.cash);
+    const outputDelta = deltaNumber(totalRoomOutput(currentRooms), totalRoomOutput(previousRooms));
+    const accidentsDelta = deltaNumber(totalRoomAccidents(currentRooms), totalRoomAccidents(previousRooms));
+    const casualtiesDelta = deltaNumber(totalRoomCasualties(currentRooms), totalRoomCasualties(previousRooms));
+
+    const factory: RecapDeltas["factory"] = {};
+    if (factoryStress !== undefined) factory.stress = factoryStress;
+    if (factoryDiscipline !== undefined) factory.discipline = factoryDiscipline;
+    if (factoryAlignment !== undefined) factory.alignment = factoryAlignment;
+    if (cashDelta !== undefined) factory.cash = cashDelta;
+    if (outputDelta !== undefined) factory.output = outputDelta;
+    if (accidentsDelta !== undefined) factory.accidents = accidentsDelta;
+    if (casualtiesDelta !== undefined) factory.casualties = casualtiesDelta;
+
+    const rooms: NonNullable<RecapDeltas["rooms"]> = {};
+    const roomIds = new Set<number>([...previousRoomsById.keys(), ...currentRoomsById.keys()]);
+    for (const roomId of roomIds) {
+        const previousRoom = previousRoomsById.get(roomId);
+        const currentRoom = currentRoomsById.get(roomId);
+        if (!previousRoom || !currentRoom) continue;
+
+        const row: NonNullable<RecapDeltas["rooms"]>[number] = {};
+        const stress = deltaNumber(currentRoom.stress, previousRoom.stress);
+        const discipline = deltaNumber(currentRoom.discipline, previousRoom.discipline);
+        const alignment = deltaNumber(currentRoom.alignment, previousRoom.alignment);
+        const equipment = deltaNumber(currentRoom.equipment_condition, previousRoom.equipment_condition);
+        const output = deltaNumber(totalSingleRoomOutput(currentRoom), totalSingleRoomOutput(previousRoom));
+        const casualties = deltaNumber(currentRoom.accidents_today?.casualties, previousRoom.accidents_today?.casualties);
+        if (stress !== undefined) row.stress = stress;
+        if (discipline !== undefined) row.discipline = discipline;
+        if (alignment !== undefined) row.alignment = alignment;
+        if (equipment !== undefined) row.equipment_condition = equipment;
+        if (output !== undefined) row.output = output;
+        if (casualties !== undefined) row.casualties = casualties;
+        if (Object.keys(row).length > 0) rooms[roomId] = row;
+    }
+
+    return {
+        factory,
+        rooms,
+    };
+}
+
+function deriveSupervisorChanges(previousState: SimSimViewerState, state: SimSimViewerState): SupervisorChange[] {
+    const codes = new Set<string>([...previousState.supervisors.keys(), ...state.supervisors.keys()]);
+    const changes: SupervisorChange[] = [];
+    for (const code of codes) {
+        const previousSupervisor = previousState.supervisors.get(code);
+        const currentSupervisor = state.supervisors.get(code);
+        if (!previousSupervisor && !currentSupervisor) continue;
+
+        const fromRoom = previousSupervisor?.assigned_room ?? null;
+        const toRoom = currentSupervisor?.assigned_room ?? null;
+        const confidenceDelta = deltaNumber(currentSupervisor?.confidence, previousSupervisor?.confidence);
+        const loyaltyDelta = deltaNumber(currentSupervisor?.loyalty, previousSupervisor?.loyalty);
+        const influenceDelta = deltaNumber(currentSupervisor?.influence, previousSupervisor?.influence);
+        const cooldownChanged =
+            currentSupervisor !== undefined &&
+            previousSupervisor !== undefined &&
+            currentSupervisor.cooldown_days !== previousSupervisor.cooldown_days;
+        const moved = fromRoom !== toRoom;
+        const changedMagnitude = Math.abs(numberOrZero(confidenceDelta)) + Math.abs(numberOrZero(loyaltyDelta)) + Math.abs(numberOrZero(influenceDelta));
+        if (!moved && !cooldownChanged && changedMagnitude < 0.01) continue;
+
+        changes.push({
+            code,
+            fromRoom,
+            toRoom,
+            confidenceDelta,
+            loyaltyDelta,
+            influenceDelta,
+            cooldownDays: currentSupervisor?.cooldown_days ?? previousSupervisor?.cooldown_days,
+        });
+    }
+    return changes.sort((a, b) => supervisorChangeMagnitude(b) - supervisorChangeMagnitude(a));
+}
+
+function spotlightForRecap(spotlightPrompt: SpotlightPrompt | null, topCard: EventRailCard | undefined): RecapStripModel["spotlight"] {
+    if (spotlightPrompt) {
+        return {
+            title: spotlightPrompt.title,
+            lead: spotlightPrompt.cinematicLead,
+            body: spotlightPrompt.body,
+        };
+    }
+    if (topCard) {
+        return {
+            title: topCard.title,
+            lead: topCard.subtitle,
+            body: `Most visible shift: ${topCard.kind.replace(/_/g, " ")}.`,
+        };
+    }
+    return {
+        title: "Stable close",
+        lead: "No major flashpoint logged at close.",
+        body: "Operations advanced without a dominant escalation card.",
+    };
+}
+
+function summarizeEscalations(changes: SupervisorChange[]): string[] {
+    if (changes.length === 0) return ["No supervisor escalations registered this close."];
+    return changes.slice(0, 4).map((change) => {
+        const parts: string[] = [];
+        parts.push(`${change.code} ${roomMoveLabel(change.fromRoom)} -> ${roomMoveLabel(change.toRoom)}`);
+        if (change.confidenceDelta !== undefined) parts.push(`conf ${fmtSignedNumber(change.confidenceDelta)}`);
+        if (change.loyaltyDelta !== undefined) parts.push(`loyalty ${fmtSignedNumber(change.loyaltyDelta)}`);
+        if (change.influenceDelta !== undefined) parts.push(`influence ${fmtSignedNumber(change.influenceDelta)}`);
+        return parts.join(" · ");
+    });
+}
+
+function deriveFactoryVibeTagline(recapPanels: RecapPanel[]): string {
+    const positive = recapPanels.filter((panel) => panel.tone === "positive").length;
+    const negative = recapPanels.filter((panel) => panel.tone === "negative").length;
+    if (negative >= 2) return "Factory vibe: brittle edges and loud fault lines.";
+    if (positive >= 2) return "Factory vibe: disciplined momentum with clean handoffs.";
+    if (negative === 1 && positive === 0) return "Factory vibe: tense, controlled, and watching for slips.";
+    return "Factory vibe: mixed signal, holding the center line.";
+}
+
+function deriveNetResultLines(deltas: RecapDeltas, recapPanels: RecapPanel[]): string[] {
+    const lines: string[] = [];
+    const factory = deltas.factory ?? {};
+    if (factory.cash !== undefined) lines.push(`Cash Δ ${fmtSignedNumber(factory.cash)}`);
+    if (factory.output !== undefined) lines.push(`Output Δ ${fmtSignedNumber(factory.output)}`);
+    if (factory.stress !== undefined || factory.discipline !== undefined || factory.alignment !== undefined) {
+        lines.push(
+            `Factory metrics Δ stress ${fmtSignedNumber(factory.stress)} / discipline ${fmtSignedNumber(factory.discipline)} / alignment ${fmtSignedNumber(factory.alignment)}`
+        );
+    }
+    if (factory.accidents !== undefined || factory.casualties !== undefined) {
+        lines.push(`Safety Δ accidents ${fmtSignedNumber(factory.accidents)} / casualties ${fmtSignedNumber(factory.casualties)}`);
+    }
+    for (const panel of recapPanels) {
+        if (panel.lines.length > 0) lines.push(`${panel.title}: ${panel.lines[0]}`);
+    }
+    return lines.slice(0, 5);
+}
+
+function recapToneChipStyle(tone: RecapPanel["tone"]): string {
+    if (tone === "positive") return "border:1px solid rgba(118,214,161,0.86);background:rgba(11,44,38,0.72);color:#d6f8ee;";
+    if (tone === "negative") return "border:1px solid rgba(231,123,75,0.9);background:rgba(54,18,16,0.84);color:#ffd9ca;";
+    return "border:1px solid rgba(243,199,106,0.85);background:rgba(51,34,12,0.72);color:#f5ddaa;";
+}
+
+function supervisorChangeMagnitude(change: SupervisorChange): number {
+    return (
+        Math.abs(numberOrZero(change.confidenceDelta)) +
+        Math.abs(numberOrZero(change.loyaltyDelta)) +
+        Math.abs(numberOrZero(change.influenceDelta)) +
+        (change.fromRoom !== change.toRoom ? 0.6 : 0)
+    );
+}
+
+function roomMoveLabel(roomId: number | null | undefined): string {
+    if (roomId === null || roomId === undefined) return "R-";
+    return `R${roomId}`;
+}
+
+function totalRoomOutput(rooms: SimSimRoom[]): number {
+    return rooms.reduce((sum, room) => sum + totalSingleRoomOutput(room), 0);
+}
+
+function totalSingleRoomOutput(room: SimSimRoom): number {
+    const out = room.output_today;
+    return (
+        numberOrZero(out.raw_brains_dumb) +
+        numberOrZero(out.raw_brains_smart) +
+        numberOrZero(out.washed_dumb) +
+        numberOrZero(out.washed_smart) +
+        numberOrZero(out.substrate_gallons) +
+        numberOrZero(out.ribbon_yards)
+    );
+}
+
+function totalRoomAccidents(rooms: SimSimRoom[]): number {
+    return rooms.reduce((sum, room) => sum + numberOrZero(room.accidents_today?.count), 0);
+}
+
+function totalRoomCasualties(rooms: SimSimRoom[]): number {
+    return rooms.reduce((sum, room) => sum + numberOrZero(room.accidents_today?.casualties), 0);
+}
+
+function averageMetric(rooms: SimSimRoom[], metric: "stress" | "discipline" | "alignment"): number | undefined {
+    let total = 0;
+    let count = 0;
+    for (const room of rooms) {
+        const value = room[metric];
+        if (!Number.isFinite(value)) continue;
+        total += value as number;
+        count += 1;
+    }
+    if (count === 0) return undefined;
+    return total / count;
+}
+
+function deltaNumber(current: number | null | undefined, previous: number | null | undefined): number | undefined {
+    if (!Number.isFinite(current) || !Number.isFinite(previous)) return undefined;
+    return roundTo3((current as number) - (previous as number));
+}
+
+function roundTo3(value: number): number {
+    return Math.round(value * 1000) / 1000;
+}
+
+function fmtSignedNumber(value: number | undefined): string {
+    if (!Number.isFinite(value)) return "0.000";
+    const n = value as number;
+    return `${n >= 0 ? "+" : ""}${n.toFixed(3)}`;
+}
+
+function numberOrZero(value: number | undefined | null): number {
+    if (!Number.isFinite(value)) return 0;
+    return value as number;
 }
 
 function isSimSimDevUiEnabled(): boolean {
