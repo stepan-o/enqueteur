@@ -1,5 +1,6 @@
 import * as PIXI from "pixi.js";
 import type { SimSimEvent, SimSimPrompt, SimSimRoom, SimSimViewerState } from "./simSimStore";
+import { deriveSecurityDirective } from "./viewModel";
 
 type Vec2 = { x: number; y: number };
 type Bounds = { min_x: number; min_y: number; max_x: number; max_y: number };
@@ -50,6 +51,7 @@ export class SimSimScene {
     private debugPanelEl?: HTMLDivElement;
     private advanceDayButtonEl?: HTMLButtonElement;
     private advanceStatusEl?: HTMLDivElement;
+    private securityDirectivePanelEl?: HTMLDivElement;
     private supervisorPanelEl?: HTMLDivElement;
     private placementControlsEl?: HTMLDivElement;
     private debugVisible = false;
@@ -366,14 +368,27 @@ export class SimSimScene {
         const roomCards = document.createElement("div");
         roomCards.style.position = "absolute";
         roomCards.style.right = "14px";
-        roomCards.style.top = "14px";
+        roomCards.style.top = "172px";
         roomCards.style.width = "min(400px, 28vw)";
-        roomCards.style.maxHeight = "72vh";
+        roomCards.style.maxHeight = "58vh";
         roomCards.style.overflowY = "auto";
         roomCards.style.display = "grid";
         roomCards.style.gap = "7px";
         roomCards.style.padding = "2px 0";
         root.appendChild(roomCards);
+
+        const securityDirectivePanel = document.createElement("div");
+        securityDirectivePanel.style.position = "absolute";
+        securityDirectivePanel.style.right = "14px";
+        securityDirectivePanel.style.top = "14px";
+        securityDirectivePanel.style.width = "min(400px, 28vw)";
+        securityDirectivePanel.style.padding = "10px 12px";
+        securityDirectivePanel.style.borderRadius = "10px";
+        securityDirectivePanel.style.pointerEvents = "auto";
+        securityDirectivePanel.style.border = "1px solid rgba(140, 214, 200, 0.42)";
+        securityDirectivePanel.style.background = "rgba(13, 20, 28, 0.86)";
+        securityDirectivePanel.style.overflow = "hidden";
+        root.appendChild(securityDirectivePanel);
 
         const events = document.createElement("div");
         events.style.position = "absolute";
@@ -446,6 +461,7 @@ export class SimSimScene {
         this.overlayRoot = root;
         this.hudEl = hud;
         this.roomCardsEl = roomCards;
+        this.securityDirectivePanelEl = securityDirectivePanel;
         this.eventsEl = events;
         this.promptsEl = prompts;
         this.debugPanelEl = debugPanel;
@@ -469,6 +485,7 @@ export class SimSimScene {
             !this.eventsEl ||
             !this.promptsEl ||
             !this.debugPanelEl ||
+            !this.securityDirectivePanelEl ||
             !this.supervisorPanelEl ||
             !this.placementControlsEl
         )
@@ -588,6 +605,7 @@ export class SimSimScene {
         }
 
         const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
+        this.renderSecurityDirectivePanel(state, rooms, events);
         const swapsUsed = this.computeSwapsUsed(this.placementsDraft, this.placementsBaseline);
         const swapBudget = wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) <= 2 ? 1 : 2);
         const swapsRemaining = Math.max(0, swapBudget - swapsUsed);
@@ -672,6 +690,126 @@ export class SimSimScene {
             `<div>prompts: ${state.prompts.size}</div>`,
             `<div>config: ${wm?.config_id ?? "-"}</div>`,
         ].join("");
+    }
+
+    private renderSecurityDirectivePanel(state: SimSimViewerState, rooms: SimSimRoom[], events: SimSimEvent[]): void {
+        if (!this.securityDirectivePanelEl) return;
+        const panel = this.securityDirectivePanelEl;
+        panel.innerHTML = "";
+
+        const lead = this.resolveSecurityLeadCode(state, rooms);
+        const directive = deriveSecurityDirective(lead, events);
+        const crisp = directive.display.clarityTreatment === "crisp";
+
+        panel.style.border = crisp ? "1px solid rgba(140, 214, 200, 0.56)" : "1px solid rgba(232, 159, 143, 0.62)";
+        panel.style.boxShadow = crisp
+            ? "0 10px 26px rgba(8, 15, 23, 0.42)"
+            : "0 10px 24px rgba(34, 11, 11, 0.44), inset 0 0 0 1px rgba(255, 214, 207, 0.06)";
+        panel.style.background = crisp
+            ? "linear-gradient(160deg, rgba(9, 17, 24, 0.93), rgba(11, 18, 26, 0.87))"
+            : "repeating-linear-gradient(135deg, rgba(255, 214, 207, 0.08), rgba(255, 214, 207, 0.08) 2px, rgba(17, 12, 12, 0) 2px, rgba(17, 12, 12, 0) 6px), linear-gradient(160deg, rgba(33, 16, 16, 0.9), rgba(16, 12, 14, 0.85))";
+
+        const header = document.createElement("div");
+        header.style.display = "flex";
+        header.style.alignItems = "center";
+        header.style.justifyContent = "space-between";
+        header.style.gap = "10px";
+        header.style.marginBottom = "7px";
+
+        const title = document.createElement("div");
+        title.style.fontSize = "10px";
+        title.style.fontWeight = "700";
+        title.style.letterSpacing = "0.08em";
+        title.style.textTransform = "uppercase";
+        title.style.opacity = "0.78";
+        title.textContent = "Security Directive";
+        header.appendChild(title);
+
+        const stamp = document.createElement("div");
+        stamp.style.fontSize = "10px";
+        stamp.style.opacity = "0.72";
+        stamp.textContent = `${directive.stamp} • lead ${directive.lead}`;
+        header.appendChild(stamp);
+        panel.appendChild(header);
+
+        const label = document.createElement("div");
+        label.style.display = "inline-flex";
+        label.style.alignItems = "center";
+        label.style.padding = "4px 8px";
+        label.style.borderRadius = "999px";
+        label.style.marginBottom = "8px";
+        label.style.fontSize = "11px";
+        label.style.fontWeight = "700";
+        label.style.letterSpacing = "0.06em";
+        label.style.textTransform = "uppercase";
+        label.style.border = crisp ? "1px solid rgba(140, 214, 200, 0.58)" : "1px solid rgba(243, 199, 106, 0.62)";
+        label.style.background = crisp ? "rgba(11, 32, 36, 0.52)" : "rgba(43, 26, 14, 0.44)";
+        label.textContent = directive.display.label;
+        panel.appendChild(label);
+
+        const blurb = document.createElement("div");
+        blurb.style.display = "grid";
+        blurb.style.gap = "3px";
+        blurb.style.marginBottom = "8px";
+        for (const line of directive.display.blurbLines.slice(0, 2)) {
+            const row = document.createElement("div");
+            row.style.fontSize = "11px";
+            row.style.lineHeight = "1.34";
+            row.style.opacity = "0.95";
+            row.textContent = line;
+            blurb.appendChild(row);
+        }
+        panel.appendChild(blurb);
+
+        const effects = document.createElement("div");
+        effects.style.display = "flex";
+        effects.style.flexWrap = "wrap";
+        effects.style.gap = "6px";
+        effects.style.marginBottom = "8px";
+        for (const fx of directive.display.effects.slice(0, 4)) {
+            const chip = document.createElement("div");
+            chip.style.display = "inline-flex";
+            chip.style.alignItems = "center";
+            chip.style.gap = "4px";
+            chip.style.fontSize = "10px";
+            chip.style.padding = "3px 6px";
+            chip.style.borderRadius = "7px";
+            chip.style.border = crisp ? "1px solid rgba(140, 214, 200, 0.26)" : "1px solid rgba(232, 159, 143, 0.4)";
+            chip.style.background = crisp ? "rgba(8, 18, 22, 0.58)" : "rgba(31, 14, 16, 0.62)";
+
+            const icon = document.createElement("span");
+            icon.style.fontFamily = "\"Chivo Mono\", monospace";
+            icon.style.opacity = "0.9";
+            icon.textContent = fx.icon;
+            chip.appendChild(icon);
+
+            const text = document.createElement("span");
+            text.style.opacity = "0.88";
+            text.textContent = fx.text;
+            chip.appendChild(text);
+            effects.appendChild(chip);
+        }
+        panel.appendChild(effects);
+
+        const clarity = document.createElement("div");
+        clarity.style.display = "flex";
+        clarity.style.alignItems = "center";
+        clarity.style.justifyContent = "space-between";
+        clarity.style.fontSize = "10px";
+        clarity.style.letterSpacing = "0.06em";
+        clarity.style.textTransform = "uppercase";
+        clarity.style.opacity = "0.88";
+        clarity.innerHTML = `<span>${directive.display.clarityHint}</span><span>clarity ${pct(directive.clarity)}</span>`;
+        panel.appendChild(clarity);
+    }
+
+    private resolveSecurityLeadCode(state: SimSimViewerState, rooms: SimSimRoom[]): string {
+        const securityRoom =
+            rooms.find((room) => room.name.trim().toLowerCase() === "security") ??
+            rooms.find((room) => room.room_id === 1);
+        const draftLead =
+            securityRoom !== undefined ? (this.placementsDraft[securityRoom.room_id] ?? securityRoom.supervisor ?? null) : null;
+        return (draftLead ?? state.worldMeta?.security_lead ?? "L").trim();
     }
 
     private focusPromptsPanel(): void {

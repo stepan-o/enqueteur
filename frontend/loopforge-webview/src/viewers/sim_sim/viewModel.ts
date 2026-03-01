@@ -2,6 +2,20 @@ import type { SimSimEvent, SimSimPrompt, SimSimRoom, SimSimWorldMeta } from "./s
 
 export type SecurityDirectiveTone = "stable" | "watch" | "alert";
 export type SecurityDirectiveAction = "hold" | "monitor" | "stabilize";
+export type SecurityDirectiveClarityTreatment = "crisp" | "noisy";
+
+export type SecurityDirectiveEffect = {
+    icon: string;
+    text: string;
+};
+
+export type SecurityDirectiveDisplay = {
+    label: string;
+    blurbLines: string[];
+    effects: SecurityDirectiveEffect[];
+    clarityTreatment: SecurityDirectiveClarityTreatment;
+    clarityHint: string;
+};
 
 export type SecurityDirective = {
     lead: string;
@@ -11,6 +25,7 @@ export type SecurityDirective = {
     headline: string;
     summary: string;
     stamp: string;
+    display: SecurityDirectiveDisplay;
 };
 
 export type ForecastBand = "low" | "mid" | "high" | "unknown";
@@ -119,6 +134,61 @@ const LEAD_BASE_CLARITY: Record<string, number> = {
     C: 0.38,
 };
 
+const LEAD_DIRECTIVE_PRESETS: Record<
+    string,
+    {
+        label: string;
+        blurb: string;
+        effects: SecurityDirectiveEffect[];
+    }
+> = {
+    L: {
+        label: "ORDER LOCK",
+        blurb: "Lock sequence before throughput; deviations are frozen first.",
+        effects: [
+            { icon: "[LOCK]", text: "chain-of-command gates harden" },
+            { icon: "[SEQ]", text: "step order checks tighten" },
+            { icon: "[SYNC]", text: "cross-room timing is enforced" },
+        ],
+    },
+    S: {
+        label: "CONVEYOR PRIORITY",
+        blurb: "Flow continuity outranks everything; stalls are resolved immediately.",
+        effects: [
+            { icon: "[BELT]", text: "jam-clearing gets first allocation" },
+            { icon: "[REROUTE]", text: "queues auto-reroute around friction" },
+            { icon: "[LOAD]", text: "handoff lanes get throughput bias" },
+        ],
+    },
+    W: {
+        label: "MATERIALS PRIORITY",
+        blurb: "Feedstock quality and stock discipline dominate dispatch choices.",
+        effects: [
+            { icon: "[STOCK]", text: "inventory guard bands expand" },
+            { icon: "[QA]", text: "input quality checks tighten" },
+            { icon: "[PULL]", text: "replenishment follows pull demand" },
+        ],
+    },
+    C: {
+        label: "CHAOS DISPATCH",
+        blurb: "Rapid opportunistic routing; standard queues may be bypassed.",
+        effects: [
+            { icon: "[BURST]", text: "burst redeployments become common" },
+            { icon: "[RISK]", text: "high-variance gambits are tolerated" },
+            { icon: "[OVR]", text: "local overrides outrank schedules" },
+        ],
+    },
+    T: {
+        label: "VIBE DISPATCH",
+        blurb: "Crew sentiment and momentum weight routing in real time.",
+        effects: [
+            { icon: "[MORALE]", text: "morale-weighted assignment bias" },
+            { icon: "[COOL]", text: "conflict cooldown buffers activate" },
+            { icon: "[PULSE]", text: "rhythm-driven shift pivots increase" },
+        ],
+    },
+};
+
 const NOTABLE_EVENT_KINDS = new Set<string>([
     "critical_triggered",
     "critical_suppressed",
@@ -182,6 +252,7 @@ export function deriveSecurityDirective(
     const tone: SecurityDirectiveTone = clarity >= 0.72 ? "stable" : clarity >= 0.45 ? "watch" : "alert";
     const action: SecurityDirectiveAction = tone === "stable" ? "hold" : tone === "watch" ? "monitor" : "stabilize";
     const stamp = buildTickStamp(events);
+    const display = deriveSecurityDirectiveDisplay(lead, clarity, tone, action);
 
     const headline =
         tone === "stable"
@@ -205,6 +276,7 @@ export function deriveSecurityDirective(
         headline,
         summary,
         stamp,
+        display,
     };
 }
 
@@ -627,6 +699,30 @@ function toSortedPrompts(promptsInput: Iterable<SimSimPrompt>): SimSimPrompt[] {
 function normalizeLeadCode(raw: string | undefined): string {
     const token = (raw ?? "L").trim().toUpperCase();
     return token.length > 0 ? token : "L";
+}
+
+function deriveSecurityDirectiveDisplay(
+    lead: string,
+    clarity: number,
+    tone: SecurityDirectiveTone,
+    action: SecurityDirectiveAction
+): SecurityDirectiveDisplay {
+    const preset = LEAD_DIRECTIVE_PRESETS[lead] ?? LEAD_DIRECTIVE_PRESETS["L"];
+    const treatment: SecurityDirectiveClarityTreatment = clarity >= 0.58 ? "crisp" : "noisy";
+    const clarityHint = treatment === "crisp" ? "CRISP EDGE" : "NOISY EDGE";
+    const toneLine =
+        tone === "stable"
+            ? `Signal stable: maintain ${action} posture.`
+            : tone === "watch"
+              ? `Signal drifting: escalate ${action} checkpoints.`
+              : `Signal fractured: force ${action} under direct control.`;
+    return {
+        label: preset.label,
+        blurbLines: [preset.blurb, toneLine],
+        effects: preset.effects.slice(0, 4),
+        clarityTreatment: treatment,
+        clarityHint,
+    };
 }
 
 function buildTickStamp(events: SimSimEvent[]): string {
