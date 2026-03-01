@@ -477,7 +477,11 @@ class SessionHost:
         if "set_workers" in command_payload:
             return None, "DISALLOWED_FIELD_SET_WORKERS", "set_workers is not supported by sim_sim LIVE contract"
 
-        is_awaiting_prompts = self.current_state.phase == "awaiting_prompts"
+        phase = str(self.current_state.phase)
+        is_awaiting_prompts = phase == "awaiting_prompts"
+        is_end_of_day = phase == "end_of_day"
+        is_planning_like = not is_awaiting_prompts and not is_end_of_day
+
         if is_awaiting_prompts:
             disallowed_keys = [key for key in ("set_supervisors", "end_of_day") if key in command_payload]
             if disallowed_keys:
@@ -488,15 +492,30 @@ class SessionHost:
                 )
             if "prompt_responses" not in command_payload:
                 return None, "AWAITING_PROMPTS_PROMPT_RESPONSES_REQUIRED", "while awaiting prompts, prompt_responses are required"
-        else:
-            if "prompt_responses" in command_payload:
+        elif is_end_of_day:
+            disallowed_keys = [key for key in ("set_supervisors", "prompt_responses") if key in command_payload]
+            if disallowed_keys:
                 return (
                     None,
-                    "DISALLOWED_FIELD_PROMPT_RESPONSES_IN_PLANNING",
-                    "prompt_responses are only accepted while phase=awaiting_prompts",
+                    "END_OF_DAY_DISALLOWED_FIELDS_PRESENT",
+                    f"while phase=end_of_day, SIM_INPUT may include only end_of_day (found: {','.join(disallowed_keys)})",
+                )
+        elif is_planning_like:
+            disallowed_keys = [key for key in ("prompt_responses", "end_of_day") if key in command_payload]
+            if disallowed_keys:
+                if disallowed_keys == ["prompt_responses"]:
+                    return (
+                        None,
+                        "DISALLOWED_FIELD_PROMPT_RESPONSES_IN_PLANNING",
+                        "prompt_responses are only accepted while phase=awaiting_prompts",
+                    )
+                return (
+                    None,
+                    "PLANNING_DISALLOWED_FIELDS_PRESENT",
+                    f"while phase={phase}, SIM_INPUT may include only set_supervisors (found: {','.join(disallowed_keys)})",
                 )
 
-        if not is_awaiting_prompts:
+        if is_planning_like:
             raw_sup = command_payload.get("set_supervisors", {})
             if not isinstance(raw_sup, dict):
                 return None, "INVALID_SET_SUPERVISORS", "set_supervisors must be an object"
@@ -516,6 +535,7 @@ class SessionHost:
                     return None, "INVALID_SET_SUPERVISORS", f"unknown supervisor code for room {room_id}"
                 set_supervisors[room_id] = parsed_code
 
+        if is_end_of_day:
             raw_eod = command_payload.get("end_of_day", {})
             if not isinstance(raw_eod, dict):
                 return None, "INVALID_END_OF_DAY", "end_of_day must be an object"
