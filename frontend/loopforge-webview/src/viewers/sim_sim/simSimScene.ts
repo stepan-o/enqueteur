@@ -15,9 +15,12 @@ import {
 } from "./ui/layout";
 import type { DirectorConsoleLayout, Rect } from "./ui/layout";
 import { createBezelPanel, type BezelPanelHandle } from "./ui/bezelPanel";
-import { loadConsoleAssets, type ConsoleAssets } from "./ui/assets";
+import { loadConsoleAssets, loadUiAssets, type ConsoleAssets, type UiAssets } from "./ui/assets";
+import { createUiAudio, DEFAULT_UI_SFX_URLS, type UiAudio } from "./ui/audio";
 import { createGlobalNoiseOverlay, type GlobalNoiseOverlay } from "./ui/fx";
 import { roomArtKeyForRoomId } from "./ui/roomArt";
+import { CONSOLE_SKIN } from "./ui/skin";
+import { SimSimTopStrip, type TopStripSignalMode, type TopStripUiPhase, type TopStripViewModel } from "./ui/topStrip";
 
 type Vec2 = { x: number; y: number };
 type SubmitPromptChoice = {
@@ -44,6 +47,7 @@ type SimSimSceneOpts = {
     onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     onAdvanceDay?: (payload: AdvanceDayPayload) => void;
     onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
+    onExitToMenu?: () => void;
 };
 type PlacementDraft = Record<number, string | null>;
 type EndOfDayDraft = EndOfDayActionsPayload;
@@ -105,6 +109,9 @@ const FX_STEAM_REWIND_MS = 760;
 const FX_RIVET_POP_MS = 420;
 const DEV_UI_QUERY_PARAM = "sim_sim_dev_ui";
 const DEV_UI_STORAGE_KEY = "loopforge.sim_sim.dev_ui";
+const UI_SFX_ENABLED_STORAGE_KEY = "sim_sim_ui_sfx";
+const UI_SFX_VOLUME_STORAGE_KEY = "sim_sim_ui_sfx_vol";
+const DEFAULT_UI_SFX_VOLUME = 0.35;
 
 export class SimSimScene {
     public readonly app: PIXI.Application;
@@ -119,17 +126,22 @@ export class SimSimScene {
     private readonly supervisorLayer = new PIXI.Container();
     private readonly uiLayer = new PIXI.Container();
     private overlayRoot?: HTMLDivElement;
-    private topStripPanel?: BezelPanelHandle;
     private rightColumnPanel?: BezelPanelHandle;
     private commandDeckPanel?: BezelPanelHandle;
     private consoleAssets?: ConsoleAssets;
+    private uiAssets?: UiAssets;
+    private uiSfx?: UiAudio;
+    private uiSfxEnabled = true;
+    private uiSfxVolume = DEFAULT_UI_SFX_VOLUME;
     private globalNoiseOverlay?: GlobalNoiseOverlay;
-    private hudEl?: HTMLDivElement;
+    private topStripUi?: SimSimTopStrip;
     private roomCardsEl?: HTMLDivElement;
     private eventsEl?: HTMLDivElement;
     private devModeMasterToggleEl?: HTMLButtonElement;
     private devFeedToggleEl?: HTMLButtonElement;
     private devSchemaToggleEl?: HTMLButtonElement;
+    private uiSfxToggleEl?: HTMLButtonElement;
+    private uiSfxVolumeEl?: HTMLButtonElement;
     private promptsEl?: HTMLDivElement;
     private resolvingLayerEl?: HTMLDivElement;
     private recapLayerEl?: HTMLDivElement;
@@ -183,11 +195,13 @@ export class SimSimScene {
     private readonly onSubmitPromptChoice?: (payload: SubmitPromptChoice) => void;
     private readonly onAdvanceDay?: (payload: AdvanceDayPayload) => void;
     private readonly onApplySupervisorPlacements?: (payload: ApplySupervisorPlacementsPayload) => void;
+    private readonly onExitToMenu?: () => void;
 
     constructor(mountEl: HTMLElement, opts?: SimSimSceneOpts) {
         this.onSubmitPromptChoice = opts?.onSubmitPromptChoice;
         this.onAdvanceDay = opts?.onAdvanceDay;
         this.onApplySupervisorPlacements = opts?.onApplySupervisorPlacements;
+        this.onExitToMenu = opts?.onExitToMenu;
         this.app = new PIXI.Application();
         void this.init(mountEl);
     }
@@ -203,13 +217,47 @@ export class SimSimScene {
         mountEl.appendChild(this.app.canvas);
         this.root.addChild(this.roomLayer, this.supervisorLayer, this.uiLayer);
         this.app.stage.addChild(this.root);
-        try {
-            this.consoleAssets = await loadConsoleAssets();
-        } catch (error) {
-            console.warn("[sim_sim] console asset load failed; using fallback skin URLs.", error);
+        const [consoleAssetsResult, uiAssetsResult] = await Promise.allSettled([loadConsoleAssets(), loadUiAssets()]);
+        if (consoleAssetsResult.status === "fulfilled") {
+            this.consoleAssets = consoleAssetsResult.value;
+        } else {
+            console.warn("[sim_sim] console asset load failed; using fallback skin URLs.", consoleAssetsResult.reason);
             this.consoleAssets = undefined;
         }
+        if (uiAssetsResult.status === "fulfilled") {
+            this.uiAssets = uiAssetsResult.value;
+        } else {
+            console.warn("[sim_sim] ui icon/chrome asset load failed; top strip will use fallback textures.", uiAssetsResult.reason);
+            this.uiAssets = undefined;
+        }
+        this.uiSfx = createUiAudio();
+        this.uiSfxEnabled = readUiSfxEnabledFlag();
+        this.uiSfxVolume = readUiSfxVolume();
+        this.uiSfx.setEnabled(this.uiSfxEnabled);
+        this.uiSfx.setVolume(this.uiSfxVolume);
+        if (this.devMode) {
+            const state = this.uiSfxEnabled ? "enabled" : "disabled";
+            console.info(`[sim_sim] UI SFX ${state} (vol=${this.uiSfxVolume.toFixed(2)})`);
+        }
+        void this.uiSfx.load(DEFAULT_UI_SFX_URLS);
         this.installOverlay(mountEl, this.consoleAssets);
+        this.topStripUi = new SimSimTopStrip({
+            layout: {
+                strip: this.directorLayout.canonical.topStrip,
+                clusters: this.directorLayout.canonical.topStripClusters,
+            },
+            skin: CONSOLE_SKIN,
+            assets: this.uiAssets ?? buildFallbackUiAssets(),
+            audio: this.uiSfx,
+            ticker: this.app.ticker,
+            onExit: () => {
+                this.onExitToMenu?.();
+                if (typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("loopforge:simsim-exit-requested"));
+                }
+            },
+        });
+        this.uiLayer.addChild(this.topStripUi.container);
         if (this.consoleAssets) {
             this.globalNoiseOverlay = createGlobalNoiseOverlay(this.app, this.consoleAssets.noiseTile);
             this.globalNoiseOverlay.setClarity("normal", 0.85);
@@ -254,15 +302,14 @@ export class SimSimScene {
     }
 
     private applyOverlayRegionLayout(): void {
+        this.topStripUi?.setLayout({
+            strip: this.directorLayout.canonical.topStrip,
+            clusters: this.directorLayout.canonical.topStripClusters,
+        });
         if (!this.overlayRoot) return;
         const scaled = this.directorLayout.scaled;
-        if (this.topStripPanel) applyAbsoluteRect(this.topStripPanel.root, scaled.topStrip);
         if (this.rightColumnPanel) applyAbsoluteRect(this.rightColumnPanel.root, scaled.rightColumn);
         if (this.commandDeckPanel) applyAbsoluteRect(this.commandDeckPanel.root, scaled.commandDeck);
-        if (this.hudEl) {
-            applyAbsoluteRect(this.hudEl, scaled.topStripClusters.left);
-            this.hudEl.style.maxHeight = `${Math.max(64, scaled.topStripClusters.left.h)}px`;
-        }
         if (this.advanceControlsEl) applyAbsoluteRect(this.advanceControlsEl, scaled.commandDeckZones.centerPrimary);
         if (this.placementControlsEl) {
             applyAbsoluteRect(this.placementControlsEl, scaled.commandDeckZones.rightSecondary);
@@ -285,7 +332,7 @@ export class SimSimScene {
         const safeInset = inset(this.directorLayout.safeFrame, 14);
         const buttonHeight = Math.max(28, Math.round(30 * this.directorLayout.safeFrame.scale));
         const devButtonsArea = anchorBottomLeft(safeInset, {
-            w: Math.round(420 * this.directorLayout.safeFrame.scale),
+            w: Math.round(700 * this.directorLayout.safeFrame.scale),
             h: buttonHeight,
         });
         if (this.devModeMasterToggleEl) {
@@ -296,6 +343,12 @@ export class SimSimScene {
         }
         if (this.devSchemaToggleEl) {
             applyAbsoluteRect(this.devSchemaToggleEl, anchorTopLeft(devButtonsArea, { w: Math.round(128 * this.directorLayout.safeFrame.scale), h: buttonHeight }, { x: Math.round(276 * this.directorLayout.safeFrame.scale) }));
+        }
+        if (this.uiSfxToggleEl) {
+            applyAbsoluteRect(this.uiSfxToggleEl, anchorTopLeft(devButtonsArea, { w: Math.round(108 * this.directorLayout.safeFrame.scale), h: buttonHeight }, { x: Math.round(414 * this.directorLayout.safeFrame.scale) }));
+        }
+        if (this.uiSfxVolumeEl) {
+            applyAbsoluteRect(this.uiSfxVolumeEl, anchorTopLeft(devButtonsArea, { w: Math.round(118 * this.directorLayout.safeFrame.scale), h: buttonHeight }, { x: Math.round(532 * this.directorLayout.safeFrame.scale) }));
         }
         if (this.eventsEl) {
             applyAbsoluteRect(
@@ -330,8 +383,8 @@ export class SimSimScene {
                             ? "rgba(232,159,143,0.42)"
                             : "rgba(199,223,241,0.38)";
                 return [
-                    `<div style=\"position:absolute;left:${region.rect.x}px;top:${region.rect.y}px;width:${region.rect.w}px;height:${region.rect.h}px;border:1px solid ${color};border-radius:1px;box-sizing:border-box;\">`,
-                    `<div style=\"position:absolute;left:2px;top:2px;padding:1px 3px;border-radius:3px;background:rgba(5,8,13,0.62);color:#dce7ef;font-size:9px;line-height:1.2;letter-spacing:0.03em;white-space:nowrap;\">${escapeHtml(region.name)}</div>`,
+                    `<div style="position:absolute;left:${region.rect.x}px;top:${region.rect.y}px;width:${region.rect.w}px;height:${region.rect.h}px;border:1px solid ${color};border-radius:1px;box-sizing:border-box;">`,
+                    `<div style="position:absolute;left:2px;top:2px;padding:1px 3px;border-radius:3px;background:rgba(5,8,13,0.62);color:#dce7ef;font-size:9px;line-height:1.2;letter-spacing:0.03em;white-space:nowrap;">${escapeHtml(region.name)}</div>`,
                     `</div>`,
                 ].join("");
             })
@@ -524,6 +577,25 @@ export class SimSimScene {
         this.magnetFxRoomId = null;
     }
 
+    private applyUiSfxSettings(): void {
+        this.uiSfx?.setEnabled(this.uiSfxEnabled);
+        this.uiSfx?.setVolume(this.uiSfxVolume);
+    }
+
+    private refreshUiSfxControls(): void {
+        if (this.uiSfxToggleEl) {
+            this.uiSfxToggleEl.textContent = this.uiSfxEnabled ? "SFX: ON" : "SFX: OFF";
+            this.uiSfxToggleEl.style.borderColor = this.uiSfxEnabled ? "rgba(140, 214, 200, 0.72)" : "rgba(231, 123, 75, 0.6)";
+            this.uiSfxToggleEl.style.background = this.uiSfxEnabled ? "rgba(10, 24, 24, 0.9)" : "rgba(33, 17, 14, 0.9)";
+            this.uiSfxToggleEl.style.color = this.uiSfxEnabled ? "#d8f2ea" : "#ffd9ca";
+            this.uiSfxToggleEl.style.display = "block";
+        }
+        if (this.uiSfxVolumeEl) {
+            this.uiSfxVolumeEl.textContent = `SFX VOL ${Math.round(this.uiSfxVolume * 100)}%`;
+            this.uiSfxVolumeEl.style.display = "block";
+        }
+    }
+
     private applyDevModeVisibility(): void {
         if (this.devModeMasterToggleEl) {
             this.devModeMasterToggleEl.textContent = this.devMode ? "Dev Panels: ON" : "Dev Panels: OFF";
@@ -531,6 +603,7 @@ export class SimSimScene {
             this.devModeMasterToggleEl.style.background = this.devMode ? "rgba(37, 27, 12, 0.92)" : "rgba(10, 13, 18, 0.84)";
             this.devModeMasterToggleEl.style.color = this.devMode ? "#f5ddaa" : "#dce7ef";
         }
+        this.refreshUiSfxControls();
         if (this.eventsEl) {
             this.eventsEl.style.display = this.devMode && this.debugFeedVisible ? "block" : "none";
             if (!this.devMode) this.eventsEl.innerHTML = "";
@@ -602,6 +675,9 @@ export class SimSimScene {
         this.roomLayer.removeChildren();
         this.supervisorLayer.removeChildren();
         this.uiLayer.removeChildren();
+        if (this.topStripUi) {
+            this.uiLayer.addChild(this.topStripUi.container);
+        }
         this.updateLayoutModel();
 
         const rooms = Array.from(state.rooms.values()).sort((a, b) => a.room_id - b.room_id);
@@ -626,19 +702,21 @@ export class SimSimScene {
             });
         }
 
-        const eventLines = events.slice(-3).map((ev) => `t${ev.tick} #${ev.event_id} ${ev.kind}`);
-        const caption = new PIXI.Text({
-            text: `sim_sim   tick=${state.tick}\n${eventLines.join("\n")}`,
-            style: {
-                fontFamily: "Bricolage Grotesque, sans-serif",
-                fontSize: 14,
-                fill: 0xf3efe3,
-                stroke: { color: 0x161b20, width: 3 },
-            },
-        });
-        caption.x = TOP_STRIP_LEFT_CLUSTER_RECT.x + 4;
-        caption.y = TOP_STRIP_LEFT_CLUSTER_RECT.y + 2;
-        this.uiLayer.addChild(caption);
+        if (this.devMode && this.debugFeedVisible) {
+            const eventLines = events.slice(-3).map((ev) => `t${ev.tick} #${ev.event_id} ${ev.kind}`);
+            const caption = new PIXI.Text({
+                text: `sim_sim   tick=${state.tick}\n${eventLines.join("\n")}`,
+                style: {
+                    fontFamily: "Bricolage Grotesque, sans-serif",
+                    fontSize: 14,
+                    fill: 0xf3efe3,
+                    stroke: { color: 0x161b20, width: 3 },
+                },
+            });
+            caption.x = TOP_STRIP_LEFT_CLUSTER_RECT.x + 4;
+            caption.y = TOP_STRIP_LEFT_CLUSTER_RECT.y + 2;
+            this.uiLayer.addChild(caption);
+        }
 
         if (state.desynced) {
             const banner = new PIXI.Text({
@@ -1034,15 +1112,6 @@ export class SimSimScene {
         layoutDebugOverlay.style.zIndex = "26";
         root.appendChild(layoutDebugOverlay);
 
-        const topStripPanel = createBezelPanel({
-            title: "Director Status",
-            chips: ["Console Live"],
-            tone: "active",
-            pointerEvents: "none",
-            assets: consoleAssets,
-        });
-        root.appendChild(topStripPanel.root);
-
         const rightColumnPanel = createBezelPanel({
             title: "Right Column",
             chips: ["Directive", "Docket"],
@@ -1060,17 +1129,6 @@ export class SimSimScene {
             assets: consoleAssets,
         });
         root.appendChild(commandDeckPanel.root);
-
-        const hud = document.createElement("div");
-        hud.style.position = "absolute";
-        hud.style.padding = "6px 8px";
-        hud.style.background = "transparent";
-        hud.style.fontSize = "11px";
-        hud.style.lineHeight = "1.4";
-        hud.style.pointerEvents = "auto";
-        hud.style.maxHeight = "20vh";
-        hud.style.overflow = "hidden";
-        root.appendChild(hud);
 
         const advanceControls = document.createElement("div");
         advanceControls.style.position = "absolute";
@@ -1244,6 +1302,59 @@ export class SimSimScene {
         });
         root.appendChild(debugToggle);
 
+        const uiSfxToggle = document.createElement("button");
+        uiSfxToggle.type = "button";
+        uiSfxToggle.textContent = this.uiSfxEnabled ? "SFX: ON" : "SFX: OFF";
+        uiSfxToggle.style.position = "absolute";
+        uiSfxToggle.style.pointerEvents = "auto";
+        uiSfxToggle.style.border = "1px solid rgba(140, 214, 200, 0.5)";
+        uiSfxToggle.style.background = "rgba(10, 24, 24, 0.9)";
+        uiSfxToggle.style.color = "#d8f2ea";
+        uiSfxToggle.style.borderRadius = "8px";
+        uiSfxToggle.style.padding = "6px 10px";
+        uiSfxToggle.style.fontSize = "11px";
+        uiSfxToggle.style.letterSpacing = "0.06em";
+        uiSfxToggle.style.textTransform = "uppercase";
+        uiSfxToggle.style.zIndex = "70";
+        uiSfxToggle.addEventListener("click", () => {
+            this.uiSfxEnabled = !this.uiSfxEnabled;
+            this.applyUiSfxSettings();
+            persistUiSfxEnabledFlag(this.uiSfxEnabled);
+            this.refreshUiSfxControls();
+            if (this.devMode) {
+                const state = this.uiSfxEnabled ? "enabled" : "disabled";
+                console.info(`[sim_sim] UI SFX ${state} (vol=${this.uiSfxVolume.toFixed(2)})`);
+            }
+        });
+        root.appendChild(uiSfxToggle);
+
+        const uiSfxVolume = document.createElement("button");
+        uiSfxVolume.type = "button";
+        uiSfxVolume.textContent = `SFX VOL ${Math.round(this.uiSfxVolume * 100)}%`;
+        uiSfxVolume.style.position = "absolute";
+        uiSfxVolume.style.pointerEvents = "auto";
+        uiSfxVolume.style.border = "1px solid rgba(140, 214, 200, 0.5)";
+        uiSfxVolume.style.background = "rgba(10, 13, 18, 0.84)";
+        uiSfxVolume.style.color = "#e9e2cf";
+        uiSfxVolume.style.borderRadius = "8px";
+        uiSfxVolume.style.padding = "6px 10px";
+        uiSfxVolume.style.fontSize = "11px";
+        uiSfxVolume.style.letterSpacing = "0.06em";
+        uiSfxVolume.style.textTransform = "uppercase";
+        uiSfxVolume.style.zIndex = "70";
+        uiSfxVolume.addEventListener("click", () => {
+            const steps = [0, 0.2, 0.35, 0.5, 0.7, 1];
+            const nextIdx = (steps.findIndex((step) => Math.abs(step - this.uiSfxVolume) < 0.001) + 1) % steps.length;
+            this.uiSfxVolume = steps[Math.max(0, nextIdx)];
+            this.applyUiSfxSettings();
+            persistUiSfxVolume(this.uiSfxVolume);
+            this.refreshUiSfxControls();
+            if (this.devMode) {
+                console.info(`[sim_sim] UI SFX volume=${this.uiSfxVolume.toFixed(2)}`);
+            }
+        });
+        root.appendChild(uiSfxVolume);
+
         const debugPanel = document.createElement("div");
         debugPanel.style.position = "absolute";
         debugPanel.style.pointerEvents = "none";
@@ -1258,16 +1369,16 @@ export class SimSimScene {
         root.appendChild(debugPanel);
 
         this.overlayRoot = root;
-        this.topStripPanel = topStripPanel;
         this.rightColumnPanel = rightColumnPanel;
         this.commandDeckPanel = commandDeckPanel;
-        this.hudEl = hud;
         this.roomCardsEl = roomCards;
         this.securityDirectivePanelEl = securityDirectivePanel;
         this.eventsEl = events;
         this.devModeMasterToggleEl = devModeToggle;
         this.devFeedToggleEl = feedToggle;
         this.devSchemaToggleEl = debugToggle;
+        this.uiSfxToggleEl = uiSfxToggle;
+        this.uiSfxVolumeEl = uiSfxVolume;
         this.promptsEl = prompts;
         this.resolvingLayerEl = resolvingLayer;
         this.recapLayerEl = recapLayer;
@@ -1297,7 +1408,6 @@ export class SimSimScene {
         }
     ): void {
         if (
-            !this.hudEl ||
             !this.roomCardsEl ||
             !this.promptsEl ||
             !this.recapLayerEl ||
@@ -1310,7 +1420,6 @@ export class SimSimScene {
         const previousState = overlayData.previousState;
         const wm = state.worldMeta;
         const inv = state.inventory;
-        const regime = state.regime;
         const currentPhase = normalizePhaseToken(wm?.phase);
         const previousPhase = normalizePhaseToken(previousState?.worldMeta?.phase);
         const resolvingPhase = this.uiPhase === "resolving";
@@ -1348,25 +1457,30 @@ export class SimSimScene {
         }
         const tickTarget = state.tick + 1;
         this.roomCardsEl.style.pointerEvents = "auto";
-
-        const activeFlags: string[] = [];
-        if (regime) {
-            if (regime.refactor_days > 0) activeFlags.push(`refactor(${regime.refactor_days})`);
-            if (regime.inversion_days > 0) activeFlags.push(`inversion(${regime.inversion_days})`);
-            if (regime.shutdown_except_brewery_today) activeFlags.push("shutdown_except_brewery");
-            if (regime.weaving_boost_next_day) activeFlags.push("weaving_boost_next_day");
-            if (regime.global_accident_bonus > 0) activeFlags.push(`accident_bonus=${pct(regime.global_accident_bonus)}`);
-        }
         const supervisorByCode = state.supervisors;
-        const supervisorSummary = Array.from(supervisorByCode.values())
-            .sort((a, b) => a.code.localeCompare(b.code))
-            .map((supervisor) => `${supervisor.code} ${supervisor.name} @ ${supervisor.assigned_room ?? "-"}`)
-            .join(" • ");
-        if (this.topStripPanel) {
-            const phaseChip = (wm?.phase ?? "planning").replaceAll("_", " ");
-            this.topStripPanel.setTone(resolvingPhase ? "critical" : "active");
-            this.topStripPanel.setChips([`Day ${wm?.day ?? "-"}`, phaseChip]);
-        }
+        const topStripPhase: TopStripUiPhase = recapPhase
+            ? "recap"
+            : resolvingPhase
+              ? "resolving"
+              : awaitingPrompts
+                ? "decision_gate"
+                : endOfDayPhase
+                  ? "end_of_day"
+                  : "planning";
+        const clarityMode = mapDirectiveClarityMode(overlayData.securityDirective.display.clarityTreatment);
+        const turnStats = deriveTopStripTurnStats(previousState, state);
+        this.topStripUi?.update({
+            day: wm?.day,
+            timeLabel: wm?.time,
+            cash: inv?.cash,
+            workforceDumb: inv?.worker_pools?.dumb_total,
+            workforceSmart: inv?.worker_pools?.smart_total,
+            phase: topStripPhase,
+            doctrineLabel: overlayData.securityDirective.display.label,
+            signalPercent: clampInt(Math.round(overlayData.securityDirective.clarity * 100), 0, 100),
+            signalMode: clarityMode,
+            turn: turnStats,
+        });
         if (this.commandDeckPanel) {
             this.commandDeckPanel.setTone(controlsDisabled ? "neutral" : "active");
             this.commandDeckPanel.setChips([
@@ -1374,31 +1488,6 @@ export class SimSimScene {
                 `Swaps ${wm?.supervisor_swaps?.swap_budget ?? ((wm?.day ?? state.tick) <= 2 ? 1 : 2)}`,
             ]);
         }
-
-        this.hudEl.innerHTML = [
-            `<div style="font-size:12px;font-weight:700;letter-spacing:0.04em;margin-bottom:4px;">sim_sim LIVE</div>`,
-            `<div>day <strong>${wm?.day ?? "-"}</strong> • tick <strong>${wm?.tick ?? state.tick}</strong> • ${wm?.phase ?? "-"} @ ${wm?.time ?? "-"}</div>`,
-            `<div>cash <strong>${inv?.cash ?? "-"}</strong> • workers ${inv?.worker_pools?.dumb_total ?? "-"}d / ${inv?.worker_pools?.smart_total ?? "-"}s</div>`,
-            `<div>security lead <strong>${wm?.security_lead ?? "-"}</strong></div>`,
-            `<div style="opacity:0.84;">raw ${inv?.inventories.raw_brains_dumb ?? 0}/${inv?.inventories.raw_brains_smart ?? 0} • washed ${inv?.inventories.washed_dumb ?? 0}/${inv?.inventories.washed_smart ?? 0} • sub ${inv?.inventories.substrate_gallons ?? 0} • rib ${inv?.inventories.ribbon_yards ?? 0}</div>`,
-            `<div style="opacity:0.84;">${supervisorSummary || "none unlocked"}</div>`,
-            `<div style="opacity:0.78;">regime: ${activeFlags.length ? activeFlags.join(", ") : "none"}</div>`,
-            planningPhase && !recapPhase && !resolvingPhase
-                ? `<div style="color:#c4d6e1;opacity:0.86;">Flow: swap on map → Apply Draft → Advance Day</div>`
-                : "",
-            recapPhase
-                ? `<div style="color:#f5ddaa;">phase recap: review outcomes, then click NEXT DAY to resume planning</div>`
-                : "",
-            resolvingPhase
-                ? `<div style="color:#f3c76a;">phase resolving: replaying day resolution beats...</div>`
-                : "",
-            awaitingPrompts
-                ? `<div style="color:#f3c76a;">phase awaiting_prompts: placements and advance disabled until prompt resolution</div>`
-                : "",
-            endOfDayPhase
-                ? `<div style="color:#f3c76a;">phase end_of_day: planning controls disabled until end-of-day actions are submitted</div>`
-                : "",
-        ].join("");
 
         const latestRejection = findLatestInputRejection(events);
         const advanceControlsEl = this.advanceControlsEl;
@@ -3743,6 +3832,27 @@ function normalizePhaseToken(phase: string | undefined | null): string {
     return (phase ?? "").trim().toLowerCase();
 }
 
+function mapDirectiveClarityMode(clarityTreatment: SecurityDirective["display"]["clarityTreatment"] | undefined): TopStripSignalMode {
+    if (clarityTreatment === "crisp") return "crisp";
+    if (clarityTreatment === "noisy") return "noisy";
+    return "normal";
+}
+
+function buildFallbackUiAssets(): UiAssets {
+    const base = PIXI.Texture.WHITE;
+    return {
+        icons: {
+            cash: { base, hover: base, select: base },
+            workersDumb: { base, hover: base, select: base },
+            workersSmart: { base, hover: base, select: base },
+            signal: { base, hover: base, select: base },
+        },
+        chrome: {
+            topStripPlate: base,
+        },
+    };
+}
+
 function installSwapFxStyles(root: HTMLElement): void {
     if (root.querySelector("style[data-simsim-swap-fx='1']")) return;
     const style = document.createElement("style");
@@ -4046,6 +4156,75 @@ function deriveRecapDeltasFromStateTransition(previousState: SimSimViewerState, 
     };
 }
 
+function deriveTopStripTurnStats(
+    previousState: SimSimViewerState | undefined,
+    state: SimSimViewerState
+): TopStripViewModel["turn"] | undefined {
+    if (!previousState) return undefined;
+
+    const previousCash = numberOrZero(previousState.inventory?.cash);
+    const currentCash = numberOrZero(state.inventory?.cash);
+    const cashDelta = Math.round(currentCash - previousCash);
+
+    const previousDumb = numberOrZero(previousState.inventory?.worker_pools?.dumb_total);
+    const previousSmart = numberOrZero(previousState.inventory?.worker_pools?.smart_total);
+    const currentDumb = numberOrZero(state.inventory?.worker_pools?.dumb_total);
+    const currentSmart = numberOrZero(state.inventory?.worker_pools?.smart_total);
+
+    const previousEventKeys = new Set(Array.from(previousState.events.values()).map((event) => resolvingEventKey(event)));
+    const appendedEvents = sortedEvents(state.events).filter((event) => !previousEventKeys.has(resolvingEventKey(event)));
+    const converted = sumConvertedWorkers(appendedEvents);
+
+    const dumbLost = Math.max(0, (previousDumb + converted.dumb) - currentDumb);
+    const smartLost = Math.max(0, (previousSmart + converted.smart) - currentSmart);
+
+    return {
+        tick: state.tick,
+        cash: {
+            delta: cashDelta,
+            gained: Math.max(0, cashDelta),
+            spent: Math.max(0, -cashDelta),
+        },
+        workers: {
+            dumbAdded: converted.dumb,
+            smartAdded: converted.smart,
+            dumbLost,
+            smartLost,
+            casualtiesByRoom: deriveCasualtiesByRoom(previousState, state),
+        },
+    };
+}
+
+function sumConvertedWorkers(events: SimSimEvent[]): { dumb: number; smart: number } {
+    let dumb = 0;
+    let smart = 0;
+    for (const event of events) {
+        if (event.kind !== "eod_convert") continue;
+        dumb += detailCount(event.details, "dumb");
+        smart += detailCount(event.details, "smart");
+    }
+    return { dumb, smart };
+}
+
+function deriveCasualtiesByRoom(previousState: SimSimViewerState, state: SimSimViewerState): Array<{ roomName: string; casualties: number }> {
+    const previousRoomsById = new Map(Array.from(previousState.rooms.values()).map((room) => [room.room_id, room]));
+    const rows: Array<{ roomName: string; casualties: number }> = [];
+    for (const room of state.rooms.values()) {
+        const previousRoom = previousRoomsById.get(room.room_id);
+        if (!previousRoom) continue;
+        const delta = numberOrZero(room.accidents_today?.casualties) - numberOrZero(previousRoom.accidents_today?.casualties);
+        if (delta <= 0) continue;
+        rows.push({ roomName: room.name || `Room ${room.room_id}`, casualties: delta });
+    }
+    return rows.sort((a, b) => (b.casualties - a.casualties) || a.roomName.localeCompare(b.roomName));
+}
+
+function detailCount(details: Record<string, unknown> | undefined, key: string): number {
+    const value = details?.[key];
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.floor(value as number));
+}
+
 function deriveSupervisorChanges(previousState: SimSimViewerState, state: SimSimViewerState): SupervisorChange[] {
     const codes = new Set<string>([...previousState.supervisors.keys(), ...state.supervisors.keys()]);
     const changes: SupervisorChange[] = [];
@@ -4238,6 +4417,49 @@ function persistSimSimDevUiFlag(enabled: boolean): void {
         window.localStorage.setItem(DEV_UI_STORAGE_KEY, enabled ? "1" : "0");
     } catch {
         // Ignore storage write failures (e.g., private mode restrictions).
+    }
+}
+
+function persistUiSfxEnabledFlag(enabled: boolean): void {
+    if (typeof window === "undefined") return;
+    try {
+        window.localStorage.setItem(UI_SFX_ENABLED_STORAGE_KEY, enabled ? "1" : "0");
+    } catch {
+        // Ignore storage write failures.
+    }
+}
+
+function persistUiSfxVolume(volume01: number): void {
+    if (typeof window === "undefined") return;
+    try {
+        const clamped = Number.isFinite(volume01) ? Math.max(0, Math.min(1, volume01)) : DEFAULT_UI_SFX_VOLUME;
+        window.localStorage.setItem(UI_SFX_VOLUME_STORAGE_KEY, String(clamped));
+    } catch {
+        // Ignore storage write failures.
+    }
+}
+
+function readUiSfxEnabledFlag(): boolean {
+    if (typeof window === "undefined") return true;
+    try {
+        const raw = window.localStorage.getItem(UI_SFX_ENABLED_STORAGE_KEY)?.trim().toLowerCase();
+        if (!raw) return true;
+        if (raw === "0" || raw === "false" || raw === "off") return false;
+        return true;
+    } catch {
+        return true;
+    }
+}
+
+function readUiSfxVolume(): number {
+    if (typeof window === "undefined") return DEFAULT_UI_SFX_VOLUME;
+    try {
+        const raw = window.localStorage.getItem(UI_SFX_VOLUME_STORAGE_KEY);
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed)) return DEFAULT_UI_SFX_VOLUME;
+        return Math.max(0, Math.min(1, parsed));
+    } catch {
+        return DEFAULT_UI_SFX_VOLUME;
     }
 }
 

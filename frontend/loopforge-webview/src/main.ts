@@ -89,13 +89,17 @@ const viewerExit = document.createElement("button");
 viewerExit.className = "viewer-exit";
 viewerExit.type = "button";
 viewerExit.textContent = "Exit to menu";
-viewerExit.addEventListener("click", () => {
+const exitViewerToMenu = () => {
     void transitionTo(() => {
         viewer.stop();
         viewer.setVisible(false);
         menuRoot.style.display = "block";
         menu.setScreen("dev");
     });
+};
+viewerExit.addEventListener("click", exitViewerToMenu);
+window.addEventListener("loopforge:simsim-exit-requested", () => {
+    exitViewerToMenu();
 });
 viewerRoot.appendChild(viewerExit);
 
