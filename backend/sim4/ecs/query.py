@@ -1,49 +1,55 @@
-# query.py
-from typing import Tuple, Iterator
-from .archetype import signature_of
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Iterator, Sequence, Tuple
+
+from .entity import EntityID
+
+
+@dataclass(frozen=True)
+class QuerySignature:
+    """
+    Canonical query descriptor for ECSWorld.query.
+
+    - read: required component types; matched entities must have all.
+    - write: required component types; matched entities must have all.
+    - optional: optional component types; rows include a slot for each in
+      the components tuple, using None when the entity lacks that component.
+    - without: exclusion component types; entities possessing any of these
+      are excluded from the result.
+    """
+    read: Tuple[type, ...]
+    write: Tuple[type, ...]
+    optional: Tuple[type, ...] = ()
+    without: Tuple[type, ...] = ()
+
+
+@dataclass(frozen=True)
+class RowView:
+    """
+    Deterministic row view returned by ECSWorld.query.
+
+    - entity: the EntityID.
+    - components: positional tuple of component instances in a canonical order.
+      Layout: (all read comps) + (all write comps) + (all optional comps).
+      For optional components, if the entity does not have the component,
+      the corresponding slot is None. The order within each group matches
+      the order in QuerySignature.
+    """
+    entity: EntityID
+    components: Tuple[object, ...]
+
 
 class QueryResult:
     """
-    Iterable that yields:
-        (EntityID, (compA, compB, compC...))
-    using SOA data from ArchetypeStorage.
+    Deterministic iterable of RowView instances.
     """
 
-    def __init__(self, world, comp_types):
-        self.world = world
-        self.comp_types = comp_types
+    def __init__(self, rows: Sequence[RowView]) -> None:
+        self._rows = tuple(rows)
 
-        # Build the query signature once
-        self.signature = signature_of(comp_types)
+    def __iter__(self) -> Iterator[RowView]:
+        return iter(self._rows)
 
-    def __iter__(self) -> Iterator[Tuple[int, Tuple]]:
-        """
-        Iterate matching archetypes and yield entity + components.
-        """
-        # Look through every archetype in the world
-        for arch in self.world.archetypes.values():
-
-            # Archetype must contain ALL requested component types
-            if not arch.has_components(self.comp_types):
-                continue
-
-            # Grab column references (SOA)
-            cols = [arch.components[ctype] for ctype in self.comp_types]
-
-            # Iterate row by row
-            for row_index, ent_id in enumerate(arch.entities):
-                # Extract each component instance
-                comps = tuple(col[row_index] for col in cols)
-                yield ent_id, comps
-
-
-class Query:
-    """
-    Entry point: world.query(Transform, Perception)
-    """
-    def __init__(self, world, comp_types):
-        self.world = world
-        self.comp_types = comp_types
-
-    def __iter__(self):
-        return iter(QueryResult(self.world, self.comp_types))
+    def __len__(self) -> int:
+        return len(self._rows)

@@ -1,0 +1,6 @@
+[gd_resource type="Theme" format=3 uid="uid://bdf0t0ps5qd4c"]
+
+[ext_resource type="FontFile" uid="uid://bieiei1gpc4p8" path="res://assets/fonts/BungeeTint-Regular.ttf" id="1_reqpe"]
+
+[resource]
+Button/fonts/font = ExtResource("1_reqpe")

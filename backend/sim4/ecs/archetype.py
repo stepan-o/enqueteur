@@ -1,98 +1,102 @@
-# archetype.py
-from typing import Dict, List, Type, Any
-from .entity import EntityID
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Iterable, Tuple, Dict, List
 
 
-def signature_of(component_types: tuple[Type]):
+@dataclass(frozen=True)
+class ArchetypeSignature:
     """
-    Normalize component type list → sorted tuple.
-    Ensures stable hash + archetype identity.
-    """
-    return tuple(sorted(component_types, key=lambda c: c.__name__))
+    Hashable, deterministic representation of an entity's component set.
 
-
-class Archetype:
-    """
-    An archetype stores entities and their components in SOA form.
-    Each Archetype instance corresponds to a unique combination
-    of component types.
+    - Uses a normalized, sorted ascending tuple of unique integer type codes.
+    - Rust-portable: only stores primitives (tuple[int, ...]).
+    - Equality and hashing depend solely on the normalized tuple.
     """
 
-    def __init__(self, component_types: tuple[Type]):
-        self.component_types = component_types      # (Transform, Velocity, ...)
-        self.signature = signature_of(component_types)
+    component_type_codes: Tuple[int, ...]
 
-        # SOA storage: comp_type → list of values
-        self.columns: Dict[Type, List[Any]] = {
-            c: [] for c in component_types
-        }
-
-        # entity list
-        self.entities: List[EntityID] = []
-
-        # entity → row index
-        self.row_index: Dict[EntityID, int] = {}
-
-    # ------------------------------------------------------------------
-    # INSERT ENTITY
-    # ------------------------------------------------------------------
-    def add_entity(self, ent: EntityID, values: Dict[Type, Any]):
+    @classmethod
+    def from_type_codes(cls, type_codes: Iterable[int]) -> "ArchetypeSignature":
         """
-        Add entity to this archetype given a dict:
-        {ComponentType: component_instance}
+        Build a normalized signature from an iterable of type codes.
+
+        Normalization:
+        - Cast elements to int.
+        - Remove duplicates.
+        - Sort ascending and store as a tuple[int, ...].
         """
-        row = len(self.entities)
-        self.entities.append(ent)
-        self.row_index[ent] = row
+        unique = {int(tc) for tc in type_codes}
+        normalized = tuple(sorted(unique))
+        return cls(component_type_codes=normalized)
 
-        # append each component in order
-        for comp_type in self.component_types:
-            self.columns[comp_type].append(values[comp_type])
-
-    # ------------------------------------------------------------------
-    # REMOVE ENTITY
-    # ------------------------------------------------------------------
-    def remove_entity(self, ent: EntityID):
+    def with_component(self, type_code: int) -> "ArchetypeSignature":
         """
-        Remove entity using swap-delete to keep arrays tight.
+        Return a new signature with the given component type code included.
+
+        - If already present, returns an equal signature (may be same instance).
+        - Keeps sorted ascending order; no duplicates.
         """
-        row = self.row_index.pop(ent)
-        last_row = len(self.entities) - 1
+        tc = int(type_code)
+        if tc in self.component_type_codes:
+            return self  # already present; immutable so safe to return self
+        # Insert maintaining sorted order without resorting whole list if possible
+        # Simpler and deterministic: create new tuple from set and sort.
+        new_tuple = tuple(sorted((*self.component_type_codes, tc)))
+        return ArchetypeSignature(new_tuple)
 
-        if row != last_row:
-            last_ent = self.entities[last_row]
-
-            # move last entity into removed spot
-            self.entities[row] = last_ent
-            self.row_index[last_ent] = row
-
-            for ctype in self.component_types:
-                col = self.columns[ctype]
-                col[row] = col[last_row]
-
-        # remove last element
-        self.entities.pop()
-        for ctype in self.component_types:
-            self.columns[ctype].pop()
-
-    # ------------------------------------------------------------------
-    # LOOKUP COMPONENTS
-    # ------------------------------------------------------------------
-    def get_components(self, ent: EntityID) -> Dict[Type, Any]:
-        row = self.row_index[ent]
-        return {
-            ctype: self.columns[ctype][row]
-            for ctype in self.component_types
-        }
-
-    # ------------------------------------------------------------------
-    # ITERATION
-    # ------------------------------------------------------------------
-    def iter(self, *ctypes: Type):
+    def without_component(self, type_code: int) -> "ArchetypeSignature":
         """
-        Iterate over rows that contain these component types.
-        Return tuples: (ent, [components...])
+        Return a new signature without the given component type code.
+
+        - If absent, returns an equal signature (may be same instance).
         """
-        for i, ent in enumerate(self.entities):
-            comps = [self.columns[ctype][i] for ctype in ctypes]
-            yield ent, comps
+        tc = int(type_code)
+        if tc not in self.component_type_codes:
+            return self
+        new_tuple = tuple(c for c in self.component_type_codes if c != tc)
+        return ArchetypeSignature(new_tuple)
+
+
+@dataclass
+class ArchetypeRegistry:
+    """
+    Deterministic registry mapping ArchetypeSignature <-> small integer IDs.
+
+    - IDs are assigned in insertion order of previously unseen signatures.
+    - ID base: 0-based (first registered signature gets ID 0). This is
+      arbitrary but consistent; document and keep consistent across usage.
+    - Rust-portable: dict and list of signatures only.
+    """
+
+    _signature_to_id: Dict[ArchetypeSignature, int] = field(default_factory=dict)
+    _id_to_signature: List[ArchetypeSignature] = field(default_factory=list)
+
+    def get_or_register(self, signature: ArchetypeSignature) -> int:
+        """
+        Return existing ID for signature, or register a new one deterministically.
+        """
+        if signature in self._signature_to_id:
+            return self._signature_to_id[signature]
+        new_id = len(self._id_to_signature)  # 0-based
+        self._signature_to_id[signature] = new_id
+        self._id_to_signature.append(signature)
+        return new_id
+
+    def get_signature(self, archetype_id: int) -> ArchetypeSignature:
+        """
+        Return the signature for the given ID.
+
+        Raises IndexError with a clear message if out of range.
+        """
+        try:
+            return self._id_to_signature[archetype_id]
+        except IndexError as e:
+            raise IndexError(f"Archetype ID out of range: {archetype_id}") from e
+
+    def ensure_signature(self, type_codes: Iterable[int]) -> int:
+        """
+        Convenience helper: normalize from type codes and register/get ID.
+        """
+        sig = ArchetypeSignature.from_type_codes(type_codes)
+        return self.get_or_register(sig)

@@ -1,0 +1,59 @@
+[gd_scene format=3 uid="uid://b21cm2qnyipyl"]
+
+[ext_resource type="Script" uid="uid://cd8vf7cgfb35c" path="res://scenes/ui/RunSelect.gd" id="1_8n3cn"]
+[ext_resource type="Texture2D" uid="uid://jblneoucxy8n" path="res://assets/ui/backgrounds/loopforge_factory_floor_1_map.png" id="1_ery80"]
+[ext_resource type="Shader" uid="uid://dcbboan8goups" path="res://scenes/ui/RunSelect.gdshader" id="2_8n3cn"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_8i171"]
+shader = ExtResource("2_8n3cn")
+shader_parameter/top_alpha = 0.0
+shader_parameter/bottom_alpha = 0.85
+
+[node name="RunSelect" type="Control" unique_id=1391291000]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_8n3cn")
+
+[node name="Bg" type="TextureRect" parent="." unique_id=285065611]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("1_ery80")
+expand_mode = 2
+stretch_mode = 6
+
+[node name="BottomOverlay" type="Control" parent="." unique_id=384849168]
+layout_mode = 1
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ColorRect" type="ColorRect" parent="BottomOverlay" unique_id=1448367057]
+material = SubResource("ShaderMaterial_8i171")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Menu" type="HBoxContainer" parent="BottomOverlay" unique_id=153852660]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 321.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 30
+alignment = 1

@@ -1,0 +1,28 @@
+[gd_scene format=3 uid="uid://d1mopk1lj02st"]
+
+[ext_resource type="Script" uid="uid://imm562egyr0c" path="res://scripts/playback/kvp_world_store.gd" id="1_6sb3g"]
+[ext_resource type="Script" uid="uid://xw5a1dwqcwgx" path="res://scripts/playback/kvp_offline_player.gd" id="1_tg5tp"]
+[ext_resource type="Script" uid="uid://b53vkoyow8r7n" path="res://scripts/playback/kvp_debug_draw.gd" id="3_brkc0"]
+
+[node name="Playback" type="Control" unique_id=1094064497]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Player" type="Node" parent="." unique_id=585185944]
+script = ExtResource("1_tg5tp")
+
+[node name="WorldStore" type="Node" parent="." unique_id=1231792758]
+script = ExtResource("1_6sb3g")
+metadata/_custom_type_script = "uid://imm562egyr0c"
+
+[node name="DebugDraw" type="Node2D" parent="." unique_id=519215313]
+script = ExtResource("3_brkc0")
+
+[node name="HUD" type="Label" parent="." unique_id=480312610]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
