@@ -16,6 +16,7 @@ from backend.sim4.case_mbam import (
     CaseState,
     DifficultyProfile,
     NPCState,
+    apply_case_timeline_to_npc_states,
     build_debug_case_projection,
     build_visible_case_projection,
     generate_case_state,
@@ -147,6 +148,7 @@ class SimRunner:
         self._case_visible_projection: Dict[str, Any] | None = None
         self._case_debug_projection: Dict[str, Any] | None = None
         self._npc_states: dict[str, NPCState] | None = None
+        self._npc_timeline_applied_beat_ids: tuple[str, ...] = ()
 
         if case_config is not None:
             truth_epoch = int(case_config.truth_epoch)
@@ -168,6 +170,12 @@ class SimRunner:
             self._npc_states = initialize_mbam_npc_states_from_case_state(
                 self._world_ctx,
                 self._case_state,
+            )
+            self._npc_states, self._npc_timeline_applied_beat_ids = apply_case_timeline_to_npc_states(
+                case_state=self._case_state,
+                npc_states=self._npc_states,
+                elapsed_seconds=0.0,
+                applied_beat_ids=(),
             )
 
         # Build sinks
@@ -242,6 +250,14 @@ class SimRunner:
                 tick_output_sink=self._sink,
                 run_id=None,
             )
+            if self._case_state is not None and self._npc_states is not None:
+                elapsed_seconds = float(self._clock.tick_index) * float(self._clock.dt)
+                self._npc_states, self._npc_timeline_applied_beat_ids = apply_case_timeline_to_npc_states(
+                    case_state=self._case_state,
+                    npc_states=self._npc_states,
+                    elapsed_seconds=elapsed_seconds,
+                    applied_beat_ids=self._npc_timeline_applied_beat_ids,
+                )
 
         # Finalize offline export if configured
         if self._offline_cfg is not None and self._history is not None:

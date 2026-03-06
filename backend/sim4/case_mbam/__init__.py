@@ -34,6 +34,7 @@ from .npc_state import (
     initialize_mbam_npc_states_from_case_state,
     resolve_world_room_id,
 )
+from .npc_timeline_runtime import apply_case_timeline_to_npc_states
 from .models import (
     AlibiClaim,
     AlibiMatrix,
@@ -173,4 +174,5 @@ __all__ = [
     "initialize_mbam_npc_states",
     "initialize_mbam_npc_states_from_case_state",
     "resolve_world_room_id",
+    "apply_case_timeline_to_npc_states",
 ]

@@ -120,3 +120,31 @@ def test_runner_applies_seeded_overlays_to_runtime_npc_state(tmp_path: Path):
     assert samira_b is not None and samira_b.overlay_role_slot == "CULPRIT"
     assert laurent_c is not None and laurent_c.overlay_role_slot == "CULPRIT"
     assert elodie_a is not None and elodie_a.overlay_role_slot == "MISDIRECTOR"
+
+
+def test_runner_advances_npc_timeline_state_over_time(tmp_path: Path):
+    clock = TickClock(dt=1.0)
+    ecs_world = ECSWorld()
+    world_ctx = WorldContext()
+    apply_mbam_layout(world_ctx)
+
+    runner = SimRunner(
+        clock=clock,
+        ecs_world=ecs_world,
+        world_ctx=world_ctx,
+        rng_seed=123,
+        system_scheduler=_NoopScheduler(),
+        run_anchors=default_run_anchors(seed=123, tick_rate_hz=tick_rate_hz_from_clock(clock), time_origin_ms=0),
+        render_spec=default_render_spec(),
+        channels=["WORLD"],
+        offline=None,
+        case_config=MbamCaseConfig(seed="A"),
+    )
+
+    runner.run(num_ticks=605)
+
+    elodie = runner.get_npc_state("elodie")
+    laurent = runner.get_npc_state("laurent")
+    assert elodie is not None and elodie.schedule_state.current_beat_id == "T_PLUS_02_CURATOR_CONTAINMENT"
+    assert laurent is not None and laurent.schedule_state.current_beat_id == "T_PLUS_10_DONOR_EVENT"
+    assert laurent.current_room_id == "PHONE_REMOTE"

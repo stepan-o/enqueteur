@@ -47,6 +47,17 @@ class NPCCardState:
 
 
 @dataclass(frozen=True)
+class NPCAffectUpdate:
+    trust_delta: float = 0.0
+    stress_delta: float = 0.0
+    stance: NpcStance | None = None
+    emotion: NpcEmotion | None = None
+    availability: NpcAvailability | None = None
+    soft_alignment_hint: NpcSoftAlignmentHint | None = None
+    add_visible_behavior_flags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class NPCState:
     npc_id: FixedCastId
     overlay_role_slot: str
@@ -236,6 +247,35 @@ def _state_with_overlay(state: NPCState, overlay: CharacterOverlay) -> NPCState:
     )
 
 
+def apply_npc_affect_update(state: NPCState, update: NPCAffectUpdate) -> NPCState:
+    """Apply deterministic trust/stress/stance/emotion scaffolding update."""
+    trust = min(1.0, max(0.0, state.trust + float(update.trust_delta)))
+    stress = min(1.0, max(0.0, state.stress + float(update.stress_delta)))
+    visible_behavior_flags = tuple(
+        sorted({*state.visible_behavior_flags, *update.add_visible_behavior_flags})
+    )
+    return NPCState(
+        npc_id=state.npc_id,
+        overlay_role_slot=state.overlay_role_slot,
+        overlay_helpfulness=state.overlay_helpfulness,
+        current_room_id=state.current_room_id,
+        availability=update.availability or state.availability,
+        trust=trust,
+        stress=stress,
+        stance=update.stance or state.stance,
+        emotion=update.emotion or state.emotion,
+        soft_alignment_hint=update.soft_alignment_hint or state.soft_alignment_hint,
+        visible_behavior_flags=visible_behavior_flags,
+        known_fact_flags=state.known_fact_flags,
+        belief_flags=state.belief_flags,
+        hidden_flags=state.hidden_flags,
+        misremember_flags=state.misremember_flags,
+        current_scene_id=state.current_scene_id,
+        schedule_state=state.schedule_state,
+        card_state=state.card_state,
+    )
+
+
 def build_initial_npc_state(*, npc_id: FixedCastId, world_ctx: WorldContext) -> NPCState:
     """Build deterministic initial runtime NPCState for one MBAM cast member."""
     _ensure_world_room_presence(world_ctx)
@@ -316,7 +356,9 @@ __all__ = [
     "NpcTrustTrend",
     "NPCScheduleState",
     "NPCCardState",
+    "NPCAffectUpdate",
     "NPCState",
+    "apply_npc_affect_update",
     "build_initial_npc_state",
     "initialize_mbam_npc_states",
     "initialize_mbam_npc_states_from_case_state",
