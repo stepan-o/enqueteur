@@ -98,4 +98,25 @@ def test_runner_initializes_mbam_runtime_npc_states(tmp_path: Path):
     assert set(npc_states.keys()) == {"elodie", "marc", "samira", "laurent", "jo"}
     assert npc_states["elodie"].current_room_id == "MBAM_LOBBY"
     assert npc_states["marc"].current_room_id == "SECURITY_OFFICE"
+    assert npc_states["marc"].overlay_role_slot == "ALLY"
     assert runner.get_npc_state("jo") is not None
+
+
+def test_runner_applies_seeded_overlays_to_runtime_npc_state(tmp_path: Path):
+    _state_a, runner_a = _export_single_tick_state(tmp_path, channels=["WORLD"], case_seed="A")
+    _state_b, runner_b = _export_single_tick_state(tmp_path, channels=["WORLD"], case_seed="B")
+    _state_c, runner_c = _export_single_tick_state(tmp_path, channels=["WORLD"], case_seed="C")
+
+    marc_a = runner_a.get_npc_state("marc")
+    marc_b = runner_b.get_npc_state("marc")
+    marc_c = runner_c.get_npc_state("marc")
+    samira_b = runner_b.get_npc_state("samira")
+    laurent_c = runner_c.get_npc_state("laurent")
+    elodie_a = runner_a.get_npc_state("elodie")
+
+    assert marc_a is not None and marc_a.overlay_role_slot == "ALLY"
+    assert marc_b is not None and marc_b.overlay_role_slot == "GUARD"
+    assert marc_c is not None and marc_c.overlay_role_slot == "GUARD"
+    assert samira_b is not None and samira_b.overlay_role_slot == "CULPRIT"
+    assert laurent_c is not None and laurent_c.overlay_role_slot == "CULPRIT"
+    assert elodie_a is not None and elodie_a.overlay_role_slot == "MISDIRECTOR"

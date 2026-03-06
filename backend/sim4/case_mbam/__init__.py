@@ -31,6 +31,7 @@ from .npc_state import (
     NpcTrustTrend,
     build_initial_npc_state,
     initialize_mbam_npc_states,
+    initialize_mbam_npc_states_from_case_state,
     resolve_world_room_id,
 )
 from .models import (
@@ -170,5 +171,6 @@ __all__ = [
     "NPCState",
     "build_initial_npc_state",
     "initialize_mbam_npc_states",
+    "initialize_mbam_npc_states_from_case_state",
     "resolve_world_room_id",
 ]

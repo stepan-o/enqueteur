@@ -19,7 +19,7 @@ from backend.sim4.case_mbam import (
     build_debug_case_projection,
     build_visible_case_projection,
     generate_case_state,
-    initialize_mbam_npc_states,
+    initialize_mbam_npc_states_from_case_state,
 )
 from backend.sim4.runtime.clock import TickClock
 from backend.sim4.runtime.tick import tick as run_tick
@@ -165,7 +165,10 @@ class SimRunner:
                 self._case_state,
                 truth_epoch=truth_epoch,
             )
-            self._npc_states = initialize_mbam_npc_states(self._world_ctx)
+            self._npc_states = initialize_mbam_npc_states_from_case_state(
+                self._world_ctx,
+                self._case_state,
+            )
 
         # Build sinks
         sinks: List[TickOutputSink] = []

@@ -39,6 +39,8 @@ def test_npc_state_defaults_include_required_runtime_fields() -> None:
     for npc_id in list_cast_ids():
         state = states[npc_id]
         assert state.npc_id == npc_id
+        assert state.overlay_role_slot != ""
+        assert state.overlay_helpfulness == "medium"
         assert state.current_room_id != ""
         assert state.availability == "available"
         assert state.trust == 0.0
@@ -54,6 +56,7 @@ def test_npc_state_defaults_include_required_runtime_fields() -> None:
         }
         assert state.current_scene_id is None
         assert state.card_state.trust_trend == "flat"
+        assert state.card_state.profile_id is None
         assert state.schedule_state.current_beat_id is None
         assert state.schedule_state.next_beat_id is not None
         assert state.schedule_state.last_transition_at is None
@@ -75,8 +78,11 @@ def test_build_initial_npc_state_for_one_actor_sets_card_and_schedule_defaults()
 
     state = build_initial_npc_state(npc_id="marc", world_ctx=world_ctx)
     assert state.npc_id == "marc"
+    assert state.overlay_role_slot == "GUARD"
+    assert state.overlay_helpfulness == "medium"
     assert state.current_room_id == "SECURITY_OFFICE"
     assert state.card_state.portrait_variant == "procedural"
+    assert state.card_state.profile_id is None
     assert state.card_state.suggested_interaction_mode == "procedural"
     assert state.schedule_state.next_beat_id == "T_PLUS_05_GUARD_PATROL_SHIFT"
 

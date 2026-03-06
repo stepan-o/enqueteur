@@ -13,6 +13,7 @@ from backend.sim4.world.context import WorldContext
 from backend.sim4.world.mbam_layout import MbamRoomId
 
 from .cast_registry import FixedCastId, get_cast_entry, list_cast_ids
+from .models import CaseState, CharacterOverlay, Helpfulness
 
 
 NpcAvailability = Literal["available", "busy", "gone", "restricted"]
@@ -40,6 +41,7 @@ class NPCScheduleState:
 class NPCCardState:
     portrait_variant: str
     tell_cue: str | None
+    profile_id: str | None
     suggested_interaction_mode: NpcInteractionMode
     trust_trend: NpcTrustTrend
 
@@ -47,6 +49,8 @@ class NPCCardState:
 @dataclass(frozen=True)
 class NPCState:
     npc_id: FixedCastId
+    overlay_role_slot: str
+    overlay_helpfulness: Helpfulness
     current_room_id: str
     availability: NpcAvailability
     trust: float
@@ -136,6 +140,13 @@ _DEFAULT_PORTRAIT_VARIANT_BY_NPC: dict[FixedCastId, str] = {
     "jo": "relaxed",
 }
 
+_HELPFULNESS_TO_TRUST: dict[Helpfulness, float] = {
+    "none": 0.0,
+    "low": 0.0,
+    "medium": 0.1,
+    "high": 0.2,
+}
+
 
 def _ensure_world_room_presence(world_ctx: WorldContext) -> None:
     missing_tokens = [
@@ -150,6 +161,81 @@ def _ensure_world_room_presence(world_ctx: WorldContext) -> None:
         )
 
 
+def _state_with_overlay(state: NPCState, overlay: CharacterOverlay) -> NPCState:
+    role_slot = overlay.role_slot
+    helpfulness = overlay.helpfulness
+
+    stance: NpcStance
+    if role_slot == "ALLY":
+        stance = "helpful"
+    elif role_slot == "MISDIRECTOR":
+        stance = "manipulative"
+    elif role_slot == "CULPRIT":
+        stance = "defensive"
+    elif helpfulness == "high":
+        stance = "helpful"
+    elif helpfulness == "low":
+        stance = "evasive"
+    else:
+        stance = state.stance
+
+    alignment: NpcSoftAlignmentHint
+    if role_slot == "ALLY":
+        alignment = "helping_quietly"
+    elif role_slot == "MISDIRECTOR":
+        alignment = "saving_face"
+    elif role_slot == "CULPRIT":
+        alignment = "protecting_self"
+    else:
+        alignment = state.soft_alignment_hint
+
+    stress = 0.0
+    if role_slot == "CULPRIT":
+        stress = 0.25
+    elif role_slot == "MISDIRECTOR":
+        stress = 0.15
+    elif helpfulness == "high":
+        stress = 0.05
+
+    visible_flags = tuple(
+        sorted(
+            {
+                *state.visible_behavior_flags,
+                f"overlay_role_{role_slot.lower()}",
+                f"overlay_helpfulness_{helpfulness}",
+            }
+        )
+    )
+    hidden_flags = tuple(sorted({*state.hidden_flags, *overlay.hidden_flags}))
+
+    return NPCState(
+        npc_id=state.npc_id,
+        overlay_role_slot=role_slot,
+        overlay_helpfulness=helpfulness,
+        current_room_id=state.current_room_id,
+        availability=state.availability,
+        trust=_HELPFULNESS_TO_TRUST[helpfulness],
+        stress=stress,
+        stance=stance,
+        emotion=state.emotion,
+        soft_alignment_hint=alignment,
+        visible_behavior_flags=visible_flags,
+        known_fact_flags=tuple(overlay.knowledge_flags),
+        belief_flags=tuple(overlay.belief_flags),
+        hidden_flags=hidden_flags,
+        misremember_flags=tuple(overlay.misremember_flags),
+        current_scene_id=state.current_scene_id,
+        schedule_state=state.schedule_state,
+        card_state=NPCCardState(
+            portrait_variant=state.card_state.portrait_variant,
+            tell_cue=state.card_state.tell_cue,
+            profile_id=overlay.state_card_profile_id,
+            suggested_interaction_mode=state.card_state.suggested_interaction_mode,
+            trust_trend=state.card_state.trust_trend,
+        ),
+    )
+
+
 def build_initial_npc_state(*, npc_id: FixedCastId, world_ctx: WorldContext) -> NPCState:
     """Build deterministic initial runtime NPCState for one MBAM cast member."""
     _ensure_world_room_presence(world_ctx)
@@ -159,6 +245,8 @@ def build_initial_npc_state(*, npc_id: FixedCastId, world_ctx: WorldContext) -> 
 
     return NPCState(
         npc_id=npc_id,
+        overlay_role_slot=entry.identity_role.upper(),
+        overlay_helpfulness="medium",
         current_room_id=room_token,
         availability="available",
         trust=0.0,
@@ -180,6 +268,7 @@ def build_initial_npc_state(*, npc_id: FixedCastId, world_ctx: WorldContext) -> 
         card_state=NPCCardState(
             portrait_variant=_DEFAULT_PORTRAIT_VARIANT_BY_NPC[npc_id],
             tell_cue=tell_cue,
+            profile_id=None,
             suggested_interaction_mode=_DEFAULT_INTERACTION_BY_NPC[npc_id],
             trust_trend="flat",
         ),
@@ -192,6 +281,21 @@ def initialize_mbam_npc_states(world_ctx: WorldContext) -> dict[FixedCastId, NPC
     return {
         npc_id: build_initial_npc_state(npc_id=npc_id, world_ctx=world_ctx)
         for npc_id in list_cast_ids()
+    }
+
+
+def initialize_mbam_npc_states_from_case_state(
+    world_ctx: WorldContext,
+    case_state: CaseState,
+) -> dict[FixedCastId, NPCState]:
+    """Initialize MBAM NPC runtime state and apply deterministic CaseState overlays."""
+    baseline = initialize_mbam_npc_states(world_ctx)
+    return {
+        "elodie": _state_with_overlay(baseline["elodie"], case_state.cast_overlay.elodie),
+        "marc": _state_with_overlay(baseline["marc"], case_state.cast_overlay.marc),
+        "samira": _state_with_overlay(baseline["samira"], case_state.cast_overlay.samira),
+        "laurent": _state_with_overlay(baseline["laurent"], case_state.cast_overlay.laurent),
+        "jo": _state_with_overlay(baseline["jo"], case_state.cast_overlay.jo),
     }
 
 
@@ -215,5 +319,6 @@ __all__ = [
     "NPCState",
     "build_initial_npc_state",
     "initialize_mbam_npc_states",
+    "initialize_mbam_npc_states_from_case_state",
     "resolve_world_room_id",
 ]
