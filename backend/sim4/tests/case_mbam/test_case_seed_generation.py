@@ -144,4 +144,47 @@ def test_seed_evidence_placement_differs_deterministically() -> None:
 def test_hidden_visible_slices_preserve_fact_boundary() -> None:
     case_state = generate_case_state("A")
     assert case_state.visible_case_slice.starting_known_fact_ids == ("N1",)
-    assert case_state.hidden_case_slice.private_fact_ids == ("N8",)
+    assert case_state.hidden_case_slice.private_fact_ids == ("N8", "R_CULPRIT", "R_METHOD", "R_DROP")
+    assert "accusation_requires_contradiction_path" in case_state.hidden_case_slice.private_overlay_flags
+
+
+def test_scene_gates_define_s1_to_s5_progression() -> None:
+    a = generate_case_state("A")
+    b = generate_case_state("B")
+
+    # S1 open start
+    assert a.scene_gates.S1.required_fact_ids == ()
+    assert a.scene_gates.S1.required_items == ()
+
+    # S2 security gate uses trust + archival window
+    assert a.scene_gates.S2.required_fact_ids == ("N1",)
+    assert a.scene_gates.S2.time_window == "T+00..T+15"
+    assert a.scene_gates.S2.trust_threshold is not None
+    # If guard is ally, S2 threshold is lower
+    assert a.scene_gates.S2.trust_threshold < b.scene_gates.S2.trust_threshold
+
+    # S5 confrontation requires contradiction-path facts and receipt evidence
+    assert a.scene_gates.S5.required_fact_ids == ("N3", "N4", "N8")
+    assert a.scene_gates.S5.required_items == ("E2_CAFE_RECEIPT",)
+
+
+def test_resolution_rules_encode_success_and_soft_fail_paths() -> None:
+    c = generate_case_state("C")
+
+    # Recovery path
+    assert c.resolution_rules.recovery_success.required_fact_ids == ("N8",)
+    assert "action:recover_medallion" in c.resolution_rules.recovery_success.required_actions
+
+    # Accusation path must include contradiction use
+    assert "N3" in c.resolution_rules.accusation_success.required_fact_ids
+    assert "N4" in c.resolution_rules.accusation_success.required_fact_ids
+    assert "action:state_contradiction_N3_N4" in c.resolution_rules.accusation_success.required_actions
+    assert "action:accuse_laurent" in c.resolution_rules.accusation_success.required_actions
+
+    # Soft fail branch
+    assert "action:wrong_accusation" in c.resolution_rules.soft_fail.trigger_conditions
+    assert "item_leaves_building" in c.resolution_rules.soft_fail.outcome_flags
+
+    # Best outcome overlays stricter requirements
+    assert "action:french_summary_x2" in c.resolution_rules.best_outcome.required_actions
+    assert "rel_elodie_positive" in c.resolution_rules.best_outcome.required_relationship_flags

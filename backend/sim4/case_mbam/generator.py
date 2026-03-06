@@ -2,11 +2,12 @@ from __future__ import annotations
 
 """Deterministic MBAM CaseState generator for shipped seeds A/B/C.
 
-Phase 1B/1C scope:
+Phase 1B/1C/1D scope:
 - provide canonical seed fixtures
 - support explicit seed IDs and seed values
 - generate deterministic role assignment + cast overlays
 - generate deterministic timeline, alibi matrix, evidence placement, and truth graph
+- generate deterministic scene gates, resolution rules, and visible/hidden slices
 
 Non-goals in this chunk:
 - object affordances execution
@@ -34,7 +35,13 @@ from .models import (
     EvidencePlacement,
     Helpfulness,
     MisdirectorId,
+    ResolutionRequirement,
+    ResolutionRules,
     RoleAssignment,
+    SceneGate,
+    SceneGates,
+    SoftFailRule,
+    BestOutcomeRule,
     TimelineBeat,
     TruthGraph,
     TruthGraphEdge,
@@ -483,12 +490,95 @@ def _build_visible_case_slice() -> VisibleCaseSlice:
 
 def _build_hidden_case_slice(seed_id: ShippedSeed, roles: RoleAssignment) -> HiddenCaseSlice:
     return HiddenCaseSlice(
-        private_fact_ids=("N8",),
+        private_fact_ids=("N8", "R_CULPRIT", "R_METHOD", "R_DROP"),
         private_overlay_flags=(
             f"seed_{seed_id}",
             f"culprit_{roles.culprit}",
             f"drop_{roles.drop}",
             f"method_{roles.method}",
+            "accusation_requires_contradiction_path",
+        ),
+    )
+
+
+def _build_scene_gates(roles: RoleAssignment) -> SceneGates:
+    # S2 trusts process; easier if Marc is ally.
+    security_trust = 0.25 if roles.ally == "marc" else 0.45
+    confrontation_trust = 0.30 if roles.ally in ("marc", "elodie") else 0.40
+
+    return SceneGates(
+        S1=SceneGate(
+            required_fact_ids=(),
+            required_items=(),
+            trust_threshold=None,
+            time_window=None,
+        ),
+        S2=SceneGate(
+            required_fact_ids=("N1",),
+            required_items=(),
+            trust_threshold=security_trust,
+            time_window="T+00..T+15",
+        ),
+        S3=SceneGate(
+            required_fact_ids=("N2",),
+            required_items=(),
+            trust_threshold=None,
+            time_window=None,
+        ),
+        S4=SceneGate(
+            required_fact_ids=("N1",),
+            required_items=(),
+            trust_threshold=None,
+            time_window="T+08..T+18",
+        ),
+        S5=SceneGate(
+            required_fact_ids=("N3", "N4", "N8"),
+            required_items=("E2_CAFE_RECEIPT",),
+            trust_threshold=confrontation_trust,
+            time_window=None,
+        ),
+    )
+
+
+def _build_resolution_rules(roles: RoleAssignment) -> ResolutionRules:
+    return ResolutionRules(
+        recovery_success=ResolutionRequirement(
+            required_fact_ids=("N8",),
+            required_items=("E3_METHOD_TRACE",),
+            required_actions=("action:recover_medallion",),
+        ),
+        accusation_success=ResolutionRequirement(
+            required_fact_ids=("N3", "N4", "N5"),
+            required_items=("E2_CAFE_RECEIPT",),
+            required_actions=(
+                "action:state_contradiction_N3_N4",
+                f"action:accuse_{roles.culprit}",
+            ),
+        ),
+        soft_fail=SoftFailRule(
+            trigger_conditions=(
+                "action:wrong_accusation",
+                "clock:post_T_PLUS_20_without_recovery",
+            ),
+            outcome_flags=(
+                "item_leaves_building",
+                "relationship_penalty_future_case",
+            ),
+        ),
+        best_outcome=BestOutcomeRule(
+            required_fact_ids=("N3", "N4", "N8"),
+            required_items=("E2_CAFE_RECEIPT", "E3_METHOD_TRACE"),
+            required_actions=(
+                "action:recover_medallion",
+                "action:state_contradiction_N3_N4",
+                f"action:accuse_{roles.culprit}",
+                "action:french_summary_x2",
+                "action:polite_gate_usage",
+            ),
+            required_relationship_flags=(
+                "rel_elodie_positive",
+                "rel_marc_positive",
+            ),
         ),
     )
 
@@ -518,6 +608,8 @@ def generate_case_state(
         evidence_placement=_build_evidence_placement(fixture, roles),
         alibi_matrix=_build_alibi_matrix(roles),
         truth_graph=_build_truth_graph(fixture, roles),
+        scene_gates=_build_scene_gates(roles),
+        resolution_rules=_build_resolution_rules(roles),
         visible_case_slice=_build_visible_case_slice(),
         hidden_case_slice=_build_hidden_case_slice(fixture.seed_id, roles),
     )
