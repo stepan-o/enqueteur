@@ -10,7 +10,8 @@ attempt backpressure or retransmit logic yet.
 """
 
 from dataclasses import asdict, is_dataclass
-from typing import Any, Dict, Iterable, List, Sequence
+import copy
+from typing import Any, Dict, List, Sequence
 
 from backend.sim4.snapshot.output import TickOutputSink
 from backend.sim4.snapshot.world_snapshot import WorldSnapshot
@@ -64,6 +65,8 @@ class LiveKvpStateSink(TickOutputSink):
         session: LiveSession,
         *,
         channels: Sequence[str] | None = None,
+        case_visible_projection: Dict[str, Any] | None = None,
+        case_debug_projection: Dict[str, Any] | None = None,
     ) -> None:
         self._session = session
         self._channels = list(channels) if channels is not None else list(ALLOWED_CHANNELS)
@@ -71,6 +74,8 @@ class LiveKvpStateSink(TickOutputSink):
         self._channels = sorted({c for c in self._channels if c in ALLOWED_CHANNELS})
         if not self._channels:
             raise ValueError("channels must be a non-empty subset of ALLOWED_CHANNELS")
+        self._case_visible_projection = copy.deepcopy(case_visible_projection)
+        self._case_debug_projection = copy.deepcopy(case_debug_projection)
 
         self._has_baseline = False
         self._prev_tick: int | None = None
@@ -118,9 +123,15 @@ class LiveKvpStateSink(TickOutputSink):
             state["items"] = [_to_plain(i) for i in world_snapshot.items]
         if "EVENTS" in self._channels:
             state["events"] = _events_to_state(runtime_events)
+        if self._case_visible_projection is not None:
+            state["case"] = copy.deepcopy(self._case_visible_projection)
         if "DEBUG" in self._channels:
             # Placeholder for future debug fields; keep deterministic
             state.setdefault("debug", {})
+            if self._case_debug_projection is not None:
+                debug_state = state.get("debug")
+                if isinstance(debug_state, dict):
+                    debug_state["case_private"] = copy.deepcopy(self._case_debug_projection)
 
         # Canonicalize + hash
         canonical_state = canonicalize_state_obj(state)

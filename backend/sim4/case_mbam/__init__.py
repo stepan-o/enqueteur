@@ -69,6 +69,7 @@ from .scaffold import (
     make_empty_case_state_shell,
     make_roles_assignment_from_seed_lock,
 )
+from .projection import build_visible_case_projection, build_debug_case_projection
 
 __all__ = [
     "AlibiClaim",
@@ -126,4 +127,6 @@ __all__ = [
     "make_empty_case_state_shell",
     "make_roles_assignment_from_seed_lock",
     "resolve_seed_id",
+    "build_visible_case_projection",
+    "build_debug_case_projection",
 ]

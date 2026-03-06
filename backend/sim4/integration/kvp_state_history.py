@@ -7,6 +7,7 @@ interface for export_state_records(...).
 """
 
 from dataclasses import asdict, is_dataclass
+import copy
 from typing import Any, Dict, List, Sequence
 
 from backend.sim4.snapshot.output import TickOutputSink
@@ -50,11 +51,19 @@ def _events_to_state(events: Sequence[Any]) -> List[Dict[str, Any]]:
 class KvpStateHistory(TickOutputSink, StateSource):
     """Collects canonical KVP state per tick and serves it to exporter."""
 
-    def __init__(self, *, channels: Sequence[str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        channels: Sequence[str] | None = None,
+        case_visible_projection: Dict[str, Any] | None = None,
+        case_debug_projection: Dict[str, Any] | None = None,
+    ) -> None:
         self._channels = list(channels) if channels is not None else list(ALLOWED_CHANNELS)
         self._channels = sorted({c for c in self._channels if c in ALLOWED_CHANNELS})
         if not self._channels:
             raise ValueError("channels must be a non-empty subset of ALLOWED_CHANNELS")
+        self._case_visible_projection = copy.deepcopy(case_visible_projection)
+        self._case_debug_projection = copy.deepcopy(case_debug_projection)
 
         self._state_by_tick: Dict[int, Dict[str, Any]] = {}
         self._step_hash_by_tick: Dict[int, str] = {}
@@ -93,8 +102,14 @@ class KvpStateHistory(TickOutputSink, StateSource):
             state["items"] = [_to_plain(i) for i in world_snapshot.items]
         if "EVENTS" in self._channels:
             state["events"] = _events_to_state(runtime_events)
+        if self._case_visible_projection is not None:
+            state["case"] = copy.deepcopy(self._case_visible_projection)
         if "DEBUG" in self._channels:
             state.setdefault("debug", {})
+            if self._case_debug_projection is not None:
+                debug_state = state.get("debug")
+                if isinstance(debug_state, dict):
+                    debug_state["case_private"] = copy.deepcopy(self._case_debug_projection)
 
         canonical_state = canonicalize_state_obj(state)
         step_hash = compute_step_hash(canonical_state)

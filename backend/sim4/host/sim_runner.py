@@ -9,9 +9,16 @@ remain untouched; this is pure orchestration.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Sequence
 import hashlib
 
+from backend.sim4.case_mbam import (
+    CaseState,
+    DifficultyProfile,
+    build_debug_case_projection,
+    build_visible_case_projection,
+    generate_case_state,
+)
 from backend.sim4.runtime.clock import TickClock
 from backend.sim4.runtime.tick import tick as run_tick
 from backend.sim4.ecs.world import ECSWorld
@@ -64,6 +71,16 @@ class OfflineExportConfig:
     validate: bool = False
 
 
+@dataclass(frozen=True)
+class MbamCaseConfig:
+    """Host-level bootstrap config for MBAM Case Truth attachment."""
+
+    seed: str | int
+    difficulty_profile: DifficultyProfile | None = None
+    runtime_clock_start: str | None = None
+    truth_epoch: int = 1
+
+
 class CompositeSink:
     """Fan-out sink for multiple downstream consumers (TickOutputSink)."""
 
@@ -109,6 +126,7 @@ class SimRunner:
         channels: Sequence[str],
         live_sessions: Sequence[LiveSessionConfig] | None = None,
         offline: OfflineExportConfig | None = None,
+        case_config: MbamCaseConfig | None = None,
     ) -> None:
         self._clock = clock
         self._ecs_world = ecs_world
@@ -122,6 +140,27 @@ class SimRunner:
 
         self._offline_cfg = offline
         self._live_cfgs = list(live_sessions or [])
+        self._case_state: CaseState | None = None
+        self._case_visible_projection: Dict[str, Any] | None = None
+        self._case_debug_projection: Dict[str, Any] | None = None
+
+        if case_config is not None:
+            truth_epoch = int(case_config.truth_epoch)
+            if truth_epoch <= 0:
+                raise ValueError("MbamCaseConfig.truth_epoch must be >= 1")
+            self._case_state = generate_case_state(
+                seed=case_config.seed,
+                difficulty_profile=case_config.difficulty_profile,
+                runtime_clock_start=case_config.runtime_clock_start,
+            )
+            self._case_visible_projection = build_visible_case_projection(
+                self._case_state,
+                truth_epoch=truth_epoch,
+            )
+            self._case_debug_projection = build_debug_case_projection(
+                self._case_state,
+                truth_epoch=truth_epoch,
+            )
 
         # Build sinks
         sinks: List[TickOutputSink] = []
@@ -130,14 +169,29 @@ class SimRunner:
         if self._offline_cfg is not None:
             # Offline history uses its own channel set
             offline_channels = _normalize_channels(self._offline_cfg.channels)
-            self._history = KvpStateHistory(channels=offline_channels)
+            self._history = KvpStateHistory(
+                channels=offline_channels,
+                case_visible_projection=self._case_visible_projection,
+                case_debug_projection=self._case_debug_projection,
+            )
             sinks.append(self._history)
 
         for cfg in self._live_cfgs:
             live_channels = _normalize_channels(cfg.channels or self._channels)
-            sinks.append(LiveKvpStateSink(cfg.session, channels=live_channels))
+            sinks.append(
+                LiveKvpStateSink(
+                    cfg.session,
+                    channels=live_channels,
+                    case_visible_projection=self._case_visible_projection,
+                    case_debug_projection=self._case_debug_projection,
+                )
+            )
 
         self._sink: TickOutputSink | None = CompositeSink(sinks) if sinks else None
+
+    def get_case_state(self) -> CaseState | None:
+        """Return attached MBAM CaseState for this run, if configured."""
+        return self._case_state
 
     def run(
         self,
@@ -389,6 +443,7 @@ def _compute_integrity_map(run_root: Path, manifest: ManifestV0_1) -> Dict[str, 
 __all__ = [
     "LiveSessionConfig",
     "OfflineExportConfig",
+    "MbamCaseConfig",
     "CompositeSink",
     "SimRunner",
 ]

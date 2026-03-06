@@ -34,7 +34,7 @@ from backend.sim4.ecs.systems.object_workstation_system import ObjectWorkstation
 from backend.sim4.ecs.systems.agent_stats_system import AgentStatsSystem
 from backend.sim4.world.context import WorldContext, ItemRecord
 from backend.sim4.world.commands import WorldCommand, WorldCommandKind
-from backend.sim4.host.sim_runner import SimRunner, OfflineExportConfig
+from backend.sim4.host.sim_runner import MbamCaseConfig, SimRunner, OfflineExportConfig
 from backend.sim4.host.kvp_defaults import (
     default_run_anchors,
     default_render_spec,
@@ -274,6 +274,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--run-root", type=str, default="runs/kvp_demo_1min", help="Output directory.")
     p.add_argument("--agents", type=int, default=6, help="Number of agents to seed.")
     p.add_argument("--seed", type=int, default=123, help="RNG seed for run anchors.")
+    p.add_argument(
+        "--case-seed",
+        type=str,
+        default="A",
+        help="MBAM case seed selector (A/B/C or any deterministic value).",
+    )
     return p.parse_args()
 
 
@@ -335,6 +341,7 @@ def main() -> None:
         render_spec=render_spec,
         channels=["WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"],
         offline=offline,
+        case_config=MbamCaseConfig(seed=args.case_seed),
     )
 
     runner.run(num_ticks=int(args.ticks), world_commands_provider=world_commands_provider)
