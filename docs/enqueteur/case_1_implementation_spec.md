@@ -1,152 +1,288 @@
-**Revised and tightened Case 1 implementation spec** for **MBAM**, updated to reflect the adjustments:
-
-* **v1.0 is a vertical slice, not a full platform**
-* **Case Truth is centralized and canonical**
-* **structured deterministic dialogue comes before real LLM dialogue**
-* **French scaffolding starts as a narrow scene policy**
-* **recurring cast identity is a core system**
-* **state-card portrait logic is explicitly modeled**
-* **offline replay/debug is prioritized over live runtime polish**
-* **voice is anticipated architecturally, but not required for initial implementation**
+This is the **fully updated, complete feature spec** with the Phase 0 closure items integrated, without dropping any prior locked content.
 
 ---
 
-# Case 1 Spec — MBAM (Revised)
+# Enquêteur v1.0 — Feature Spec
 
-## Title
+## Case 1: **MBAM — Le Petit Vol du Musée**
 
-**Le Petit Vol du Musée**
-Tagline: *“Un petit objet. Un grand embarras.”*
+### Tagline
+
+**“Un petit objet. Un grand embarras.”**
 
 ---
 
-# 0) Scope Lock — What Enquêteur v1.0 Means
+# 0) Purpose of This Spec
 
-This spec defines **Enquêteur v1.0** as a **single fully playable deterministic case vertical slice**.
+This document is the canonical implementation spec for **Enquêteur v1.0**.
 
-## Enquêteur v1.0 must include
+It exists to:
 
-* one case: **MBAM / Le Petit Vol du Musée**
-* one fixed location set
-* one fixed recurring cast of five characters
-* **three deterministic seeds** (A/B/C)
-* object-based investigation
-* deterministic case truth + replayability
-* structured French dialogue interactions
-* narrow French scaffolding for A1–A2
-* one accusation/recovery resolution loop
-* offline replay/debug support
+* lock scope
+* prevent platform drift
+* define the first playable target
+* define truth ownership boundaries
+* freeze the MBAM content scope
+* freeze the core data contracts
+* define the execution order
+* define the first implementation task
 
-## Enquêteur v1.0 does **not** require
+This spec is intended to conclude **Phase 0** and make the project ready for implementation.
 
-* a generalized multi-case framework
-* generic content pipelines beyond what MBAM needs
-* fully live websocket-first play
-* production voice support
-* fully autonomous LLM dialogue at first implementation
-* generalized minigame framework beyond the four MBAM minigames
+---
+
+# 1) Core Product Definition
+
+## Enquêteur v1.0 is:
+
+A **single fully playable deterministic investigation case vertical slice** built on top of the current cleaned Sim4-based repo.
+
+It is:
+
+* one case
+* one location set
+* one recurring cast
+* one complete investigation loop
+* deterministic and replayable
+* French-learning-oriented
+* playable without a live LLM
+* designed so a later LLM can act only as a dialogue surface adapter
+
+## Enquêteur v1.0 is **not**:
+
+* a generalized investigation platform
+* a multi-case narrative engine
+* a generalized content authoring framework
+* a production voice-first system
+* a fully autonomous LLM mystery simulator
+* a generalized minigame framework
+* a generalized social simulation sandbox
 
 This is a **case-first implementation**, not a platform-first implementation.
 
 ---
 
-# 1) Core Architecture Lock
+# 2) Scope Lock — What Must Ship in v1.0
 
-Enquêteur uses three strictly separated truth layers.
+## Required for Enquêteur v1.0
+
+* one case: **MBAM / Le Petit Vol du Musée**
+* one fixed location set
+* one fixed recurring cast of five characters
+* three deterministic seeds: **A / B / C**
+* deterministic case truth
+* object-based investigation
+* evidence and contradiction logic
+* structured French dialogue interactions
+* narrow A1–A2 scaffolding
+* four MBAM-specific minigames
+* one accusation/recovery resolution loop
+* soft-fail support
+* offline replay/debug support
+* deterministic end-to-end reproducibility for shipped seeds
+
+## Explicitly not required for initial ship
+
+* generalized multi-case framework
+* generic content pipelines beyond MBAM needs
+* live websocket-first runtime as the main path
+* production voice input/output
+* fully dynamic LLM-owned dialogue
+* generalized inventory framework
+* generalized clue-board framework beyond what MBAM requires
+* generalized minigame system beyond MG1–MG4
+* production-quality art pipeline automation
+* fully generalized pathfinding/social-sim expansion unless MBAM directly needs it
+
+---
+
+# 3) Architecture Lock — Truth Separation
+
+Enquêteur uses **three strictly separated truth layers**.
 
 ## Layer A — World Truth
 
-Owned by Sim4 runtime.
+Owned by the **Sim4 runtime**.
 
-This includes:
+World Truth includes:
 
 * rooms
 * doors
 * objects
-* agent positions
 * item locations
+* agent positions
+* room access
 * world clock
 * movement
 * world mutations
-* availability and reachability
+* visibility / reachability / availability
 
 ## Layer B — Case Truth
 
-Owned by the deterministic case bundle.
+Owned by the **deterministic MBAM Case Bundle**.
 
-This includes:
+Case Truth includes:
 
 * culprit
+* ally
+* misdirector
 * method
-* motive
 * drop location
-* seeded role overlays
-* clue graph
+* motive
+* cast overlays
 * evidence placement
 * alibi matrix
+* truth graph
+* contradiction graph
 * timeline beats
-* win/fail rules
-* scene/dialogue gates
+* scene gates
+* resolution rules
+* success / fail / best-outcome conditions
+* visible/hidden fact slices
 
-## Layer C — Dialogue/Pedagogy Adapter
+## Layer C — Dialogue / Pedagogy Adapter
 
-Owned by the dialogue/scaffolding layer.
+Owned by the **dialogue and scaffolding layer**.
 
-This includes:
+This layer includes:
 
-* interpreting player input
-* selecting legal response options
-* revealing only allowed facts
-* hint tiers
+* player input interpretation
+* legal response selection
+* allowed-fact presentation
 * sentence stems
-* comprehension checks
+* hint tiers
+* repair/rephrase behavior
+* summary checks
 * French difficulty tuning
-* state-card presentation
+* state-card presentation hints
+* optional future voice hooks
 
-## Hard rule
+## Hard rules
 
-**Case Truth is canonical for all non-physical gameplay logic.**
-No core mystery truth may be invented or stored only in:
+* **Case Truth is canonical for all non-physical gameplay logic.**
+* **World Truth must not secretly own mystery truth.**
+* **Dialogue layer may adapt wording and pacing, but may never invent or alter core case truth.**
+* No core mystery truth may exist only in:
 
-* frontend UI state
-* ad hoc NPC runtime memory
-* object-local behavior alone
-* LLM output
+    * frontend UI state
+    * ad hoc NPC runtime memory
+    * object-local behavior alone
+    * LLM output
 
 ---
 
-# 2) Design Goals
+# 4) Design Goals
 
 * **A1–A2 playable** on first run.
 * **Replayable** through deterministic seeded variation.
-* **Living world feel** through visible movement, room presence, and timing pressure.
-* **Recurring cast** with persistent identities but changing seeded roles.
+* **Living-world feel** through visible movement, room presence, and timing pressure.
+* **Recurring cast** with stable identities and variable seeded overlays.
 * **Deterministic solvability** in every shipped seed.
-* **LLM-safe architecture** where dialogue style can become dynamic later without owning truth.
-* **Pixi-friendly scope** with clear readable spaces and prop-based clue interactions.
+* **LLM-safe architecture** where future dialogue naturalness does not compromise truth control.
+* **Pixi-friendly scope** with readable geometry and prop-based clue interactions.
+* **Offline replay/debug priority** over live runtime polish in the initial build.
+* **Voice-ready boundary**, but not voice-required for initial implementation.
 
 ---
 
-# 3) World Layout (Pixi-Friendly)
+# 5) Canonical Content Scope Freeze
 
-Represented as Sim4-style rooms with simple readable geometry.
+The following content is frozen for MBAM v1.0 and should be treated as source-of-truth content scope.
 
 ## Rooms
 
-1. **MBAM Lobby** (public)
-2. **Gallery 1 — Salle des Affiches** (semi-public)
-3. **Security Office** (restricted)
-4. **Service Corridor** (restricted)
-5. **Café de la Rue** (public)
+1. **MBAM Lobby**
+2. **Gallery 1 — Salle des Affiches**
+3. **Security Office**
+4. **Service Corridor**
+5. **Café de la Rue**
 
-## Connections / Gates
+## Fixed cast
+
+* **Élodie Marchand** — Curator
+* **Marc Dutil** — Guard
+* **Samira B.** — Intern
+* **Laurent Vachon** — Donor/VIP
+* **Jo Leclerc** — Barista/Witness
+
+## Objects
+
+* O1 Display Case / Vitrine
+* O2 Le Médaillon
+* O3 Wall Label / Cartel
+* O4 Bench
+* O5 Visitor Logbook
+* O6 Badge Access Terminal
+* O7 Security Binder
+* O8 Keypad Door
+* O9 Receipt Printer / Café Receipts
+* O10 Bulletin Board
+
+## Evidence items
+
+* E1 Torn Note
+* E2 Café Receipt
+* E3 Lanyard Fiber / Sticker
+
+## Structured scenes
+
+* S1 Lobby Intro
+* S2 Security Gate
+* S3 Timeline Witnessing
+* S4 Café Witness
+* S5 Confrontation / Recovery
+
+## Minigames
+
+* MG1 Label Reading
+* MG2 Badge Log Read
+* MG3 Receipt Reading
+* MG4 Torn Note Reconstruction
+
+## Timeline beats
+
+* T+00 arrival / medallion missing
+* T+02 curator containment
+* T+05 guard patrol
+* T+08 intern movement beat
+* T+10 donor arrival/call
+* T+12 witness window strongest
+* T+15 terminal archival / increased friction
+
+## Seeds
+
+* Seed A
+* Seed B
+* Seed C
+
+## Success/fail requirements
+
+* one recovery success path
+* one accusation/reasoning success path
+* one soft-fail branch per shipped seed
+
+---
+
+# 6) World Layout (Pixi-Friendly)
+
+Represent the case world as simple readable rooms using Sim4-compatible geometry.
+
+## Rooms
+
+1. **MBAM Lobby** — public
+2. **Gallery 1 — Salle des Affiches** — semi-public
+3. **Security Office** — restricted
+4. **Service Corridor** — restricted
+5. **Café de la Rue** — public
+
+## Connections / gates
 
 * Lobby ↔ Gallery 1: open
 * Lobby ↔ Security Office: restricted; requires permission / escort / trust gate
 * Gallery 1 ↔ Service Corridor: restricted; guard-controlled
 * Lobby ↔ Café: open
 
-## Visual Prop Goals
+## Visual prop goals
 
 Minimal, readable, mostly static:
 
@@ -158,9 +294,9 @@ Minimal, readable, mostly static:
 
 ---
 
-# 4) MBAM Case Bundle (Canonical Case Truth)
+# 7) MBAM Case Bundle (Canonical Case Truth)
 
-This is the most important gameplay object in the case.
+The **MBAM Case Bundle** is the canonical non-physical gameplay object.
 
 ## Inputs
 
@@ -205,12 +341,11 @@ must come from this bundle.
 
 ---
 
-# 5) Cast Registry (Persistent Recurring Characters)
+# 8) Cast Registry (Persistent Recurring Characters)
 
-The five MBAM characters are not disposable NPCs.
-They are a **persistent cast layer** with stable identity plus seeded case overlays.
+The five MBAM characters are a **persistent cast layer**, not throwaway NPCs.
 
-## NPC1 — Curator: **Élodie Marchand**
+## Élodie Marchand — Curator
 
 * identity: curator
 * baseline traits: proud, precise, impatient with vagueness
@@ -219,7 +354,7 @@ They are a **persistent cast layer** with stable identity plus seeded case overl
 * trust trigger: polite register, accurate summaries
 * anti-trigger: sloppy accusations
 
-## NPC2 — Guard: **Marc Dutil**
+## Marc Dutil — Guard
 
 * identity: security guard
 * baseline traits: procedural, tired, rule-bound
@@ -228,7 +363,7 @@ They are a **persistent cast layer** with stable identity plus seeded case overl
 * trust trigger: competence + respectful tone
 * anti-trigger: trying to skip procedure
 
-## NPC3 — Intern: **Samira B.**
+## Samira B. — Intern
 
 * identity: intern
 * baseline traits: anxious, eager, oversharing
@@ -237,7 +372,7 @@ They are a **persistent cast layer** with stable identity plus seeded case overl
 * trust trigger: reassurance, calm pacing
 * anti-trigger: direct pressure too early
 
-## NPC4 — Donor: **Laurent Vachon**
+## Laurent Vachon — Donor/VIP
 
 * identity: donor/VIP
 * baseline traits: polished, status-aware, defensive
@@ -246,7 +381,7 @@ They are a **persistent cast layer** with stable identity plus seeded case overl
 * trust trigger: formal address, tact
 * anti-trigger: perceived disrespect
 
-## NPC5 — Barista: **Jo Leclerc**
+## Jo Leclerc — Barista/Witness
 
 * identity: barista/witness
 * baseline traits: observant, casual, social
@@ -257,10 +392,10 @@ They are a **persistent cast layer** with stable identity plus seeded case overl
 
 ## Cast overlay model
 
-Each run applies a seeded overlay:
+Each run applies a seeded overlay that controls:
 
 * role in this case
-* degree of helpfulness
+* helpfulness
 * what they know
 * what they believe
 * what they hide
@@ -269,11 +404,11 @@ Each run applies a seeded overlay:
 
 ---
 
-# 6) State Cards / Portrait Hint System
+# 9) State Cards / Portrait Hint System
 
-This is a core gameplay layer, not just flavor UI.
+State cards are a **core gameplay hint system**, not decorative UI.
 
-Each major dialogue turn can display a **state card** showing:
+Each major dialogue turn may display:
 
 * portrait/state art variant
 * emotional state
@@ -283,9 +418,7 @@ Each major dialogue turn can display a **state card** showing:
 * tell cue
 * suggested interaction mode
 
-## State dimensions
-
-### Emotion
+## Emotion values
 
 * calm
 * stressed
@@ -294,7 +427,7 @@ Each major dialogue turn can display a **state card** showing:
 * nervous
 * guarded
 
-### Stance
+## Stance values
 
 * helpful
 * procedural
@@ -303,9 +436,7 @@ Each major dialogue turn can display a **state card** showing:
 * manipulative
 * flustered
 
-### Alignment hint
-
-Not explicit truth labels, but soft tendencies such as:
+## Soft alignment hint values
 
 * protecting institution
 * protecting self
@@ -313,24 +444,23 @@ Not explicit truth labels, but soft tendencies such as:
 * trying to save face
 * trying to help quietly
 
-## Use in gameplay
+## Gameplay use
 
-State cards provide clues about:
+State cards hint:
 
-* tone to use
-* whether to ask direct or indirect questions
+* which tone to use
+* whether to ask directly or indirectly
 * whether to use `vous`
 * whether contradiction pressure is safe
-* whether the NPC is hiding guilt or simply discomfort
+* whether the NPC’s discomfort suggests guilt, fear, embarrassment, or loyalty
 
 ---
 
-# 7) World Objects + MBAM-Specific Affordances
+# 10) World Objects + MBAM-Specific Affordances
 
-Objects must support case-specific interactions first.
-Generalization can happen later.
+Objects are implemented case-first. Generalization can happen later.
 
-## O1 — Display Case (vitrine)
+## O1 — Display Case (Vitrine)
 
 ### State
 
@@ -349,11 +479,9 @@ Generalization can happen later.
 
 * establishes missing item
 * may reveal method clue
-* can support early suspicion
+* supports early suspicion
 
----
-
-## O2 — Missing Item: **Le Médaillon**
+## O2 — Missing Item: Le Médaillon
 
 ### State
 
@@ -361,23 +489,21 @@ Generalization can happen later.
 * `location`
 * `examined:boolean`
 
-### Affordances
+### Affordance
 
 * `examine()`
 
 ### Case use
 
-* recovered item provides inscription clue or confirmation detail
+* provides confirmation detail or inscription clue after recovery
 
----
-
-## O3 — Wall Label (cartel)
+## O3 — Wall Label (Cartel)
 
 ### State
 
 * `text_variant_id`
 
-### Affordances
+### Affordance
 
 * `read()`
 
@@ -385,9 +511,7 @@ Generalization can happen later.
 
 * **MG1**
 * extracts title/date
-* doubles as French reading task
-
----
+* acts as French reading interaction
 
 ## O4 — Bench
 
@@ -395,15 +519,13 @@ Generalization can happen later.
 
 * `under_bench_item:boolean`
 
-### Affordances
+### Affordance
 
 * `inspect()`
 
 ### Case use
 
 * may reveal torn note fragment or dropped paper
-
----
 
 ## O5 — Visitor Logbook
 
@@ -412,16 +534,14 @@ Generalization can happen later.
 * entries list
 * scribble pattern
 
-### Affordances
+### Affordance
 
 * `read()`
 
 ### Case use
 
-* supports who-was-present reasoning
-* mild role/context clue
-
----
+* supports presence reasoning
+* provides mild role/context clue
 
 ## O6 — Badge Access Terminal
 
@@ -442,24 +562,20 @@ Generalization can happen later.
 * timeline contradiction evidence
 * pressure window before archival
 
----
-
 ## O7 — Security Binder
 
 ### State
 
 * `page_state`
 
-### Affordances
+### Affordance
 
 * `read()`
 
 ### Case use
 
 * reveals procedure rule
-* helps regain access path if terminal gate is missed
-
----
+* helps restore access path if terminal gate was missed
 
 ## O8 — Keypad Door
 
@@ -477,8 +593,6 @@ Generalization can happen later.
 
 * reinforces access restrictions
 
----
-
 ## O9 — Receipt Printer / Café Receipts
 
 ### State
@@ -495,25 +609,21 @@ Generalization can happen later.
 * **MG3**
 * supports/refutes alibi timing
 
----
-
 ## O10 — Bulletin Board
 
 ### State
 
 * flyer text
 
-### Affordances
+### Affordance
 
 * `read()`
 
 ### Case use
 
-* optional vocab / world texture reward
+* optional vocab reward / world texture
 
----
-
-## Evidence Items
+## Evidence items
 
 ### E1 — Torn Note
 
@@ -529,19 +639,19 @@ Generalization can happen later.
 ### E3 — Lanyard Fiber / Sticker
 
 * environmental evidence
-* links to cart/badge-related method
+* tied to cart/badge-related method
 
 ---
 
-# 8) Timeline Structure (Real-Time, Deterministic, Branchy)
+# 11) Timeline Structure (Real-Time, Deterministic, Branchy)
 
-The world clock runs continuously, but case beats are deterministically scheduled.
+The world clock runs continuously, but case beats are deterministic.
 
 ## Baseline beats
 
 * **T+00** player arrives; medallion already missing
 * **T+02** curator begins containment mode
-* **T+05** guard patrol shift / movement change
+* **T+05** guard patrol / position change
 * **T+08** intern transitions rooms
 * **T+10** donor appears or calls
 * **T+12** barista witness window is strongest
@@ -553,17 +663,17 @@ The world clock runs continuously, but case beats are deterministically schedule
 * waiting can reduce evidence visibility
 * waiting can move NPCs
 * early confrontation with weak evidence reduces trust
-* missed clue windows must remain recoverable by alternate path, but harder
+* missed clue windows remain recoverable through alternate paths, but harder
 
 ## v1.0 rule
 
-Every shipped seed must remain solvable even if the player misses the optimal path.
+Every shipped seed must remain solvable even if the player misses the optimal timing path.
 
 ---
 
-# 9) Evidence + Contradiction Graph
+# 12) Evidence + Contradiction Graph
 
-This is part of **Case Truth**, not a UI convenience.
+This is part of **Case Truth**, not a UI convenience layer.
 
 ## Primary clue types
 
@@ -594,15 +704,15 @@ This is part of **Case Truth**, not a UI convenience.
 
 ## v1.0 requirement
 
-At least one valid resolution must require the player to use a contradiction, not just find a dropped item.
+At least one valid resolution must require use of a contradiction, not only physical recovery.
 
 ---
 
-# 10) Dialogue Model — v1.0 vs Later
+# 13) Dialogue Model — v1.0 vs Later
 
 ## v1.0 dialogue model
 
-The first implementation must use **structured deterministic dialogue scenes**.
+The first implementation uses **structured deterministic dialogue scenes**.
 
 Each scene defines:
 
@@ -616,36 +726,37 @@ Each scene defines:
 * summary checks
 * unlock outputs
 
-This should be playable **without any live LLM dependency**.
+This must be playable **without a live LLM dependency**.
 
 ## Later dialogue model
 
-An LLM may later act as a **surface adapter only**:
+A future LLM may act only as a **surface adapter** for:
 
 * interpreting player wording
-* rephrasing legal NPC responses
+* rephrasing legal responses
 * generating natural style
 * offering repair prompts
-* never inventing facts outside allowed slices
+
+It may **never invent facts** outside allowed fact slices.
 
 ## Hard rule
 
 No LLM integration before:
 
-* allowed-facts slices exist
+* allowed-fact slices exist
 * scene states exist
 * deterministic fallback exists
 * transcript replay exists
 
 ---
 
-# 11) Dialogue Scenes (Structured)
+# 14) Dialogue Scenes (Structured)
 
-## Scene S1 — Lobby Intro (Élodie)
+## S1 — Lobby Intro (Élodie)
 
 ### Goal
 
-Establish the incident and grant inspection permission.
+Establish incident and grant inspection permission.
 
 ### Player skills
 
@@ -659,14 +770,12 @@ Establish the incident and grant inspection permission.
 * “À quelle heure ?”
 * “Est-ce que je peux regarder… ?”
 
-### Unlock
+### Unlocks
 
 * vitrine inspection
 * pointer to Marc
 
----
-
-## Scene S2 — Security Gate (Marc)
+## S2 — Security Gate (Marc)
 
 ### Goal
 
@@ -684,9 +793,7 @@ Gain log access or procedure clue.
 * denied for now
 * must use alternate route or recover trust
 
----
-
-## Scene S3 — Timeline Witnessing (Samira or equivalent)
+## S3 — Timeline Witnessing (Samira or equivalent)
 
 ### Goal
 
@@ -703,9 +810,7 @@ Build room/time sequence.
 
 * short French summary
 
----
-
-## Scene S4 — Café Witness (Jo)
+## S4 — Café Witness (Jo)
 
 ### Goal
 
@@ -717,11 +822,9 @@ Get clothing/timestamp clue.
 
 ### Time sensitivity
 
-If late, memory quality drops.
+* if late, memory quality drops
 
----
-
-## Scene S5 — Confrontation / Recovery
+## S5 — Confrontation / Recovery
 
 ### Goal
 
@@ -739,9 +842,9 @@ Player must present at least two facts in French, including one contradiction or
 
 ---
 
-# 12) French Learning Layer (Narrow v1.0 Scope)
+# 15) French Learning Layer (Narrow v1.0 Scope)
 
-This is a **scene-bound scaffolding policy**, not a giant generalized pedagogy engine.
+This is a **scene-bound scaffolding policy**, not a generalized pedagogy engine.
 
 ## Target band
 
@@ -753,7 +856,7 @@ A1 → light A2
 * time expressions
 * polite requests
 * simple passé composé
-* clothing and basic descriptors
+* clothing/basic descriptors
 * short summaries
 
 ## Scaffolding ladder
@@ -763,7 +866,7 @@ A1 → light A2
 3. multiple-choice rephrase
 4. English meta-help allowed, but French action still required
 
-## Difficulty profiles for v1.0
+## Difficulty profiles
 
 ### D0
 
@@ -784,9 +887,9 @@ Not required for initial ship.
 
 ---
 
-# 13) Minigames (MBAM-Specific, Deterministic)
+# 16) Minigames (MBAM-Specific, Deterministic)
 
-No generic minigame framework required in v1.0 beyond these four.
+No generalized minigame framework is required beyond these four.
 
 ## MG1 — Wall Label Reading
 
@@ -800,8 +903,6 @@ Use:
 * reading comprehension
 * gallery clue anchor
 
----
-
 ## MG2 — Badge Log Read
 
 Prompt:
@@ -813,8 +914,6 @@ Use:
 
 * access/timeline contradiction
 
----
-
 ## MG3 — Receipt Reading
 
 Prompt:
@@ -824,8 +923,6 @@ Prompt:
 Use:
 
 * alibi validation
-
----
 
 ## MG4 — Torn Note Reconstruction
 
@@ -839,7 +936,7 @@ Use:
 
 ---
 
-# 14) Investigation UI Shell (v1.0)
+# 17) Investigation UI Shell (v1.0)
 
 The frontend must evolve from viewer into a minimal investigation shell.
 
@@ -860,7 +957,7 @@ The frontend must evolve from viewer into a minimal investigation shell.
 
 ---
 
-# 15) Success / Failure Conditions
+# 18) Success / Failure Conditions
 
 ## Win
 
@@ -879,7 +976,7 @@ The frontend must evolve from viewer into a minimal investigation shell.
 
 * wrong accusation
 * item leaves building
-* relationship penalty for future case continuity
+* relationship penalty for future continuity
 
 ## v1.0 requirement
 
@@ -891,7 +988,9 @@ Each shipped seed must support:
 
 ---
 
-# 16) Data Structures (Revised)
+# 19) Canonical Data Model Contract
+
+These model semantics are frozen enough to build against.
 
 ## WorldState
 
@@ -967,15 +1066,15 @@ Future adapter input:
 * hint_level
 * player_profile
 
+These structures do not need to be future-perfect, but Phase 1 work should not reopen their basic semantics.
+
 ---
 
-# 17) Voice-Ready Boundary (But Not Voice-Required Yet)
+# 20) Voice-Ready Boundary (But Not Voice-Required Yet)
 
 The system should anticipate voice later.
 
-## Therefore
-
-Player input should already be abstracted as:
+## Player input abstraction should support
 
 * text input
 * parsed intent
@@ -984,11 +1083,11 @@ Player input should already be abstracted as:
 
 ## But
 
-Voice interaction is **not required** for MBAM v1.0 implementation.
+Voice interaction is **not required** for MBAM v1.0.
 
 ---
 
-# 18) Seeds (Shipping Set)
+# 21) Shipping Seeds
 
 ## Seed A
 
@@ -1008,47 +1107,125 @@ Voice interaction is **not required** for MBAM v1.0 implementation.
 * Method = case_left_unlatched
 * Ally = Curator
 
-Same cast, same rooms, different truth structure, timing emphasis, and clue composition.
+Same cast, same rooms, different truth structure, clue composition, and timing emphasis.
 
 ---
 
-# 19) Implementation Priorities (Execution Order)
+# 22) First Playable Acceptance Criteria
 
-## Priority 1
+The first playable version of MBAM is achieved when all of the following are true:
 
-Canonical MBAM Case Bundle
+* one seed can be loaded deterministically
+* the MBAM location loads with the correct rooms and props
+* the five fixed characters exist in the runtime
+* key MBAM objects can be inspected/interacted with
+* at least core evidence can be discovered
+* at least one contradiction can be unlocked and used
+* the player can complete structured dialogue scenes
+* the player can reach at least one valid recovery or accusation ending
+* replaying the same seed produces the same truth and same legal outcomes
+* the case can be exported/replayed/debugged through the existing artifact pipeline
 
-## Priority 2
-
-Cast Registry + seeded role overlays
-
-## Priority 3
-
-Object affordances + evidence/contradiction loop
-
-## Priority 4
-
-Deterministic structured dialogue scenes
-
-## Priority 5
-
-Frontend investigation shell
-
-## Priority 6
-
-French scaffolding + MG1–MG4
-
-## Priority 7
-
-Optional LLM dialogue adapter
-
-## Priority 8
-
-Replay polish and ship validation
+This is the target for the first true vertical-slice milestone.
 
 ---
 
-# 20) Non-Negotiable Rules
+# 23) Technical Non-Goals and Deferrals
+
+These are explicitly deferred and must not block v1 implementation start:
+
+* live websocket-first host runtime
+* full voice interaction
+* generalized content framework
+* generalized social simulation
+* generalized clue-board framework
+* generalized minigame framework
+* broad inventory simulation
+* polished production asset pipeline
+* full LLM dialogue adapter
+* broad pathfinding/general nav expansion unless directly required by MBAM
+
+---
+
+# 24) Current Repo Constraints Triage
+
+## Do not block Phase 1
+
+These may remain imperfect while Phase 1 begins:
+
+* missing full live websocket host path
+* debug-heavy frontend
+* lack of frontend test suite
+* viewer-oriented UI shell
+* leftover naming residue in some frontend/viewer paths
+* weak live-mode schema guarantees
+
+## Must be addressed during implementation
+
+These are central missing layers:
+
+* no canonical `CaseState`
+* no `CastRegistry`
+* no MBAM `NPCState` semantics
+* no object affordance/state system
+* no contradiction/evidence engine
+* no structured deterministic dialogue scene layer
+* no resolution logic
+* no scaffolding/minigame implementation
+
+## Can wait unless they interfere directly
+
+* PHASE_E scheduler/runtime issue
+* deeper ECS cleanup
+* broad pathfinding improvements
+* full LLM truth-guard runtime path
+* generalized runtime/event cleanup outside MBAM needs
+
+---
+
+# 25) Implementation Order Lock
+
+The execution order is locked as:
+
+1. **Canonical MBAM Case Bundle**
+2. **Cast Registry + seeded role overlays + NPCState**
+3. **Object affordances + evidence/contradiction loop**
+4. **Deterministic structured dialogue scenes**
+5. **Frontend investigation shell**
+6. **French scaffolding + MG1–MG4**
+7. **Replay polish + endings / ship validation**
+8. **Optional LLM dialogue adapter**
+
+This order should not be inverted without a strong repo-grounded reason.
+
+---
+
+# 26) First Task Definition
+
+The first implementation task is:
+
+## Task 1
+
+Implement the canonical **MBAM Case Bundle (`CaseState`)** with:
+
+* deterministic seed fixtures for **A / B / C**
+* role assignment
+* cast overlays
+* timeline schedule
+* evidence placement
+* alibi matrix
+* truth graph
+* scene gates
+* resolution rules
+* same-seed determinism tests
+* cross-seed variation tests
+* solvability-oriented fixtures for shipped seeds
+
+This is the cleanest first move because it establishes the canonical non-physical truth layer before interaction and dialogue are built on top of it.
+
+---
+
+# 27) Non-Negotiable Rules
 
 * **Case Truth is canonical.**
 * **World Truth does not own mystery truth.**
@@ -1058,10 +1235,23 @@ Replay polish and ship validation
 * **Every shipped seed must be deterministic and solvable.**
 * **French scaffolding must support progress, not bypass it.**
 * **State cards are gameplay hints, not decoration.**
+* **Recurring cast identity is a core system, not flavor content.**
+* **Offline replay/debug is a priority feature for development and validation.**
 
 ---
 
-If you want, next I can turn this revised spec into either:
+# 28) Phase 0 Completion Checklist
 
-1. a **Codex execution brief for Phase 1–3**, or
-2. a **formal JSON/data-model spec** for `CaseState`, `CastRegistry`, `NPCState`, and `DialogueSceneState`.
+Phase 0 is complete when the following are all true:
+
+* the v1 definition is locked
+* truth-layer boundaries are locked
+* canonical MBAM content scope is frozen
+* data model semantics are frozen enough to build against
+* first playable acceptance criteria are defined
+* non-goals/deferrals are explicit
+* current repo constraints are triaged
+* implementation order is locked
+* the first implementation task is defined
+
+This spec is intended to satisfy that checklist.
