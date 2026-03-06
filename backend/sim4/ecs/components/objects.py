@@ -83,10 +83,10 @@ class ProductionProfile:
 
 
 @dataclass
-class FactoryMetrics:
+class WorldMetrics:
     """World-level production aggregate emitted by workstation systems."""
 
-    factory_input: float
+    world_output: float
     active_objects: int
     overdrive_objects: int
 
@@ -99,5 +99,5 @@ __all__ = [
     "ObjectStats",
     "WorkstationState",
     "ProductionProfile",
-    "FactoryMetrics",
+    "WorldMetrics",
 ]

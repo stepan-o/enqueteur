@@ -63,7 +63,7 @@ class AgentStatsSystem:
             smartness = _clamp01(float(stats.smartness))
             toughness = _clamp01(float(stats.toughness))
             obedience = _clamp01(float(stats.obedience))
-            alignment = _clamp01(float(stats.factory_goal_alignment))
+            alignment = _clamp01(float(stats.mission_alignment))
 
             _set_if_changed(ctx, row.entity, AgentStats, "energy", energy, stats.energy)
             _set_if_changed(ctx, row.entity, AgentStats, "durability", durability, stats.durability)
@@ -71,7 +71,7 @@ class AgentStatsSystem:
             _set_if_changed(ctx, row.entity, AgentStats, "smartness", smartness, stats.smartness)
             _set_if_changed(ctx, row.entity, AgentStats, "toughness", toughness, stats.toughness)
             _set_if_changed(ctx, row.entity, AgentStats, "obedience", obedience, stats.obedience)
-            _set_if_changed(ctx, row.entity, AgentStats, "factory_goal_alignment", alignment, stats.factory_goal_alignment)
+            _set_if_changed(ctx, row.entity, AgentStats, "mission_alignment", alignment, stats.mission_alignment)
 
 
 def _clamp01(value: float) -> float:

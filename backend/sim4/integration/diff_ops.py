@@ -65,7 +65,7 @@ def compute_state_diff_ops(state_from: Dict[str, Any], state_to: Dict[str, Any])
 
     ops: List[Dict[str, Any]] = []
 
-    # World-level singleton (factory metrics, etc.)
+    # World-level singleton metrics/state.
     world_from = state_from.get("world")
     world_to = state_to.get("world")
     if world_from != world_to:

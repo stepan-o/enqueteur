@@ -25,10 +25,16 @@ from backend.sim4.integration.render_spec import (
 )
 from backend.sim4.integration.schema_version import INTEGRATION_SCHEMA_VERSION
 from backend.sim4.runtime.clock import TickClock
+from backend.sim4.world.mbam_layout import WORLD_BOUNDS as MBAM_WORLD_BOUNDS
 
-DEFAULT_ENGINE_NAME = "Sim4"
+DEFAULT_ENGINE_NAME = "EnqueteurSim"
 DEFAULT_ENGINE_VERSION = "1.0.0"
-DEFAULT_WORLD_BOUNDS = Bounds(min_x=0.0, min_y=0.0, max_x=35.0, max_y=25.0)
+DEFAULT_WORLD_BOUNDS = Bounds(
+    min_x=float(MBAM_WORLD_BOUNDS.min_x),
+    min_y=float(MBAM_WORLD_BOUNDS.min_y),
+    max_x=float(MBAM_WORLD_BOUNDS.max_x),
+    max_y=float(MBAM_WORLD_BOUNDS.max_y),
+)
 
 
 def tick_rate_hz_from_clock(clock: TickClock) -> int:

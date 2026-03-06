@@ -1,66 +1,29 @@
 [project]
-name = "loopforge-city"
-version = "0.1.0"
-description = "Loopforge City: a text-based multi-agent simulation scaffold"
+name = "enqueteur"
+version = "0.2.0"
+description = "Deterministic living-world runtime and webview foundation for Enqueteur"
 authors = [
-  { name = "Stepan Oskin", email = "stepanoskin007@gmail.com" }
+  { name = "Enqueteur Team" }
 ]
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-
-dependencies = [
-  "SQLAlchemy>=2.0.34",
-  "psycopg[binary]>=3.2.3",
-  "alembic>=1.13.2",
-  "python-dotenv>=1.0.1",
-  "typer>=0.12.5",
-  "rich>=13.9.4",
-  "openai>=1.0.0",
-  "fastapi>=0.121.3",
-  "uvicorn",
-  "esper>=3.4",
-  "websockets>=15.0.1",
-  "pytest>=8.3.0",
-]
+dependencies = []
 
 [project.optional-dependencies]
-# Developer tools (optional) for commit style, hooks, and tests
 dev = [
-  "commitizen>=3.28.0",
-  "pre-commit>=4.0.1",
+  "pytest>=8.3.0",
   "pytest-cov>=5.0.0",
 ]
-
-[project.urls]
-Homepage = "https://example.com/loopforge-city"
-
-#[project.scripts]
-# No CLI entrypoints for now; removing references to the legacy 'loopforge' package per new project layout.
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.uv]
-# uv configuration; using system/default Python. Set UV_PYTHON if needed.
-
-[tool.uv.sources]
-# no special sources yet
-
-[tool.uv.pip]
-# Prefer binary wheels if available
-no-build-isolation = true
-
 [tool.pytest.ini_options]
-testpaths = ["backend/sim4/tests", "tests"]
+testpaths = ["backend/sim4/tests"]
 addopts = "-q"
 pythonpath = ["."]
 
 [tool.setuptools]
-# Do not package legacy 'loopforge' or top-level 'scripts'. Sim4 work now lives under backend/sim4.
-# Packaging layout for Sim4 will be defined in a future sprint; keep empty list to avoid build failures.
 packages = []
-
-
-

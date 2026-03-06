@@ -1,85 +1,37 @@
-# Architect chat histories
-/docs/legacy/sim2/architecture/architect_chat_history/
-
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
 
 # Virtual environments
 .venv/
 venv/
 env/
 
-# Distribution / packaging
-.Python
+# Packaging
 build/
 dist/
-.eggs/
-*.egg
 *.egg-info/
 
-# Unit test / coverage reports
+# Test/cache artifacts
 .pytest_cache/
 .coverage*
 htmlcov/
-.cache/
 
-# Type checkers / linters
-.mypy_cache/
-.ruff_cache/
-.pyright/
+# Node
+node_modules/
+.vite/
 
-# Editor / OS files
+# Editor/OS
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs and local runs
 logs/
+runs/
 *.log
 
-# Node / Frontend artifacts (repo root)
-node_modules/
-
-# Frontend/Vitest reports (if generated at repo root by CI)
-.vite/
-.vitest/
-coverage/
-coverage-*
-junit.xml
-test-results.xml
-test-results/
-.reports/
-
-# Transient local run artifacts
-.output.txt
-
-# Environment files
+# Env files
 .env
 .env.*
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Local DB files
-*.sqlite3
-*.db
-
-# Docker / Compose local data
-pgdata/
-
-# Keep Alembic migrations tracked; keep uv.lock tracked
-# (Intentional: do not ignore alembic/ or uv.lock)
-
-# Local scratch scripts
-scratch.py
-
-
-# Analysis exports
-episode_export.json!/docs/legacy/sim2/architecture/architect_chat_history/
-
-runs/
-
-frontend/loopforge-godot/new-game-project/demo

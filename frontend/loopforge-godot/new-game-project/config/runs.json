@@ -1,5 +1,0 @@
-{
-  "runs": [
-	{ "id":"kvp_demo_1min", "label":"1 MINUTE DEMO", "detail":"30 Hz · Loopforge demo", "base_url":"res://demo/kvp_demo_1min" }
-  ]
-}

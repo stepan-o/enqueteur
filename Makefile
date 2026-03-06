@@ -1,147 +1,33 @@
-.PHONY: help uv-sync uv sync run migrate downgrade-base downgrade-one revision docker-up docker-down docker-logs compose run-all hooks-install cz-check cz-bump cz-commit untrack-egg test
+PY ?= python
+PIP ?= pip
+WEB_DIR ?= frontend/enqueteur-webview
 
-# Simple Makefile to streamline common tasks for Loopforge City
-# Uses uv for environment and dependency management.
-# You can override variables on the command line, e.g.:
-#   make revision NAME="add_new_field"
-
-# Export all Make variables to subprocess environments so overrides like
-#   SIM_STEPS=25 make docker-up
-# correctly reach docker-compose
-.EXPORT_ALL_VARIABLES:
-
-UV := $(shell command -v uv 2>/dev/null || echo uv)
-PY := $(UV) run python
-ALEMBIC := $(UV) run alembic
-# Auto-detect Compose CLI: prefer Docker Compose v2 plugin, fallback to legacy binary
-DC := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || (command -v docker-compose >/dev/null 2>&1 && echo docker-compose || echo docker-compose))
-CZ := $(UV) run cz
-PRECOMMIT := $(UV) run pre-commit
-# Default DB for tests; can be overridden on the command line
-TEST_DATABASE_URL ?= sqlite:///./loopforge_test.db
+.PHONY: help test test-cov demo-run web-install web-dev clean
 
 help:
-	@echo "Loopforge City - common commands"
-	@echo "-------------------------------------------------------------"
-	@echo "make uv-sync           - Sync/install dependencies with uv"
-	@echo "make uv / make sync    - Aliases for uv-sync"
-	@echo "make migrate           - Run Alembic upgrade head (use inside container typically)"
-	@echo "make downgrade-one     - Alembic downgrade by one revision"
-	@echo "make downgrade-base    - Alembic downgrade to base"
-	@echo "make revision NAME=msg - Create a new Alembic revision with message"
-	@echo "make run               - Run the simulation locally (NO DB, in-memory)"
-	@echo "make run-nodb          - Alias to run (no DB)"
-	@echo "make run-all           - Migrate then run simulation (local DB only; not typical)"
-	@echo "make hooks-install     - Install commit-msg hook via pre-commit"
-	@echo "make cz-check          - Check commit message in HEAD using Commitizen"
-	@echo "make cz-commit         - Interactive commit via Commitizen"
-	@echo "make cz-bump           - Bump version and tag via Commitizen"
-	@echo "make untrack-egg       - Stop tracking egg-info directory"
-	@echo "make docker-up         - Build and start app + db via docker-compose"
-	@echo "make docker-down       - Stop and remove compose services"
-	@echo "make docker-logs       - Tail logs from compose services"
+	@echo "Enqueteur commands"
+	@echo "  make test         Run backend tests"
+	@echo "  make test-cov     Run backend tests with coverage"
+	@echo "  make demo-run     Generate deterministic offline demo artifacts"
+	@echo "  make web-install  Install webview dependencies"
+	@echo "  make web-dev      Run webview dev server"
+	@echo "  make clean        Remove local caches and generated runs"
 
-uv-sync:
-	$(UV) sync --extra dev
-
-# Aliases
-uv: uv-sync
-sync: uv-sync
-
-# No-DB quick local run alias
-run-nodb: run
-
-migrate:
-	$(ALEMBIC) upgrade head
-
-downgrade-one:
-	$(ALEMBIC) downgrade -1
-
-downgrade-base:
-	$(ALEMBIC) downgrade base
-
-# Usage: make revision NAME="add robots table"
-revision:
-	@if [ -z "$(NAME)" ]; then \
-		echo "ERROR: Please provide NAME=\"message\""; \
-		exit 1; \
-	fi
-	$(ALEMBIC) revision -m "$(NAME)"
-
-	run:
-		$(PY) -m loopforge.cli.sim_cli --no-db --steps 10
-
-run-all: migrate run
-
-# Commit tooling
-hooks-install:
-	$(PRECOMMIT) install --hook-type commit-msg
-
-cz-check:
-	$(CZ) check --rev-range HEAD~1..HEAD || true
-
-cz-commit:
-	$(CZ) commit
-
-cz-bump:
-	$(CZ) bump --yes
-
-# Utility to untrack egg-info if already committed
-untrack-egg:
-	git rm -r --cached loopforge_city.egg-info || true
-
-# Docker Compose helpers (match README which uses docker-compose)
-
-docker-up:
-	$(DC) up --build -d
-
-compose: docker-up
-
-docker-down:
-	$(DC) down -v
-
-docker-logs:
-	$(DC) logs -f --tail=200
-
-.PHONY: test
-# Tests
 test:
-	DATABASE_URL=$(TEST_DATABASE_URL) $(UV) run pytest
+	$(PY) -m pytest backend/sim4/tests -q
 
-# Dev cockpit: summarize one day from logs
-run-day:
-	$(UV) run loopforge-sim view-day $(ARGS)
-
-# Dev cockpit: summarize an episode from logs
-# Pass extra CLI flags via ARGS, e.g.: make run-episode ARGS="--recap --narrative"
-run-episode:
-	$(UV) run loopforge-sim view-episode $(ARGS)
-
-# Allow the accidental pattern `make run-episode -- RECAPPED` to succeed by
-# treating `--` and `RECAPPED` as no-op phony targets.
-.PHONY: -- RECAPPED
---:
-RECAPPED:
-
-# Coverage run
-.PHONY: test-cov
 test-cov:
-	$(UV) run pytest --cov=loopforge --cov-report=term-missing
+	$(PY) -m pytest backend/sim4/tests --cov=backend.sim4 --cov-report=term-missing
 
+demo-run:
+	$(PY) scripts/run_sim4_kvp_demo.py --ticks 1800 --tick-rate 30 --agents 6
 
-# Dev cockpit: episode recap (episode + recap output)
-run-recap:
-	$(UV) run loopforge-sim view-episode --recap
+web-install:
+	cd $(WEB_DIR) && npm install
 
-# reset local run logs and SQLite databases
-.PHONY: reset-local
-reset-local:
-	$(UV) run python -m scripts.reset_local_state
+web-dev:
+	cd $(WEB_DIR) && npm run dev
 
-# reset local run logs and SQLite databases and run a new test run, run view-episode and api-server
-.PHONY: reset-local-api
-reset-local-api:
-	$(UV) run python -m scripts.reset_local_state
-	$(UV) run loopforge-sim --no-db --steps 60
-	$(UV) run loopforge-sim view-episode --steps-per-day 20 --days 3
-	$(UV) run loopforge-sim api-server
+clean:
+	rm -rf .pytest_cache runs
+	find . -name "__pycache__" -type d -prune -exec rm -rf {} +

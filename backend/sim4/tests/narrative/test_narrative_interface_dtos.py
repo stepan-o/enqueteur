@@ -38,11 +38,12 @@ def make_min_world_snapshot(tick: int = 0, episode_id: int = 1) -> WorldSnapshot
         time_of_day=float(tick) / 60.0,
         day_phase="day",
         phase_progress=0.0,
-        factory_input=0.0,
+        world_output=0.0,
         rooms=rooms,
         agents=agents,
         items=items,
         objects=objects,
+        doors=[],
         room_index=None,
         agent_index=None,
     )

@@ -1,26 +1,15 @@
-# Dockerfile for Loopforge City app using uv base image
-FROM ghcr.io/astral-sh/uv:python3.14-bookworm AS base
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    UV_LINK_MODE=copy \
-    UV_PROJECT_ENVIRONMENT=/app/.venv \
-    VIRTUAL_ENV=/app/.venv \
-    PATH="/app/.venv/bin:${PATH}"
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Copy project metadata first for better caching (including lockfile)
-COPY pyproject.toml README.md alembic.ini uv.lock /app/
-# Copy source code and alembic scripts
-COPY legacy/backend/loopforge_sim2 /app/loopforge
+COPY pyproject.toml README.md /app/
+COPY backend /app/backend
 COPY scripts /app/scripts
-COPY alembic /app/alembic
+COPY docs /app/docs
 
-# Sync/install dependencies into a local venv managed by uv
-RUN uv sync --frozen
+RUN pip install --no-cache-dir -e .[dev]
 
-ENV DATABASE_URL="postgresql+psycopg://loopforge:loopforge@db:5432/loopforge"
-
-# Default command: run migrations then simulation
-CMD ["sh", "-lc", "uv run alembic upgrade head && uv run loopforge-sim"]
+CMD ["python", "-m", "pytest", "backend/sim4/tests", "-q"]

@@ -41,7 +41,7 @@ from backend.sim4.ecs.components.objects import (
     ObjectPlacement,
     ObjectStats,
     WorkstationState,
-    FactoryMetrics,
+    WorldMetrics,
 )
 
 
@@ -107,7 +107,7 @@ def _build_agents(ecs_world: ECSWorld) -> List[AgentSnapshot]:
                 smartness=0.5,
                 toughness=0.5,
                 obedience=0.5,
-                factory_goal_alignment=0.5,
+                mission_alignment=0.5,
             )
 
         transform = TransformSnapshot(room_id=rp.room_id if rp else None, x=t.x, y=t.y)
@@ -142,7 +142,7 @@ def _build_agents(ecs_world: ECSWorld) -> List[AgentSnapshot]:
                 smartness=float(stats.smartness),
                 toughness=float(stats.toughness),
                 obedience=float(stats.obedience),
-                factory_goal_alignment=float(stats.factory_goal_alignment),
+                mission_alignment=float(stats.mission_alignment),
                 # Narrative Overlay
                 narrative_state_ref=narrative_state_ref,
                 cached_summary_ref=cached_summary_ref,
@@ -225,13 +225,13 @@ def _build_doors(world_ctx: WorldContext) -> List[DoorSnapshot]:
     return doors
 
 
-def _build_factory_input(ecs_world: ECSWorld) -> float:
-    sig = QuerySignature(read=(FactoryMetrics,), write=())
+def _build_world_output(ecs_world: ECSWorld) -> float:
+    sig = QuerySignature(read=(WorldMetrics,), write=())
     rows = list(ecs_world.query(sig))
     if not rows:
         return 0.0
     metrics = rows[0].components[0]
-    return float(metrics.factory_input)
+    return float(metrics.world_output)
 
 
 def build_world_snapshot(
@@ -252,7 +252,7 @@ def build_world_snapshot(
     items = _build_items(world_ctx)
     objects = _build_objects(ecs_world)
     doors = _build_doors(world_ctx)
-    factory_input = _build_factory_input(ecs_world)
+    world_output = _build_world_output(ecs_world)
 
     # Indices mapping IDs to positional indices in the lists
     room_index: Dict[int, int] = {r.room_id: idx for idx, r in enumerate(rooms)}
@@ -295,7 +295,7 @@ def build_world_snapshot(
         time_of_day=time_of_day,
         day_phase=day_phase,
         phase_progress=phase_progress,
-        factory_input=factory_input,
+        world_output=world_output,
         rooms=rooms,
         agents=agents,
         items=items,

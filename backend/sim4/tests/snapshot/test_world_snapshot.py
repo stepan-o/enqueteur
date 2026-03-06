@@ -30,7 +30,7 @@ def test_world_snapshot_single_agent_single_room():
             smartness=0.7,
             toughness=0.8,
             obedience=0.4,
-            factory_goal_alignment=0.55,
+            mission_alignment=0.55,
         ),
     )
 
@@ -79,4 +79,4 @@ def test_world_snapshot_single_agent_single_room():
     assert math.isclose(agent0.smartness, 0.7)
     assert math.isclose(agent0.toughness, 0.8)
     assert math.isclose(agent0.obedience, 0.4)
-    assert math.isclose(agent0.factory_goal_alignment, 0.55)
+    assert math.isclose(agent0.mission_alignment, 0.55)

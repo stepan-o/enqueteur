@@ -50,10 +50,41 @@ RUN_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "kvp" / "v0_1" / "
 class _DummySource(StateSource):
     def get_state(self, tick: int):  # type: ignore[override]
         return {
-            "tick": tick,
-            "value": tick,
-            "pos": {"x": tick + 0.123456, "y": 2.0},
-            "rooms": [{"room_id": "b"}, {"room_id": "a"}],
+            "world": {
+                "world_output": float(tick) + 0.123456,
+                "day_index": 1,
+                "ticks_per_day": 60,
+                "tick_in_day": tick,
+                "time_of_day": float(tick) / 60.0,
+                "day_phase": "day",
+                "phase_progress": float(tick) / 60.0,
+            },
+            "rooms": [
+                {
+                    "room_id": 2,
+                    "label": "B",
+                    "kind_code": 0,
+                    "occupants": [],
+                    "items": [],
+                    "neighbors": [1],
+                    "tension_tier": "low",
+                    "highlight": False,
+                },
+                {
+                    "room_id": 1,
+                    "label": "A",
+                    "kind_code": 0,
+                    "occupants": [],
+                    "items": [],
+                    "neighbors": [2],
+                    "tension_tier": "low",
+                    "highlight": False,
+                },
+            ],
+            "agents": [],
+            "items": [],
+            "objects": [],
+            "events": [],
         }
 
 
@@ -80,7 +111,7 @@ def _ptr_diff(f: int) -> RecordPointer:
 
 def _anchors_dict() -> Dict[str, object]:
     return {
-        "engine_name": "Sim4",
+        "engine_name": "EnqueteurSim",
         "engine_version": "1.0.0",
         "schema_version": INTEGRATION_SCHEMA_VERSION,
         "world_id": str(uuid.UUID("00000000-0000-4000-8000-000000000001")),

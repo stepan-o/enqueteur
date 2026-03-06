@@ -46,7 +46,7 @@ from .objects import (
     ObjectStats,
     WorkstationState,
     ProductionProfile,
-    FactoryMetrics,
+    WorldMetrics,
 )
 
 __all__ = [
@@ -91,5 +91,5 @@ __all__ = [
     "ObjectStats",
     "WorkstationState",
     "ProductionProfile",
-    "FactoryMetrics",
+    "WorldMetrics",
 ]

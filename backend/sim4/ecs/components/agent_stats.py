@@ -19,7 +19,7 @@ class AgentStats:
     smartness: float
     toughness: float
     obedience: float
-    factory_goal_alignment: float
+    mission_alignment: float
 
 
 __all__ = ["AgentStats"]

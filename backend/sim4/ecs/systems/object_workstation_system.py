@@ -4,7 +4,7 @@ from __future__ import annotations
 Phase D system — ObjectWorkstationSystem.
 
 Maintains dynamic object/workstation state, durability/efficiency wear, and
-aggregates factory production input each tick.
+aggregates world output each tick.
 """
 
 from typing import Dict, List
@@ -19,7 +19,7 @@ from ..components.objects import (
     ObjectStats,
     WorkstationState,
     ProductionProfile,
-    FactoryMetrics,
+    WorldMetrics,
 )
 
 
@@ -54,7 +54,7 @@ class ObjectWorkstationSystem:
 
         objects.sort(key=lambda o: (o[2].room_id, o[0]))
 
-        factory_input = 0.0
+        world_output = 0.0
         active_objects = 0
         overdrive_objects = 0
 
@@ -105,7 +105,7 @@ class ObjectWorkstationSystem:
 
             output_multiplier = _output_multiplier(desired_status, profile.overdrive_multiplier)
             output = profile.base_output * efficiency * output_multiplier
-            factory_input += output
+            world_output += output
             if desired_status in ACTIVE_STATUSES:
                 active_objects += 1
             if desired_status == WorkstationStatus.PRODUCING_OVERDRIVE:
@@ -122,13 +122,13 @@ class ObjectWorkstationSystem:
             if ticks_in_state != ws.ticks_in_state:
                 ctx.commands.set_field(eid, WorkstationState, "ticks_in_state", int(ticks_in_state))
 
-        metrics_sig = QuerySignature(read=(FactoryMetrics,), write=(FactoryMetrics,))
+        metrics_sig = QuerySignature(read=(WorldMetrics,), write=(WorldMetrics,))
         metrics_rows = list(ctx.world.query(metrics_sig))
         if metrics_rows:
             metrics_entity = min(row.entity for row in metrics_rows)
-            ctx.commands.set_field(metrics_entity, FactoryMetrics, "factory_input", factory_input)
-            ctx.commands.set_field(metrics_entity, FactoryMetrics, "active_objects", int(active_objects))
-            ctx.commands.set_field(metrics_entity, FactoryMetrics, "overdrive_objects", int(overdrive_objects))
+            ctx.commands.set_field(metrics_entity, WorldMetrics, "world_output", world_output)
+            ctx.commands.set_field(metrics_entity, WorldMetrics, "active_objects", int(active_objects))
+            ctx.commands.set_field(metrics_entity, WorldMetrics, "overdrive_objects", int(overdrive_objects))
 
 
 def _safe_status(code: int) -> WorkstationStatus:

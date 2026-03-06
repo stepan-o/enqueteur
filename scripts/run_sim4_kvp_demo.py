@@ -40,10 +40,10 @@ from backend.sim4.host.kvp_defaults import (
     default_render_spec,
     tick_rate_hz_from_clock,
 )
-from backend.sim4.world.loopforge_layout import apply_loopforge_layout
+from backend.sim4.world.mbam_layout import apply_mbam_layout
 from backend.sim4.runtime.object_bootstrap import (
     spawn_object_entities,
-    ensure_factory_metrics_entity,
+    ensure_world_metrics_entity,
 )
 
 
@@ -100,9 +100,9 @@ class ActionPulseSystem:
                 )
 
 
-def build_world(num_rooms: int, num_agents: int) -> tuple[WorldContext, ECSWorld, list[int], list[int], list[int]]:
+def build_world(num_agents: int) -> tuple[WorldContext, ECSWorld, list[int], list[int], list[int]]:
     world_ctx = WorldContext()
-    apply_loopforge_layout(world_ctx)
+    apply_mbam_layout(world_ctx)
     room_ids = sorted(world_ctx.rooms_by_id.keys())
 
     # Doors (from layout, if defined)
@@ -144,7 +144,7 @@ def build_world(num_rooms: int, num_agents: int) -> tuple[WorldContext, ECSWorld
                     smartness=random.uniform(0.4, 0.9),
                     toughness=random.uniform(0.4, 0.9),
                     obedience=random.uniform(0.3, 0.9),
-                    factory_goal_alignment=random.uniform(0.3, 0.9),
+                    mission_alignment=random.uniform(0.3, 0.9),
                 ),
             ]
         )
@@ -159,7 +159,7 @@ def build_world(num_rooms: int, num_agents: int) -> tuple[WorldContext, ECSWorld
         world_ctx.register_item(ItemRecord(id=item_id, room_id=room_id))
 
     spawn_object_entities(ecs_world, world_ctx)
-    ensure_factory_metrics_entity(ecs_world)
+    ensure_world_metrics_entity(ecs_world)
 
     return world_ctx, ecs_world, agent_ids, door_ids, room_ids
 
@@ -272,7 +272,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--ticks", type=int, default=1800, help="Number of ticks to run (default: 1800 ~ 1 min @ 30Hz).")
     p.add_argument("--tick-rate", type=int, default=30, help="Tick rate in Hz (default: 30).")
     p.add_argument("--run-root", type=str, default="runs/kvp_demo_1min", help="Output directory.")
-    p.add_argument("--rooms", type=int, default=4, help="Number of rooms to seed.")
     p.add_argument("--agents", type=int, default=6, help="Number of agents to seed.")
     p.add_argument("--seed", type=int, default=123, help="RNG seed for run anchors.")
     return p.parse_args()
@@ -281,7 +280,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    world_ctx, ecs_world, agent_ids, door_ids, room_ids = build_world(args.rooms, args.agents)
+    world_ctx, ecs_world, agent_ids, door_ids, room_ids = build_world(args.agents)
     clock = TickClock(dt=1.0 / float(args.tick_rate))
 
     run_root = _REPO_ROOT / args.run_root

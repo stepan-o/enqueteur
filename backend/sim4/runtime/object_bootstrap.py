@@ -1,4 +1,4 @@
-"""Runtime bootstrap helpers for object entities + factory metrics."""
+"""Runtime bootstrap helpers for object entities + world metrics."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from backend.sim4.ecs.components.objects import (
     ObjectStats,
     WorkstationState,
     ProductionProfile,
-    FactoryMetrics,
+    WorldMetrics,
 )
 from backend.sim4.world.context import WorldContext
 from backend.sim4.world.object_catalog import get_object_class_spec
@@ -65,14 +65,14 @@ def spawn_object_entities(ecs_world: ECSWorld, world_ctx: WorldContext) -> List[
     return created
 
 
-def ensure_factory_metrics_entity(ecs_world: ECSWorld) -> int:
-    """Ensure a singleton FactoryMetrics entity exists; return its entity id."""
-    sig = QuerySignature(read=(FactoryMetrics,), write=())
+def ensure_world_metrics_entity(ecs_world: ECSWorld) -> int:
+    """Ensure a singleton WorldMetrics entity exists; return its entity id."""
+    sig = QuerySignature(read=(WorldMetrics,), write=())
     rows = ecs_world.query(sig)
     existing_ids = [row.entity for row in rows]
     if existing_ids:
         return sorted(existing_ids)[0]
-    return ecs_world.create_entity([FactoryMetrics(factory_input=0.0, active_objects=0, overdrive_objects=0)])
+    return ecs_world.create_entity([WorldMetrics(world_output=0.0, active_objects=0, overdrive_objects=0)])
 
 
-__all__ = ["spawn_object_entities", "ensure_factory_metrics_entity"]
+__all__ = ["spawn_object_entities", "ensure_world_metrics_entity"]

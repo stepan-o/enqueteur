@@ -106,7 +106,7 @@ class AgentSnapshot:
     smartness: float
     toughness: float
     obedience: float
-    factory_goal_alignment: float
+    mission_alignment: float
 
     # Narrative Overlay
     narrative_state_ref: int | None
@@ -161,7 +161,7 @@ class WorldSnapshot:
     time_of_day: float
     day_phase: str
     phase_progress: float
-    factory_input: float
+    world_output: float
     rooms: list[RoomSnapshot]
     agents: list[AgentSnapshot]
     items: list[ItemSnapshot]

@@ -36,7 +36,7 @@ def make_agent(agent_id: int, room_id: int | None, x: float, y: float) -> AgentS
         smartness=0.5,
         toughness=0.5,
         obedience=0.5,
-        factory_goal_alignment=0.5,
+        mission_alignment=0.5,
         narrative_state_ref=None,
         cached_summary_ref=None,
     )
@@ -82,11 +82,12 @@ def make_world_snapshot(
         time_of_day=float(tick) / 60.0,
         day_phase="day",
         phase_progress=0.0,
-        factory_input=0.0,
+        world_output=0.0,
         rooms=rooms_sorted,
         agents=agents_sorted,
         items=items_sorted,
         objects=objects_sorted,
+        doors=[],
         room_index=room_index,
         agent_index=agent_index,
     )

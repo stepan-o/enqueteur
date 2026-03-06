@@ -18,13 +18,44 @@ from backend.sim4.integration.record_writer import read_record, write_record
 
 class _DummySource(StateSource):
     def get_state(self, tick: int):  # type: ignore[override]
-        # Deterministic, simple state with a float to exercise quantization
+        # Deterministic KVP-shaped state.
         return {
-            "tick": tick,
-            "value": tick,
-            "pos": {"x": tick + 0.123456, "y": 2.0},
-            # include some list ordering that shouldn't matter to hashing after canonicalization
-            "rooms": [{"room_id": "b"}, {"room_id": "a"}],
+            "world": {
+                "world_output": float(tick) + 0.123456,
+                "day_index": 1,
+                "ticks_per_day": 60,
+                "tick_in_day": tick,
+                "time_of_day": float(tick) / 60.0,
+                "day_phase": "day",
+                "phase_progress": float(tick) / 60.0,
+            },
+            # Include list ordering that canonicalization should normalize.
+            "rooms": [
+                {
+                    "room_id": 2,
+                    "label": "B",
+                    "kind_code": 0,
+                    "occupants": [],
+                    "items": [],
+                    "neighbors": [1],
+                    "tension_tier": "low",
+                    "highlight": False,
+                },
+                {
+                    "room_id": 1,
+                    "label": "A",
+                    "kind_code": 0,
+                    "occupants": [],
+                    "items": [],
+                    "neighbors": [2],
+                    "tension_tier": "low",
+                    "highlight": False,
+                },
+            ],
+            "agents": [],
+            "items": [],
+            "objects": [],
+            "events": [],
         }
 
 
@@ -126,11 +157,11 @@ def test_export_and_verify_round_trip(tmp_path: Path):
 
     # Verify reconstruction at various ticks
     s0 = reconstruct_state_at_tick(export_root, manifest, 0)
-    assert s0["tick"] == 0
+    assert s0["world"]["tick_in_day"] == 0
     s3 = reconstruct_state_at_tick(export_root, manifest, 3)
-    assert s3["tick"] == 3
+    assert s3["world"]["tick_in_day"] == 3
     s2 = reconstruct_state_at_tick(export_root, manifest, 2)
-    assert s2["tick"] == 2
+    assert s2["world"]["tick_in_day"] == 2
 
 
 def test_broken_hash_chain_fails(tmp_path: Path):

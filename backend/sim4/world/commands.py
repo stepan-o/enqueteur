@@ -72,7 +72,7 @@ class WorldCommand:
     flag: Optional[int] = None
 
 
-# ---- Helper constructors (factory functions) ----
+# ---- Helper constructors ----
 def make_set_agent_room(seq: int, agent_id: AgentID, room_id: RoomID) -> WorldCommand:
     """Helper to build a SET_AGENT_ROOM command."""
     return WorldCommand(

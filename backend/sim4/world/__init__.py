@@ -45,11 +45,11 @@ from .commands import (
 from .events import WorldEvent, WorldEventKind
 from .apply_world_commands import apply_world_commands
 from .views import WorldViews, RoomView, WorldTimeView
-from .loopforge_layout import (
-    apply_loopforge_layout,
+from .mbam_layout import (
+    apply_mbam_layout,
     WORLD_BOUNDS,
-    LoopforgeRoomId,
-    LoopforgeDoorId,
+    MbamRoomId,
+    MbamDoorId,
     RoomKind,
 )
 from .static_map import (
@@ -92,11 +92,11 @@ __all__ = [
     "WorldViews",
     "RoomView",
     "WorldTimeView",
-    # Loopforge layout
-    "apply_loopforge_layout",
+    # MBAM layout
+    "apply_mbam_layout",
     "WORLD_BOUNDS",
-    "LoopforgeRoomId",
-    "LoopforgeDoorId",
+    "MbamRoomId",
+    "MbamDoorId",
     "RoomKind",
     # Static map
     "StaticMapV1",
