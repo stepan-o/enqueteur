@@ -128,6 +128,8 @@ def make_empty_case_state_shell(
     difficulty_profile: DifficultyProfile,
     runtime_clock_start: str,
     roles_assignment: RoleAssignment,
+    cast_overlay: CastOverlay | None = None,
+    medallion_at_drop: bool = False,
 ) -> CaseState:
     """Build a deterministic MBAM CaseState shell without generation logic.
 
@@ -139,7 +141,7 @@ def make_empty_case_state_shell(
         seed=seed,
         difficulty_profile=difficulty_profile,
         runtime_clock_start=runtime_clock_start,
-        cast_overlay=make_default_cast_overlay(),
+        cast_overlay=cast_overlay if cast_overlay is not None else make_default_cast_overlay(),
         roles_assignment=roles_assignment,
         timeline_schedule=(),
         evidence_placement=EvidencePlacement(
@@ -149,7 +151,7 @@ def make_empty_case_state_shell(
             cafe=CafeEvidence(receipt_id=None),
             drop_location=DropLocationEvidence(
                 location_id=roles_assignment.drop,
-                contains_medallion=False,
+                contains_medallion=bool(medallion_at_drop),
             ),
         ),
         alibi_matrix=AlibiMatrix(),
