@@ -94,7 +94,12 @@ from .scaffold import (
     make_empty_case_state_shell,
     make_roles_assignment_from_seed_lock,
 )
-from .projection import build_visible_case_projection, build_debug_case_projection
+from .projection import (
+    build_debug_case_projection,
+    build_debug_npc_semantic_projection,
+    build_visible_case_projection,
+    build_visible_npc_semantic_projection,
+)
 
 __all__ = [
     "AlibiClaim",
@@ -157,6 +162,8 @@ __all__ = [
     "resolve_seed_id",
     "build_visible_case_projection",
     "build_debug_case_projection",
+    "build_visible_npc_semantic_projection",
+    "build_debug_npc_semantic_projection",
     "PortraitConfig",
     "get_cast_entry",
     "get_cast_registry",

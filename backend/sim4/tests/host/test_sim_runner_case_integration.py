@@ -78,9 +78,19 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert "roles_assignment" not in state["case"]
     assert "hidden_case_slice" not in state["case"]
 
+    assert "npc_semantic" in state
+    assert len(state["npc_semantic"]) == 5
+    samira_public = next(row for row in state["npc_semantic"] if row["npc_id"] == "samira")
+    assert "overlay_role_slot" not in samira_public
+    assert "known_fact_flags" not in samira_public
+    assert "profile_id" not in samira_public["card_state"]
+
     assert "debug" in state
     assert "case_private" in state["debug"]
     assert state["debug"]["case_private"]["roles_assignment"]["culprit"] == "samira"
+    assert "npc_semantic_private" in state["debug"]
+    samira_private = next(row for row in state["debug"]["npc_semantic_private"] if row["npc_id"] == "samira")
+    assert samira_private["overlay_role_slot"] == "CULPRIT"
 
 
 def test_runner_omits_private_case_projection_without_debug_channel(tmp_path: Path):
@@ -88,6 +98,7 @@ def test_runner_omits_private_case_projection_without_debug_channel(tmp_path: Pa
 
     assert "case" in state
     assert state["case"]["seed"] == "C"
+    assert "npc_semantic" in state
     assert "debug" not in state
 
 

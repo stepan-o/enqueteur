@@ -8,7 +8,7 @@ interface for export_state_records(...).
 
 from dataclasses import asdict, is_dataclass
 import copy
-from typing import Any, Dict, List, Sequence
+from typing import Any, Callable, Dict, List, Sequence
 
 from backend.sim4.snapshot.output import TickOutputSink
 from backend.sim4.snapshot.world_snapshot import WorldSnapshot
@@ -57,6 +57,8 @@ class KvpStateHistory(TickOutputSink, StateSource):
         channels: Sequence[str] | None = None,
         case_visible_projection: Dict[str, Any] | None = None,
         case_debug_projection: Dict[str, Any] | None = None,
+        npc_semantic_visible_provider: Callable[[], List[Dict[str, Any]] | None] | None = None,
+        npc_semantic_debug_provider: Callable[[], List[Dict[str, Any]] | None] | None = None,
     ) -> None:
         self._channels = list(channels) if channels is not None else list(ALLOWED_CHANNELS)
         self._channels = sorted({c for c in self._channels if c in ALLOWED_CHANNELS})
@@ -64,6 +66,8 @@ class KvpStateHistory(TickOutputSink, StateSource):
             raise ValueError("channels must be a non-empty subset of ALLOWED_CHANNELS")
         self._case_visible_projection = copy.deepcopy(case_visible_projection)
         self._case_debug_projection = copy.deepcopy(case_debug_projection)
+        self._npc_semantic_visible_provider = npc_semantic_visible_provider
+        self._npc_semantic_debug_provider = npc_semantic_debug_provider
 
         self._state_by_tick: Dict[int, Dict[str, Any]] = {}
         self._step_hash_by_tick: Dict[int, str] = {}
@@ -104,12 +108,22 @@ class KvpStateHistory(TickOutputSink, StateSource):
             state["events"] = _events_to_state(runtime_events)
         if self._case_visible_projection is not None:
             state["case"] = copy.deepcopy(self._case_visible_projection)
+        if self._npc_semantic_visible_provider is not None:
+            npc_visible = self._npc_semantic_visible_provider()
+            if npc_visible is not None:
+                state["npc_semantic"] = copy.deepcopy(npc_visible)
         if "DEBUG" in self._channels:
             state.setdefault("debug", {})
             if self._case_debug_projection is not None:
                 debug_state = state.get("debug")
                 if isinstance(debug_state, dict):
                     debug_state["case_private"] = copy.deepcopy(self._case_debug_projection)
+            if self._npc_semantic_debug_provider is not None:
+                npc_debug = self._npc_semantic_debug_provider()
+                if npc_debug is not None:
+                    debug_state = state.get("debug")
+                    if isinstance(debug_state, dict):
+                        debug_state["npc_semantic_private"] = copy.deepcopy(npc_debug)
 
         canonical_state = canonicalize_state_obj(state)
         step_hash = compute_step_hash(canonical_state)

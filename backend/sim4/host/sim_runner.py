@@ -18,7 +18,9 @@ from backend.sim4.case_mbam import (
     NPCState,
     apply_case_timeline_to_npc_states,
     build_debug_case_projection,
+    build_debug_npc_semantic_projection,
     build_visible_case_projection,
+    build_visible_npc_semantic_projection,
     generate_case_state,
     initialize_mbam_npc_states_from_case_state,
 )
@@ -180,6 +182,8 @@ class SimRunner:
 
         # Build sinks
         sinks: List[TickOutputSink] = []
+        npc_visible_provider = self._make_npc_semantic_visible_projection
+        npc_debug_provider = self._make_npc_semantic_debug_projection
 
         self._history: KvpStateHistory | None = None
         if self._offline_cfg is not None:
@@ -189,6 +193,8 @@ class SimRunner:
                 channels=offline_channels,
                 case_visible_projection=self._case_visible_projection,
                 case_debug_projection=self._case_debug_projection,
+                npc_semantic_visible_provider=npc_visible_provider,
+                npc_semantic_debug_provider=npc_debug_provider,
             )
             sinks.append(self._history)
 
@@ -200,6 +206,8 @@ class SimRunner:
                     channels=live_channels,
                     case_visible_projection=self._case_visible_projection,
                     case_debug_projection=self._case_debug_projection,
+                    npc_semantic_visible_provider=npc_visible_provider,
+                    npc_semantic_debug_provider=npc_debug_provider,
                 )
             )
 
@@ -221,6 +229,16 @@ class SimRunner:
             return None
         return self._npc_states.get(npc_id)
 
+    def _make_npc_semantic_visible_projection(self) -> list[dict[str, Any]] | None:
+        if self._npc_states is None:
+            return None
+        return build_visible_npc_semantic_projection(self._npc_states)
+
+    def _make_npc_semantic_debug_projection(self) -> list[dict[str, Any]] | None:
+        if self._npc_states is None:
+            return None
+        return build_debug_npc_semantic_projection(self._npc_states)
+
     def run(
         self,
         *,
@@ -231,6 +249,17 @@ class SimRunner:
     ) -> None:
         """Run the simulation for a fixed number of ticks."""
         for _ in range(int(num_ticks)):
+            if self._case_state is not None and self._npc_states is not None:
+                # Project semantic state for the tick that run_tick(...) is about to emit.
+                # tick() advances the clock at start-of-step; use next tick time here.
+                elapsed_seconds = float(self._clock.tick_index + 1) * float(self._clock.dt)
+                self._npc_states, self._npc_timeline_applied_beat_ids = apply_case_timeline_to_npc_states(
+                    case_state=self._case_state,
+                    npc_states=self._npc_states,
+                    elapsed_seconds=elapsed_seconds,
+                    applied_beat_ids=self._npc_timeline_applied_beat_ids,
+                )
+
             wc = None
             if world_commands_provider is not None:
                 try:
@@ -250,14 +279,6 @@ class SimRunner:
                 tick_output_sink=self._sink,
                 run_id=None,
             )
-            if self._case_state is not None and self._npc_states is not None:
-                elapsed_seconds = float(self._clock.tick_index) * float(self._clock.dt)
-                self._npc_states, self._npc_timeline_applied_beat_ids = apply_case_timeline_to_npc_states(
-                    case_state=self._case_state,
-                    npc_states=self._npc_states,
-                    elapsed_seconds=elapsed_seconds,
-                    applied_beat_ids=self._npc_timeline_applied_beat_ids,
-                )
 
         # Finalize offline export if configured
         if self._offline_cfg is not None and self._history is not None:
