@@ -10,6 +10,15 @@ World Truth remains in backend.sim4.world.
 """
 
 from .interface import CaseTruthProvider, MbamCaseBundle
+from .cast_registry import (
+    CastIdentityEntry,
+    FixedCastId,
+    IdentityRole,
+    PortraitConfig,
+    get_cast_entry,
+    get_cast_registry,
+    list_cast_ids,
+)
 from .models import (
     AlibiClaim,
     AlibiMatrix,
@@ -81,6 +90,9 @@ __all__ = [
     "CafeEvidence",
     "CaseState",
     "CaseTruthProvider",
+    "CastIdentityEntry",
+    "FixedCastId",
+    "IdentityRole",
     "CastOverlay",
     "CharacterOverlay",
     "CorridorEvidence",
@@ -129,4 +141,8 @@ __all__ = [
     "resolve_seed_id",
     "build_visible_case_projection",
     "build_debug_case_projection",
+    "PortraitConfig",
+    "get_cast_entry",
+    "get_cast_registry",
+    "list_cast_ids",
 ]
