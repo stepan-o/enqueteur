@@ -15,9 +15,11 @@ import hashlib
 from backend.sim4.case_mbam import (
     CaseState,
     DifficultyProfile,
+    NPCState,
     build_debug_case_projection,
     build_visible_case_projection,
     generate_case_state,
+    initialize_mbam_npc_states,
 )
 from backend.sim4.runtime.clock import TickClock
 from backend.sim4.runtime.tick import tick as run_tick
@@ -63,7 +65,8 @@ class LiveSessionConfig:
 class OfflineExportConfig:
     run_root: str | Path
     channels: Sequence[str]
-    keyframe_interval: int | None = 100
+    # None means "use fallback default" unless explicit keyframe_ticks are provided.
+    keyframe_interval: int | None = None
     keyframe_ticks: Sequence[int] | None = None
     ui_events: List[Dict[str, Any]] | None = None
     psycho_frames: List[Dict[str, Any]] | None = None
@@ -143,6 +146,7 @@ class SimRunner:
         self._case_state: CaseState | None = None
         self._case_visible_projection: Dict[str, Any] | None = None
         self._case_debug_projection: Dict[str, Any] | None = None
+        self._npc_states: dict[str, NPCState] | None = None
 
         if case_config is not None:
             truth_epoch = int(case_config.truth_epoch)
@@ -161,6 +165,7 @@ class SimRunner:
                 self._case_state,
                 truth_epoch=truth_epoch,
             )
+            self._npc_states = initialize_mbam_npc_states(self._world_ctx)
 
         # Build sinks
         sinks: List[TickOutputSink] = []
@@ -192,6 +197,18 @@ class SimRunner:
     def get_case_state(self) -> CaseState | None:
         """Return attached MBAM CaseState for this run, if configured."""
         return self._case_state
+
+    def get_npc_states(self) -> dict[str, NPCState]:
+        """Return a copy of initialized MBAM runtime NPC states."""
+        if self._npc_states is None:
+            return {}
+        return dict(self._npc_states)
+
+    def get_npc_state(self, npc_id: str) -> NPCState | None:
+        """Return one MBAM runtime NPC state by id, if initialized."""
+        if self._npc_states is None:
+            return None
+        return self._npc_states.get(npc_id)
 
     def run(
         self,

@@ -37,7 +37,6 @@ def _export_single_tick_state(
     offline = OfflineExportConfig(
         run_root=run_root,
         channels=channels,
-        keyframe_interval=None,
         keyframe_ticks=[1],
         validate=False,
     )
@@ -90,3 +89,13 @@ def test_runner_omits_private_case_projection_without_debug_channel(tmp_path: Pa
     assert "case" in state
     assert state["case"]["seed"] == "C"
     assert "debug" not in state
+
+
+def test_runner_initializes_mbam_runtime_npc_states(tmp_path: Path):
+    _state, runner = _export_single_tick_state(tmp_path, channels=["WORLD"], case_seed="A")
+
+    npc_states = runner.get_npc_states()
+    assert set(npc_states.keys()) == {"elodie", "marc", "samira", "laurent", "jo"}
+    assert npc_states["elodie"].current_room_id == "MBAM_LOBBY"
+    assert npc_states["marc"].current_room_id == "SECURITY_OFFICE"
+    assert runner.get_npc_state("jo") is not None

@@ -19,6 +19,20 @@ from .cast_registry import (
     get_cast_registry,
     list_cast_ids,
 )
+from .npc_state import (
+    NPCCardState,
+    NPCScheduleState,
+    NPCState,
+    NpcAvailability,
+    NpcEmotion,
+    NpcInteractionMode,
+    NpcSoftAlignmentHint,
+    NpcStance,
+    NpcTrustTrend,
+    build_initial_npc_state,
+    initialize_mbam_npc_states,
+    resolve_world_room_id,
+)
 from .models import (
     AlibiClaim,
     AlibiMatrix,
@@ -145,4 +159,16 @@ __all__ = [
     "get_cast_entry",
     "get_cast_registry",
     "list_cast_ids",
+    "NpcAvailability",
+    "NpcEmotion",
+    "NpcInteractionMode",
+    "NpcSoftAlignmentHint",
+    "NpcStance",
+    "NpcTrustTrend",
+    "NPCScheduleState",
+    "NPCCardState",
+    "NPCState",
+    "build_initial_npc_state",
+    "initialize_mbam_npc_states",
+    "resolve_world_room_id",
 ]
