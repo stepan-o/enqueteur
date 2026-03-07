@@ -61,6 +61,8 @@ class KvpStateHistory(TickOutputSink, StateSource):
         npc_semantic_debug_provider: Callable[[], List[Dict[str, Any]] | None] | None = None,
         investigation_visible_provider: Callable[[], Dict[str, Any] | None] | None = None,
         investigation_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
+        dialogue_visible_provider: Callable[[], Dict[str, Any] | None] | None = None,
+        dialogue_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
     ) -> None:
         self._channels = list(channels) if channels is not None else list(ALLOWED_CHANNELS)
         self._channels = sorted({c for c in self._channels if c in ALLOWED_CHANNELS})
@@ -72,6 +74,8 @@ class KvpStateHistory(TickOutputSink, StateSource):
         self._npc_semantic_debug_provider = npc_semantic_debug_provider
         self._investigation_visible_provider = investigation_visible_provider
         self._investigation_debug_provider = investigation_debug_provider
+        self._dialogue_visible_provider = dialogue_visible_provider
+        self._dialogue_debug_provider = dialogue_debug_provider
 
         self._state_by_tick: Dict[int, Dict[str, Any]] = {}
         self._step_hash_by_tick: Dict[int, str] = {}
@@ -120,6 +124,10 @@ class KvpStateHistory(TickOutputSink, StateSource):
             investigation_visible = self._investigation_visible_provider()
             if investigation_visible is not None:
                 state["investigation"] = copy.deepcopy(investigation_visible)
+        if self._dialogue_visible_provider is not None:
+            dialogue_visible = self._dialogue_visible_provider()
+            if dialogue_visible is not None:
+                state["dialogue"] = copy.deepcopy(dialogue_visible)
         if "DEBUG" in self._channels:
             state.setdefault("debug", {})
             if self._case_debug_projection is not None:
@@ -138,6 +146,12 @@ class KvpStateHistory(TickOutputSink, StateSource):
                     debug_state = state.get("debug")
                     if isinstance(debug_state, dict):
                         debug_state["investigation_private"] = copy.deepcopy(investigation_debug)
+            if self._dialogue_debug_provider is not None:
+                dialogue_debug = self._dialogue_debug_provider()
+                if dialogue_debug is not None:
+                    debug_state = state.get("debug")
+                    if isinstance(debug_state, dict):
+                        debug_state["dialogue_private"] = copy.deepcopy(dialogue_debug)
 
         canonical_state = canonicalize_state_obj(state)
         step_hash = compute_step_hash(canonical_state)

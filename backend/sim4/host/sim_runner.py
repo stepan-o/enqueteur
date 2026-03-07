@@ -15,21 +15,33 @@ import hashlib
 from backend.sim4.case_mbam import (
     CaseState,
     DifficultyProfile,
+    DialogueExecutionContext,
+    DialogueSceneRuntimeState,
+    DialogueTurnLogEntry,
+    DialogueTurnRequest,
+    DialogueSceneTurnExecutionResult,
     InvestigationProgressState,
     MbamObjectStateBundle,
     NPCState,
+    apply_dialogue_turn_to_progress,
     apply_investigation_timeline_state,
     apply_case_timeline_to_npc_states,
+    build_debug_dialogue_projection,
     build_debug_investigation_projection,
     build_debug_case_projection,
     build_debug_npc_semantic_projection,
+    build_dialogue_execution_context,
+    build_initial_dialogue_scene_runtime,
     build_initial_investigation_progress,
     build_initial_mbam_object_state,
+    build_visible_dialogue_projection,
     build_visible_investigation_projection,
     build_visible_case_projection,
     build_visible_npc_semantic_projection,
+    execute_dialogue_turn,
     generate_case_state,
     initialize_mbam_npc_states_from_case_state,
+    make_dialogue_turn_log_entry,
 )
 from backend.sim4.runtime.clock import TickClock
 from backend.sim4.runtime.tick import tick as run_tick
@@ -160,6 +172,8 @@ class SimRunner:
         self._npc_timeline_applied_beat_ids: tuple[str, ...] = ()
         self._investigation_object_state: MbamObjectStateBundle | None = None
         self._investigation_progress: InvestigationProgressState | None = None
+        self._dialogue_runtime_state: DialogueSceneRuntimeState | None = None
+        self._dialogue_turn_log: tuple[DialogueTurnLogEntry, ...] = ()
 
         if case_config is not None:
             truth_epoch = int(case_config.truth_epoch)
@@ -194,6 +208,12 @@ class SimRunner:
                 self._investigation_object_state,
                 elapsed_seconds=0.0,
             )
+            dialogue_context = self._build_dialogue_context(elapsed_seconds=0.0)
+            if dialogue_context is not None:
+                self._dialogue_runtime_state = build_initial_dialogue_scene_runtime(
+                    self._case_state,
+                    context=dialogue_context,
+                )
 
         # Build sinks
         sinks: List[TickOutputSink] = []
@@ -201,6 +221,8 @@ class SimRunner:
         npc_debug_provider = self._make_npc_semantic_debug_projection
         investigation_visible_provider = self._make_investigation_visible_projection
         investigation_debug_provider = self._make_investigation_debug_projection
+        dialogue_visible_provider = self._make_dialogue_visible_projection
+        dialogue_debug_provider = self._make_dialogue_debug_projection
 
         self._history: KvpStateHistory | None = None
         if self._offline_cfg is not None:
@@ -214,6 +236,8 @@ class SimRunner:
                 npc_semantic_debug_provider=npc_debug_provider,
                 investigation_visible_provider=investigation_visible_provider,
                 investigation_debug_provider=investigation_debug_provider,
+                dialogue_visible_provider=dialogue_visible_provider,
+                dialogue_debug_provider=dialogue_debug_provider,
             )
             sinks.append(self._history)
 
@@ -229,6 +253,8 @@ class SimRunner:
                     npc_semantic_debug_provider=npc_debug_provider,
                     investigation_visible_provider=investigation_visible_provider,
                     investigation_debug_provider=investigation_debug_provider,
+                    dialogue_visible_provider=dialogue_visible_provider,
+                    dialogue_debug_provider=dialogue_debug_provider,
                 )
             )
 
@@ -257,6 +283,61 @@ class SimRunner:
     def get_investigation_progress(self) -> InvestigationProgressState | None:
         """Return MBAM investigation progression state for this run, if configured."""
         return self._investigation_progress
+
+    def get_dialogue_runtime_state(self) -> DialogueSceneRuntimeState | None:
+        """Return MBAM dialogue runtime state for this run, if configured."""
+        return self._dialogue_runtime_state
+
+    def get_dialogue_turn_log(self) -> tuple[DialogueTurnLogEntry, ...]:
+        """Return deterministic dialogue turn log for replay/debug."""
+        return tuple(self._dialogue_turn_log)
+
+    def submit_dialogue_turn(
+        self,
+        request: DialogueTurnRequest,
+        *,
+        max_log_entries: int = 16,
+    ) -> DialogueSceneTurnExecutionResult | None:
+        """Execute one deterministic dialogue turn and apply resulting runtime updates."""
+        if (
+            self._case_state is None
+            or self._dialogue_runtime_state is None
+            or self._investigation_progress is None
+        ):
+            return None
+        context = self._build_dialogue_context(
+            elapsed_seconds=float(self._clock.tick_index) * float(self._clock.dt),
+        )
+        if context is None:
+            return None
+        result = execute_dialogue_turn(
+            self._case_state,
+            self._dialogue_runtime_state,
+            request,
+            context=context,
+        )
+        self._dialogue_runtime_state = result.runtime_after
+        self._investigation_progress = apply_dialogue_turn_to_progress(
+            self._investigation_progress,
+            result,
+        )
+        entry = make_dialogue_turn_log_entry(result)
+        existing = list(self._dialogue_turn_log)
+        existing.append(entry)
+        cap = max(0, int(max_log_entries))
+        if cap > 0 and len(existing) > cap:
+            existing = existing[-cap:]
+        self._dialogue_turn_log = tuple(existing)
+        return result
+
+    def _build_dialogue_context(self, *, elapsed_seconds: float) -> DialogueExecutionContext | None:
+        if self._investigation_progress is None or self._npc_states is None:
+            return None
+        return build_dialogue_execution_context(
+            self._investigation_progress,
+            self._npc_states,
+            elapsed_seconds=float(elapsed_seconds),
+        )
 
     def _make_npc_semantic_visible_projection(self) -> list[dict[str, Any]] | None:
         if self._npc_states is None:
@@ -292,6 +373,34 @@ class SimRunner:
             case_state=self._case_state,
             object_state=self._investigation_object_state,
             progress=self._investigation_progress,
+        )
+
+    def _make_dialogue_visible_projection(self) -> dict[str, Any] | None:
+        if (
+            self._case_state is None
+            or self._dialogue_runtime_state is None
+            or self._investigation_progress is None
+        ):
+            return None
+        return build_visible_dialogue_projection(
+            case_state=self._case_state,
+            runtime_state=self._dialogue_runtime_state,
+            progress=self._investigation_progress,
+            recent_turns=self._dialogue_turn_log,
+        )
+
+    def _make_dialogue_debug_projection(self) -> dict[str, Any] | None:
+        if (
+            self._case_state is None
+            or self._dialogue_runtime_state is None
+            or self._investigation_progress is None
+        ):
+            return None
+        return build_debug_dialogue_projection(
+            case_state=self._case_state,
+            runtime_state=self._dialogue_runtime_state,
+            progress=self._investigation_progress,
+            recent_turns=self._dialogue_turn_log,
         )
 
     def run(

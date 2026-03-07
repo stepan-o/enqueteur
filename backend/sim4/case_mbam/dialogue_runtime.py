@@ -152,6 +152,30 @@ class SummaryCheckReport:
             raise ValueError("SummaryCheckReport.min_fact_count must be >= 0")
 
 
+@dataclass(frozen=True)
+class DialogueTurnLogEntry:
+    turn_index: int
+    scene_id: SceneId
+    npc_id: str
+    intent_id: str
+    status: str
+    code: str
+    outcome: SceneRuntimeOutcome
+    response_mode: str
+    revealed_fact_ids: tuple[str, ...]
+    trust_delta: float
+    stress_delta: float
+    missing_required_slots: tuple[str, ...]
+    repair_response_mode: str | None
+    summary_check_code: str | None
+
+    def __post_init__(self) -> None:
+        if self.turn_index < 0:
+            raise ValueError("DialogueTurnLogEntry.turn_index must be >= 0")
+        object.__setattr__(self, "revealed_fact_ids", _sorted_unique(self.revealed_fact_ids))
+        object.__setattr__(self, "missing_required_slots", _sorted_unique(self.missing_required_slots))
+
+
 def _completion_map(state: DialogueSceneRuntimeState) -> dict[SceneId, SceneCompletionState]:
     return {scene_id: completion for scene_id, completion in state.scene_completion_states}
 
@@ -1068,9 +1092,32 @@ def apply_dialogue_turn_to_progress(
     )
 
 
+def make_dialogue_turn_log_entry(turn_result: DialogueSceneTurnExecutionResult) -> DialogueTurnLogEntry:
+    summary_code = None
+    if turn_result.summary_check is not None:
+        summary_code = turn_result.summary_check.code
+    return DialogueTurnLogEntry(
+        turn_index=turn_result.runtime_after.turn_index,
+        scene_id=turn_result.scene_id,
+        npc_id=turn_result.npc_id,
+        intent_id=turn_result.turn_result.intent_id,
+        status=turn_result.turn_result.status,
+        code=turn_result.turn_result.code,
+        outcome=turn_result.outcome,
+        response_mode=turn_result.response_mode,
+        revealed_fact_ids=turn_result.turn_result.revealed_fact_ids,
+        trust_delta=turn_result.turn_result.trust_delta,
+        stress_delta=turn_result.turn_result.stress_delta,
+        missing_required_slots=turn_result.turn_result.missing_required_slots,
+        repair_response_mode=turn_result.turn_result.repair_response_mode,
+        summary_check_code=summary_code,
+    )
+
+
 __all__ = [
     "DialogueExecutionContext",
     "DialogueSceneEnterResult",
+    "DialogueTurnLogEntry",
     "DialogueSceneRuntimeState",
     "DialogueSceneTurnExecutionResult",
     "SceneEntryStatus",
@@ -1082,4 +1129,5 @@ __all__ = [
     "build_initial_dialogue_scene_runtime",
     "enter_dialogue_scene",
     "execute_dialogue_turn",
+    "make_dialogue_turn_log_entry",
 ]

@@ -9,6 +9,7 @@ from backend.sim4.host.kvp_defaults import (
     default_run_anchors,
     tick_rate_hz_from_clock,
 )
+from backend.sim4.case_mbam import DialogueTurnRequest
 from backend.sim4.host.sim_runner import MbamCaseConfig, OfflineExportConfig, SimRunner
 from backend.sim4.integration.manifest_schema import ManifestV0_1
 from backend.sim4.integration.record_writer import read_record
@@ -90,6 +91,11 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert "facts" in state["investigation"]
     assert "contradictions" in state["investigation"]
     assert len(state["investigation"]["objects"]) == 10
+    assert "dialogue" in state
+    assert state["dialogue"]["active_scene_id"] is None
+    assert len(state["dialogue"]["scene_completion"]) == 5
+    assert state["dialogue"]["revealed_fact_ids"] == ["N1"]
+    assert state["dialogue"]["recent_turns"] == []
 
     assert "debug" in state
     assert "case_private" in state["debug"]
@@ -100,6 +106,9 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert "investigation_private" in state["debug"]
     assert "object_state" in state["debug"]["investigation_private"]
     assert "progress" in state["debug"]["investigation_private"]
+    assert "dialogue_private" in state["debug"]
+    assert "runtime_state" in state["debug"]["dialogue_private"]
+    assert "recent_turns" in state["debug"]["dialogue_private"]
 
 
 def test_runner_omits_private_case_projection_without_debug_channel(tmp_path: Path):
@@ -109,6 +118,7 @@ def test_runner_omits_private_case_projection_without_debug_channel(tmp_path: Pa
     assert state["case"]["seed"] == "C"
     assert "npc_semantic" in state
     assert "investigation" in state
+    assert "dialogue" in state
     assert "debug" not in state
 
 
@@ -177,3 +187,45 @@ def test_runner_advances_npc_timeline_state_over_time(tmp_path: Path):
     investigation_state_after = runner.get_investigation_object_state()
     assert investigation_state_after is not None
     assert investigation_state_after.o6_badge_terminal.archived is True
+
+
+def test_runner_submit_dialogue_turn_updates_runtime_and_turn_log() -> None:
+    clock = TickClock(dt=1.0)
+    ecs_world = ECSWorld()
+    world_ctx = WorldContext()
+    apply_mbam_layout(world_ctx)
+
+    runner = SimRunner(
+        clock=clock,
+        ecs_world=ecs_world,
+        world_ctx=world_ctx,
+        rng_seed=123,
+        system_scheduler=_NoopScheduler(),
+        run_anchors=default_run_anchors(seed=123, tick_rate_hz=tick_rate_hz_from_clock(clock), time_origin_ms=0),
+        render_spec=default_render_spec(),
+        channels=["WORLD"],
+        offline=None,
+        case_config=MbamCaseConfig(seed="A"),
+    )
+
+    result = runner.submit_dialogue_turn(
+        DialogueTurnRequest(
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="summarize_understanding",
+            presented_fact_ids=("N1",),
+        )
+    )
+    assert result is not None
+    assert result.turn_result.status == "accepted"
+    assert result.turn_result.code == "scene_completed"
+
+    log_entries = runner.get_dialogue_turn_log()
+    assert len(log_entries) == 1
+    assert log_entries[0].scene_id == "S1"
+    assert log_entries[0].code == "scene_completed"
+
+    dialogue_state = runner.get_dialogue_runtime_state()
+    assert dialogue_state is not None
+    completion = dict(dialogue_state.scene_completion_states)
+    assert completion["S1"] == "completed"

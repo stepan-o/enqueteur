@@ -96,9 +96,11 @@ from .scaffold import (
 )
 from .projection import (
     build_debug_case_projection,
+    build_debug_dialogue_projection,
     build_debug_investigation_projection,
     build_debug_npc_semantic_projection,
     build_visible_case_projection,
+    build_visible_dialogue_projection,
     build_visible_investigation_projection,
     build_visible_npc_semantic_projection,
 )
@@ -204,6 +206,7 @@ from .dialogue_runtime import (
     DialogueSceneEnterResult,
     DialogueSceneRuntimeState,
     DialogueSceneTurnExecutionResult,
+    DialogueTurnLogEntry,
     SceneEntryStatus,
     SceneGateCheckResult,
     SceneRuntimeOutcome,
@@ -213,6 +216,7 @@ from .dialogue_runtime import (
     build_initial_dialogue_scene_runtime,
     enter_dialogue_scene,
     execute_dialogue_turn,
+    make_dialogue_turn_log_entry,
 )
 
 __all__ = [
@@ -280,6 +284,8 @@ __all__ = [
     "build_debug_npc_semantic_projection",
     "build_visible_investigation_projection",
     "build_debug_investigation_projection",
+    "build_visible_dialogue_projection",
+    "build_debug_dialogue_projection",
     "AffordanceDefinition",
     "AffordanceId",
     "AffordanceRepeatPolicy",
@@ -369,6 +375,7 @@ __all__ = [
     "DialogueSceneEnterResult",
     "DialogueSceneRuntimeState",
     "DialogueSceneTurnExecutionResult",
+    "DialogueTurnLogEntry",
     "SceneEntryStatus",
     "SceneGateCheckResult",
     "SceneRuntimeOutcome",
@@ -378,6 +385,7 @@ __all__ = [
     "build_initial_dialogue_scene_runtime",
     "enter_dialogue_scene",
     "execute_dialogue_turn",
+    "make_dialogue_turn_log_entry",
     "PortraitConfig",
     "get_cast_entry",
     "get_cast_registry",

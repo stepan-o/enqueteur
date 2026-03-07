@@ -11,6 +11,7 @@ from dataclasses import asdict
 from typing import Any, Mapping
 
 from .cast_registry import FixedCastId, list_cast_ids
+from .dialogue_runtime import DialogueSceneRuntimeState, DialogueTurnLogEntry
 from .investigation_progress import (
     InvestigationProgressState,
     contradiction_required_for_accusation,
@@ -323,6 +324,114 @@ def build_debug_investigation_projection(
     }
 
 
+def _visible_turn_log_row(
+    entry: DialogueTurnLogEntry,
+    *,
+    visible_fact_ids: set[str],
+) -> dict[str, Any]:
+    return {
+        "turn_index": entry.turn_index,
+        "scene_id": entry.scene_id,
+        "npc_id": entry.npc_id,
+        "intent_id": entry.intent_id,
+        "status": entry.status,
+        "code": entry.code,
+        "outcome": entry.outcome,
+        "response_mode": entry.response_mode,
+        "revealed_fact_ids": [fact_id for fact_id in entry.revealed_fact_ids if fact_id in visible_fact_ids],
+        "trust_delta": entry.trust_delta,
+        "stress_delta": entry.stress_delta,
+        "repair_response_mode": entry.repair_response_mode,
+        "summary_check_code": entry.summary_check_code,
+    }
+
+
+def _debug_turn_log_row(entry: DialogueTurnLogEntry) -> dict[str, Any]:
+    return _to_jsonable(asdict(entry))
+
+
+def build_visible_dialogue_projection(
+    *,
+    case_state: CaseState,
+    runtime_state: DialogueSceneRuntimeState,
+    progress: InvestigationProgressState,
+    recent_turns: tuple[DialogueTurnLogEntry, ...] = (),
+    truth_epoch: int = 1,
+    max_recent_turns: int = 8,
+) -> dict[str, Any]:
+    """Build safe dialogue-state projection for replay/player-visible paths."""
+    epoch = _require_positive_epoch(truth_epoch)
+    known_fact_ids = set(progress.known_fact_ids)
+
+    scene_rows = [
+        {"scene_id": scene_id, "completion_state": completion_state}
+        for scene_id, completion_state in runtime_state.scene_completion_states
+    ]
+
+    max_turns = max(0, int(max_recent_turns))
+    tail = tuple(recent_turns[-max_turns:]) if max_turns else ()
+
+    return {
+        "truth_epoch": epoch,
+        "active_scene_id": runtime_state.active_scene_id,
+        "scene_completion": scene_rows,
+        "surfaced_scene_ids": list(runtime_state.surfaced_scene_ids),
+        "revealed_fact_ids": [
+            fact_id for fact_id in runtime_state.revealed_fact_ids if fact_id in known_fact_ids
+        ],
+        "recent_turns": [
+            _visible_turn_log_row(entry, visible_fact_ids=known_fact_ids)
+            for entry in tail
+        ],
+        "summary_rules": {
+            "required_scene_ids": [
+                scene_id
+                for scene_id, definition in (
+                    ("S1", runtime_state.scene_definitions.S1),
+                    ("S2", runtime_state.scene_definitions.S2),
+                    ("S3", runtime_state.scene_definitions.S3),
+                    ("S4", runtime_state.scene_definitions.S4),
+                    ("S5", runtime_state.scene_definitions.S5),
+                )
+                if definition.scene_state.summary_requirement.required
+            ],
+            "current_scene_min_fact_count": (
+                getattr(runtime_state.scene_definitions, runtime_state.active_scene_id).scene_state.summary_requirement.min_fact_count
+                if runtime_state.active_scene_id is not None
+                else None
+            ),
+        },
+        "contradiction_requirement_satisfied": contradiction_requirement_satisfied_for_accusation(
+            case_state,
+            progress,
+        ),
+    }
+
+
+def build_debug_dialogue_projection(
+    *,
+    case_state: CaseState,
+    runtime_state: DialogueSceneRuntimeState,
+    progress: InvestigationProgressState,
+    recent_turns: tuple[DialogueTurnLogEntry, ...] = (),
+    truth_epoch: int = 1,
+) -> dict[str, Any]:
+    """Build private dialogue-state projection for DEBUG-channel artifacts."""
+    epoch = _require_positive_epoch(truth_epoch)
+    return {
+        "debug_scope": "dialogue_state_private",
+        "case_id": case_state.case_id,
+        "seed": case_state.seed,
+        "truth_epoch": epoch,
+        "runtime_state": _to_jsonable(asdict(runtime_state)),
+        "recent_turns": [_debug_turn_log_row(entry) for entry in recent_turns],
+        "known_fact_ids": list(progress.known_fact_ids),
+        "known_evidence_ids": list(
+            sorted(set(progress.discovered_evidence_ids).union(progress.collected_evidence_ids))
+        ),
+    }
+
+
 __all__ = [
     "build_visible_case_projection",
     "build_debug_case_projection",
@@ -330,4 +439,6 @@ __all__ = [
     "build_debug_npc_semantic_projection",
     "build_visible_investigation_projection",
     "build_debug_investigation_projection",
+    "build_visible_dialogue_projection",
+    "build_debug_dialogue_projection",
 ]
