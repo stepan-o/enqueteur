@@ -191,6 +191,14 @@ from .dialogue_domain import (
     list_mbam_dialogue_scene_ids,
     make_dialogue_scene_state,
 )
+from .scene_definitions import (
+    DialogueSceneProgressionModel,
+    MbamSceneDefinition,
+    MbamSceneDefinitions,
+    build_mbam_scene_definitions,
+    get_mbam_scene_definition,
+    list_mbam_scene_definitions,
+)
 
 __all__ = [
     "AlibiClaim",
@@ -336,6 +344,12 @@ __all__ = [
     "list_dialogue_intents",
     "list_mbam_dialogue_scene_ids",
     "make_dialogue_scene_state",
+    "DialogueSceneProgressionModel",
+    "MbamSceneDefinition",
+    "MbamSceneDefinitions",
+    "build_mbam_scene_definitions",
+    "get_mbam_scene_definition",
+    "list_mbam_scene_definitions",
     "PortraitConfig",
     "get_cast_entry",
     "get_cast_registry",
