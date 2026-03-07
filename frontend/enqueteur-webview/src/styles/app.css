@@ -249,6 +249,55 @@ button:hover {
   opacity: 0.72;
 }
 
+.dialogue-npc-card {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 8px;
+  border: 1px solid rgba(31, 38, 41, 0.24);
+  border-radius: 10px;
+  background: rgba(247, 239, 223, 0.82);
+  padding: 7px;
+}
+
+.dialogue-npc-portrait {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 82px;
+  border: 1px dashed rgba(31, 38, 41, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: pre-line;
+  text-align: center;
+}
+
+.dialogue-npc-meta {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+
+.dialogue-npc-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.dialogue-npc-label {
+  opacity: 0.7;
+}
+
+.dialogue-npc-value {
+  text-align: right;
+  font-weight: 600;
+}
+
 .dialogue-line {
   display: flex;
   justify-content: space-between;
@@ -516,6 +565,10 @@ button:hover {
     top: 90px;
     width: auto;
     max-height: 38vh;
+  }
+
+  .dialogue-npc-card {
+    grid-template-columns: 72px 1fr;
   }
 
   .notebook-panel {

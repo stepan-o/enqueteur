@@ -120,7 +120,10 @@ export function boot(opts: BootOpts): ViewerHandle {
         scene.ingestOverlayEvents(o.eventsAtTick);
     });
 
-    scene.onInspectSelection((sel) => inspector.setSelection(sel));
+    scene.onInspectSelection((sel) => {
+        inspector.setSelection(sel);
+        dialoguePanel.setInspectSelection(sel);
+    });
     scene.onRequestFreshSnapshot(() => {
         client?.requestFreshSnapshot();
     });

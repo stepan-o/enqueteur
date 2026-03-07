@@ -1,5 +1,5 @@
 // src/ui/dialoguePanel.ts
-import type { KvpDialogueTurnLog, WorldState, WorldStore } from "../state/worldStore";
+import type { KvpDialogueTurnLog, KvpNpcSemanticState, WorldState, WorldStore } from "../state/worldStore";
 
 export type DialogueTurnSlotValue = {
     slot_name: string;
@@ -32,8 +32,15 @@ export type DialoguePanelOpts = {
     dispatchDialogueTurn?: DialogueTurnDispatcher;
 };
 
+export type DialogueInspectSelection =
+    | { kind: "room"; id: number }
+    | { kind: "agent"; id: number }
+    | { kind: "object"; id: number }
+    | null;
+
 export type DialoguePanelHandle = {
     root: HTMLElement;
+    setInspectSelection: (selection: DialogueInspectSelection) => void;
 };
 
 type SceneConfig = {
@@ -120,6 +127,14 @@ const INTENT_REQUIRED_SLOTS: Record<string, string[]> = {
     accuse: ["person", "reason"],
 };
 
+const WORLD_ROOM_ID_TO_TOKEN: Record<number, string> = {
+    1: "MBAM_LOBBY",
+    2: "GALLERY_AFFICHES",
+    3: "SECURITY_OFFICE",
+    4: "SERVICE_CORRIDOR",
+    5: "CAFE_DE_LA_RUE",
+};
+
 type SubmitFeedback = {
     tick: number;
     sceneId: string;
@@ -143,6 +158,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
     let utteranceInput = "";
     let pending = false;
     let submitFeedback: SubmitFeedback | null = null;
+    let inspectSelection: DialogueInspectSelection = null;
 
     const render = (): void => {
         panel.innerHTML = "";
@@ -160,12 +176,16 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
 
         const focusSceneId = pickFocusSceneId(dialogue);
         const focusNpcId = resolveSceneNpcId(lastState, dialogue.recent_turns, focusSceneId);
+        const npcCardState = resolveRelevantNpcState(lastState, inspectSelection, focusNpcId);
         const sceneConfig = focusSceneId ? SCENE_CONFIG[focusSceneId] : null;
+
+        renderSectionTitle(panel, "NPC State Card");
+        renderNpcStateCard(panel, npcCardState);
 
         renderDataLines(panel, [
             ["Active scene", dialogue.active_scene_id ?? "none"],
             ["Focus scene", focusSceneId ?? "none"],
-            ["Current NPC", focusNpcId ?? "unknown"],
+            ["Current NPC", npcCardState?.npc_id ?? focusNpcId ?? "unknown"],
             ["Known dialogue facts", String(dialogue.revealed_fact_ids.length)],
             ["Contradiction path", dialogue.contradiction_requirement_satisfied ? "satisfied" : "pending"],
         ]);
@@ -306,7 +326,13 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         render();
     });
 
-    return { root };
+    return {
+        root,
+        setInspectSelection: (selection) => {
+            inspectSelection = selection;
+            render();
+        },
+    };
 }
 
 async function submitTurn(
@@ -350,6 +376,90 @@ function resolveSceneNpcId(
         if (row.current_scene_id === sceneId) return row.npc_id;
     }
     return SCENE_CONFIG[sceneId]?.primaryNpcDefault ?? null;
+}
+
+function resolveRelevantNpcState(
+    state: WorldState,
+    selection: DialogueInspectSelection,
+    fallbackNpcId: string | null
+): KvpNpcSemanticState | null {
+    const fromSelection = resolveNpcFromSelection(state, selection, fallbackNpcId);
+    if (fromSelection) return fromSelection;
+
+    if (fallbackNpcId) {
+        const fromFallback = state.npcSemantic.find((row) => row.npc_id === fallbackNpcId) ?? null;
+        if (fromFallback) return fromFallback;
+    }
+
+    return [...state.npcSemantic].sort((a, b) => a.npc_id.localeCompare(b.npc_id))[0] ?? null;
+}
+
+function resolveNpcFromSelection(
+    state: WorldState,
+    selection: DialogueInspectSelection,
+    preferredNpcId: string | null
+): KvpNpcSemanticState | null {
+    if (!selection) return null;
+    const roomToken = roomTokenFromSelection(state, selection);
+    if (!roomToken) return null;
+    const candidates = state.npcSemantic.filter((row) => row.current_room_id === roomToken);
+    if (candidates.length === 0) return null;
+    if (preferredNpcId) {
+        const preferred = candidates.find((row) => row.npc_id === preferredNpcId);
+        if (preferred) return preferred;
+    }
+    return [...candidates].sort((a, b) => a.npc_id.localeCompare(b.npc_id))[0] ?? null;
+}
+
+function roomTokenFromSelection(state: WorldState, selection: Exclude<DialogueInspectSelection, null>): string | null {
+    if (selection.kind === "room") {
+        return WORLD_ROOM_ID_TO_TOKEN[selection.id] ?? null;
+    }
+    if (selection.kind === "object") {
+        const roomId = state.objects.get(selection.id)?.room_id;
+        return typeof roomId === "number" ? (WORLD_ROOM_ID_TO_TOKEN[roomId] ?? null) : null;
+    }
+    const roomId = state.agents.get(selection.id)?.room_id;
+    return typeof roomId === "number" ? (WORLD_ROOM_ID_TO_TOKEN[roomId] ?? null) : null;
+}
+
+function renderNpcStateCard(panel: HTMLElement, npc: KvpNpcSemanticState | null): void {
+    if (!npc) {
+        renderInfo(panel, "No visible NPC semantic state available.");
+        return;
+    }
+    const card = document.createElement("div");
+    card.className = "dialogue-npc-card";
+
+    const portraitSlot = document.createElement("div");
+    portraitSlot.className = "dialogue-npc-portrait";
+    portraitSlot.textContent = `${npc.npc_id}\n${npc.card_state.portrait_variant}`;
+
+    const meta = document.createElement("div");
+    meta.className = "dialogue-npc-meta";
+    appendNpcLine(meta, "Emotion", npc.emotion);
+    appendNpcLine(meta, "Stance", npc.stance);
+    appendNpcLine(meta, "Alignment", npc.soft_alignment_hint);
+    appendNpcLine(meta, "Trust trend", npc.card_state.trust_trend);
+    appendNpcLine(meta, "Tell cue", npc.card_state.tell_cue ?? "none");
+    appendNpcLine(meta, "Suggested mode", npc.card_state.suggested_interaction_mode);
+    appendNpcLine(meta, "Availability", npc.availability);
+
+    card.append(portraitSlot, meta);
+    panel.appendChild(card);
+}
+
+function appendNpcLine(parent: HTMLElement, labelText: string, valueText: string): void {
+    const row = document.createElement("div");
+    row.className = "dialogue-npc-line";
+    const label = document.createElement("span");
+    label.className = "dialogue-npc-label";
+    label.textContent = labelText;
+    const value = document.createElement("span");
+    value.className = "dialogue-npc-value";
+    value.textContent = valueText;
+    row.append(label, value);
+    parent.appendChild(row);
 }
 
 function collectRequiredSlots(scene: SceneConfig, intentId: string | null): string[] {
