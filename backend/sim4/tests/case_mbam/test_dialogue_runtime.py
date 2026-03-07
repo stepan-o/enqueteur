@@ -136,8 +136,8 @@ def test_turn_blocks_when_scene_time_window_or_trust_gate_fails() -> None:
         ),
         context=_with_npc_trust(replace(context, elapsed_seconds=120.0), "marc", 0.05),
     )
-    assert trust_blocked.turn_result.status == "refused"
-    assert trust_blocked.turn_result.code == "insufficient_trust"
+    assert trust_blocked.turn_result.status == "blocked_gate"
+    assert trust_blocked.turn_result.code == "trust_below_threshold"
 
 
 def test_summary_turn_completes_scene_and_emits_unlock_outputs() -> None:
@@ -185,6 +185,10 @@ def test_summary_insufficient_facts_repairs_and_does_not_complete_scene() -> Non
             scene_id="S5",
             npc_id="elodie",
             intent_id="summarize_understanding",
+            provided_slots=(
+                DialogueTurnSlotValue(slot_name="person", value="samira"),
+                DialogueTurnSlotValue(slot_name="reason", value="contradiction horaire"),
+            ),
             presented_fact_ids=("N1",),  # not in S5 allowed set and below min_fact_count=2
         ),
         context=context_for_s5,
@@ -194,6 +198,55 @@ def test_summary_insufficient_facts_repairs_and_does_not_complete_scene() -> Non
     assert result.summary_check is not None
     assert result.summary_check.passed is False
     assert result.scene_state_after.completion_state == "in_progress"
+
+
+def test_execute_turn_rejects_wrong_npc_even_when_scene_already_in_progress() -> None:
+    case_state, _npc_states, _progress, context, runtime = _setup("A")
+    entered = enter_dialogue_scene(
+        case_state,
+        runtime,
+        scene_id="S1",
+        npc_id="elodie",
+        context=context,
+    )
+    assert entered.status == "entered"
+
+    wrong_npc_turn = execute_dialogue_turn(
+        case_state,
+        entered.runtime_after,
+        DialogueTurnRequest(scene_id="S1", npc_id="marc", intent_id="ask_what_happened"),
+        context=context,
+    )
+    assert wrong_npc_turn.turn_result.status == "invalid_scene_state"
+    assert wrong_npc_turn.turn_result.code == "scene_primary_npc_mismatch"
+
+
+def test_turn_index_advances_for_non_accepted_turns_to_keep_transcript_order_stable() -> None:
+    case_state, _npc_states, _progress, context, runtime = _setup("A")
+    trust_context = _with_npc_trust(context, "marc", 0.8)
+
+    repair = execute_dialogue_turn(
+        case_state,
+        runtime,
+        DialogueTurnRequest(scene_id="S2", npc_id="marc", intent_id="request_access"),
+        context=trust_context,
+    )
+    assert repair.turn_result.status == "repair"
+    assert repair.runtime_after.turn_index == runtime.turn_index + 1
+
+    accepted = execute_dialogue_turn(
+        case_state,
+        repair.runtime_after,
+        DialogueTurnRequest(
+            scene_id="S2",
+            npc_id="marc",
+            intent_id="request_access",
+            provided_slots=(DialogueTurnSlotValue(slot_name="reason", value="vérifier"),),
+        ),
+        context=trust_context,
+    )
+    assert accepted.turn_result.status == "accepted"
+    assert accepted.runtime_after.turn_index == repair.runtime_after.turn_index + 1
 
 
 def test_dialogue_turn_can_project_revealed_facts_into_investigation_progress() -> None:

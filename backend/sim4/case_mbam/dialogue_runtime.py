@@ -451,6 +451,19 @@ def _response_mode_from_outcome(outcome: SceneRuntimeOutcome) -> Literal["accept
     return "reject"
 
 
+def _advance_runtime_turn(state: DialogueSceneRuntimeState) -> DialogueSceneRuntimeState:
+    return DialogueSceneRuntimeState(
+        scene_definitions=state.scene_definitions,
+        scene_completion_states=state.scene_completion_states,
+        active_scene_id=state.active_scene_id,
+        revealed_fact_ids=state.revealed_fact_ids,
+        emitted_scene_completion_flags=state.emitted_scene_completion_flags,
+        emitted_object_action_unlocks=state.emitted_object_action_unlocks,
+        surfaced_scene_ids=state.surfaced_scene_ids,
+        turn_index=state.turn_index + 1,
+    )
+
+
 def _known_fact_pool(
     runtime_state: DialogueSceneRuntimeState,
     context: DialogueExecutionContext,
@@ -648,7 +661,7 @@ def execute_dialogue_turn(
     current_completion = completion_map[request.scene_id]
     scene_before = _state_with_scene_state(definition, current_completion)
 
-    if enter_result.status != "entered" and current_completion != "in_progress":
+    if enter_result.status != "entered":
         status = "blocked_gate" if enter_result.status == "blocked_gate" else "invalid_scene_state"
         code = enter_result.code
         turn = (
@@ -665,6 +678,7 @@ def execute_dialogue_turn(
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -675,20 +689,17 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=None,
         )
 
     gate_check = _evaluate_scene_gate(definition, context=context, runtime_state=working_state)
     if not gate_check.passed:
         code = gate_check.failure_reasons[0] if gate_check.failure_reasons else "scene_gate_blocked"
-        turn = (
-            _refused_turn(request=request, code="insufficient_trust")
-            if code == "trust_below_threshold"
-            else _blocked_turn(request=request, code=code)
-        )
+        turn = _blocked_turn(request=request, code=code)
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -699,7 +710,7 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=None,
         )
 
@@ -709,6 +720,7 @@ def execute_dialogue_turn(
         turn = _refused_turn(request=request, code=social_gate_refusal)
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -719,7 +731,7 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=None,
         )
 
@@ -727,6 +739,7 @@ def execute_dialogue_turn(
         turn = _invalid_turn(request=request, code="intent_not_allowed_for_scene")
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -737,7 +750,7 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=None,
         )
 
@@ -749,6 +762,7 @@ def execute_dialogue_turn(
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -759,7 +773,7 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=None,
         )
 
@@ -771,6 +785,7 @@ def execute_dialogue_turn(
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -781,7 +796,7 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=None,
         )
 
@@ -805,6 +820,7 @@ def execute_dialogue_turn(
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -815,7 +831,7 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=None,
         )
 
@@ -824,6 +840,7 @@ def execute_dialogue_turn(
         turn = _refused_turn(request=request, code="presented_fact_not_known")
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -834,7 +851,7 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=None,
         )
 
@@ -843,6 +860,7 @@ def execute_dialogue_turn(
         turn = _refused_turn(request=request, code="presented_evidence_not_known")
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -853,7 +871,7 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=None,
         )
 
@@ -865,6 +883,7 @@ def execute_dialogue_turn(
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -875,7 +894,7 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=None,
         )
 
@@ -887,6 +906,7 @@ def execute_dialogue_turn(
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -897,7 +917,7 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=None,
         )
 
@@ -924,6 +944,7 @@ def execute_dialogue_turn(
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
+        failed_runtime = _advance_runtime_turn(working_state)
         return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
@@ -934,7 +955,7 @@ def execute_dialogue_turn(
             scene_state_before=scene_before,
             scene_state_after=scene_after,
             runtime_before=runtime_state,
-            runtime_after=working_state,
+            runtime_after=failed_runtime,
             summary_check=SummaryCheckReport(
                 required=True,
                 min_fact_count=scene_state.summary_requirement.min_fact_count,
@@ -962,6 +983,7 @@ def execute_dialogue_turn(
             )
             scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
             outcome = _outcome_from_status(turn.status)
+            failed_runtime = _advance_runtime_turn(working_state)
             return DialogueSceneTurnExecutionResult(
                 scene_id=request.scene_id,
                 npc_id=request.npc_id,
@@ -972,7 +994,7 @@ def execute_dialogue_turn(
                 scene_state_before=scene_before,
                 scene_state_after=scene_after,
                 runtime_before=runtime_state,
-                runtime_after=working_state,
+                runtime_after=failed_runtime,
                 summary_check=summary_check,
             )
         unlock_outputs = scene_state.unlock_outputs
@@ -992,6 +1014,7 @@ def execute_dialogue_turn(
             )
             scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
             outcome = _outcome_from_status(turn.status)
+            failed_runtime = _advance_runtime_turn(working_state)
             return DialogueSceneTurnExecutionResult(
                 scene_id=request.scene_id,
                 npc_id=request.npc_id,
@@ -1002,7 +1025,7 @@ def execute_dialogue_turn(
                 scene_state_before=scene_before,
                 scene_state_after=scene_after,
                 runtime_before=runtime_state,
-                runtime_after=working_state,
+                runtime_after=failed_runtime,
                 summary_check=SummaryCheckReport(
                     required=True,
                     min_fact_count=scene_state.summary_requirement.min_fact_count,
