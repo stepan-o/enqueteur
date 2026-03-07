@@ -84,6 +84,12 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert "overlay_role_slot" not in samira_public
     assert "known_fact_flags" not in samira_public
     assert "profile_id" not in samira_public["card_state"]
+    assert "investigation" in state
+    assert "objects" in state["investigation"]
+    assert "evidence" in state["investigation"]
+    assert "facts" in state["investigation"]
+    assert "contradictions" in state["investigation"]
+    assert len(state["investigation"]["objects"]) == 10
 
     assert "debug" in state
     assert "case_private" in state["debug"]
@@ -91,6 +97,9 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert "npc_semantic_private" in state["debug"]
     samira_private = next(row for row in state["debug"]["npc_semantic_private"] if row["npc_id"] == "samira")
     assert samira_private["overlay_role_slot"] == "CULPRIT"
+    assert "investigation_private" in state["debug"]
+    assert "object_state" in state["debug"]["investigation_private"]
+    assert "progress" in state["debug"]["investigation_private"]
 
 
 def test_runner_omits_private_case_projection_without_debug_channel(tmp_path: Path):
@@ -99,6 +108,7 @@ def test_runner_omits_private_case_projection_without_debug_channel(tmp_path: Pa
     assert "case" in state
     assert state["case"]["seed"] == "C"
     assert "npc_semantic" in state
+    assert "investigation" in state
     assert "debug" not in state
 
 
@@ -159,3 +169,11 @@ def test_runner_advances_npc_timeline_state_over_time(tmp_path: Path):
     assert elodie is not None and elodie.schedule_state.current_beat_id == "T_PLUS_02_CURATOR_CONTAINMENT"
     assert laurent is not None and laurent.schedule_state.current_beat_id == "T_PLUS_10_DONOR_EVENT"
     assert laurent.current_room_id == "PHONE_REMOTE"
+    investigation_state = runner.get_investigation_object_state()
+    assert investigation_state is not None
+    assert investigation_state.o6_badge_terminal.archived is False
+
+    runner.run(num_ticks=300)  # reach >= T+15 for investigation timeline archive
+    investigation_state_after = runner.get_investigation_object_state()
+    assert investigation_state_after is not None
+    assert investigation_state_after.o6_badge_terminal.archived is True

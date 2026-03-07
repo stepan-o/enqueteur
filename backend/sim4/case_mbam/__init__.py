@@ -96,8 +96,10 @@ from .scaffold import (
 )
 from .projection import (
     build_debug_case_projection,
+    build_debug_investigation_projection,
     build_debug_npc_semantic_projection,
     build_visible_case_projection,
+    build_visible_investigation_projection,
     build_visible_npc_semantic_projection,
 )
 from .object_state import (
@@ -147,6 +149,7 @@ from .investigation_execution import (
     InvestigationExecutionResult,
     ObservationEntry,
     StateTransition,
+    apply_investigation_timeline_state,
     execute_investigation_command,
 )
 from .investigation_progress import (
@@ -224,6 +227,8 @@ __all__ = [
     "build_debug_case_projection",
     "build_visible_npc_semantic_projection",
     "build_debug_npc_semantic_projection",
+    "build_visible_investigation_projection",
+    "build_debug_investigation_projection",
     "AffordanceDefinition",
     "AffordanceId",
     "AffordanceRepeatPolicy",
@@ -266,6 +271,7 @@ __all__ = [
     "InvestigationExecutionResult",
     "ObservationEntry",
     "StateTransition",
+    "apply_investigation_timeline_state",
     "execute_investigation_command",
     "ContradictionExecStatus",
     "ContradictionExecutionResult",

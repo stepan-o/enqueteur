@@ -11,8 +11,20 @@ from dataclasses import asdict
 from typing import Any, Mapping
 
 from .cast_registry import FixedCastId, list_cast_ids
+from .investigation_progress import (
+    InvestigationProgressState,
+    contradiction_required_for_accusation,
+    contradiction_requirement_satisfied_for_accusation,
+)
 from .models import CaseState
 from .npc_state import NPCState
+from .object_state import (
+    MbamObjectId,
+    MbamObjectStateBundle,
+    get_affordances_for_object,
+    get_object_state_by_id,
+    list_mbam_object_ids,
+)
 
 
 def _require_positive_epoch(truth_epoch: int) -> int:
@@ -20,6 +32,16 @@ def _require_positive_epoch(truth_epoch: int) -> int:
     if epoch <= 0:
         raise ValueError("truth_epoch must be >= 1")
     return epoch
+
+
+def _to_jsonable(value: Any) -> Any:
+    if isinstance(value, tuple):
+        return [_to_jsonable(v) for v in value]
+    if isinstance(value, list):
+        return [_to_jsonable(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _to_jsonable(v) for k, v in value.items()}
+    return value
 
 
 def build_visible_case_projection(case_state: CaseState, *, truth_epoch: int = 1) -> dict[str, Any]:
@@ -137,9 +159,175 @@ def build_debug_npc_semantic_projection(
     return out
 
 
+def _observed_affordances_by_object(
+    progress: InvestigationProgressState,
+) -> dict[MbamObjectId, set[str]]:
+    out: dict[MbamObjectId, set[str]] = {object_id: set() for object_id in list_mbam_object_ids()}
+    for clue_id in progress.observed_clue_ids:
+        if not clue_id.startswith("obs:"):
+            continue
+        parts = clue_id.split(":")
+        if len(parts) != 3:
+            continue
+        _, object_id, affordance_id = parts
+        if object_id not in out:
+            continue
+        out[object_id].add(affordance_id)
+    return out
+
+
+def _visible_known_state_for_object(
+    object_id: MbamObjectId,
+    *,
+    object_state: MbamObjectStateBundle,
+    observed_affordances: set[str],
+) -> dict[str, Any]:
+    state = get_object_state_by_id(object_state, object_id)
+    out: dict[str, Any] = {}
+
+    if object_id == "O1_DISPLAY_CASE":
+        s = state  # type: ignore[assignment]
+        if "inspect" in observed_affordances or "check_lock" in observed_affordances:
+            out["locked"] = s.locked
+            out["latch_condition"] = s.latch_condition
+        if "inspect" in observed_affordances:
+            out["contains_item"] = s.contains_item
+            out["tampered"] = s.tampered
+        if "examine_surface" in observed_affordances:
+            out["surface_examined"] = True
+    elif object_id == "O2_MEDALLION":
+        s = state  # type: ignore[assignment]
+        if "examine" in observed_affordances:
+            out["status"] = s.status
+            out["examined"] = s.examined
+            if s.status != "missing":
+                out["location"] = s.location
+    elif object_id == "O3_WALL_LABEL":
+        s = state  # type: ignore[assignment]
+        if "read" in observed_affordances:
+            out["text_variant_id"] = s.text_variant_id
+    elif object_id == "O4_BENCH":
+        s = state  # type: ignore[assignment]
+        if "inspect" in observed_affordances:
+            out["under_bench_item"] = s.under_bench_item
+    elif object_id == "O5_VISITOR_LOGBOOK":
+        s = state  # type: ignore[assignment]
+        if "read" in observed_affordances:
+            out["entries_count"] = len(s.entries)
+            out["scribble_pattern"] = s.scribble_pattern
+    elif object_id == "O6_BADGE_TERMINAL":
+        s = state  # type: ignore[assignment]
+        if "request_access" in observed_affordances or "view_logs" in observed_affordances:
+            out["online"] = s.online
+            out["archived"] = s.archived
+        if "view_logs" in observed_affordances:
+            out["log_entry_count"] = len(s.log_entries)
+    elif object_id == "O7_SECURITY_BINDER":
+        s = state  # type: ignore[assignment]
+        if "read" in observed_affordances:
+            out["page_state"] = s.page_state
+    elif object_id == "O8_KEYPAD_DOOR":
+        s = state  # type: ignore[assignment]
+        if "inspect" in observed_affordances or "attempt_code" in observed_affordances:
+            out["locked"] = s.locked
+        if "inspect" in observed_affordances:
+            out["has_code_hint"] = True
+    elif object_id == "O9_RECEIPT_PRINTER":
+        s = state  # type: ignore[assignment]
+        if "ask_for_receipt" in observed_affordances or "read_receipt" in observed_affordances:
+            out["receipt_count"] = len(s.recent_receipts)
+        if "read_receipt" in observed_affordances and s.recent_receipts:
+            out["latest_receipt_id"] = s.recent_receipts[0].receipt_id
+    elif object_id == "O10_BULLETIN_BOARD":
+        if "read" in observed_affordances:
+            out["read"] = True
+
+    return out
+
+
+def build_visible_investigation_projection(
+    *,
+    case_state: CaseState,
+    object_state: MbamObjectStateBundle,
+    progress: InvestigationProgressState,
+    truth_epoch: int = 1,
+) -> dict[str, Any]:
+    """Build safe investigation-state projection for replay/player-visible paths."""
+    epoch = _require_positive_epoch(truth_epoch)
+    observed_by_object = _observed_affordances_by_object(progress)
+
+    objects: list[dict[str, Any]] = []
+    for object_id in list_mbam_object_ids():
+        affordances = tuple(a.affordance_id for a in get_affordances_for_object(object_id))
+        observed_affordances = tuple(sorted(observed_by_object.get(object_id, set())))
+        known_state = _visible_known_state_for_object(
+            object_id,
+            object_state=object_state,
+            observed_affordances=set(observed_affordances),
+        )
+        objects.append(
+            {
+                "object_id": object_id,
+                "affordances": list(affordances),
+                "observed_affordances": list(observed_affordances),
+                "known_state": known_state,
+            }
+        )
+
+    observed_not_collected = tuple(
+        sorted(
+            clue_id
+            for clue_id in progress.observed_clue_ids
+            if clue_id.startswith("clue:evidence:") and clue_id.endswith(":observed_not_collected")
+        )
+    )
+
+    return {
+        "truth_epoch": epoch,
+        "objects": objects,
+        "evidence": {
+            "discovered_ids": list(progress.discovered_evidence_ids),
+            "collected_ids": list(progress.collected_evidence_ids),
+            "observed_not_collected_ids": list(observed_not_collected),
+        },
+        "facts": {
+            "known_fact_ids": list(progress.known_fact_ids),
+        },
+        "contradictions": {
+            "unlockable_edge_ids": list(progress.unlockable_contradiction_edge_ids),
+            "known_edge_ids": list(progress.known_contradiction_edge_ids),
+            "required_for_accusation": contradiction_required_for_accusation(case_state),
+            "requirement_satisfied": contradiction_requirement_satisfied_for_accusation(case_state, progress),
+        },
+    }
+
+
+def build_debug_investigation_projection(
+    *,
+    case_state: CaseState,
+    object_state: MbamObjectStateBundle,
+    progress: InvestigationProgressState,
+    truth_epoch: int = 1,
+) -> dict[str, Any]:
+    """Build private investigation-state projection for DEBUG-channel artifacts."""
+    epoch = _require_positive_epoch(truth_epoch)
+    return {
+        "debug_scope": "investigation_state_private",
+        "case_id": case_state.case_id,
+        "seed": case_state.seed,
+        "truth_epoch": epoch,
+        "object_state": _to_jsonable(asdict(object_state)),
+        "progress": _to_jsonable(asdict(progress)),
+        "contradiction_required_for_accusation": contradiction_required_for_accusation(case_state),
+        "contradiction_requirement_satisfied": contradiction_requirement_satisfied_for_accusation(case_state, progress),
+    }
+
+
 __all__ = [
     "build_visible_case_projection",
     "build_debug_case_projection",
     "build_visible_npc_semantic_projection",
     "build_debug_npc_semantic_projection",
+    "build_visible_investigation_projection",
+    "build_debug_investigation_projection",
 ]

@@ -15,10 +15,17 @@ import hashlib
 from backend.sim4.case_mbam import (
     CaseState,
     DifficultyProfile,
+    InvestigationProgressState,
+    MbamObjectStateBundle,
     NPCState,
+    apply_investigation_timeline_state,
     apply_case_timeline_to_npc_states,
+    build_debug_investigation_projection,
     build_debug_case_projection,
     build_debug_npc_semantic_projection,
+    build_initial_investigation_progress,
+    build_initial_mbam_object_state,
+    build_visible_investigation_projection,
     build_visible_case_projection,
     build_visible_npc_semantic_projection,
     generate_case_state,
@@ -151,6 +158,8 @@ class SimRunner:
         self._case_debug_projection: Dict[str, Any] | None = None
         self._npc_states: dict[str, NPCState] | None = None
         self._npc_timeline_applied_beat_ids: tuple[str, ...] = ()
+        self._investigation_object_state: MbamObjectStateBundle | None = None
+        self._investigation_progress: InvestigationProgressState | None = None
 
         if case_config is not None:
             truth_epoch = int(case_config.truth_epoch)
@@ -179,11 +188,19 @@ class SimRunner:
                 elapsed_seconds=0.0,
                 applied_beat_ids=(),
             )
+            self._investigation_object_state = build_initial_mbam_object_state(self._case_state)
+            self._investigation_progress = build_initial_investigation_progress(self._case_state)
+            self._investigation_object_state, _timeline_effects, _timeline_transitions = apply_investigation_timeline_state(
+                self._investigation_object_state,
+                elapsed_seconds=0.0,
+            )
 
         # Build sinks
         sinks: List[TickOutputSink] = []
         npc_visible_provider = self._make_npc_semantic_visible_projection
         npc_debug_provider = self._make_npc_semantic_debug_projection
+        investigation_visible_provider = self._make_investigation_visible_projection
+        investigation_debug_provider = self._make_investigation_debug_projection
 
         self._history: KvpStateHistory | None = None
         if self._offline_cfg is not None:
@@ -195,6 +212,8 @@ class SimRunner:
                 case_debug_projection=self._case_debug_projection,
                 npc_semantic_visible_provider=npc_visible_provider,
                 npc_semantic_debug_provider=npc_debug_provider,
+                investigation_visible_provider=investigation_visible_provider,
+                investigation_debug_provider=investigation_debug_provider,
             )
             sinks.append(self._history)
 
@@ -208,6 +227,8 @@ class SimRunner:
                     case_debug_projection=self._case_debug_projection,
                     npc_semantic_visible_provider=npc_visible_provider,
                     npc_semantic_debug_provider=npc_debug_provider,
+                    investigation_visible_provider=investigation_visible_provider,
+                    investigation_debug_provider=investigation_debug_provider,
                 )
             )
 
@@ -229,6 +250,14 @@ class SimRunner:
             return None
         return self._npc_states.get(npc_id)
 
+    def get_investigation_object_state(self) -> MbamObjectStateBundle | None:
+        """Return MBAM investigation object-state bundle for this run, if configured."""
+        return self._investigation_object_state
+
+    def get_investigation_progress(self) -> InvestigationProgressState | None:
+        """Return MBAM investigation progression state for this run, if configured."""
+        return self._investigation_progress
+
     def _make_npc_semantic_visible_projection(self) -> list[dict[str, Any]] | None:
         if self._npc_states is None:
             return None
@@ -238,6 +267,32 @@ class SimRunner:
         if self._npc_states is None:
             return None
         return build_debug_npc_semantic_projection(self._npc_states)
+
+    def _make_investigation_visible_projection(self) -> dict[str, Any] | None:
+        if (
+            self._case_state is None
+            or self._investigation_object_state is None
+            or self._investigation_progress is None
+        ):
+            return None
+        return build_visible_investigation_projection(
+            case_state=self._case_state,
+            object_state=self._investigation_object_state,
+            progress=self._investigation_progress,
+        )
+
+    def _make_investigation_debug_projection(self) -> dict[str, Any] | None:
+        if (
+            self._case_state is None
+            or self._investigation_object_state is None
+            or self._investigation_progress is None
+        ):
+            return None
+        return build_debug_investigation_projection(
+            case_state=self._case_state,
+            object_state=self._investigation_object_state,
+            progress=self._investigation_progress,
+        )
 
     def run(
         self,
@@ -259,6 +314,11 @@ class SimRunner:
                     elapsed_seconds=elapsed_seconds,
                     applied_beat_ids=self._npc_timeline_applied_beat_ids,
                 )
+                if self._investigation_object_state is not None:
+                    self._investigation_object_state, _effects, _transitions = apply_investigation_timeline_state(
+                        self._investigation_object_state,
+                        elapsed_seconds=elapsed_seconds,
+                    )
 
             wc = None
             if world_commands_provider is not None:

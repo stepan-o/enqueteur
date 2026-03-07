@@ -538,10 +538,23 @@ def execute_investigation_command(
     )
 
 
+def apply_investigation_timeline_state(
+    object_state: MbamObjectStateBundle,
+    *,
+    elapsed_seconds: float,
+) -> tuple[MbamObjectStateBundle, tuple[str, ...], tuple[StateTransition, ...]]:
+    """Apply passive timeline-driven investigation object transitions."""
+    return _apply_timeline_effects(
+        object_state,
+        elapsed_seconds=float(elapsed_seconds),
+    )
+
+
 __all__ = [
     "ExecutionKind",
     "InvestigationExecutionResult",
     "ObservationEntry",
     "StateTransition",
+    "apply_investigation_timeline_state",
     "execute_investigation_command",
 ]

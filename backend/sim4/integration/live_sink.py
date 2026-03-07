@@ -69,6 +69,8 @@ class LiveKvpStateSink(TickOutputSink):
         case_debug_projection: Dict[str, Any] | None = None,
         npc_semantic_visible_provider: Callable[[], List[Dict[str, Any]] | None] | None = None,
         npc_semantic_debug_provider: Callable[[], List[Dict[str, Any]] | None] | None = None,
+        investigation_visible_provider: Callable[[], Dict[str, Any] | None] | None = None,
+        investigation_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
     ) -> None:
         self._session = session
         self._channels = list(channels) if channels is not None else list(ALLOWED_CHANNELS)
@@ -80,6 +82,8 @@ class LiveKvpStateSink(TickOutputSink):
         self._case_debug_projection = copy.deepcopy(case_debug_projection)
         self._npc_semantic_visible_provider = npc_semantic_visible_provider
         self._npc_semantic_debug_provider = npc_semantic_debug_provider
+        self._investigation_visible_provider = investigation_visible_provider
+        self._investigation_debug_provider = investigation_debug_provider
 
         self._has_baseline = False
         self._prev_tick: int | None = None
@@ -133,6 +137,10 @@ class LiveKvpStateSink(TickOutputSink):
             npc_visible = self._npc_semantic_visible_provider()
             if npc_visible is not None:
                 state["npc_semantic"] = copy.deepcopy(npc_visible)
+        if self._investigation_visible_provider is not None:
+            investigation_visible = self._investigation_visible_provider()
+            if investigation_visible is not None:
+                state["investigation"] = copy.deepcopy(investigation_visible)
         if "DEBUG" in self._channels:
             # Placeholder for future debug fields; keep deterministic
             state.setdefault("debug", {})
@@ -146,6 +154,12 @@ class LiveKvpStateSink(TickOutputSink):
                     debug_state = state.get("debug")
                     if isinstance(debug_state, dict):
                         debug_state["npc_semantic_private"] = copy.deepcopy(npc_debug)
+            if self._investigation_debug_provider is not None:
+                investigation_debug = self._investigation_debug_provider()
+                if investigation_debug is not None:
+                    debug_state = state.get("debug")
+                    if isinstance(debug_state, dict):
+                        debug_state["investigation_private"] = copy.deepcopy(investigation_debug)
 
         # Canonicalize + hash
         canonical_state = canonicalize_state_obj(state)
