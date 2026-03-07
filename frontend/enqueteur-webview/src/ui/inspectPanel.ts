@@ -36,6 +36,7 @@ export type InvestigationActionDispatcher = (
 
 export type InspectPanelOpts = {
     dispatchInvestigationAction?: InvestigationActionDispatcher;
+    canDispatchInvestigationAction?: () => boolean;
 };
 
 export type InspectHandle = {
@@ -110,6 +111,7 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
             if (!obj) return renderMissing("Object", selection.id);
             renderObjectActionPanel(panel, obj, lastState, {
                 dispatchInvestigationAction: opts.dispatchInvestigationAction,
+                canDispatchInvestigationAction: opts.canDispatchInvestigationAction,
                 pendingActionKey,
                 lastActionFeedback,
                 onAction: async (request) => {
@@ -253,6 +255,7 @@ function renderAgent(panel: HTMLElement, agent: KvpAgent, state: WorldState): vo
 
 type RenderActionPanelOpts = {
     dispatchInvestigationAction?: InvestigationActionDispatcher;
+    canDispatchInvestigationAction?: () => boolean;
     pendingActionKey: string | null;
     lastActionFeedback: LastActionFeedback | null;
     onAction: (request: InvestigationActionRequest) => Promise<void>;
@@ -345,7 +348,9 @@ function renderActionButtons(
         btn.className = "inspect-action-btn";
 
         const isPending = opts.pendingActionKey === actionKey;
-        const isDispatchAvailable = Boolean(opts.dispatchInvestigationAction);
+        const isDispatchAvailable = opts.canDispatchInvestigationAction
+            ? opts.canDispatchInvestigationAction()
+            : Boolean(opts.dispatchInvestigationAction);
         const blockedReason = !isDispatchAvailable
             ? "dispatch unavailable in replay/offline mode"
             : null;

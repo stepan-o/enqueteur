@@ -13,6 +13,7 @@ import { mountDialoguePanel } from "../ui/dialoguePanel";
 import { mountNotebookPanel } from "../ui/notebookPanel";
 import { mountTimeLighting } from "../ui/timeLighting";
 import { injectMockSnapshot } from "../debug/mockKernel";
+import { createFrontendActionBridge } from "./actionBridge";
 import { ViewerPluginRegistry } from "../viewers/core/viewerPlugin";
 import { createSim4ViewerPlugin } from "../viewers/sim4/sim4Plugin";
 
@@ -48,6 +49,11 @@ export function boot(opts: BootOpts): ViewerHandle {
     let currentMode: BootMode = mode;
     let client: KvpClient | null = null;
     let activeLiveWsUrl: string | null = null;
+    const actionBridge = createFrontendActionBridge({
+        store,
+        getMode: () => currentMode,
+        getClient: () => client,
+    });
 
     opts.mountEl.style.position = "relative";
     opts.mountEl.style.width = "100%";
@@ -60,56 +66,14 @@ export function boot(opts: BootOpts): ViewerHandle {
     opts.mountEl.appendChild(hud);
 
     const inspector = mountInspectPanel(store, {
-        dispatchInvestigationAction: async (request) => {
-            if (currentMode !== "live" || !client) {
-                return {
-                    status: "unavailable",
-                    code: "live_dispatch_unavailable",
-                    summary: "Action dispatch requires an active live kernel connection.",
-                };
-            }
-            client.sendSimInput({
-                type: "MBAM_INVESTIGATION_COMMAND",
-                object_id: request.caseObjectId,
-                affordance_id: request.affordanceId,
-                world_object_id: request.worldObjectId,
-                tick: request.tick,
-            });
-            return {
-                status: "submitted",
-                code: "sim_input_submitted",
-                summary: "Investigation action submitted to live kernel.",
-            };
-        },
+        dispatchInvestigationAction: actionBridge.submitInvestigationAction,
+        canDispatchInvestigationAction: actionBridge.canSubmitInvestigationAction,
     });
     opts.mountEl.appendChild(inspector.root);
 
     const dialoguePanel = mountDialoguePanel(store, {
-        dispatchDialogueTurn: async (request) => {
-            if (currentMode !== "live" || !client) {
-                return {
-                    status: "unavailable",
-                    code: "live_dispatch_unavailable",
-                    summary: "Dialogue submission requires an active live kernel connection.",
-                };
-            }
-            client.sendSimInput({
-                type: "MBAM_DIALOGUE_TURN",
-                scene_id: request.sceneId,
-                npc_id: request.npcId,
-                intent_id: request.intentId,
-                provided_slots: request.providedSlots,
-                presented_fact_ids: request.presentedFactIds,
-                presented_evidence_ids: request.presentedEvidenceIds,
-                utterance_text: request.utteranceText ?? null,
-                tick: request.tick,
-            });
-            return {
-                status: "submitted",
-                code: "sim_input_submitted",
-                summary: "Dialogue turn submitted to live kernel.",
-            };
-        },
+        dispatchDialogueTurn: actionBridge.submitDialogueTurn,
+        canDispatchDialogueTurn: actionBridge.canSubmitDialogueTurn,
     });
     opts.mountEl.appendChild(dialoguePanel.root);
 

@@ -30,6 +30,7 @@ export type DialogueTurnDispatcher = (
 
 export type DialoguePanelOpts = {
     dispatchDialogueTurn?: DialogueTurnDispatcher;
+    canDispatchDialogueTurn?: () => boolean;
 };
 
 export type DialogueInspectSelection =
@@ -246,7 +247,9 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
                 );
             }
 
-            const dispatchAvailable = Boolean(opts.dispatchDialogueTurn);
+            const dispatchAvailable = opts.canDispatchDialogueTurn
+                ? opts.canDispatchDialogueTurn()
+                : Boolean(opts.dispatchDialogueTurn);
             const canSubmit = dispatchAvailable && !pending && selectedIntent !== null;
             const submitBtn = document.createElement("button");
             submitBtn.type = "button";

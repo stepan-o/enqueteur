@@ -156,9 +156,14 @@ export class KvpClient {
         this.sendEnvelope("SUBSCRIBE", subscribe);
     }
 
-    sendSimInput(payload: Record<string, unknown>): void {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    canSendSimInput(): boolean {
+        return Boolean(this.ws && this.ws.readyState === WebSocket.OPEN);
+    }
+
+    sendSimInput(payload: Record<string, unknown>): boolean {
+        if (!this.canSendSimInput()) return false;
         this.sendEnvelope("SIM_INPUT", payload);
+        return true;
     }
 
     /* ---------------------------------------
