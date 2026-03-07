@@ -9,6 +9,7 @@ import { PixiScene } from "../render/pixiScene";
 import { mountHud } from "../ui/hud";
 import { mountDevControls } from "../ui/devControls";
 import { mountInspectPanel } from "../ui/inspectPanel";
+import { mountDialoguePanel } from "../ui/dialoguePanel";
 import { mountTimeLighting } from "../ui/timeLighting";
 import { injectMockSnapshot } from "../debug/mockKernel";
 import { ViewerPluginRegistry } from "../viewers/core/viewerPlugin";
@@ -82,6 +83,35 @@ export function boot(opts: BootOpts): ViewerHandle {
     });
     opts.mountEl.appendChild(inspector.root);
 
+    const dialoguePanel = mountDialoguePanel(store, {
+        dispatchDialogueTurn: async (request) => {
+            if (currentMode !== "live" || !client) {
+                return {
+                    status: "unavailable",
+                    code: "live_dispatch_unavailable",
+                    summary: "Dialogue submission requires an active live kernel connection.",
+                };
+            }
+            client.sendSimInput({
+                type: "MBAM_DIALOGUE_TURN",
+                scene_id: request.sceneId,
+                npc_id: request.npcId,
+                intent_id: request.intentId,
+                provided_slots: request.providedSlots,
+                presented_fact_ids: request.presentedFactIds,
+                presented_evidence_ids: request.presentedEvidenceIds,
+                utterance_text: request.utteranceText ?? null,
+                tick: request.tick,
+            });
+            return {
+                status: "submitted",
+                code: "sim_input_submitted",
+                summary: "Dialogue turn submitted to live kernel.",
+            };
+        },
+    });
+    opts.mountEl.appendChild(dialoguePanel.root);
+
     overlayStore.subscribe((o) => {
         scene.ingestOverlayEvents(o.eventsAtTick);
     });
@@ -103,6 +133,7 @@ export function boot(opts: BootOpts): ViewerHandle {
         devControls.style.display = devControlsVisibleRequested ? "block" : "none";
         hud.style.display = hudVisibleRequested ? "block" : "none";
         inspector.root.style.display = "block";
+        dialoguePanel.root.style.display = hudVisibleRequested ? "block" : "none";
     };
 
     const pluginRegistry = new ViewerPluginRegistry();
