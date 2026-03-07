@@ -149,6 +149,17 @@ from .investigation_execution import (
     StateTransition,
     execute_investigation_command,
 )
+from .investigation_progress import (
+    ContradictionExecStatus,
+    ContradictionExecutionResult,
+    InvestigationProgressState,
+    InvestigationProgressUpdate,
+    apply_execution_result_to_progress,
+    build_initial_investigation_progress,
+    contradiction_required_for_accusation,
+    contradiction_requirement_satisfied_for_accusation,
+    execute_contradiction_edge,
+)
 
 __all__ = [
     "AlibiClaim",
@@ -256,6 +267,15 @@ __all__ = [
     "ObservationEntry",
     "StateTransition",
     "execute_investigation_command",
+    "ContradictionExecStatus",
+    "ContradictionExecutionResult",
+    "InvestigationProgressState",
+    "InvestigationProgressUpdate",
+    "apply_execution_result_to_progress",
+    "build_initial_investigation_progress",
+    "contradiction_required_for_accusation",
+    "contradiction_requirement_satisfied_for_accusation",
+    "execute_contradiction_edge",
     "PortraitConfig",
     "get_cast_entry",
     "get_cast_registry",
