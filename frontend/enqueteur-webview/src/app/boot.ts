@@ -37,6 +37,15 @@ export function boot(opts: BootOpts): ViewerHandle {
     const store = new WorldStore();
     const overlayStore = new OverlayStore();
     const viewerStore = new ViewerStore();
+    const env = (import.meta as any).env ?? {};
+    const mode = (opts.mode ?? env.VITE_WEBVIEW_MODE ?? "offline") as BootMode;
+    const autoStart = opts.autoStart ?? true;
+    let offlineHandle: OfflineRunHandle | null = null;
+    let offlineBaseUrl = opts.offlineBaseUrl ?? env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min";
+    let offlineSpeed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
+    let currentMode: BootMode = mode;
+    let client: KvpClient | null = null;
+    let activeLiveWsUrl: string | null = null;
 
     opts.mountEl.style.position = "relative";
     opts.mountEl.style.width = "100%";
@@ -48,7 +57,29 @@ export function boot(opts: BootOpts): ViewerHandle {
     const hud = mountHud(store, overlayStore);
     opts.mountEl.appendChild(hud);
 
-    const inspector = mountInspectPanel(store);
+    const inspector = mountInspectPanel(store, {
+        dispatchInvestigationAction: async (request) => {
+            if (currentMode !== "live" || !client) {
+                return {
+                    status: "unavailable",
+                    code: "live_dispatch_unavailable",
+                    summary: "Action dispatch requires an active live kernel connection.",
+                };
+            }
+            client.sendSimInput({
+                type: "MBAM_INVESTIGATION_COMMAND",
+                object_id: request.caseObjectId,
+                affordance_id: request.affordanceId,
+                world_object_id: request.worldObjectId,
+                tick: request.tick,
+            });
+            return {
+                status: "submitted",
+                code: "sim_input_submitted",
+                summary: "Investigation action submitted to live kernel.",
+            };
+        },
+    });
     opts.mountEl.appendChild(inspector.root);
 
     overlayStore.subscribe((o) => {
@@ -64,16 +95,6 @@ export function boot(opts: BootOpts): ViewerHandle {
         timeLighting.update(s.world ?? null);
         scene.renderFromState(s);
     });
-
-    const env = (import.meta as any).env ?? {};
-    const mode = (opts.mode ?? env.VITE_WEBVIEW_MODE ?? "offline") as BootMode;
-    const autoStart = opts.autoStart ?? true;
-    let offlineHandle: OfflineRunHandle | null = null;
-    let offlineBaseUrl = opts.offlineBaseUrl ?? env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min";
-    let offlineSpeed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
-    let currentMode: BootMode = mode;
-    let client: KvpClient | null = null;
-    let activeLiveWsUrl: string | null = null;
 
     let hudVisibleRequested = true;
     let devControlsVisibleRequested = true;
