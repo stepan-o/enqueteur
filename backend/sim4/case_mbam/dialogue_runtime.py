@@ -14,6 +14,7 @@ from .dialogue_domain import (
     DialogueTurnResult,
     DialogueUnlockOutputs,
     RepairResponseMode,
+    get_dialogue_intent,
 )
 from .investigation_progress import InvestigationProgressState
 from .models import CaseState, SceneCompletionState, SceneId
@@ -130,6 +131,25 @@ class DialogueSceneTurnExecutionResult:
     scene_state_after: DialogueSceneState
     runtime_before: DialogueSceneRuntimeState
     runtime_after: DialogueSceneRuntimeState
+    summary_check: "SummaryCheckReport | None" = None
+
+
+@dataclass(frozen=True)
+class SummaryCheckReport:
+    required: bool
+    min_fact_count: int
+    provided_fact_ids: tuple[str, ...]
+    accepted_fact_ids: tuple[str, ...]
+    rejected_fact_ids: tuple[str, ...]
+    passed: bool
+    code: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "provided_fact_ids", _sorted_unique(self.provided_fact_ids))
+        object.__setattr__(self, "accepted_fact_ids", _sorted_unique(self.accepted_fact_ids))
+        object.__setattr__(self, "rejected_fact_ids", _sorted_unique(self.rejected_fact_ids))
+        if self.min_fact_count < 0:
+            raise ValueError("SummaryCheckReport.min_fact_count must be >= 0")
 
 
 def _completion_map(state: DialogueSceneRuntimeState) -> dict[SceneId, SceneCompletionState]:
@@ -347,21 +367,39 @@ def _repair_mode_for_trigger(scene_state: DialogueSceneState, trigger: str) -> R
     return path.response_mode
 
 
-def _intent_affect(intent_id: str, status: str) -> tuple[float, float]:
-    if status != "accepted":
+def _detect_wrong_register(request: DialogueTurnRequest) -> bool:
+    text = (request.utterance_text or "").strip().lower()
+    return text.startswith("register:wrong")
+
+
+def _detect_too_aggressive(request: DialogueTurnRequest) -> bool:
+    text = (request.utterance_text or "").strip().lower()
+    return text.startswith("tone:aggressive")
+
+
+def _intent_affect(intent_id: str, status: str, code: str) -> tuple[float, float]:
+    if status == "accepted":
+        if intent_id == "reassure":
+            return 0.04, -0.05
+        if intent_id == "summarize_understanding":
+            return 0.05, -0.03
+        if intent_id == "present_evidence":
+            return 0.03, -0.01
+        if intent_id == "challenge_contradiction":
+            return 0.01, 0.04
+        if intent_id == "accuse":
+            return -0.08, 0.10
+        if intent_id in {"request_access", "request_permission"}:
+            return 0.02, 0.0
         return 0.0, 0.0
-    if intent_id == "reassure":
-        return 0.04, -0.05
-    if intent_id == "summarize_understanding":
-        return 0.05, -0.03
-    if intent_id == "present_evidence":
-        return 0.03, -0.01
-    if intent_id == "challenge_contradiction":
-        return 0.01, 0.04
-    if intent_id == "accuse":
-        return -0.08, 0.10
-    if intent_id in {"request_access", "request_permission"}:
-        return 0.02, 0.0
+    if status == "repair":
+        if code in {"wrong_register", "too_aggressive"}:
+            return -0.02, 0.03
+        if code in {"missing_evidence_reference", "summary_required", "summary_insufficient_facts"}:
+            return -0.01, 0.02
+        return 0.0, 0.01
+    if status == "refused":
+        return -0.03, 0.02
     return 0.0, 0.0
 
 
@@ -396,6 +434,175 @@ def _known_fact_pool(
     return set(runtime_state.revealed_fact_ids).union(context.known_fact_ids)
 
 
+def _legal_turn_fact_reveals(
+    *,
+    case_state: CaseState,
+    definition: MbamSceneDefinition,
+    request: DialogueTurnRequest,
+    known_facts: set[str],
+    known_evidence: set[str],
+) -> tuple[str, ...]:
+    scene_id = definition.scene_id
+    intent_id = request.intent_id
+    allowed = set(definition.scene_state.allowed_fact_ids)
+    truth_node_ids = {node.fact_id for node in case_state.truth_graph.nodes}
+    candidates: set[str] = set()
+
+    if scene_id == "S1":
+        if intent_id in {"ask_what_happened", "ask_when", "ask_where", "ask_who"}:
+            candidates.add("N1")
+        if intent_id == "request_permission":
+            candidates.add("N7")
+    elif scene_id == "S2":
+        if intent_id in {"request_access", "ask_when", "ask_what_seen"}:
+            candidates.add("N2")
+        if intent_id == "present_evidence":
+            if "E3_METHOD_TRACE" in request.presented_evidence_ids:
+                candidates.add("N7")
+            if "E2_CAFE_RECEIPT" in request.presented_evidence_ids:
+                candidates.add("N3")
+    elif scene_id == "S3":
+        if intent_id == "ask_when":
+            candidates.add("N3")
+        if intent_id == "ask_where":
+            candidates.add("N6")
+        if intent_id == "ask_who":
+            candidates.add("N5")
+        if intent_id == "ask_what_seen":
+            candidates.update({"N5", "N6"})
+    elif scene_id == "S4":
+        if intent_id == "ask_what_seen":
+            candidates.add("N5")
+        if intent_id == "ask_when":
+            candidates.add("N4")
+        if intent_id in {"ask_where", "ask_who"}:
+            candidates.add("N5")
+        if intent_id == "present_evidence" and "E2_CAFE_RECEIPT" in request.presented_evidence_ids:
+            candidates.add("N4")
+    elif scene_id == "S5":
+        if intent_id == "present_evidence":
+            if "E2_CAFE_RECEIPT" in request.presented_evidence_ids:
+                candidates.add("N4")
+            if "E3_METHOD_TRACE" in request.presented_evidence_ids:
+                candidates.add("N7")
+        if intent_id == "challenge_contradiction":
+            if {"N3", "N4"}.issubset(known_facts) and "E2_CAFE_RECEIPT" in known_evidence:
+                candidates.add("N8")
+
+    return tuple(
+        sorted(
+            fact_id
+            for fact_id in candidates
+            if fact_id in truth_node_ids and fact_id in allowed and fact_id not in known_facts
+        )
+    )
+
+
+def _social_gate_refusal_code(
+    definition: MbamSceneDefinition,
+    context: DialogueExecutionContext,
+) -> str | None:
+    npc = context.npc_states.get(definition.primary_npc_id)
+    if npc is None:
+        return "npc_state_missing"
+    trust_gate = definition.scene_state.trust_gate
+    if trust_gate.minimum_value is not None and npc.trust < trust_gate.minimum_value:
+        return f"insufficient_trust_{trust_gate.failure_mode}"
+    stress_gate = definition.scene_state.stress_gate
+    if stress_gate.maximum_value is not None and npc.stress > stress_gate.maximum_value:
+        return f"excessive_stress_{stress_gate.failure_mode}"
+    return None
+
+
+def _repair_turn(
+    *,
+    request: DialogueTurnRequest,
+    code: str,
+    response_mode: RepairResponseMode,
+    missing_required_slots: tuple[str, ...] = (),
+    summary_check_passed: bool | None = None,
+) -> DialogueTurnResult:
+    trust_delta, stress_delta = _intent_affect(request.intent_id, "repair", code)
+    return DialogueTurnResult(
+        scene_id=request.scene_id,
+        npc_id=request.npc_id,
+        intent_id=request.intent_id,
+        status="repair",
+        code=code,
+        trust_delta=trust_delta,
+        stress_delta=stress_delta,
+        missing_required_slots=missing_required_slots,
+        repair_response_mode=response_mode,
+        summary_check_passed=summary_check_passed,
+        unlock_outputs=_empty_unlocks(),
+    )
+
+
+def _refused_turn(*, request: DialogueTurnRequest, code: str) -> DialogueTurnResult:
+    trust_delta, stress_delta = _intent_affect(request.intent_id, "refused", code)
+    return DialogueTurnResult(
+        scene_id=request.scene_id,
+        npc_id=request.npc_id,
+        intent_id=request.intent_id,
+        status="refused",
+        code=code,
+        trust_delta=trust_delta,
+        stress_delta=stress_delta,
+        unlock_outputs=_empty_unlocks(),
+    )
+
+
+def _blocked_turn(*, request: DialogueTurnRequest, code: str) -> DialogueTurnResult:
+    trust_delta, stress_delta = _intent_affect(request.intent_id, "blocked_gate", code)
+    return DialogueTurnResult(
+        scene_id=request.scene_id,
+        npc_id=request.npc_id,
+        intent_id=request.intent_id,
+        status="blocked_gate",
+        code=code,
+        trust_delta=trust_delta,
+        stress_delta=stress_delta,
+        unlock_outputs=_empty_unlocks(),
+    )
+
+
+def _invalid_turn(*, request: DialogueTurnRequest, code: str) -> DialogueTurnResult:
+    return DialogueTurnResult(
+        scene_id=request.scene_id,
+        npc_id=request.npc_id,
+        intent_id=request.intent_id,
+        status="invalid_intent",
+        code=code,
+        unlock_outputs=_empty_unlocks(),
+    )
+
+
+def _build_summary_check_report(
+    *,
+    scene_state: DialogueSceneState,
+    provided_fact_ids: tuple[str, ...],
+    known_facts: set[str],
+) -> SummaryCheckReport:
+    accepted = tuple(
+        sorted(
+            fact_id
+            for fact_id in provided_fact_ids
+            if fact_id in known_facts and fact_id in set(scene_state.allowed_fact_ids)
+        )
+    )
+    rejected = tuple(sorted(set(provided_fact_ids).difference(accepted)))
+    passed = len(accepted) >= scene_state.summary_requirement.min_fact_count
+    return SummaryCheckReport(
+        required=scene_state.summary_requirement.required,
+        min_fact_count=scene_state.summary_requirement.min_fact_count,
+        provided_fact_ids=provided_fact_ids,
+        accepted_fact_ids=accepted,
+        rejected_fact_ids=rejected,
+        passed=passed,
+        code="summary_passed" if passed else "summary_insufficient_facts",
+    )
+
+
 def execute_dialogue_turn(
     case_state: CaseState,
     runtime_state: DialogueSceneRuntimeState,
@@ -420,19 +627,17 @@ def execute_dialogue_turn(
     if enter_result.status != "entered" and current_completion != "in_progress":
         status = "blocked_gate" if enter_result.status == "blocked_gate" else "invalid_scene_state"
         code = enter_result.code
-        turn = DialogueTurnResult(
-            scene_id=request.scene_id,
-            npc_id=request.npc_id,
-            intent_id=request.intent_id,
-            status=status,
-            code=code,
-            revealed_fact_ids=(),
-            trust_delta=0.0,
-            stress_delta=0.0,
-            missing_required_slots=(),
-            repair_response_mode=None,
-            summary_check_passed=None,
-            unlock_outputs=_empty_unlocks(),
+        turn = (
+            _blocked_turn(request=request, code=code)
+            if status == "blocked_gate"
+            else DialogueTurnResult(
+                scene_id=request.scene_id,
+                npc_id=request.npc_id,
+                intent_id=request.intent_id,
+                status=status,
+                code=code,
+                unlock_outputs=_empty_unlocks(),
+            )
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
@@ -447,23 +652,16 @@ def execute_dialogue_turn(
             scene_state_after=scene_after,
             runtime_before=runtime_state,
             runtime_after=working_state,
+            summary_check=None,
         )
 
     gate_check = _evaluate_scene_gate(definition, context=context, runtime_state=working_state)
     if not gate_check.passed:
-        turn = DialogueTurnResult(
-            scene_id=request.scene_id,
-            npc_id=request.npc_id,
-            intent_id=request.intent_id,
-            status="blocked_gate",
-            code=gate_check.failure_reasons[0] if gate_check.failure_reasons else "scene_gate_blocked",
-            revealed_fact_ids=(),
-            trust_delta=0.0,
-            stress_delta=0.0,
-            missing_required_slots=(),
-            repair_response_mode=None,
-            summary_check_passed=None,
-            unlock_outputs=_empty_unlocks(),
+        code = gate_check.failure_reasons[0] if gate_check.failure_reasons else "scene_gate_blocked"
+        turn = (
+            _refused_turn(request=request, code="insufficient_trust")
+            if code == "trust_below_threshold"
+            else _blocked_turn(request=request, code=code)
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
@@ -478,17 +676,52 @@ def execute_dialogue_turn(
             scene_state_after=scene_after,
             runtime_before=runtime_state,
             runtime_after=working_state,
+            summary_check=None,
         )
 
     scene_state = definition.scene_state
-    if request.intent_id not in scene_state.allowed_intents:
-        turn = DialogueTurnResult(
+    social_gate_refusal = _social_gate_refusal_code(definition, context)
+    if social_gate_refusal is not None:
+        turn = _refused_turn(request=request, code=social_gate_refusal)
+        scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
+        outcome = _outcome_from_status(turn.status)
+        return DialogueSceneTurnExecutionResult(
             scene_id=request.scene_id,
             npc_id=request.npc_id,
-            intent_id=request.intent_id,
-            status="invalid_intent",
-            code="intent_not_allowed_for_scene",
-            unlock_outputs=_empty_unlocks(),
+            outcome=outcome,
+            response_mode=_response_mode_from_outcome(outcome),
+            turn_result=turn,
+            gate_check=gate_check,
+            scene_state_before=scene_before,
+            scene_state_after=scene_after,
+            runtime_before=runtime_state,
+            runtime_after=working_state,
+            summary_check=None,
+        )
+
+    if request.intent_id not in scene_state.allowed_intents:
+        turn = _invalid_turn(request=request, code="intent_not_allowed_for_scene")
+        scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
+        outcome = _outcome_from_status(turn.status)
+        return DialogueSceneTurnExecutionResult(
+            scene_id=request.scene_id,
+            npc_id=request.npc_id,
+            outcome=outcome,
+            response_mode=_response_mode_from_outcome(outcome),
+            turn_result=turn,
+            gate_check=gate_check,
+            scene_state_before=scene_before,
+            scene_state_after=scene_after,
+            runtime_before=runtime_state,
+            runtime_after=working_state,
+            summary_check=None,
+        )
+
+    if _detect_wrong_register(request):
+        turn = _repair_turn(
+            request=request,
+            code="wrong_register",
+            response_mode=_repair_mode_for_trigger(scene_state, "wrong_register"),
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
@@ -503,26 +736,48 @@ def execute_dialogue_turn(
             scene_state_after=scene_after,
             runtime_before=runtime_state,
             runtime_after=working_state,
+            summary_check=None,
         )
 
+    if _detect_too_aggressive(request):
+        turn = _repair_turn(
+            request=request,
+            code="too_aggressive",
+            response_mode=_repair_mode_for_trigger(scene_state, "too_aggressive"),
+        )
+        scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
+        outcome = _outcome_from_status(turn.status)
+        return DialogueSceneTurnExecutionResult(
+            scene_id=request.scene_id,
+            npc_id=request.npc_id,
+            outcome=outcome,
+            response_mode=_response_mode_from_outcome(outcome),
+            turn_result=turn,
+            gate_check=gate_check,
+            scene_state_before=scene_before,
+            scene_state_after=scene_after,
+            runtime_before=runtime_state,
+            runtime_after=working_state,
+            summary_check=None,
+        )
+
+    intent_spec = get_dialogue_intent(request.intent_id)
     provided_slot_names = {slot.slot_name for slot in request.provided_slots}
-    missing = tuple(
+    missing_scene_slots = tuple(
         slot.slot_name
         for slot in scene_state.required_slots
         if slot.required and slot.slot_name not in provided_slot_names
     )
+    missing_intent_slots = tuple(
+        slot_name for slot_name in intent_spec.required_slot_names if slot_name not in provided_slot_names
+    )
+    missing = tuple(sorted(set(missing_scene_slots).union(missing_intent_slots)))
     if missing:
-        repair_mode = _repair_mode_for_trigger(scene_state, "missing_slot")
-        turn = DialogueTurnResult(
-            scene_id=request.scene_id,
-            npc_id=request.npc_id,
-            intent_id=request.intent_id,
-            status="repair",
+        turn = _repair_turn(
+            request=request,
             code="missing_required_slots",
+            response_mode=_repair_mode_for_trigger(scene_state, "missing_slot"),
             missing_required_slots=missing,
-            repair_response_mode=repair_mode,
-            summary_check_passed=None,
-            unlock_outputs=_empty_unlocks(),
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
@@ -537,18 +792,12 @@ def execute_dialogue_turn(
             scene_state_after=scene_after,
             runtime_before=runtime_state,
             runtime_after=working_state,
+            summary_check=None,
         )
 
     known_facts = _known_fact_pool(working_state, context)
     if any(fact_id not in known_facts for fact_id in request.presented_fact_ids):
-        turn = DialogueTurnResult(
-            scene_id=request.scene_id,
-            npc_id=request.npc_id,
-            intent_id=request.intent_id,
-            status="refused",
-            code="presented_fact_not_known",
-            unlock_outputs=_empty_unlocks(),
-        )
+        turn = _refused_turn(request=request, code="presented_fact_not_known")
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
         return DialogueSceneTurnExecutionResult(
@@ -562,18 +811,12 @@ def execute_dialogue_turn(
             scene_state_after=scene_after,
             runtime_before=runtime_state,
             runtime_after=working_state,
+            summary_check=None,
         )
 
     known_evidence = set(context.known_evidence_ids)
     if any(evidence_id not in known_evidence for evidence_id in request.presented_evidence_ids):
-        turn = DialogueTurnResult(
-            scene_id=request.scene_id,
-            npc_id=request.npc_id,
-            intent_id=request.intent_id,
-            status="refused",
-            code="presented_evidence_not_known",
-            unlock_outputs=_empty_unlocks(),
-        )
+        turn = _refused_turn(request=request, code="presented_evidence_not_known")
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
         return DialogueSceneTurnExecutionResult(
@@ -587,18 +830,14 @@ def execute_dialogue_turn(
             scene_state_after=scene_after,
             runtime_before=runtime_state,
             runtime_after=working_state,
+            summary_check=None,
         )
 
     if request.intent_id == "present_evidence" and not request.presented_evidence_ids:
-        repair_mode = _repair_mode_for_trigger(scene_state, "weak_evidence")
-        turn = DialogueTurnResult(
-            scene_id=request.scene_id,
-            npc_id=request.npc_id,
-            intent_id=request.intent_id,
-            status="repair",
+        turn = _repair_turn(
+            request=request,
             code="missing_evidence_reference",
-            repair_response_mode=repair_mode,
-            unlock_outputs=_empty_unlocks(),
+            response_mode="alternate_path",
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
@@ -613,18 +852,14 @@ def execute_dialogue_turn(
             scene_state_after=scene_after,
             runtime_before=runtime_state,
             runtime_after=working_state,
+            summary_check=None,
         )
 
     if request.intent_id == "challenge_contradiction" and len(request.presented_fact_ids) < 2:
-        repair_mode = _repair_mode_for_trigger(scene_state, "weak_evidence")
-        turn = DialogueTurnResult(
-            scene_id=request.scene_id,
-            npc_id=request.npc_id,
-            intent_id=request.intent_id,
-            status="repair",
+        turn = _repair_turn(
+            request=request,
             code="insufficient_contradiction_facts",
-            repair_response_mode=repair_mode,
-            unlock_outputs=_empty_unlocks(),
+            response_mode=_repair_mode_for_trigger(scene_state, "weak_evidence"),
         )
         scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
         outcome = _outcome_from_status(turn.status)
@@ -639,35 +874,67 @@ def execute_dialogue_turn(
             scene_state_after=scene_after,
             runtime_before=runtime_state,
             runtime_after=working_state,
+            summary_check=None,
         )
 
+    summary_check: SummaryCheckReport | None = None
     summary_check_passed: bool | None = None
     unlock_outputs = _empty_unlocks()
-    revealed_fact_ids: tuple[str, ...] = ()
+    revealed_fact_ids = _legal_turn_fact_reveals(
+        case_state=case_state,
+        definition=definition,
+        request=request,
+        known_facts=known_facts,
+        known_evidence=known_evidence,
+    )
     new_completion = completion_map[request.scene_id]
     new_active_scene = working_state.active_scene_id
     code = "turn_accepted"
 
-    if request.intent_id == "summarize_understanding":
-        summary_count = len(
-            {
-                fact_id
-                for fact_id in request.presented_fact_ids
-                if fact_id in known_facts and fact_id in set(scene_state.allowed_fact_ids)
-            }
+    if request.intent_id == "accuse" and scene_state.summary_requirement.required:
+        turn = _repair_turn(
+            request=request,
+            code="summary_required",
+            response_mode="sentence_stem",
+            summary_check_passed=False,
         )
-        summary_check_passed = summary_count >= scene_state.summary_requirement.min_fact_count
+        scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
+        outcome = _outcome_from_status(turn.status)
+        return DialogueSceneTurnExecutionResult(
+            scene_id=request.scene_id,
+            npc_id=request.npc_id,
+            outcome=outcome,
+            response_mode=_response_mode_from_outcome(outcome),
+            turn_result=turn,
+            gate_check=gate_check,
+            scene_state_before=scene_before,
+            scene_state_after=scene_after,
+            runtime_before=runtime_state,
+            runtime_after=working_state,
+            summary_check=SummaryCheckReport(
+                required=True,
+                min_fact_count=scene_state.summary_requirement.min_fact_count,
+                provided_fact_ids=request.presented_fact_ids,
+                accepted_fact_ids=(),
+                rejected_fact_ids=request.presented_fact_ids,
+                passed=False,
+                code="summary_required",
+            ),
+        )
+
+    if request.intent_id == "summarize_understanding":
+        summary_check = _build_summary_check_report(
+            scene_state=scene_state,
+            provided_fact_ids=request.presented_fact_ids,
+            known_facts=known_facts,
+        )
+        summary_check_passed = summary_check.passed
         if not summary_check_passed:
-            repair_mode = _repair_mode_for_trigger(scene_state, "weak_evidence")
-            turn = DialogueTurnResult(
-                scene_id=request.scene_id,
-                npc_id=request.npc_id,
-                intent_id=request.intent_id,
-                status="repair",
+            turn = _repair_turn(
+                request=request,
                 code="summary_insufficient_facts",
-                repair_response_mode=repair_mode,
+                response_mode="sentence_stem",
                 summary_check_passed=False,
-                unlock_outputs=_empty_unlocks(),
             )
             scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
             outcome = _outcome_from_status(turn.status)
@@ -682,18 +949,51 @@ def execute_dialogue_turn(
                 scene_state_after=scene_after,
                 runtime_before=runtime_state,
                 runtime_after=working_state,
+                summary_check=summary_check,
             )
         unlock_outputs = scene_state.unlock_outputs
-        revealed_fact_ids = tuple(sorted(scene_state.unlock_outputs.new_fact_ids))
+        revealed_fact_ids = tuple(
+            sorted(set(revealed_fact_ids).union(scene_state.unlock_outputs.new_fact_ids))
+        )
         new_completion = "completed"
         new_active_scene = None
         code = "scene_completed"
     elif request.intent_id == "goodbye":
+        if scene_state.summary_requirement.required and new_completion == "in_progress":
+            turn = _repair_turn(
+                request=request,
+                code="summary_needed",
+                response_mode="sentence_stem",
+                summary_check_passed=False,
+            )
+            scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
+            outcome = _outcome_from_status(turn.status)
+            return DialogueSceneTurnExecutionResult(
+                scene_id=request.scene_id,
+                npc_id=request.npc_id,
+                outcome=outcome,
+                response_mode=_response_mode_from_outcome(outcome),
+                turn_result=turn,
+                gate_check=gate_check,
+                scene_state_before=scene_before,
+                scene_state_after=scene_after,
+                runtime_before=runtime_state,
+                runtime_after=working_state,
+                summary_check=SummaryCheckReport(
+                    required=True,
+                    min_fact_count=scene_state.summary_requirement.min_fact_count,
+                    provided_fact_ids=request.presented_fact_ids,
+                    accepted_fact_ids=(),
+                    rejected_fact_ids=request.presented_fact_ids,
+                    passed=False,
+                    code="summary_needed",
+                ),
+            )
         new_completion = "available"
         new_active_scene = None
         code = "scene_paused"
 
-    trust_delta, stress_delta = _intent_affect(request.intent_id, "accepted")
+    trust_delta, stress_delta = _intent_affect(request.intent_id, "accepted", code)
     turn = DialogueTurnResult(
         scene_id=request.scene_id,
         npc_id=request.npc_id,
@@ -746,6 +1046,7 @@ def execute_dialogue_turn(
         scene_state_after=scene_after,
         runtime_before=runtime_state,
         runtime_after=runtime_after,
+        summary_check=summary_check,
     )
 
 
@@ -775,6 +1076,7 @@ __all__ = [
     "SceneEntryStatus",
     "SceneGateCheckResult",
     "SceneRuntimeOutcome",
+    "SummaryCheckReport",
     "apply_dialogue_turn_to_progress",
     "build_dialogue_execution_context",
     "build_initial_dialogue_scene_runtime",

@@ -136,8 +136,8 @@ def test_turn_blocks_when_scene_time_window_or_trust_gate_fails() -> None:
         ),
         context=_with_npc_trust(replace(context, elapsed_seconds=120.0), "marc", 0.05),
     )
-    assert trust_blocked.turn_result.status == "blocked_gate"
-    assert trust_blocked.turn_result.code == "trust_below_threshold"
+    assert trust_blocked.turn_result.status == "refused"
+    assert trust_blocked.turn_result.code == "insufficient_trust"
 
 
 def test_summary_turn_completes_scene_and_emits_unlock_outputs() -> None:
@@ -158,6 +158,8 @@ def test_summary_turn_completes_scene_and_emits_unlock_outputs() -> None:
     assert result.turn_result.code == "scene_completed"
     assert result.turn_result.summary_check_passed is True
     assert result.turn_result.revealed_fact_ids == ("N1",)
+    assert result.summary_check is not None
+    assert result.summary_check.passed is True
     assert result.scene_state_after.completion_state == "completed"
     assert result.runtime_after.active_scene_id is None
     assert "scene:S1:inspection_permission" in result.runtime_after.emitted_scene_completion_flags
@@ -189,6 +191,8 @@ def test_summary_insufficient_facts_repairs_and_does_not_complete_scene() -> Non
     )
     assert result.turn_result.status == "repair"
     assert result.turn_result.code == "summary_insufficient_facts"
+    assert result.summary_check is not None
+    assert result.summary_check.passed is False
     assert result.scene_state_after.completion_state == "in_progress"
 
 
@@ -223,7 +227,10 @@ def test_present_evidence_requires_known_evidence_reference() -> None:
             scene_id="S2",
             npc_id="marc",
             intent_id="present_evidence",
-            provided_slots=(DialogueTurnSlotValue(slot_name="reason", value="regarder ce ticket"),),
+            provided_slots=(
+                DialogueTurnSlotValue(slot_name="reason", value="regarder ce ticket"),
+                DialogueTurnSlotValue(slot_name="item", value="reçu du café"),
+            ),
         ),
         context=trust_context,
     )
@@ -237,13 +244,73 @@ def test_present_evidence_requires_known_evidence_reference() -> None:
             scene_id="S2",
             npc_id="marc",
             intent_id="present_evidence",
-            provided_slots=(DialogueTurnSlotValue(slot_name="reason", value="regarder ce ticket"),),
+            provided_slots=(
+                DialogueTurnSlotValue(slot_name="reason", value="regarder ce ticket"),
+                DialogueTurnSlotValue(slot_name="item", value="reçu du café"),
+            ),
             presented_evidence_ids=("E2_CAFE_RECEIPT",),
         ),
         context=trust_context,
     )
     assert unknown.turn_result.status == "refused"
     assert unknown.turn_result.code == "presented_evidence_not_known"
+
+
+def test_wrong_register_and_high_stress_produce_deterministic_non_accept_paths() -> None:
+    case_state, _npc_states, _progress, context, runtime = _setup("A")
+
+    wrong_register = execute_dialogue_turn(
+        case_state,
+        runtime,
+        DialogueTurnRequest(
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="ask_what_happened",
+            utterance_text="REGISTER:WRONG informal",
+        ),
+        context=context,
+    )
+    assert wrong_register.turn_result.status == "repair"
+    assert wrong_register.turn_result.code == "wrong_register"
+    assert wrong_register.response_mode == "repair"
+
+    stressed_context = replace(
+        context,
+        npc_states={
+            **context.npc_states,
+            "elodie": replace(context.npc_states["elodie"], stress=0.95, trust=0.8),
+        },
+    )
+    stress_refusal = execute_dialogue_turn(
+        case_state,
+        runtime,
+        DialogueTurnRequest(scene_id="S1", npc_id="elodie", intent_id="ask_what_happened"),
+        context=stressed_context,
+    )
+    assert stress_refusal.turn_result.status == "refused"
+    assert stress_refusal.turn_result.code.startswith("excessive_stress_")
+
+
+def test_legal_fact_reveal_is_scene_bound_and_stateful() -> None:
+    case_state, _npc_states, _progress, context, runtime = _setup("A")
+
+    first = execute_dialogue_turn(
+        case_state,
+        runtime,
+        DialogueTurnRequest(scene_id="S1", npc_id="elodie", intent_id="request_permission"),
+        context=context,
+    )
+    assert "N7" in first.turn_result.revealed_fact_ids
+    assert "N7" in first.runtime_after.revealed_fact_ids
+
+    second = execute_dialogue_turn(
+        case_state,
+        first.runtime_after,
+        DialogueTurnRequest(scene_id="S1", npc_id="elodie", intent_id="request_permission"),
+        context=context,
+    )
+    # Already-known legal fact should not be duplicated as newly revealed.
+    assert second.turn_result.revealed_fact_ids == ()
 
 
 def test_dialogue_turn_execution_is_deterministic_for_same_inputs() -> None:
