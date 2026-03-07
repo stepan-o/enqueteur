@@ -17,6 +17,10 @@ from .investigation_progress import (
     contradiction_required_for_accusation,
     contradiction_requirement_satisfied_for_accusation,
 )
+from .learning_state import (
+    build_debug_learning_projection,
+    build_visible_learning_projection,
+)
 from .models import CaseState
 from .npc_state import NPCState
 from .object_state import (
@@ -405,6 +409,12 @@ def build_visible_dialogue_projection(
             case_state,
             progress,
         ),
+        "learning": build_visible_learning_projection(
+            case_state=case_state,
+            runtime_state=runtime_state,
+            progress=progress,
+            recent_turns=recent_turns,
+        ),
     }
 
 
@@ -428,6 +438,12 @@ def build_debug_dialogue_projection(
         "known_fact_ids": list(progress.known_fact_ids),
         "known_evidence_ids": list(
             sorted(set(progress.discovered_evidence_ids).union(progress.collected_evidence_ids))
+        ),
+        "learning_private": build_debug_learning_projection(
+            case_state=case_state,
+            runtime_state=runtime_state,
+            progress=progress,
+            recent_turns=recent_turns,
         ),
     }
 

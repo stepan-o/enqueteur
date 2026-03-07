@@ -64,6 +64,8 @@ describe("Phase 5 shell panel rendering", () => {
 
         const panel = dialogue.root.querySelector(".dialogue-panel");
         expect(panel?.textContent).toContain("NPC State Card");
+        expect(panel?.textContent).toContain("Scaffolding");
+        expect(panel?.textContent).toContain("Hint level");
         expect(panel?.textContent).toContain("Emotion");
         expect(panel?.textContent).toContain("Stance");
         expect(panel?.textContent).toContain("Trust trend");

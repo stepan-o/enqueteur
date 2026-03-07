@@ -167,6 +167,50 @@ export type KvpDialogueSummaryRules = {
     current_scene_min_fact_count: number | null;
 };
 
+export type KvpLearningSceneSummaryState = {
+    scene_id: string;
+    required: boolean;
+    min_fact_count: number;
+    attempt_count: number;
+    completed: boolean;
+    summary_passed: boolean | null;
+    last_summary_code: string | null;
+};
+
+export type KvpLearningMinigameState = {
+    minigame_id: string;
+    attempt_count: number;
+    completed: boolean;
+    score: number;
+    max_score: number;
+    status: string;
+};
+
+export type KvpLearningScaffoldingPolicy = {
+    scene_id: string | null;
+    current_hint_level: string;
+    current_hint_rank: number;
+    allowed_hint_levels: string[];
+    recommended_mode: string;
+    english_meta_allowed: boolean;
+    french_action_required: boolean;
+    reason_code: string;
+    soft_hint_key: string | null;
+    sentence_stem_key: string | null;
+    rephrase_set_id: string | null;
+    english_meta_key: string | null;
+    target_minigame_id: string | null;
+};
+
+export type KvpLearningState = {
+    difficulty_profile: string;
+    active_scene_id: string | null;
+    current_hint_level: string;
+    summary_by_scene: KvpLearningSceneSummaryState[];
+    minigames: KvpLearningMinigameState[];
+    scaffolding_policy: KvpLearningScaffoldingPolicy;
+};
+
 export type KvpDialogueTurnLog = {
     turn_index: number;
     scene_id: string;
@@ -192,6 +236,7 @@ export type KvpDialogueState = {
     recent_turns: KvpDialogueTurnLog[];
     summary_rules: KvpDialogueSummaryRules;
     contradiction_requirement_satisfied: boolean;
+    learning?: KvpLearningState | null;
 };
 
 export type KvpState = {
@@ -603,5 +648,16 @@ function cloneDialogueState(value: KvpDialogueState | undefined): KvpDialogueSta
             ...value.summary_rules,
             required_scene_ids: [...value.summary_rules.required_scene_ids],
         },
+        learning: value.learning
+            ? {
+                  ...value.learning,
+                  summary_by_scene: value.learning.summary_by_scene.map((row) => ({ ...row })),
+                  minigames: value.learning.minigames.map((row) => ({ ...row })),
+                  scaffolding_policy: {
+                      ...value.learning.scaffolding_policy,
+                      allowed_hint_levels: [...value.learning.scaffolding_policy.allowed_hint_levels],
+                  },
+              }
+            : null,
     };
 }

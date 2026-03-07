@@ -190,6 +190,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             ["Known dialogue facts", String(dialogue.revealed_fact_ids.length)],
             ["Contradiction path", dialogue.contradiction_requirement_satisfied ? "satisfied" : "pending"],
         ]);
+        renderLearningSlice(panel, dialogue);
 
         renderSectionTitle(panel, "Scene Progress");
         renderSceneProgress(panel, dialogue.scene_completion, dialogue.surfaced_scene_ids, focusSceneId);
@@ -450,6 +451,25 @@ function renderNpcStateCard(panel: HTMLElement, npc: KvpNpcSemanticState | null)
 
     card.append(portraitSlot, meta);
     panel.appendChild(card);
+}
+
+function renderLearningSlice(panel: HTMLElement, dialogue: NonNullable<WorldState["dialogue"]>): void {
+    const learning = dialogue.learning;
+    if (!learning) return;
+    renderSectionTitle(panel, "Scaffolding");
+    renderDataLines(panel, [
+        ["Difficulty", learning.difficulty_profile],
+        ["Hint level", learning.current_hint_level],
+        ["Recommended mode", learning.scaffolding_policy.recommended_mode],
+        ["FR required", learning.scaffolding_policy.french_action_required ? "yes" : "no"],
+        ["Meta EN help", learning.scaffolding_policy.english_meta_allowed ? "yes" : "no"],
+        ["Policy reason", learning.scaffolding_policy.reason_code],
+    ]);
+    const completedMgs = learning.minigames.filter((row) => row.completed).length;
+    renderInfo(
+        panel,
+        `Minigames: ${completedMgs}/${learning.minigames.length} completed; target: ${learning.scaffolding_policy.target_minigame_id ?? "none"}`
+    );
 }
 
 function appendNpcLine(parent: HTMLElement, labelText: string, valueText: string): void {

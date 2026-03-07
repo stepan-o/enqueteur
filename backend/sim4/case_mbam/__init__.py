@@ -218,6 +218,17 @@ from .dialogue_runtime import (
     execute_dialogue_turn,
     make_dialogue_turn_log_entry,
 )
+from .learning_state import (
+    LearningHintLevel,
+    LearningState,
+    MinigameId,
+    MinigameLearningState,
+    ScaffoldingPolicyState,
+    SceneSummaryLearningState,
+    build_debug_learning_projection,
+    build_learning_state,
+    build_visible_learning_projection,
+)
 
 __all__ = [
     "AlibiClaim",
@@ -286,6 +297,15 @@ __all__ = [
     "build_debug_investigation_projection",
     "build_visible_dialogue_projection",
     "build_debug_dialogue_projection",
+    "LearningHintLevel",
+    "LearningState",
+    "MinigameId",
+    "MinigameLearningState",
+    "ScaffoldingPolicyState",
+    "SceneSummaryLearningState",
+    "build_learning_state",
+    "build_visible_learning_projection",
+    "build_debug_learning_projection",
     "AffordanceDefinition",
     "AffordanceId",
     "AffordanceRepeatPolicy",
