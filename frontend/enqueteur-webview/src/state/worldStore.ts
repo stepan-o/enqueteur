@@ -90,6 +90,110 @@ export type KvpEvent = {
     payload: Record<string, unknown>;
 };
 
+export type KvpCaseVisibleSlice = {
+    public_room_ids: string[];
+    public_object_ids: string[];
+    starting_scene_id: string;
+    starting_known_fact_ids: string[];
+};
+
+export type KvpCaseStateSlice = {
+    case_id: string;
+    seed: string;
+    truth_epoch: number;
+    visible_case_slice: KvpCaseVisibleSlice;
+};
+
+export type KvpNpcSemanticCardState = {
+    portrait_variant: string;
+    tell_cue: string | null;
+    suggested_interaction_mode: string;
+    trust_trend: string;
+};
+
+export type KvpNpcSemanticState = {
+    npc_id: string;
+    current_room_id: string;
+    availability: string;
+    trust: number;
+    stress: number;
+    stance: string;
+    emotion: string;
+    soft_alignment_hint: string;
+    visible_behavior_flags: string[];
+    current_scene_id: string | null;
+    card_state: KvpNpcSemanticCardState;
+};
+
+export type KvpInvestigationObjectState = {
+    object_id: string;
+    affordances: string[];
+    observed_affordances: string[];
+    known_state: Record<string, unknown>;
+};
+
+export type KvpInvestigationEvidenceState = {
+    discovered_ids: string[];
+    collected_ids: string[];
+    observed_not_collected_ids: string[];
+};
+
+export type KvpInvestigationFactState = {
+    known_fact_ids: string[];
+};
+
+export type KvpContradictionAvailabilityState = {
+    unlockable_edge_ids: string[];
+    known_edge_ids: string[];
+    required_for_accusation: boolean;
+    requirement_satisfied: boolean;
+};
+
+export type KvpInvestigationState = {
+    truth_epoch: number;
+    objects: KvpInvestigationObjectState[];
+    evidence: KvpInvestigationEvidenceState;
+    facts: KvpInvestigationFactState;
+    contradictions: KvpContradictionAvailabilityState;
+};
+
+export type KvpDialogueSceneCompletion = {
+    scene_id: string;
+    completion_state: string;
+};
+
+export type KvpDialogueSummaryRules = {
+    required_scene_ids: string[];
+    current_scene_min_fact_count: number | null;
+};
+
+export type KvpDialogueTurnLog = {
+    turn_index: number;
+    scene_id: string;
+    npc_id: string;
+    intent_id: string;
+    status: string;
+    code: string;
+    outcome: string;
+    response_mode: string;
+    revealed_fact_ids: string[];
+    trust_delta: number;
+    stress_delta: number;
+    repair_response_mode: string | null;
+    summary_check_code: string | null;
+};
+
+export type KvpDialogueState = {
+    truth_epoch: number;
+    active_scene_id: string | null;
+    scene_completion: KvpDialogueSceneCompletion[];
+    surfaced_scene_ids: string[];
+    revealed_fact_ids: string[];
+    recent_turns: KvpDialogueTurnLog[];
+    summary_rules: KvpDialogueSummaryRules;
+    contradiction_requirement_satisfied: boolean;
+};
+
 export type KvpState = {
     rooms: KvpRoom[];
     agents: KvpAgent[];
@@ -97,6 +201,10 @@ export type KvpState = {
     objects?: KvpObject[];
     world?: WorldMeta;
     events: KvpEvent[];
+    case?: KvpCaseStateSlice;
+    npc_semantic?: KvpNpcSemanticState[];
+    investigation?: KvpInvestigationState;
+    dialogue?: KvpDialogueState;
     debug?: unknown;
 };
 
@@ -119,7 +227,11 @@ export type DiffOp =
     | { op: "UPSERT_OBJECT"; object: KvpObject }
     | { op: "REMOVE_OBJECT"; object_id: number }
     | { op: "UPSERT_EVENT"; event: KvpEvent }
-    | { op: "REMOVE_EVENT"; event_key: { tick: number; event_id: number } };
+    | { op: "REMOVE_EVENT"; event_key: { tick: number; event_id: number } }
+    | { op: "SET_CASE"; case: KvpCaseStateSlice | null }
+    | { op: "SET_NPC_SEMANTIC"; npc_semantic: KvpNpcSemanticState[] }
+    | { op: "SET_INVESTIGATION"; investigation: KvpInvestigationState | null }
+    | { op: "SET_DIALOGUE"; dialogue: KvpDialogueState | null };
 
 export type FrameDiffPayload = {
     schema_version: string;
@@ -183,6 +295,10 @@ export type WorldState = {
     items: Map<number, KvpItem>;
     objects: Map<number, KvpObject>;
     events: Map<string, KvpEvent>;
+    caseState: KvpCaseStateSlice | null;
+    npcSemantic: KvpNpcSemanticState[];
+    investigation: KvpInvestigationState | null;
+    dialogue: KvpDialogueState | null;
     debug?: unknown;
 };
 
@@ -209,6 +325,10 @@ export class WorldStore {
             items: new Map(),
             objects: new Map(),
             events: new Map(),
+            caseState: null,
+            npcSemantic: [],
+            investigation: null,
+            dialogue: null,
             debug: undefined,
         };
     }
@@ -292,6 +412,10 @@ export class WorldStore {
             items,
             objects,
             events,
+            caseState: cloneCaseState(payload.state.case),
+            npcSemantic: cloneNpcSemantic(payload.state.npc_semantic),
+            investigation: cloneInvestigationState(payload.state.investigation),
+            dialogue: cloneDialogueState(payload.state.dialogue),
             debug: payload.state.debug,
         };
 
@@ -321,6 +445,10 @@ export class WorldStore {
         const objects = new Map(this.state.objects);
         const events = new Map(this.state.events);
         let world = this.state.world;
+        let caseState = this.state.caseState;
+        let npcSemantic = this.state.npcSemantic;
+        let investigation = this.state.investigation;
+        let dialogue = this.state.dialogue;
 
         for (const op of payload.ops) {
             switch (op.op) {
@@ -360,6 +488,18 @@ export class WorldStore {
                 case "REMOVE_EVENT":
                     events.delete(eventKeyFromKey(op.event_key));
                     break;
+                case "SET_CASE":
+                    caseState = cloneCaseState(op.case ?? undefined);
+                    break;
+                case "SET_NPC_SEMANTIC":
+                    npcSemantic = cloneNpcSemantic(op.npc_semantic);
+                    break;
+                case "SET_INVESTIGATION":
+                    investigation = cloneInvestigationState(op.investigation ?? undefined);
+                    break;
+                case "SET_DIALOGUE":
+                    dialogue = cloneDialogueState(op.dialogue ?? undefined);
+                    break;
                 default:
                     this.markDesync(`Unknown diff op: ${(op as { op: string }).op}`);
                     return;
@@ -376,6 +516,10 @@ export class WorldStore {
             items,
             objects,
             events,
+            caseState,
+            npcSemantic,
+            investigation,
+            dialogue,
         };
 
         this.emit();
@@ -392,4 +536,72 @@ export function eventKey(ev: KvpEvent): string {
 
 export function eventKeyFromKey(key: { tick: number; event_id: number }): string {
     return `${key.tick}:${key.event_id}`;
+}
+
+function cloneCaseState(value: KvpCaseStateSlice | undefined): KvpCaseStateSlice | null {
+    if (!value) return null;
+    return {
+        ...value,
+        visible_case_slice: {
+            ...value.visible_case_slice,
+            public_room_ids: [...value.visible_case_slice.public_room_ids],
+            public_object_ids: [...value.visible_case_slice.public_object_ids],
+            starting_known_fact_ids: [...value.visible_case_slice.starting_known_fact_ids],
+        },
+    };
+}
+
+function cloneNpcSemantic(value: KvpNpcSemanticState[] | undefined): KvpNpcSemanticState[] {
+    if (!value) return [];
+    return value.map((row) => ({
+        ...row,
+        visible_behavior_flags: [...row.visible_behavior_flags],
+        card_state: { ...row.card_state },
+    }));
+}
+
+function cloneInvestigationState(value: KvpInvestigationState | undefined): KvpInvestigationState | null {
+    if (!value) return null;
+    return {
+        ...value,
+        objects: value.objects.map((obj) => ({
+            ...obj,
+            affordances: [...obj.affordances],
+            observed_affordances: [...obj.observed_affordances],
+            known_state: { ...obj.known_state },
+        })),
+        evidence: {
+            ...value.evidence,
+            discovered_ids: [...value.evidence.discovered_ids],
+            collected_ids: [...value.evidence.collected_ids],
+            observed_not_collected_ids: [...value.evidence.observed_not_collected_ids],
+        },
+        facts: {
+            ...value.facts,
+            known_fact_ids: [...value.facts.known_fact_ids],
+        },
+        contradictions: {
+            ...value.contradictions,
+            unlockable_edge_ids: [...value.contradictions.unlockable_edge_ids],
+            known_edge_ids: [...value.contradictions.known_edge_ids],
+        },
+    };
+}
+
+function cloneDialogueState(value: KvpDialogueState | undefined): KvpDialogueState | null {
+    if (!value) return null;
+    return {
+        ...value,
+        scene_completion: value.scene_completion.map((row) => ({ ...row })),
+        surfaced_scene_ids: [...value.surfaced_scene_ids],
+        revealed_fact_ids: [...value.revealed_fact_ids],
+        recent_turns: value.recent_turns.map((turn) => ({
+            ...turn,
+            revealed_fact_ids: [...turn.revealed_fact_ids],
+        })),
+        summary_rules: {
+            ...value.summary_rules,
+            required_scene_ids: [...value.summary_rules.required_scene_ids],
+        },
+    };
 }
