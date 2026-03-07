@@ -142,6 +142,13 @@ from .investigation_commands import (
     make_investigation_command,
     validate_investigation_command,
 )
+from .investigation_execution import (
+    ExecutionKind,
+    InvestigationExecutionResult,
+    ObservationEntry,
+    StateTransition,
+    execute_investigation_command,
+)
 
 __all__ = [
     "AlibiClaim",
@@ -244,6 +251,11 @@ __all__ = [
     "list_supported_command_forms",
     "make_investigation_command",
     "validate_investigation_command",
+    "ExecutionKind",
+    "InvestigationExecutionResult",
+    "ObservationEntry",
+    "StateTransition",
+    "execute_investigation_command",
     "PortraitConfig",
     "get_cast_entry",
     "get_cast_registry",
