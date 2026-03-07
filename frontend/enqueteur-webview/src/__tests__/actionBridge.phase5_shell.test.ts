@@ -81,6 +81,39 @@ describe("Phase 5 action bridge", () => {
         expect(result.revealed_evidence_ids).toContain("E1_TORN_NOTE");
     });
 
+    it("treats observed-not-collected evidence projection as investigation state change", async () => {
+        const store = new WorldStore();
+        store.applySnapshot(makeMbamSnapshot(2));
+
+        const fakeClient = {
+            canSendSimInput: () => true,
+            sendSimInput: () => {
+                const state = store.getState();
+                const next = cloneInvestigation(state.investigation!);
+                next.evidence.observed_not_collected_ids.push("clue:evidence:E3_METHOD_TRACE:observed_not_collected");
+                store.applyDiff(makeStateDiff(state, [{ op: "SET_INVESTIGATION", investigation: next }]));
+                return true;
+            },
+        } as unknown as KvpClient;
+
+        const bridge = createFrontendActionBridge({
+            store,
+            getMode: () => "live",
+            getClient: () => fakeClient,
+            projectionTimeoutMs: 40,
+        });
+
+        const result = await bridge.submitInvestigationAction({
+            worldObjectId: 3007,
+            caseObjectId: "O9_RECEIPT_PRINTER",
+            affordanceId: "ask_for_receipt",
+            tick: 2,
+        });
+
+        expect(result.status).toBe("accepted");
+        expect(result.code).toBe("projection_state_changed");
+    });
+
     it("submits dialogue turn in live mode and maps projected turn status", async () => {
         const store = new WorldStore();
         store.applySnapshot(makeMbamSnapshot(3));
@@ -131,5 +164,55 @@ describe("Phase 5 action bridge", () => {
         expect(result.status).toBe("repair");
         expect(result.code).toBe("summary_missing_fact");
         expect(result.summary).toContain("sentence_stem");
+    });
+
+    it("does not bind dialogue result to unrelated projected turns", async () => {
+        const store = new WorldStore();
+        store.applySnapshot(makeMbamSnapshot(4));
+
+        const fakeClient = {
+            canSendSimInput: () => true,
+            sendSimInput: () => {
+                const state = store.getState();
+                const next = cloneDialogue(state.dialogue!);
+                next.recent_turns.push({
+                    turn_index: 1,
+                    scene_id: "S2",
+                    npc_id: "marc",
+                    intent_id: "request_access",
+                    status: "accepted",
+                    code: "ok",
+                    outcome: "access_path_shared",
+                    response_mode: "direct",
+                    revealed_fact_ids: ["N2"],
+                    trust_delta: 0,
+                    stress_delta: 0,
+                    repair_response_mode: null,
+                    summary_check_code: null,
+                });
+                store.applyDiff(makeStateDiff(state, [{ op: "SET_DIALOGUE", dialogue: next }]));
+                return true;
+            },
+        } as unknown as KvpClient;
+
+        const bridge = createFrontendActionBridge({
+            store,
+            getMode: () => "live",
+            getClient: () => fakeClient,
+            projectionTimeoutMs: 30,
+        });
+
+        const result = await bridge.submitDialogueTurn({
+            sceneId: "S1",
+            npcId: "elodie",
+            intentId: "summarize_understanding",
+            providedSlots: [],
+            presentedFactIds: ["N1"],
+            presentedEvidenceIds: [],
+            tick: 4,
+        });
+
+        expect(result.status).toBe("submitted");
+        expect(result.code).toBe("awaiting_projection_update");
     });
 });

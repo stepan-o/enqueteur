@@ -37,6 +37,7 @@ type InvestigationBaseline = {
     knownFactIds: Set<string>;
     discoveredEvidenceIds: Set<string>;
     collectedEvidenceIds: Set<string>;
+    observedNotCollectedIds: Set<string>;
 };
 
 type InvestigationProjectionOutcome = {
@@ -198,6 +199,7 @@ function captureInvestigationBaseline(
         knownFactIds: new Set(state.investigation?.facts.known_fact_ids ?? []),
         discoveredEvidenceIds: new Set(state.investigation?.evidence.discovered_ids ?? []),
         collectedEvidenceIds: new Set(state.investigation?.evidence.collected_ids ?? []),
+        observedNotCollectedIds: new Set(state.investigation?.evidence.observed_not_collected_ids ?? []),
     };
 }
 
@@ -216,6 +218,10 @@ function detectInvestigationProjectionOutcome(
     const newFactIds = toSortedDiff(investigation.facts.known_fact_ids, baseline.knownFactIds);
     const newEvidenceIds = toSortedDiff(investigation.evidence.discovered_ids, baseline.discoveredEvidenceIds);
     const newCollectedIds = toSortedDiff(investigation.evidence.collected_ids, baseline.collectedEvidenceIds);
+    const newObservedNotCollected = toSortedDiff(
+        investigation.evidence.observed_not_collected_ids,
+        baseline.observedNotCollectedIds
+    );
     const mergedEvidence = Array.from(new Set([...newEvidenceIds, ...newCollectedIds])).sort();
 
     if (!baseline.affordanceObserved && affordanceObserved) {
@@ -229,6 +235,7 @@ function detectInvestigationProjectionOutcome(
     const stateChanged =
         newFactIds.length > 0 ||
         mergedEvidence.length > 0 ||
+        newObservedNotCollected.length > 0 ||
         objectKnownStateHash !== baseline.objectKnownStateHash;
     if (stateChanged) {
         return {
@@ -275,7 +282,7 @@ function waitForDialogueProjectedTurn(
                 return row;
             }
         }
-        return candidates[candidates.length - 1] ?? null;
+        return null;
     }, timeoutMs);
 }
 
@@ -286,19 +293,31 @@ function waitForStoreProjectionResult<TResult>(
 ): Promise<TResult | null> {
     return new Promise((resolve) => {
         let settled = false;
-        let unsub: () => void = () => {};
+        let needsUnsubAfterAttach = false;
+        let unsub: (() => void) | null = null;
         let timer = 0;
         const finish = (value: TResult | null): void => {
             if (settled) return;
             settled = true;
-            unsub();
+            if (unsub) {
+                unsub();
+                unsub = null;
+            } else {
+                needsUnsubAfterAttach = true;
+            }
             window.clearTimeout(timer);
             resolve(value);
         };
-        unsub = store.subscribe((state) => {
+        const attachedUnsub = store.subscribe((state) => {
             const outcome = evaluator(state);
             if (outcome !== null) finish(outcome);
         });
+        if (needsUnsubAfterAttach) {
+            attachedUnsub();
+            unsub = null;
+        } else {
+            unsub = attachedUnsub;
+        }
         timer = window.setTimeout(() => finish(null), timeoutMs);
     });
 }
