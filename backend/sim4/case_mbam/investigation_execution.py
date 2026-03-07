@@ -507,12 +507,11 @@ def execute_investigation_command(
         exec_kind = "executed"
 
     result_facts = _filter_legal_fact_candidates(case_state, fact_candidates)
+    # Only successful execution may reveal new facts/evidence. No-op outcomes
+    # remain observational and must not unlock truth-graph progression.
     if ack.kind != "success":
-        if ack.kind == "no_op":
-            result_facts = _filter_legal_fact_candidates(case_state, ack.reveal_fact_ids)
-        else:
-            result_facts = ()
-            revealed_evidence = ()
+        result_facts = ()
+        revealed_evidence = ()
 
     consumed_key: str | None = None
     if ack.kind == "success":

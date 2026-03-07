@@ -356,7 +356,7 @@ _AFFORDANCE_DEFINITIONS: tuple[AffordanceDefinition, ...] = (
         object_id="O4_BENCH",
         result_fields=("under_bench_item", "found_item"),
         can_reveal_evidence=True,
-        reveal_evidence_ids=("E1_TORN_NOTE",),
+        reveal_evidence_ids=("E1_TORN_NOTE", "E2_CAFE_RECEIPT"),
         repeat_policy="state_dependent",
         state_dependencies=("o4_bench.under_bench_item",),
     ),
@@ -477,7 +477,12 @@ def build_initial_mbam_object_state(case_state: CaseState) -> MbamObjectStateBun
     evidence = case_state.evidence_placement
     roles = case_state.roles_assignment
     lock_state: DisplayCaseLockState = "unlocked" if roles.method == "case_left_unlatched" else "locked"
-    medallion_location = _medallion_location_from_drop(roles.drop)
+    drop_from_evidence = evidence.drop_location.location_id
+    if drop_from_evidence != roles.drop:
+        raise ValueError(
+            "CaseState inconsistency: evidence.drop_location.location_id must match roles_assignment.drop"
+        )
+    medallion_location = _medallion_location_from_drop(drop_from_evidence)
     recent_receipt_id = evidence.cafe.receipt_id or f"R-{case_state.seed}-1752"
 
     return MbamObjectStateBundle(

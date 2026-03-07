@@ -255,6 +255,25 @@ def test_phase3f_fact_unlocks_and_contradiction_require_required_ingredients() -
     assert contradiction_requirement_satisfied_for_accusation(case_state, contradiction.progress_after) is True
 
 
+def test_phase3f_noop_execution_does_not_unlock_truth_graph_facts() -> None:
+    case_state, object_state, progress = _initial("C")
+
+    execution = execute_investigation_command(
+        make_investigation_command(object_id="O6_BADGE_TERMINAL", affordance_id="view_logs"),
+        case_state=case_state,
+        object_state=object_state,
+        elapsed_seconds=900.0,
+        available_prerequisites=("access:terminal_granted",),
+    )
+    assert execution.ack.kind == "no_op"
+    assert execution.ack.code == "terminal_archived_access_friction"
+    assert execution.fact_unlock_candidates == ()
+
+    update = apply_execution_result_to_progress(case_state, progress, execution)
+    assert "N3" not in update.progress_after.known_fact_ids
+    assert "E3" not in update.progress_after.unlockable_contradiction_edge_ids
+
+
 def test_phase3f_projection_visible_shape_is_structural_and_safe() -> None:
     case_state, object_state, progress, visible = _run_investigation_sequence("C")
     debug = build_debug_investigation_projection(

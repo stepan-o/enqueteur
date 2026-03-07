@@ -75,7 +75,7 @@ def test_affordance_reveal_contracts_are_explicit() -> None:
     assert by_key[("O6_BADGE_TERMINAL", "view_logs")].reveal_fact_ids == ("N3",)
     assert by_key[("O9_RECEIPT_PRINTER", "read_receipt")].reveal_fact_ids == ("N4",)
 
-    assert by_key[("O4_BENCH", "inspect")].reveal_evidence_ids == ("E1_TORN_NOTE",)
+    assert by_key[("O4_BENCH", "inspect")].reveal_evidence_ids == ("E1_TORN_NOTE", "E2_CAFE_RECEIPT")
     assert by_key[("O9_RECEIPT_PRINTER", "ask_for_receipt")].reveal_evidence_ids == ("E2_CAFE_RECEIPT",)
     assert by_key[("O1_DISPLAY_CASE", "examine_surface")].reveal_evidence_ids == ("E3_METHOD_TRACE",)
 
