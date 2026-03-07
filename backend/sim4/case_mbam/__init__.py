@@ -132,6 +132,16 @@ from .object_state import (
     list_affordances,
     list_mbam_object_ids,
 )
+from .investigation_commands import (
+    InvestigationAckKind,
+    InvestigationCommand,
+    InvestigationCommandAck,
+    InvestigationExecutionIntent,
+    command_action_key,
+    list_supported_command_forms,
+    make_investigation_command,
+    validate_investigation_command,
+)
 
 __all__ = [
     "AlibiClaim",
@@ -226,6 +236,14 @@ __all__ = [
     "get_object_world_binding",
     "list_affordances",
     "list_mbam_object_ids",
+    "InvestigationAckKind",
+    "InvestigationCommand",
+    "InvestigationCommandAck",
+    "InvestigationExecutionIntent",
+    "command_action_key",
+    "list_supported_command_forms",
+    "make_investigation_command",
+    "validate_investigation_command",
     "PortraitConfig",
     "get_cast_entry",
     "get_cast_registry",
