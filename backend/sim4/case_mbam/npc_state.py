@@ -231,10 +231,10 @@ def _state_with_overlay(state: NPCState, overlay: CharacterOverlay) -> NPCState:
         emotion=state.emotion,
         soft_alignment_hint=alignment,
         visible_behavior_flags=visible_flags,
-        known_fact_flags=tuple(overlay.knowledge_flags),
-        belief_flags=tuple(overlay.belief_flags),
+        known_fact_flags=tuple(sorted(set(overlay.knowledge_flags))),
+        belief_flags=tuple(sorted(set(overlay.belief_flags))),
         hidden_flags=hidden_flags,
-        misremember_flags=tuple(overlay.misremember_flags),
+        misremember_flags=tuple(sorted(set(overlay.misremember_flags))),
         current_scene_id=state.current_scene_id,
         schedule_state=state.schedule_state,
         card_state=NPCCardState(
@@ -251,6 +251,12 @@ def apply_npc_affect_update(state: NPCState, update: NPCAffectUpdate) -> NPCStat
     """Apply deterministic trust/stress/stance/emotion scaffolding update."""
     trust = min(1.0, max(0.0, state.trust + float(update.trust_delta)))
     stress = min(1.0, max(0.0, state.stress + float(update.stress_delta)))
+    if update.trust_delta > 0:
+        trust_trend: NpcTrustTrend = "up"
+    elif update.trust_delta < 0:
+        trust_trend = "down"
+    else:
+        trust_trend = "flat"
     visible_behavior_flags = tuple(
         sorted({*state.visible_behavior_flags, *update.add_visible_behavior_flags})
     )
@@ -272,7 +278,13 @@ def apply_npc_affect_update(state: NPCState, update: NPCAffectUpdate) -> NPCStat
         misremember_flags=state.misremember_flags,
         current_scene_id=state.current_scene_id,
         schedule_state=state.schedule_state,
-        card_state=state.card_state,
+        card_state=NPCCardState(
+            portrait_variant=state.card_state.portrait_variant,
+            tell_cue=state.card_state.tell_cue,
+            profile_id=state.card_state.profile_id,
+            suggested_interaction_mode=state.card_state.suggested_interaction_mode,
+            trust_trend=trust_trend,
+        ),
     )
 
 

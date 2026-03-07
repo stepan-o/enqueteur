@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from backend.sim4.case_mbam import (
     build_debug_npc_semantic_projection,
     build_visible_npc_semantic_projection,
@@ -54,6 +56,38 @@ def test_visible_projection_sanitizes_overlay_behavior_flags() -> None:
     flags = marc["visible_behavior_flags"]
     assert all(not str(flag).startswith("overlay_role_") for flag in flags)
     assert all(not str(flag).startswith("overlay_helpfulness_") for flag in flags)
+
+
+def test_visible_projection_sanitizes_private_flag_prefixes() -> None:
+    world_ctx = WorldContext()
+    apply_mbam_layout(world_ctx)
+    states = initialize_mbam_npc_states_from_case_state(
+        world_ctx,
+        generate_case_state_for_seed_id("C"),
+    )
+    marc_state = states["marc"]
+    states["marc"] = replace(
+        marc_state,
+        visible_behavior_flags=tuple(
+            sorted(
+                {
+                    *marc_state.visible_behavior_flags,
+                    "seed_C",
+                    "method_case_left_unlatched",
+                    "drop_coat_rack_pocket",
+                    "tell_access_gatekeeper",
+                }
+            )
+        ),
+    )
+
+    projection = build_visible_npc_semantic_projection(states)
+    marc = next(entry for entry in projection if entry["npc_id"] == "marc")
+    flags = set(marc["visible_behavior_flags"])
+    assert "seed_C" not in flags
+    assert "method_case_left_unlatched" not in flags
+    assert "drop_coat_rack_pocket" not in flags
+    assert "tell_access_gatekeeper" in flags
 
 
 def test_debug_npc_semantic_projection_includes_private_overlay_truth() -> None:

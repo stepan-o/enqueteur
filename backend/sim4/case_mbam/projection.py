@@ -56,7 +56,18 @@ def build_debug_case_projection(case_state: CaseState, *, truth_epoch: int = 1) 
 
 
 def _sanitize_visible_behavior_flags(flags: tuple[str, ...]) -> tuple[str, ...]:
-    hidden_prefixes = ("overlay_role_", "overlay_helpfulness_")
+    # Keep visible behavior hints while preventing accidental leakage of
+    # role/method/seed-private traces if future flags are added.
+    hidden_prefixes = (
+        "overlay_",
+        "seed_",
+        "slot_",
+        "method_",
+        "drop_",
+        "culprit_",
+        "misdirector_",
+        "ally_",
+    )
     return tuple(flag for flag in flags if not flag.startswith(hidden_prefixes))
 
 

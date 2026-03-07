@@ -53,6 +53,7 @@ def test_timeline_runtime_applies_archive_friction_to_marc() -> None:
     marc = final_states["marc"]
     assert marc.availability == "restricted"
     assert marc.emotion == "annoyed"
+    assert marc.card_state.trust_trend == "down"
     assert marc.schedule_state.current_beat_id == "T_PLUS_15_TERMINAL_ARCHIVE"
     assert marc.trust <= base_trust
 
