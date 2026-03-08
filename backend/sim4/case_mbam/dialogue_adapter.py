@@ -12,6 +12,7 @@ Hard boundary:
 """
 
 from dataclasses import dataclass
+import re
 from typing import Literal, Protocol, runtime_checkable
 
 from .dialogue_domain import DialogueIntentId, DialogueSlotName, DialogueTurnStatus
@@ -22,12 +23,23 @@ from .npc_state import NPCState, NpcAvailability, NpcEmotion, NpcInteractionMode
 
 
 DialogueAdapterResponseMode = Literal["accept", "block", "repair", "reject"]
+_FACT_ID_TOKEN_RE = re.compile(r"\bN\d+\b", re.IGNORECASE)
 
 
 def _sorted_unique(values: tuple[str, ...] | list[str] | None) -> tuple[str, ...]:
     if values is None:
         return ()
     return tuple(sorted({value for value in values if isinstance(value, str) and value}))
+
+
+def _extract_fact_id_mentions(values: tuple[str | None, ...]) -> tuple[str, ...]:
+    out: set[str] = set()
+    for value in values:
+        if value is None:
+            continue
+        for match in _FACT_ID_TOKEN_RE.findall(value):
+            out.add(match.upper())
+    return tuple(sorted(out))
 
 
 @dataclass(frozen=True)
@@ -297,6 +309,51 @@ def validate_dialogue_adapter_output(output: DialogueAdapterOutput, payload: Dia
             + ", ".join(leaked)
         )
 
+    mentioned_fact_ids = _extract_fact_id_mentions(
+        (
+            output.npc_utterance_text,
+            output.short_rephrase_line,
+            output.hint_line,
+            output.summary_prompt_line,
+            *output.response_mode_metadata,
+        )
+    )
+    leaked_mentions = sorted(fact_id for fact_id in mentioned_fact_ids if fact_id not in legal_fact_ids)
+    if leaked_mentions:
+        raise ValueError(
+            "DialogueAdapterOutput text contains fact ids outside legal visible slice: "
+            + ", ".join(leaked_mentions)
+        )
+
+    combined_text = " ".join(
+        row
+        for row in (
+            output.npc_utterance_text,
+            output.short_rephrase_line,
+            output.hint_line,
+            output.summary_prompt_line,
+            *output.response_mode_metadata,
+        )
+        if row is not None
+    ).lower()
+    restricted_fact_rows = tuple(
+        row
+        for row in payload.allowed_fact_payloads
+        if row.fact_id not in legal_fact_ids and row.text.strip()
+    )
+    leaked_fact_text_ids = tuple(
+        sorted(
+            row.fact_id
+            for row in restricted_fact_rows
+            if row.text.strip().lower() in combined_text
+        )
+    )
+    if leaked_fact_text_ids:
+        raise ValueError(
+            "DialogueAdapterOutput text contains fact content outside legal visible slice: "
+            + ", ".join(leaked_fact_text_ids)
+        )
+
 
 class DeterministicDialoguePresentationAdapter(OptionalDialoguePresentationAdapter):
     """Fallback adapter with deterministic templated phrasing only."""
@@ -348,4 +405,3 @@ __all__ = [
     "build_dialogue_adapter_input",
     "validate_dialogue_adapter_output",
 ]
-
