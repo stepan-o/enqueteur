@@ -248,6 +248,7 @@ from .dialogue_adapter_resolution import (
     normalize_and_validate_adapter_output,
     resolve_dialogue_adapter_output,
 )
+from .dialogue_adapter_style import MbamStyleDialoguePresentationAdapter
 from .learning_state import (
     LearningHintLevel,
     LearningState,
@@ -522,6 +523,7 @@ __all__ = [
     "build_deterministic_fallback_output",
     "normalize_and_validate_adapter_output",
     "resolve_dialogue_adapter_output",
+    "MbamStyleDialoguePresentationAdapter",
     "build_safe_dialogue_adapter_context",
     "build_safe_dialogue_adapter_context_from_turn",
     "validate_dialogue_adapter_output",

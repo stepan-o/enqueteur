@@ -238,6 +238,12 @@ export type KvpDialogueTurnLog = {
     stress_delta: number;
     repair_response_mode: string | null;
     summary_check_code: string | null;
+    presentation_source?: string | null;
+    presentation_reason_code?: string | null;
+    npc_utterance_text?: string | null;
+    short_rephrase_line?: string | null;
+    hint_line?: string | null;
+    summary_prompt_line?: string | null;
 };
 
 export type KvpDialogueState = {

@@ -10,7 +10,7 @@ remain untouched; this is pure orchestration.
 from dataclasses import dataclass
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Literal, Sequence
 import hashlib
 
 from backend.sim4.case_mbam import (
@@ -55,13 +55,19 @@ from backend.sim4.case_mbam import (
     build_visible_npc_semantic_projection,
     build_visible_learning_projection,
     build_debug_learning_projection,
+    build_dialogue_adapter_input,
     evaluate_mbam_case_outcome,
     execute_contradiction_edge,
     execute_dialogue_turn,
     execute_investigation_command,
     generate_case_state,
     initialize_mbam_npc_states_from_case_state,
+    build_learning_state,
     make_dialogue_turn_log_entry,
+    resolve_dialogue_adapter_output,
+    DeterministicDialoguePresentationAdapter,
+    MbamStyleDialoguePresentationAdapter,
+    OptionalDialoguePresentationAdapter,
 )
 from backend.sim4.case_mbam.npc_state import NPCAffectUpdate, apply_npc_affect_update
 from backend.sim4.runtime.clock import TickClock
@@ -125,6 +131,8 @@ class MbamCaseConfig:
     difficulty_profile: DifficultyProfile | None = None
     runtime_clock_start: str | None = None
     truth_epoch: int = 1
+    dialogue_adapter_enabled: bool = True
+    dialogue_adapter_style: Literal["mbam_style", "deterministic"] = "mbam_style"
 
 
 class CompositeSink:
@@ -199,11 +207,22 @@ class SimRunner:
         self._manual_case_relationship_flags: tuple[str, ...] = ()
         self._manual_case_outcome_flags: tuple[str, ...] = ()
         self._investigation_runtime_prereq_flags: tuple[str, ...] = ()
+        self._dialogue_adapter_enabled: bool = False
+        self._dialogue_presentation_adapter: OptionalDialoguePresentationAdapter | None = None
 
         if case_config is not None:
             truth_epoch = int(case_config.truth_epoch)
             if truth_epoch <= 0:
                 raise ValueError("MbamCaseConfig.truth_epoch must be >= 1")
+            self._dialogue_adapter_enabled = bool(case_config.dialogue_adapter_enabled)
+            if case_config.dialogue_adapter_style == "deterministic":
+                self._dialogue_presentation_adapter = DeterministicDialoguePresentationAdapter()
+            elif case_config.dialogue_adapter_style == "mbam_style":
+                self._dialogue_presentation_adapter = MbamStyleDialoguePresentationAdapter()
+            else:
+                raise ValueError(
+                    "MbamCaseConfig.dialogue_adapter_style must be 'mbam_style' or 'deterministic'"
+                )
             self._case_state = generate_case_state(
                 seed=case_config.seed,
                 difficulty_profile=case_config.difficulty_profile,
@@ -532,7 +551,35 @@ class SimRunner:
                     )
                 ),
             )
-        entry = make_dialogue_turn_log_entry(result)
+
+        learning_state = build_learning_state(
+            case_state=self._case_state,
+            runtime_state=result.runtime_after,
+            progress=self._investigation_progress,
+            recent_turns=self._dialogue_turn_log,
+        )
+        visible_npc_state = self._npc_states.get(request.npc_id) if self._npc_states is not None else None
+        adapter_payload = build_dialogue_adapter_input(
+            case_state=self._case_state,
+            turn=result,
+            visible_npc_state=visible_npc_state,
+            learning_state=learning_state,
+        )
+        presentation = resolve_dialogue_adapter_output(
+            adapter_payload,
+            adapter=self._dialogue_presentation_adapter,
+            adapter_enabled=self._dialogue_adapter_enabled,
+        )
+
+        entry = make_dialogue_turn_log_entry(
+            result,
+            presentation_source=presentation.source,
+            presentation_reason_code=presentation.reason_code,
+            npc_utterance_text=presentation.output.npc_utterance_text,
+            short_rephrase_line=presentation.output.short_rephrase_line,
+            hint_line=presentation.output.hint_line,
+            summary_prompt_line=presentation.output.summary_prompt_line,
+        )
         existing = list(self._dialogue_turn_log)
         existing.append(entry)
         cap = max(0, int(max_log_entries))

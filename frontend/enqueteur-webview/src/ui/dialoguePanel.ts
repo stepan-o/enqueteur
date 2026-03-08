@@ -911,6 +911,13 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[]): void
         line2.textContent = `${turn.status}/${turn.code}  mode:${turn.response_mode}`;
         row.append(line1, line2);
 
+        if (turn.npc_utterance_text) {
+            const speech = document.createElement("div");
+            speech.className = "dialogue-turn-detail";
+            speech.textContent = `npc: ${turn.npc_utterance_text}`;
+            row.appendChild(speech);
+        }
+
         if (turn.revealed_fact_ids.length > 0 || turn.summary_check_code || turn.repair_response_mode) {
             const detail = document.createElement("div");
             detail.className = "dialogue-turn-detail";
@@ -919,6 +926,23 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[]): void
                 (turn.summary_check_code ? ` summary:${turn.summary_check_code}` : "") +
                 (turn.repair_response_mode ? ` repair:${turn.repair_response_mode}` : "");
             row.appendChild(detail);
+        }
+        if (turn.short_rephrase_line || turn.summary_prompt_line || turn.hint_line) {
+            const guidance = document.createElement("div");
+            guidance.className = "dialogue-turn-detail";
+            guidance.textContent =
+                (turn.short_rephrase_line ? `rephrase:${turn.short_rephrase_line}` : "") +
+                (turn.summary_prompt_line ? ` summary_prompt:${turn.summary_prompt_line}` : "") +
+                (turn.hint_line ? ` hint:${turn.hint_line}` : "");
+            row.appendChild(guidance);
+        }
+        if (turn.presentation_source || turn.presentation_reason_code) {
+            const source = document.createElement("div");
+            source.className = "dialogue-turn-detail";
+            source.textContent =
+                `presentation:${turn.presentation_source ?? "n/a"}` +
+                (turn.presentation_reason_code ? ` reason:${turn.presentation_reason_code}` : "");
+            row.appendChild(source);
         }
         list.appendChild(row);
     }

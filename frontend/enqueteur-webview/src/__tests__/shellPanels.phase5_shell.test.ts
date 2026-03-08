@@ -64,6 +64,12 @@ describe("Phase 5 shell panel rendering", () => {
             stress_delta: 0,
             repair_response_mode: "sentence_stem",
             summary_check_code: "summary_insufficient_facts",
+            presentation_source: "adapter",
+            presentation_reason_code: "adapter_ok",
+            npc_utterance_text: "Très bien. Restons précis.",
+            short_rephrase_line: "Essaie avec une phrase guide simple.",
+            hint_line: "Indice: garde la structure qui, où, quand.",
+            summary_prompt_line: "Fais un court résumé en français avant de continuer.",
         });
         store.applySnapshot(snapshot);
 
@@ -93,6 +99,11 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("Stance");
         expect(panel?.textContent).toContain("Trust trend");
         expect(panel?.textContent).toContain("Recent Structured Turns");
+        expect(panel?.textContent).toContain("npc: Très bien. Restons précis.");
+        expect(panel?.textContent).toContain("rephrase:Essaie avec une phrase guide simple.");
+        expect(panel?.textContent).toContain("summary_prompt:Fais un court résumé en français avant de continuer.");
+        expect(panel?.textContent).toContain("hint:Indice: garde la structure qui, où, quand.");
+        expect(panel?.textContent).toContain("presentation:adapter");
 
         const submit = dialogue.root.querySelector<HTMLButtonElement>(".dialogue-submit");
         expect(submit?.disabled).toBe(false);

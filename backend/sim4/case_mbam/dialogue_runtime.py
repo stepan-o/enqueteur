@@ -176,6 +176,12 @@ class DialogueTurnLogEntry:
     missing_required_slots: tuple[str, ...]
     repair_response_mode: str | None
     summary_check_code: str | None
+    presentation_source: str | None = None
+    presentation_reason_code: str | None = None
+    npc_utterance_text: str | None = None
+    short_rephrase_line: str | None = None
+    hint_line: str | None = None
+    summary_prompt_line: str | None = None
 
     def __post_init__(self) -> None:
         if self.turn_index < 0:
@@ -1169,7 +1175,16 @@ def apply_dialogue_turn_to_progress(
     )
 
 
-def make_dialogue_turn_log_entry(turn_result: DialogueSceneTurnExecutionResult) -> DialogueTurnLogEntry:
+def make_dialogue_turn_log_entry(
+    turn_result: DialogueSceneTurnExecutionResult,
+    *,
+    presentation_source: str | None = None,
+    presentation_reason_code: str | None = None,
+    npc_utterance_text: str | None = None,
+    short_rephrase_line: str | None = None,
+    hint_line: str | None = None,
+    summary_prompt_line: str | None = None,
+) -> DialogueTurnLogEntry:
     summary_code = None
     if turn_result.summary_check is not None:
         summary_code = turn_result.summary_check.code
@@ -1188,6 +1203,12 @@ def make_dialogue_turn_log_entry(turn_result: DialogueSceneTurnExecutionResult) 
         missing_required_slots=turn_result.turn_result.missing_required_slots,
         repair_response_mode=turn_result.turn_result.repair_response_mode,
         summary_check_code=summary_code,
+        presentation_source=presentation_source,
+        presentation_reason_code=presentation_reason_code,
+        npc_utterance_text=npc_utterance_text,
+        short_rephrase_line=short_rephrase_line,
+        hint_line=hint_line,
+        summary_prompt_line=summary_prompt_line,
     )
 
 

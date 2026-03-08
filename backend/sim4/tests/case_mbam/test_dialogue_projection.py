@@ -100,6 +100,44 @@ def test_dialogue_projection_includes_compact_recent_turn_log() -> None:
     assert row["code"] == "scene_completed"
     assert row["revealed_fact_ids"] == ["N4", "N5"]
     assert "missing_required_slots" not in row
+    assert "npc_utterance_text" in row
+    assert "summary_prompt_line" in row
+    assert "hint_line" in row
+
+
+def test_dialogue_projection_carries_presentation_text_fields_when_present() -> None:
+    case_state, _npc_states, progress, context, runtime = _setup("A")
+    result = execute_dialogue_turn(
+        case_state,
+        runtime,
+        DialogueTurnRequest(
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="ask_where",
+        ),
+        context=context,
+    )
+    progress_after = apply_dialogue_turn_to_progress(progress, result)
+    entry = make_dialogue_turn_log_entry(
+        result,
+        presentation_source="adapter",
+        presentation_reason_code="adapter_ok",
+        npc_utterance_text="Je confirme la zone concernée.",
+        short_rephrase_line=None,
+        hint_line="Indice: garde la structure qui, où, quand.",
+        summary_prompt_line=None,
+    )
+    visible = build_visible_dialogue_projection(
+        case_state=case_state,
+        runtime_state=result.runtime_after,
+        progress=progress_after,
+        recent_turns=(entry,),
+    )
+    row = visible["recent_turns"][0]
+    assert row["presentation_source"] == "adapter"
+    assert row["presentation_reason_code"] == "adapter_ok"
+    assert row["npc_utterance_text"] == "Je confirme la zone concernée."
+    assert row["hint_line"] == "Indice: garde la structure qui, où, quand."
 
 
 def test_debug_dialogue_projection_contains_private_runtime_state_for_replay() -> None:
