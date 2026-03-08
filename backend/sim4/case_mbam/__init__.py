@@ -240,6 +240,14 @@ from .dialogue_adapter_packaging import (
     build_safe_dialogue_adapter_context,
     build_safe_dialogue_adapter_context_from_turn,
 )
+from .dialogue_adapter_resolution import (
+    AdapterFallbackReason,
+    AdapterOutputSource,
+    DialogueAdapterResolution,
+    build_deterministic_fallback_output,
+    normalize_and_validate_adapter_output,
+    resolve_dialogue_adapter_output,
+)
 from .learning_state import (
     LearningHintLevel,
     LearningState,
@@ -508,6 +516,12 @@ __all__ = [
     "OptionalDialoguePresentationAdapter",
     "build_dialogue_adapter_prompt_context",
     "build_dialogue_adapter_input",
+    "AdapterFallbackReason",
+    "AdapterOutputSource",
+    "DialogueAdapterResolution",
+    "build_deterministic_fallback_output",
+    "normalize_and_validate_adapter_output",
+    "resolve_dialogue_adapter_output",
     "build_safe_dialogue_adapter_context",
     "build_safe_dialogue_adapter_context_from_turn",
     "validate_dialogue_adapter_output",
