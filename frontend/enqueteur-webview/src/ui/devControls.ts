@@ -373,7 +373,7 @@ function renderReplaySummary(
     : "pending";
 
   el.runIdEl.textContent = runId;
-  el.seedEl.textContent = seed;
+  el.seedEl.textContent = String(seed);
   el.outcomeEl.textContent = outcome;
   el.recapEl.textContent = recap;
 

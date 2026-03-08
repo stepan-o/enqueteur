@@ -155,7 +155,7 @@ def test_phase3f_repeat_state_dependent_and_consumed_paths_behave_as_expected() 
     )
     assert bench_first.ack.kind == "success"
     assert bench_second.ack.kind == "no_op"
-    assert bench_second.ack.code == "state_no_effect"
+    assert bench_second.ack.code == "bench_empty"
 
     command = make_investigation_command(object_id="O1_DISPLAY_CASE", affordance_id="check_lock")
     consumed = validate_investigation_command(
