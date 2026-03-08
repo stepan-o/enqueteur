@@ -1,5 +1,5 @@
 // src/ui/devControls.ts
-import type { WorldStore } from "../state/worldStore";
+import type { WorldState, WorldStore } from "../state/worldStore";
 import type { ViewerStore } from "../state/viewerStore";
 
 type FloorFilter = "all" | 0 | 1;
@@ -262,6 +262,41 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
   placeholder.style.opacity = "0.7";
   panel.appendChild(placeholder);
 
+  const replayPanel = document.createElement("div");
+  replayPanel.style.border = "2px solid rgba(31, 36, 43, 0.25)";
+  replayPanel.style.borderRadius = "10px";
+  replayPanel.style.padding = "8px";
+  replayPanel.style.background = "rgba(255, 251, 242, 0.82)";
+  replayPanel.style.display = "grid";
+  replayPanel.style.gridTemplateColumns = "1fr";
+  replayPanel.style.gap = "4px";
+
+  const replayTitle = document.createElement("div");
+  replayTitle.textContent = "Replay Run";
+  replayTitle.style.fontSize = "11px";
+  replayTitle.style.fontWeight = "700";
+  replayTitle.style.textTransform = "uppercase";
+  replayTitle.style.letterSpacing = "0.04em";
+  replayTitle.style.opacity = "0.8";
+  replayPanel.appendChild(replayTitle);
+
+  const runRow = makeReplayLine("Run", "-");
+  const seedRow = makeReplayLine("Seed", "-");
+  const outcomeRow = makeReplayLine("Outcome", "in_progress");
+  const recapRow = makeReplayLine("Recap", "pending");
+  replayPanel.appendChild(runRow.row);
+  replayPanel.appendChild(seedRow.row);
+  replayPanel.appendChild(outcomeRow.row);
+  replayPanel.appendChild(recapRow.row);
+
+  const milestoneText = document.createElement("div");
+  milestoneText.style.fontSize = "11px";
+  milestoneText.style.opacity = "0.84";
+  milestoneText.textContent = "Milestones: awaiting projection";
+  replayPanel.appendChild(milestoneText);
+
+  panel.appendChild(replayPanel);
+
   root.appendChild(panel);
 
   if (opts.store) {
@@ -270,6 +305,16 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
         slider.value = String(s.tick);
         tickLabel.textContent = `Tick ${s.tick}`;
       }
+      renderReplaySummary(
+        {
+          runIdEl: runRow.value,
+          seedEl: seedRow.value,
+          outcomeEl: outcomeRow.value,
+          recapEl: recapRow.value,
+          milestoneEl: milestoneText,
+        },
+        s
+      );
     });
   }
 
@@ -283,6 +328,71 @@ export function mountDevControls(opts: DevControlsOpts): HTMLElement {
   }
 
   return root;
+}
+
+function makeReplayLine(labelText: string, valueText: string): {
+  row: HTMLDivElement;
+  value: HTMLSpanElement;
+} {
+  const row = document.createElement("div");
+  row.style.display = "flex";
+  row.style.justifyContent = "space-between";
+  row.style.gap = "6px";
+  row.style.alignItems = "center";
+  row.style.fontSize = "11px";
+
+  const label = document.createElement("span");
+  label.textContent = labelText;
+  label.style.opacity = "0.68";
+  row.appendChild(label);
+
+  const value = document.createElement("span");
+  value.textContent = valueText;
+  value.style.fontWeight = "700";
+  value.style.textAlign = "right";
+  row.appendChild(value);
+
+  return { row, value };
+}
+
+function renderReplaySummary(
+  el: {
+    runIdEl: HTMLSpanElement;
+    seedEl: HTMLSpanElement;
+    outcomeEl: HTMLSpanElement;
+    recapEl: HTMLSpanElement;
+    milestoneEl: HTMLDivElement;
+  },
+  state: WorldState
+): void {
+  const runId = state.kernelHello?.run_id ?? "-";
+  const seed = state.caseState?.seed ?? state.kernelHello?.seed ?? "-";
+  const outcome = state.caseOutcome?.primary_outcome ?? "in_progress";
+  const recap = state.caseRecap?.available
+    ? `${state.caseRecap.final_outcome_type} (${state.caseRecap.resolution_path})`
+    : "pending";
+
+  el.runIdEl.textContent = runId;
+  el.seedEl.textContent = seed;
+  el.outcomeEl.textContent = outcome;
+  el.recapEl.textContent = recap;
+
+  const sceneTotal = state.dialogue?.scene_completion.length ?? 0;
+  const sceneDone = state.dialogue?.scene_completion.filter((row) => row.completion_state === "completed").length ?? 0;
+  const knownFacts = state.investigation?.facts.known_fact_ids.length ?? 0;
+  const discoveredEvidence = state.investigation?.evidence.discovered_ids.length ?? 0;
+  const collectedEvidence = state.investigation?.evidence.collected_ids.length ?? 0;
+  const contradictionReady = state.investigation?.contradictions.requirement_satisfied ?? false;
+  const summaryDone = state.dialogue?.learning?.summary_by_scene.filter((row) => row.completed).length ?? 0;
+
+  const milestoneBits = [
+    `scenes ${sceneDone}/${sceneTotal || 5}`,
+    `facts ${knownFacts}`,
+    `evidence ${collectedEvidence}/${discoveredEvidence}`,
+    contradictionReady ? "contradiction ready" : "contradiction pending",
+    `summaries ${summaryDone}`,
+  ];
+  el.milestoneEl.textContent = `Milestones: ${milestoneBits.join(" | ")}`;
 }
 
 function makeMiniButton(label: string): HTMLButtonElement {

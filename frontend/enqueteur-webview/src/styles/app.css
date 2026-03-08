@@ -69,6 +69,32 @@ body {
   align-items: center;
 }
 
+.seed-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.seed-controls-label {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.74;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.seed-btn {
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.seed-btn[data-active="true"] {
+  border-color: var(--accent);
+  background: rgba(30, 127, 136, 0.15);
+}
+
 button {
   border: 1px solid rgba(31, 38, 41, 0.35);
   border-radius: 10px;
