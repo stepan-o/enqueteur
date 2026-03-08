@@ -102,6 +102,7 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert "minigames" in state["learning"]
     assert "summary_by_scene" in state["learning"]
     assert "recent_outcomes" in state["learning"]
+    assert state["learning"] == state["dialogue"]["learning"]
 
     assert "debug" in state
     assert "case_private" in state["debug"]
@@ -239,3 +240,51 @@ def test_runner_submit_dialogue_turn_updates_runtime_and_turn_log() -> None:
     assert dialogue_state is not None
     completion = dict(dialogue_state.scene_completion_states)
     assert completion["S1"] == "completed"
+
+
+def test_runner_exports_learning_recent_outcomes_after_dialogue_turn(tmp_path: Path) -> None:
+    clock = TickClock(dt=1.0 / 30.0)
+    ecs_world = ECSWorld()
+    world_ctx = WorldContext()
+    apply_mbam_layout(world_ctx)
+
+    run_root = tmp_path / "run_learning_recent_outcomes"
+    runner = SimRunner(
+        clock=clock,
+        ecs_world=ecs_world,
+        world_ctx=world_ctx,
+        rng_seed=321,
+        system_scheduler=_NoopScheduler(),
+        run_anchors=default_run_anchors(seed=321, tick_rate_hz=tick_rate_hz_from_clock(clock), time_origin_ms=0),
+        render_spec=default_render_spec(),
+        channels=["WORLD", "DEBUG"],
+        offline=OfflineExportConfig(
+            run_root=run_root,
+            channels=["WORLD", "DEBUG"],
+            keyframe_ticks=[1],
+            validate=False,
+        ),
+        case_config=MbamCaseConfig(seed="A"),
+    )
+
+    result = runner.submit_dialogue_turn(
+        DialogueTurnRequest(
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="summarize_understanding",
+            presented_fact_ids=("N1",),
+        )
+    )
+    assert result is not None
+    assert result.turn_result.status == "accepted"
+    runner.run(num_ticks=1)
+
+    manifest = ManifestV0_1.from_dict(json.loads((run_root / "manifest.kvp.json").read_text("utf-8")))
+    snap_ptr = manifest.snapshots[manifest.available_start_tick]
+    env = read_record(run_root / snap_ptr.rel_path)
+    state = env["payload"]["state"]
+
+    outcomes = state["learning"]["recent_outcomes"]
+    assert any(row.get("kind") == "summary_check" and row.get("code") == "summary_passed" for row in outcomes)
+    assert state["learning"] == state["dialogue"]["learning"]
+    assert "learning_private" in state["debug"]

@@ -243,3 +243,143 @@ def test_learning_projection_includes_recent_summary_and_repair_outcomes() -> No
     outcomes = projection["recent_outcomes"]
     assert any(row["kind"] == "summary_check" and row["code"] == "summary_insufficient_facts" for row in outcomes)
     assert any(row["kind"] == "repair_signal" and row["response_mode"] == "rephrase_choice" for row in outcomes)
+
+
+def test_d0_hint_ladder_can_escalate_to_english_meta_without_bypassing_french_action() -> None:
+    case_state, progress, runtime = _setup("A")
+    case_state = replace(case_state, difficulty_profile="D0")
+    runtime = replace(runtime, active_scene_id="S1")
+    turns = (
+        DialogueTurnLogEntry(
+            turn_index=1,
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="request_permission",
+            status="repair",
+            code="wrong_register",
+            outcome="repair",
+            response_mode="repair",
+            revealed_fact_ids=(),
+            trust_delta=0.0,
+            stress_delta=0.0,
+            missing_required_slots=(),
+            repair_response_mode="sentence_stem",
+            summary_check_code=None,
+        ),
+        DialogueTurnLogEntry(
+            turn_index=2,
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="summarize_understanding",
+            status="repair",
+            code="summary_insufficient_facts",
+            outcome="repair",
+            response_mode="repair",
+            revealed_fact_ids=(),
+            trust_delta=0.0,
+            stress_delta=0.0,
+            missing_required_slots=(),
+            repair_response_mode="rephrase_choice",
+            summary_check_code="summary_insufficient_facts",
+        ),
+    )
+    projection = build_visible_learning_projection(
+        case_state=case_state,
+        runtime_state=runtime,
+        progress=progress,
+        recent_turns=turns,
+    )
+    policy = projection["scaffolding_policy"]
+    assert policy["current_hint_level"] == "english_meta_help"
+    assert policy["english_meta_allowed"] is True
+    assert policy["english_meta_key"] is not None
+    assert policy["french_action_required"] is True
+
+
+def test_d1_hint_ladder_stays_below_english_meta_even_under_same_pressure() -> None:
+    case_state, progress, runtime = _setup("A")
+    case_state = replace(case_state, difficulty_profile="D1")
+    runtime = replace(runtime, active_scene_id="S1")
+    turns = (
+        DialogueTurnLogEntry(
+            turn_index=1,
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="request_permission",
+            status="repair",
+            code="wrong_register",
+            outcome="repair",
+            response_mode="repair",
+            revealed_fact_ids=(),
+            trust_delta=0.0,
+            stress_delta=0.0,
+            missing_required_slots=(),
+            repair_response_mode="sentence_stem",
+            summary_check_code=None,
+        ),
+        DialogueTurnLogEntry(
+            turn_index=2,
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="summarize_understanding",
+            status="repair",
+            code="summary_insufficient_facts",
+            outcome="repair",
+            response_mode="repair",
+            revealed_fact_ids=(),
+            trust_delta=0.0,
+            stress_delta=0.0,
+            missing_required_slots=(),
+            repair_response_mode="rephrase_choice",
+            summary_check_code="summary_insufficient_facts",
+        ),
+    )
+    projection = build_visible_learning_projection(
+        case_state=case_state,
+        runtime_state=runtime,
+        progress=progress,
+        recent_turns=turns,
+    )
+    policy = projection["scaffolding_policy"]
+    assert policy["current_hint_level"] == "rephrase_choice"
+    assert policy["english_meta_allowed"] is False
+    assert policy["english_meta_key"] is None
+    assert policy["french_action_required"] is True
+
+
+def test_learning_projection_recent_outcomes_are_capped_and_deterministic() -> None:
+    case_state, progress, runtime = _setup("A")
+    runtime = replace(runtime, active_scene_id="S1")
+    turns = tuple(
+        DialogueTurnLogEntry(
+            turn_index=i,
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="summarize_understanding",
+            status="repair",
+            code="summary_insufficient_facts",
+            outcome="repair",
+            response_mode="repair",
+            revealed_fact_ids=(),
+            trust_delta=0.0,
+            stress_delta=0.0,
+            missing_required_slots=(),
+            repair_response_mode="sentence_stem",
+            summary_check_code="summary_insufficient_facts",
+        )
+        for i in range(1, 21)
+    )
+    first = build_visible_learning_projection(
+        case_state=case_state,
+        runtime_state=runtime,
+        progress=progress,
+        recent_turns=turns,
+    )
+    second = build_visible_learning_projection(
+        case_state=case_state,
+        runtime_state=runtime,
+        progress=progress,
+        recent_turns=turns,
+    )
+    assert first == second
+    assert len(first["recent_outcomes"]) <= 8

@@ -181,4 +181,89 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("Correct (2/2).");
         expect(panel?.textContent).toContain("Correct (3/3).");
     });
+
+    it("renders deterministic D1 hint-ladder constraints without English bypass", () => {
+        const store = new WorldStore();
+        const snapshot = makeMbamSnapshot(5);
+        if (!snapshot.state.dialogue?.learning) {
+            throw new Error("fixture must include dialogue learning state");
+        }
+        snapshot.state.dialogue.active_scene_id = "S1";
+        snapshot.state.dialogue.learning.difficulty_profile = "D1";
+        snapshot.state.dialogue.learning.current_hint_level = "rephrase_choice";
+        snapshot.state.dialogue.learning.scaffolding_policy = {
+            ...snapshot.state.dialogue.learning.scaffolding_policy,
+            scene_id: "S1",
+            current_hint_level: "rephrase_choice",
+            current_hint_rank: 2,
+            allowed_hint_levels: ["soft_hint", "sentence_stem", "rephrase_choice"],
+            recommended_mode: "rephrase_choice",
+            english_meta_allowed: false,
+            french_action_required: true,
+            reason_code: "summary_pressure_escalation",
+            soft_hint_key: "hint:s1_incident_scope",
+            sentence_stem_key: "stem:s1_polite_incident",
+            rephrase_set_id: "rephrase:s1_incident_core",
+            english_meta_key: null,
+            prompt_generosity: "medium",
+            confirmation_strength: "compact",
+            summary_strictness: "strict",
+            language_support_level: "fr_primary",
+            target_minigame_id: "MG1_LABEL_READING",
+        };
+
+        store.applySnapshot(snapshot);
+        const dialogue = mountDialoguePanel(store);
+        document.body.appendChild(dialogue.root);
+        dialogue.setInspectSelection({ kind: "room", id: 1 });
+
+        const panel = dialogue.root.querySelector(".dialogue-panel");
+        expect(panel?.textContent).toContain("Difficulty");
+        expect(panel?.textContent).toContain("D1");
+        expect(panel?.textContent).toContain("FR required");
+        expect(panel?.textContent).toContain("yes");
+        expect(panel?.textContent).toContain("Meta EN help");
+        expect(panel?.textContent).toContain("no");
+        expect(panel?.textContent).toContain("English Meta-Help - locked");
+        expect(panel?.textContent).toContain("Choose one:");
+    });
+
+    it("uses compact minigame feedback and respects projected gate blocking", async () => {
+        const store = new WorldStore();
+        const snapshot = makeMbamSnapshot(6);
+        if (!snapshot.state.dialogue?.learning) {
+            throw new Error("fixture must include dialogue learning state");
+        }
+        snapshot.state.dialogue.learning.scaffolding_policy.confirmation_strength = "compact";
+        const mg2 = snapshot.state.dialogue.learning.minigames.find((row) => row.minigame_id === "MG2_BADGE_LOG");
+        if (!mg2) throw new Error("fixture must include MG2 learning state");
+        mg2.gate_open = false;
+        mg2.gate_code = "wait_for_badge_logs";
+        mg2.status = "not_started";
+        mg2.attempt_count = 0;
+        mg2.completed = false;
+        mg2.score = 0;
+        store.applySnapshot(snapshot);
+
+        const notebook = mountNotebookPanel(store);
+        document.body.appendChild(notebook.root);
+        const panel = notebook.root.querySelector(".notebook-panel");
+        const cards = Array.from(notebook.root.querySelectorAll<HTMLElement>(".notebook-minigame"));
+        const mg1Card = cards.find((card) => card.textContent?.includes("MG1 Wall Label Reading"));
+        const mg2Card = cards.find((card) => card.textContent?.includes("MG2 Badge Log Read"));
+        expect(mg1Card).toBeTruthy();
+        expect(mg2Card).toBeTruthy();
+
+        const mg1Inputs = Array.from(mg1Card!.querySelectorAll<HTMLInputElement>("input.notebook-minigame-input"));
+        mg1Inputs[0]!.value = "wrong";
+        mg1Inputs[0]!.dispatchEvent(new Event("input"));
+        mg1Inputs[1]!.value = "0000";
+        mg1Inputs[1]!.dispatchEvent(new Event("input"));
+        mg1Card!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!.click();
+        await flushUi();
+
+        const mg2Submit = mg2Card!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!;
+        expect(mg2Submit.disabled).toBe(true);
+        expect(panel?.textContent).toContain("Incorrect. Retry.");
+    });
 });
