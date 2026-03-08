@@ -48,7 +48,23 @@ describe("Phase 5 shell panel rendering", () => {
 
     it("renders structured dialogue state, transcript, and NPC state-card fields", async () => {
         const store = new WorldStore();
-        store.applySnapshot(makeMbamSnapshot(2));
+        const snapshot = makeMbamSnapshot(2);
+        snapshot.state.dialogue?.recent_turns.push({
+            turn_index: 1,
+            scene_id: "S1",
+            npc_id: "elodie",
+            intent_id: "summarize_understanding",
+            status: "repair",
+            code: "summary_insufficient_facts",
+            outcome: "repair",
+            response_mode: "repair",
+            revealed_fact_ids: [],
+            trust_delta: 0,
+            stress_delta: 0,
+            repair_response_mode: "sentence_stem",
+            summary_check_code: "summary_insufficient_facts",
+        });
+        store.applySnapshot(snapshot);
 
         const dialogue = mountDialoguePanel(store, {
             canDispatchDialogueTurn: () => true,
@@ -65,6 +81,12 @@ describe("Phase 5 shell panel rendering", () => {
         const panel = dialogue.root.querySelector(".dialogue-panel");
         expect(panel?.textContent).toContain("NPC State Card");
         expect(panel?.textContent).toContain("Scaffolding");
+        expect(panel?.textContent).toContain("Summary & Hint Ladder");
+        expect(panel?.textContent).toContain("Hint ladder");
+        expect(panel?.textContent).toContain("Soft Hint - current");
+        expect(panel?.textContent).toContain("Sentence Stem - locked");
+        expect(panel?.textContent).toContain("Prompt:");
+        expect(panel?.textContent).toContain("Summary missing enough corroborated facts.");
         expect(panel?.textContent).toContain("Hint level");
         expect(panel?.textContent).toContain("Emotion");
         expect(panel?.textContent).toContain("Stance");

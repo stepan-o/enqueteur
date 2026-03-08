@@ -136,6 +136,79 @@ const WORLD_ROOM_ID_TO_TOKEN: Record<number, string> = {
     5: "CAFE_DE_LA_RUE",
 };
 
+type LearningState = NonNullable<NonNullable<WorldState["dialogue"]>["learning"]>;
+type LearningSceneSummaryState = LearningState["summary_by_scene"][number];
+type HintLevel = "soft_hint" | "sentence_stem" | "rephrase_choice" | "english_meta_help";
+
+const HINT_LEVEL_ORDER: HintLevel[] = ["soft_hint", "sentence_stem", "rephrase_choice", "english_meta_help"];
+
+const HINT_LEVEL_LABELS: Record<HintLevel, string> = {
+    soft_hint: "Soft Hint",
+    sentence_stem: "Sentence Stem",
+    rephrase_choice: "Rephrase Choices",
+    english_meta_help: "English Meta-Help",
+};
+
+const SOFT_HINT_COPY: Record<string, string> = {
+    "hint:s1_incident_scope": "Focus first on what is missing, where it was, and when the absence was noticed.",
+    "hint:s2_security_protocol": "With Marc, a respectful reason unlocks process details better than pressure.",
+    "hint:s3_timeline_anchor": "Use one concrete time anchor before asking where people moved.",
+    "hint:s4_cafe_witness_window": "Jo remembers clothing and vibe first. Ask for time, then appearance.",
+    "hint:s5_corroboration_requirements": "In confrontation, connect method + time + place with corroborated facts.",
+};
+
+const SENTENCE_STEM_COPY: Record<string, string> = {
+    "stem:s1_polite_incident": "Je résume: l'objet manquant est ___, observé absent vers ___.",
+    "stem:s2_access_request": "Je demande l'accès au journal des badges pour vérifier ___.",
+    "stem:s3_time_sequence": "À ___, la personne ___ était dans ___.",
+    "stem:s4_witness_prompt": "Vers ___, vous avez vu ___ près du café.",
+    "stem:s5_confrontation_structure": "Je conclus: ___ a utilisé ___, puis dépôt à ___.",
+};
+
+const REPHRASE_CHOICES_COPY: Record<string, string[]> = {
+    "rephrase:s1_incident_core": [
+        "Que s'est-il passé exactement dans la galerie?",
+        "À quelle heure avez-vous constaté la disparition?",
+        "Pouvez-vous confirmer l'objet manquant?",
+    ],
+    "rephrase:s2_access_reason": [
+        "J'ai besoin du journal pour vérifier la chronologie.",
+        "Je respecte la procédure, puis-je consulter l'entrée clé?",
+        "Pouvez-vous autoriser un accès limité au terminal?",
+    ],
+    "rephrase:s3_timeline_checks": [
+        "À quelle heure Samira a quitté la salle?",
+        "Qui était près du couloir vers dix-huit heures?",
+        "Pouvez-vous préciser l'ordre des déplacements?",
+    ],
+    "rephrase:s4_clothing_timestamp": [
+        "Vers quelle heure avez-vous vu cette personne?",
+        "Quels vêtements avez-vous remarqués d'abord?",
+        "La personne est restée combien de minutes?",
+    ],
+    "rephrase:s5_accusation_logic": [
+        "Je relie l'indice de temps et l'indice d'accès.",
+        "Je présente d'abord la contradiction, puis la conclusion.",
+        "Je propose une récupération discrète avec preuves.",
+    ],
+};
+
+const EN_META_HELP_COPY: Record<string, string> = {
+    "meta:s1_english_prompting": "Use a short French summary sentence. Keep one time marker and one object noun.",
+    "meta:s2_english_polite_security": "Ask politely for process access in French; avoid imperative tone.",
+    "meta:s3_english_timeline_frame": "Build summary as: time -> person -> place in French.",
+    "meta:s4_english_witness_focus": "Lead with time, then clothing descriptor, then location in French.",
+    "meta:s5_english_reasoning_frame": "State contradiction evidence first, then accusation/recovery intent in French.",
+};
+
+const SUMMARY_CODE_COPY: Record<string, string> = {
+    summary_passed: "Summary accepted. Scene progression can continue.",
+    summary_required: "A French summary is required before this action.",
+    summary_needed: "Provide a French summary to complete this scene step.",
+    summary_insufficient_facts: "Summary missing enough corroborated facts.",
+    summary_missing_key_fact: "Summary missing a required key scene fact for this difficulty.",
+};
+
 type SubmitFeedback = {
     tick: number;
     sceneId: string;
@@ -179,6 +252,16 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         const focusNpcId = resolveSceneNpcId(lastState, dialogue.recent_turns, focusSceneId);
         const npcCardState = resolveRelevantNpcState(lastState, inspectSelection, focusNpcId);
         const sceneConfig = focusSceneId ? SCENE_CONFIG[focusSceneId] : null;
+        let requiredSlots: string[] = [];
+
+        if (sceneConfig) {
+            const allowedIntents = sceneConfig.allowedIntents;
+            if (!selectedIntent || !allowedIntents.includes(selectedIntent)) {
+                selectedIntent = allowedIntents[0] ?? null;
+            }
+            requiredSlots = collectRequiredSlots(sceneConfig, selectedIntent);
+            slotValues = syncSlotValues(slotValues, requiredSlots);
+        }
 
         renderSectionTitle(panel, "NPC State Card");
         renderNpcStateCard(panel, npcCardState);
@@ -195,16 +278,19 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         renderSectionTitle(panel, "Scene Progress");
         renderSceneProgress(panel, dialogue.scene_completion, dialogue.surfaced_scene_ids, focusSceneId);
 
+        renderSectionTitle(panel, "Summary & Hint Ladder");
+        renderSummaryHintSection(panel, {
+            dialogue,
+            focusSceneId,
+            selectedIntent,
+            requiredSlots,
+        });
+
         renderSectionTitle(panel, "Action Composer");
         if (!focusSceneId || !sceneConfig || !focusNpcId) {
             renderInfo(panel, "No active or surfaced scene available for structured turn entry.");
         } else {
             const allowedIntents = sceneConfig.allowedIntents;
-            if (!selectedIntent || !allowedIntents.includes(selectedIntent)) {
-                selectedIntent = allowedIntents[0] ?? null;
-            }
-            const requiredSlots = collectRequiredSlots(sceneConfig, selectedIntent);
-            slotValues = syncSlotValues(slotValues, requiredSlots);
 
             renderIntentButtons(panel, {
                 intents: allowedIntents,
@@ -474,6 +560,180 @@ function renderLearningSlice(panel: HTMLElement, dialogue: NonNullable<WorldStat
         panel,
         `Minigames: ${completedMgs}/${learning.minigames.length} completed; target: ${learning.scaffolding_policy.target_minigame_id ?? "none"}`
     );
+}
+
+function renderSummaryHintSection(
+    panel: HTMLElement,
+    opts: {
+        dialogue: NonNullable<WorldState["dialogue"]>;
+        focusSceneId: string | null;
+        selectedIntent: string | null;
+        requiredSlots: string[];
+    }
+): void {
+    const learning = opts.dialogue.learning;
+    if (!learning) {
+        renderInfo(panel, "Learning projection unavailable for summary/hint surfaces.");
+        return;
+    }
+    if (!opts.focusSceneId) {
+        renderInfo(panel, "No focus scene for summary prompt.");
+        return;
+    }
+
+    const summaryState = learning.summary_by_scene.find((row) => row.scene_id === opts.focusSceneId) ?? null;
+    if (!summaryState) {
+        renderInfo(panel, "No summary rule projection for current scene.");
+        return;
+    }
+
+    renderSummaryPrompt(panel, opts.dialogue, summaryState, opts.focusSceneId, opts.selectedIntent, opts.requiredSlots);
+    renderHintLadder(panel, learning, opts.focusSceneId, opts.requiredSlots);
+}
+
+function renderSummaryPrompt(
+    panel: HTMLElement,
+    dialogue: NonNullable<WorldState["dialogue"]>,
+    summaryState: LearningSceneSummaryState,
+    sceneId: string,
+    selectedIntent: string | null,
+    requiredSlots: string[]
+): void {
+    const block = document.createElement("div");
+    block.className = "dialogue-summary-block";
+    panel.appendChild(block);
+
+    const requiredLabel = summaryState.required
+        ? `yes (${summaryState.effective_min_fact_count} accepted fact(s) minimum)`
+        : "no";
+    renderDataLines(block, [
+        ["Scene", sceneId],
+        ["Summary state", summaryState.status],
+        ["Summary required", requiredLabel],
+        ["Strictness", summaryState.strictness_mode],
+        ["Attempts", String(summaryState.attempt_count)],
+    ]);
+
+    const prompt = buildSummaryPrompt(sceneId, summaryState, selectedIntent, requiredSlots);
+    const promptLine = document.createElement("div");
+    promptLine.className = "dialogue-summary-prompt";
+    promptLine.textContent = `Prompt: ${prompt}`;
+    block.appendChild(promptLine);
+
+    const feedback = resolveSummaryFeedback(summaryState, dialogue.recent_turns, sceneId);
+    if (feedback) {
+        const feedbackLine = document.createElement("div");
+        feedbackLine.className = "dialogue-summary-feedback";
+        feedbackLine.textContent = `Feedback: ${feedback}`;
+        block.appendChild(feedbackLine);
+    }
+}
+
+function renderHintLadder(
+    panel: HTMLElement,
+    learning: LearningState,
+    sceneId: string,
+    requiredSlots: string[]
+): void {
+    const ladder = document.createElement("div");
+    ladder.className = "dialogue-hint-ladder";
+    panel.appendChild(ladder);
+
+    const title = document.createElement("div");
+    title.className = "dialogue-hint-ladder-title";
+    title.textContent = `Hint ladder (${learning.current_hint_level}, ${learning.difficulty_profile})`;
+    ladder.appendChild(title);
+
+    const policy = learning.scaffolding_policy;
+    if (policy.scene_id && policy.scene_id !== sceneId) {
+        renderInfo(ladder, `Policy currently tuned for scene ${policy.scene_id}; showing current projection.`);
+    }
+
+    const allowed = new Set(policy.allowed_hint_levels);
+    for (const level of HINT_LEVEL_ORDER) {
+        const row = document.createElement("div");
+        row.className = "dialogue-hint-step";
+        const isCurrent = level === policy.current_hint_level;
+        const isAllowed = allowed.has(level);
+        row.classList.add(isCurrent ? "is-current" : isAllowed ? "is-available" : "is-locked");
+
+        const head = document.createElement("div");
+        head.className = "dialogue-hint-head";
+        head.textContent = `${HINT_LEVEL_LABELS[level]} - ${isCurrent ? "current" : isAllowed ? "available" : "locked"}`;
+        row.appendChild(head);
+
+        const body = document.createElement("div");
+        body.className = "dialogue-hint-body";
+        body.textContent = resolveHintBody(level, policy, sceneId, requiredSlots, isAllowed);
+        row.appendChild(body);
+
+        ladder.appendChild(row);
+    }
+}
+
+function buildSummaryPrompt(
+    sceneId: string,
+    summaryState: LearningSceneSummaryState,
+    selectedIntent: string | null,
+    requiredSlots: string[]
+): string {
+    const slotsLabel = requiredSlots.length > 0 ? `Include slots: ${requiredSlots.join(", ")}.` : "No mandatory slots.";
+    const keyFactHint =
+        summaryState.required_key_fact_ids.length > 0
+            ? "Include at least one key scene fact that you have already confirmed."
+            : "Use only facts you have already unlocked.";
+    const intentLabel = selectedIntent ? `Intent context: ${selectedIntent}.` : "Intent context: none.";
+    return `FR summary for ${sceneId}. ${slotsLabel} ${intentLabel} ${keyFactHint}`;
+}
+
+function resolveSummaryFeedback(
+    summaryState: LearningSceneSummaryState,
+    turns: KvpDialogueTurnLog[],
+    sceneId: string
+): string | null {
+    const lastTurnCode = (() => {
+        for (let i = turns.length - 1; i >= 0; i -= 1) {
+            const row = turns[i];
+            if (row.scene_id === sceneId && row.summary_check_code) return row.summary_check_code;
+        }
+        return null;
+    })();
+    const code = lastTurnCode ?? summaryState.last_summary_code;
+    if (!code) return summaryState.status === "passed" ? SUMMARY_CODE_COPY.summary_passed : null;
+    return SUMMARY_CODE_COPY[code] ?? `Summary status: ${code}`;
+}
+
+function resolveHintBody(
+    level: HintLevel,
+    policy: LearningState["scaffolding_policy"],
+    sceneId: string,
+    requiredSlots: string[],
+    isAllowed: boolean
+): string {
+    if (!isAllowed) {
+        if (level === "english_meta_help" && !policy.english_meta_allowed) {
+            return "Not available at current difficulty/state.";
+        }
+        return "Locked until additional repair/summary pressure or easier difficulty support.";
+    }
+
+    if (level === "soft_hint") {
+        return SOFT_HINT_COPY[policy.soft_hint_key ?? ""] ?? `Use scene ${sceneId} anchors before escalating.`;
+    }
+    if (level === "sentence_stem") {
+        const base = SENTENCE_STEM_COPY[policy.sentence_stem_key ?? ""] ?? "Je résume: ___, ___, ___.";
+        if (requiredSlots.length === 0) return base;
+        return `${base} (Slots: ${requiredSlots.join(", ")})`;
+    }
+    if (level === "rephrase_choice") {
+        const options = REPHRASE_CHOICES_COPY[policy.rephrase_set_id ?? ""];
+        if (!options || options.length === 0) return "Rephrase your previous turn in shorter, more specific French.";
+        return `Choose one: ${options.join(" / ")}`;
+    }
+    if (!policy.english_meta_allowed) {
+        return "English meta-help unavailable at this difficulty/state.";
+    }
+    return EN_META_HELP_COPY[policy.english_meta_key ?? ""] ?? "English framing only; final action must remain in French.";
 }
 
 function appendNpcLine(parent: HTMLElement, labelText: string, valueText: string): void {
