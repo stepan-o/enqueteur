@@ -174,7 +174,7 @@ def _build_minigame_states(progress: InvestigationProgressState) -> tuple[Miniga
 
     mg4_attempt = 1 if ("E1_TORN_NOTE" in discovered or _has_observation(progress, "O4_BENCH", "inspect")) else 0
     mg4_completed = "N6" in known_facts
-    mg4_score = 2 if mg4_completed else (1 if mg4_attempt else 0)
+    mg4_score = 3 if mg4_completed else (1 if mg4_attempt else 0)
 
     return (
         MinigameLearningState(
@@ -206,7 +206,7 @@ def _build_minigame_states(progress: InvestigationProgressState) -> tuple[Miniga
             attempt_count=mg4_attempt,
             completed=mg4_completed,
             score=mg4_score,
-            max_score=2,
+            max_score=3,
             status=_mg_status(attempt_count=mg4_attempt, completed=mg4_completed),
         ),
     )

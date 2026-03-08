@@ -95,5 +95,68 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("Contradictions");
         expect(panel?.textContent).toContain("Unlockable edges");
         expect(panel?.textContent).toContain("Timeline Clues");
+        expect(panel?.textContent).toContain("Mini-Exercises");
+        expect(panel?.textContent).toContain("MG1 Wall Label Reading");
+        expect(panel?.textContent).toContain("MG2 Badge Log Read");
+        expect(panel?.textContent).toContain("MG3 Receipt Reading");
+        expect(panel?.textContent).toContain("MG4 Torn Note Reconstruction");
+    });
+
+    it("evaluates MG1-MG4 notebook widgets deterministically", async () => {
+        const store = new WorldStore();
+        store.applySnapshot(makeMbamSnapshot(4));
+
+        const notebook = mountNotebookPanel(store);
+        document.body.appendChild(notebook.root);
+        const panel = notebook.root.querySelector(".notebook-panel");
+        const cards = Array.from(notebook.root.querySelectorAll<HTMLElement>(".notebook-minigame"));
+
+        const mg1 = cards.find((card) => card.textContent?.includes("MG1 Wall Label Reading"));
+        const mg2 = cards.find((card) => card.textContent?.includes("MG2 Badge Log Read"));
+        const mg3 = cards.find((card) => card.textContent?.includes("MG3 Receipt Reading"));
+        const mg4 = cards.find((card) => card.textContent?.includes("MG4 Torn Note Reconstruction"));
+        expect(mg1).toBeTruthy();
+        expect(mg2).toBeTruthy();
+        expect(mg3).toBeTruthy();
+        expect(mg4).toBeTruthy();
+
+        const mg1Inputs = Array.from(mg1!.querySelectorAll<HTMLInputElement>("input.notebook-minigame-input"));
+        mg1Inputs[0]!.value = "Le Medaillon des Voyageurs";
+        mg1Inputs[0]!.dispatchEvent(new Event("input"));
+        mg1Inputs[1]!.value = "1898";
+        mg1Inputs[1]!.dispatchEvent(new Event("input"));
+
+        const mg2Select = mg2!.querySelector<HTMLSelectElement>("select.notebook-minigame-input");
+        const mg2Time = mg2!.querySelector<HTMLInputElement>("input.notebook-minigame-input");
+        expect(mg2Select).toBeTruthy();
+        expect(mg2Time).toBeTruthy();
+        mg2Select!.value = "MBAM-STF-04";
+        mg2Select!.dispatchEvent(new Event("change"));
+        mg2Time!.value = "17:58";
+        mg2Time!.dispatchEvent(new Event("input"));
+
+        const mg3Inputs = Array.from(mg3!.querySelectorAll<HTMLInputElement>("input.notebook-minigame-input"));
+        mg3Inputs[0]!.value = "17:52";
+        mg3Inputs[0]!.dispatchEvent(new Event("input"));
+        mg3Inputs[1]!.value = "cafe filtre";
+        mg3Inputs[1]!.dispatchEvent(new Event("input"));
+
+        const mg4Selects = Array.from(mg4!.querySelectorAll<HTMLSelectElement>("select.notebook-minigame-input"));
+        expect(mg4Selects.length).toBe(3);
+        mg4Selects[0]!.value = "chariot";
+        mg4Selects[0]!.dispatchEvent(new Event("change"));
+        mg4Selects[1]!.value = "livraison";
+        mg4Selects[1]!.dispatchEvent(new Event("change"));
+        mg4Selects[2]!.value = "17h58";
+        mg4Selects[2]!.dispatchEvent(new Event("change"));
+
+        mg1!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!.click();
+        mg2!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!.click();
+        mg3!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!.click();
+        mg4!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!.click();
+        await flushUi();
+
+        expect(panel?.textContent).toContain("Correct (2/2).");
+        expect(panel?.textContent).toContain("Correct (3/3).");
     });
 });

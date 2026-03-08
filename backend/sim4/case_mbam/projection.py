@@ -98,6 +98,44 @@ def _sanitize_visible_behavior_flags(flags: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(flag for flag in flags if not flag.startswith(hidden_prefixes))
 
 
+def _label_title_for_seed(seed: str) -> str:
+    _ = seed
+    return "Le Medaillon des Voyageurs"
+
+
+def _label_date_for_seed(seed: str) -> str:
+    _ = seed
+    return "1898"
+
+
+def _receipt_item_for_seed(seed: str) -> str:
+    if seed == "A":
+        return "cafe filtre"
+    if seed == "B":
+        return "croissant"
+    return "espresso"
+
+
+def _torn_note_puzzle_for_seed(seed: str) -> dict[str, Any]:
+    if seed == "A":
+        return {
+            "variant_id": "torn_note_a",
+            "prompt": "___ de ___ vers ___",
+            "options": ["chariot", "livraison", "17h58", "badge", "vitrine"],
+        }
+    if seed == "B":
+        return {
+            "variant_id": "torn_note_b",
+            "prompt": "___ de ___ avant ___ heures",
+            "options": ["pret", "badge", "dix-huit", "chariot", "vitrine"],
+        }
+    return {
+        "variant_id": "torn_note_c",
+        "prompt": "___ laissee ___ pres de ___",
+        "options": ["vitrine", "entre-ouverte", "17h58", "badge", "livraison"],
+    }
+
+
 def build_visible_npc_semantic_projection(
     npc_states: Mapping[FixedCastId, NPCState],
 ) -> list[dict[str, Any]]:
@@ -184,7 +222,9 @@ def _observed_affordances_by_object(
 def _visible_known_state_for_object(
     object_id: MbamObjectId,
     *,
+    case_state: CaseState,
     object_state: MbamObjectStateBundle,
+    progress: InvestigationProgressState,
     observed_affordances: set[str],
 ) -> dict[str, Any]:
     state = get_object_state_by_id(object_state, object_id)
@@ -211,10 +251,18 @@ def _visible_known_state_for_object(
         s = state  # type: ignore[assignment]
         if "read" in observed_affordances:
             out["text_variant_id"] = s.text_variant_id
+            out["title"] = _label_title_for_seed(case_state.seed)
+            out["date"] = _label_date_for_seed(case_state.seed)
     elif object_id == "O4_BENCH":
         s = state  # type: ignore[assignment]
         if "inspect" in observed_affordances:
             out["under_bench_item"] = s.under_bench_item
+            known_evidence = set(progress.discovered_evidence_ids).union(progress.collected_evidence_ids)
+            if "E1_TORN_NOTE" in known_evidence:
+                puzzle = _torn_note_puzzle_for_seed(case_state.seed)
+                out["torn_note_variant_id"] = puzzle["variant_id"]
+                out["torn_note_prompt"] = puzzle["prompt"]
+                out["torn_note_options"] = puzzle["options"]
     elif object_id == "O5_VISITOR_LOGBOOK":
         s = state  # type: ignore[assignment]
         if "read" in observed_affordances:
@@ -227,6 +275,14 @@ def _visible_known_state_for_object(
             out["archived"] = s.archived
         if "view_logs" in observed_affordances:
             out["log_entry_count"] = len(s.log_entries)
+            out["log_entries"] = [
+                {
+                    "badge_id": entry.badge_id,
+                    "time": entry.time,
+                    "door": entry.door,
+                }
+                for entry in s.log_entries
+            ]
     elif object_id == "O7_SECURITY_BINDER":
         s = state  # type: ignore[assignment]
         if "read" in observed_affordances:
@@ -243,6 +299,13 @@ def _visible_known_state_for_object(
             out["receipt_count"] = len(s.recent_receipts)
         if "read_receipt" in observed_affordances and s.recent_receipts:
             out["latest_receipt_id"] = s.recent_receipts[0].receipt_id
+        if "read_receipt" in observed_affordances:
+            out["time"] = "17:52"
+            out["item"] = _receipt_item_for_seed(case_state.seed)
+            out.setdefault(
+                "latest_receipt_id",
+                case_state.evidence_placement.cafe.receipt_id or f"R-{case_state.seed}-1752",
+            )
     elif object_id == "O10_BULLETIN_BOARD":
         if "read" in observed_affordances:
             out["read"] = True
@@ -267,7 +330,9 @@ def build_visible_investigation_projection(
         observed_affordances = tuple(sorted(observed_by_object.get(object_id, set())))
         known_state = _visible_known_state_for_object(
             object_id,
+            case_state=case_state,
             object_state=object_state,
+            progress=progress,
             observed_affordances=set(observed_affordances),
         )
         objects.append(

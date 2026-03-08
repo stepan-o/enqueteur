@@ -5,6 +5,38 @@ export type NotebookPanelHandle = {
     root: HTMLElement;
 };
 
+type MinigameUiState = {
+    answers: Record<string, string>;
+    attempts: number;
+    feedback: string | null;
+    passed: boolean | null;
+};
+
+type LearningProjection = NonNullable<WorldState["dialogue"]>["learning"];
+type ProjectedMinigameState = {
+    attempt_count: number;
+    completed: boolean;
+    score: number;
+    max_score: number;
+    status: string;
+};
+
+type BadgeLogRowSource = {
+    badge_id: string;
+    time: string;
+    door: string;
+};
+
+type Mg2Source = {
+    entries: BadgeLogRowSource[];
+};
+
+type Mg4Source = {
+    variantId: string;
+    prompt: string;
+    options: string[];
+};
+
 const EVIDENCE_LABELS: Record<string, string> = {
     E1_TORN_NOTE: "E1 Torn Note",
     E2_CAFE_RECEIPT: "E2 Cafe Receipt",
@@ -46,6 +78,30 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
     root.appendChild(panel);
 
     let lastState: WorldState | null = null;
+    let mg1State: MinigameUiState = {
+        answers: { title: "", date: "" },
+        attempts: 0,
+        feedback: null,
+        passed: null,
+    };
+    let mg3State: MinigameUiState = {
+        answers: { time: "", item: "" },
+        attempts: 0,
+        feedback: null,
+        passed: null,
+    };
+    let mg2State: MinigameUiState = {
+        answers: { badge_id: "", time: "" },
+        attempts: 0,
+        feedback: null,
+        passed: null,
+    };
+    let mg4State: MinigameUiState = {
+        answers: { slot1: "", slot2: "", slot3: "" },
+        attempts: 0,
+        feedback: null,
+        passed: null,
+    };
 
     const render = (): void => {
         panel.innerHTML = "";
@@ -83,6 +139,104 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
 
         renderSectionTitle(panel, "Timeline Clues");
         renderTimeline(panel, investigation);
+
+        renderSectionTitle(panel, "Mini-Exercises");
+        renderMinigames(panel, {
+            state: lastState,
+            investigation,
+            mg1State,
+            mg2State,
+            mg3State,
+            mg4State,
+            onMg1Answer: (field, value) => {
+                mg1State = {
+                    ...mg1State,
+                    answers: {
+                        ...mg1State.answers,
+                        [field]: value,
+                    },
+                };
+            },
+            onMg1Submit: (source) => {
+                mg1State = evaluateMg1(mg1State, source);
+                render();
+            },
+            onMg1Reset: () => {
+                mg1State = {
+                    answers: { title: "", date: "" },
+                    attempts: mg1State.attempts,
+                    feedback: null,
+                    passed: null,
+                };
+                render();
+            },
+            onMg2Answer: (field, value) => {
+                mg2State = {
+                    ...mg2State,
+                    answers: {
+                        ...mg2State.answers,
+                        [field]: value,
+                    },
+                };
+            },
+            onMg2Submit: (source) => {
+                mg2State = evaluateMg2(mg2State, source);
+                render();
+            },
+            onMg2Reset: () => {
+                mg2State = {
+                    answers: { badge_id: "", time: "" },
+                    attempts: mg2State.attempts,
+                    feedback: null,
+                    passed: null,
+                };
+                render();
+            },
+            onMg3Answer: (field, value) => {
+                mg3State = {
+                    ...mg3State,
+                    answers: {
+                        ...mg3State.answers,
+                        [field]: value,
+                    },
+                };
+            },
+            onMg3Submit: (source) => {
+                mg3State = evaluateMg3(mg3State, source);
+                render();
+            },
+            onMg3Reset: () => {
+                mg3State = {
+                    answers: { time: "", item: "" },
+                    attempts: mg3State.attempts,
+                    feedback: null,
+                    passed: null,
+                };
+                render();
+            },
+            onMg4Answer: (field, value) => {
+                mg4State = {
+                    ...mg4State,
+                    answers: {
+                        ...mg4State.answers,
+                        [field]: value,
+                    },
+                };
+            },
+            onMg4Submit: (source) => {
+                mg4State = evaluateMg4(mg4State, source);
+                render();
+            },
+            onMg4Reset: () => {
+                mg4State = {
+                    answers: { slot1: "", slot2: "", slot3: "" },
+                    attempts: mg4State.attempts,
+                    feedback: null,
+                    passed: null,
+                };
+                render();
+            },
+        });
     };
 
     store.subscribe((state) => {
@@ -91,6 +245,545 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
     });
 
     return { root };
+}
+
+type MinigameRenderOpts = {
+    state: WorldState;
+    investigation: KvpInvestigationState;
+    mg1State: MinigameUiState;
+    mg2State: MinigameUiState;
+    mg3State: MinigameUiState;
+    mg4State: MinigameUiState;
+    onMg1Answer: (field: "title" | "date", value: string) => void;
+    onMg1Submit: (source: { title: string; date: string }) => void;
+    onMg1Reset: () => void;
+    onMg2Answer: (field: "badge_id" | "time", value: string) => void;
+    onMg2Submit: (source: Mg2Source) => void;
+    onMg2Reset: () => void;
+    onMg3Answer: (field: "time" | "item", value: string) => void;
+    onMg3Submit: (source: { time: string; item: string }) => void;
+    onMg3Reset: () => void;
+    onMg4Answer: (field: "slot1" | "slot2" | "slot3", value: string) => void;
+    onMg4Submit: (source: Mg4Source) => void;
+    onMg4Reset: () => void;
+};
+
+function renderMinigames(panel: HTMLElement, opts: MinigameRenderOpts): void {
+    const objectRows = new Map(opts.investigation.objects.map((row) => [row.object_id, row]));
+    const labelKnownState = objectRows.get("O3_WALL_LABEL")?.known_state ?? {};
+    const badgeKnownState = objectRows.get("O6_BADGE_TERMINAL")?.known_state ?? {};
+    const receiptKnownState = objectRows.get("O9_RECEIPT_PRINTER")?.known_state ?? {};
+    const benchKnownState = objectRows.get("O4_BENCH")?.known_state ?? {};
+    const learning = opts.state.dialogue?.learning ?? null;
+    const mgRows = new Map((learning?.minigames ?? []).map((row) => [row.minigame_id, row]));
+
+    const mg2Source = parseMg2Source(badgeKnownState);
+    const mg4Source = parseMg4Source(benchKnownState);
+
+    renderMg1Widget(panel, {
+        source:
+            typeof labelKnownState.title === "string" && typeof labelKnownState.date === "string"
+                ? { title: labelKnownState.title, date: labelKnownState.date }
+                : null,
+        state: opts.mg1State,
+        projected: mgRows.get("MG1_LABEL_READING"),
+        learning,
+        onAnswer: opts.onMg1Answer,
+        onSubmit: opts.onMg1Submit,
+        onReset: opts.onMg1Reset,
+    });
+
+    renderMg2Widget(panel, {
+        source: mg2Source,
+        state: opts.mg2State,
+        projected: mgRows.get("MG2_BADGE_LOG"),
+        learning,
+        onAnswer: opts.onMg2Answer,
+        onSubmit: opts.onMg2Submit,
+        onReset: opts.onMg2Reset,
+    });
+
+    renderMg3Widget(panel, {
+        source:
+            typeof receiptKnownState.time === "string" && typeof receiptKnownState.item === "string"
+                ? { time: receiptKnownState.time, item: receiptKnownState.item }
+                : null,
+        state: opts.mg3State,
+        projected: mgRows.get("MG3_RECEIPT_READING"),
+        learning,
+        onAnswer: opts.onMg3Answer,
+        onSubmit: opts.onMg3Submit,
+        onReset: opts.onMg3Reset,
+    });
+
+    renderMg4Widget(panel, {
+        source: mg4Source,
+        state: opts.mg4State,
+        projected: mgRows.get("MG4_TORN_NOTE_RECONSTRUCTION"),
+        learning,
+        onAnswer: opts.onMg4Answer,
+        onSubmit: opts.onMg4Submit,
+        onReset: opts.onMg4Reset,
+    });
+}
+
+function parseMg2Source(knownState: Record<string, unknown>): Mg2Source | null {
+    const raw = knownState.log_entries;
+    if (!Array.isArray(raw)) return null;
+    const entries: BadgeLogRowSource[] = [];
+    for (const row of raw) {
+        if (!row || typeof row !== "object") continue;
+        const badgeId = (row as { badge_id?: unknown }).badge_id;
+        const time = (row as { time?: unknown }).time;
+        const door = (row as { door?: unknown }).door;
+        if (typeof badgeId !== "string" || typeof time !== "string" || typeof door !== "string") {
+            continue;
+        }
+        entries.push({ badge_id: badgeId, time, door });
+    }
+    return entries.length > 0 ? { entries } : null;
+}
+
+function parseMg4Source(knownState: Record<string, unknown>): Mg4Source | null {
+    const prompt = knownState.torn_note_prompt;
+    const variantId = knownState.torn_note_variant_id;
+    const rawOptions = knownState.torn_note_options;
+    if (typeof prompt !== "string" || typeof variantId !== "string" || !Array.isArray(rawOptions)) {
+        return null;
+    }
+    const options = rawOptions.filter((row): row is string => typeof row === "string" && row.length > 0);
+    if (options.length < 3) return null;
+    return { variantId, prompt, options };
+}
+
+function renderMg1Widget(
+    panel: HTMLElement,
+    opts: {
+        source: { title: string; date: string } | null;
+        state: MinigameUiState;
+        projected: ProjectedMinigameState | undefined;
+        learning: LearningProjection | null | undefined;
+        onAnswer: (field: "title" | "date", value: string) => void;
+        onSubmit: (source: { title: string; date: string }) => void;
+        onReset: () => void;
+    }
+): void {
+    const wrap = document.createElement("div");
+    wrap.className = "notebook-minigame";
+    panel.appendChild(wrap);
+
+    const title = document.createElement("div");
+    title.className = "notebook-minigame-title";
+    title.textContent = "MG1 Wall Label Reading";
+    wrap.appendChild(title);
+
+    if (!opts.source) {
+        renderMiniInfo(wrap, "Read the wall label first (O3) to unlock this exercise content.");
+        return;
+    }
+
+    renderMiniSource(wrap, `Cartel\nTitre: ${opts.source.title}\nDate: ${opts.source.date}`);
+    renderProjectedStatus(wrap, opts.projected, opts.state);
+    renderScaffoldingHints(wrap, opts.learning, "MG1_LABEL_READING");
+    renderMiniInput(wrap, {
+        label: "Title",
+        value: opts.state.answers.title ?? "",
+        placeholder: "Le ...",
+        onChange: (value) => opts.onAnswer("title", value),
+    });
+    renderMiniInput(wrap, {
+        label: "Date",
+        value: opts.state.answers.date ?? "",
+        placeholder: "1898",
+        onChange: (value) => opts.onAnswer("date", value),
+    });
+    renderMiniActions(wrap, {
+        onSubmit: () => opts.onSubmit(opts.source!),
+        onReset: opts.onReset,
+    });
+    renderMiniFeedback(wrap, opts.state);
+}
+
+function renderMg2Widget(
+    panel: HTMLElement,
+    opts: {
+        source: Mg2Source | null;
+        state: MinigameUiState;
+        projected: ProjectedMinigameState | undefined;
+        learning: LearningProjection | null | undefined;
+        onAnswer: (field: "badge_id" | "time", value: string) => void;
+        onSubmit: (source: Mg2Source) => void;
+        onReset: () => void;
+    }
+): void {
+    const wrap = document.createElement("div");
+    wrap.className = "notebook-minigame";
+    panel.appendChild(wrap);
+
+    const title = document.createElement("div");
+    title.className = "notebook-minigame-title";
+    title.textContent = "MG2 Badge Log Read";
+    wrap.appendChild(title);
+
+    if (!opts.source) {
+        renderMiniInfo(wrap, "Open and read badge logs first (O6) to unlock this exercise content.");
+        return;
+    }
+    const source = opts.source;
+
+    renderMiniSource(
+        wrap,
+        `Journal des badges\n${source.entries.map((row) => `${row.badge_id} | ${row.time} | ${row.door}`).join("\n")}`
+    );
+    renderProjectedStatus(wrap, opts.projected, opts.state);
+    renderScaffoldingHints(wrap, opts.learning, "MG2_BADGE_LOG");
+    renderMiniSelect(wrap, {
+        label: "Important entry",
+        value: opts.state.answers.badge_id ?? "",
+        options: source.entries.map((row) => ({
+            value: row.badge_id,
+            label: `${row.badge_id} (${row.time})`,
+        })),
+        placeholder: "Choose badge",
+        onChange: (value) => opts.onAnswer("badge_id", value),
+    });
+    renderMiniInput(wrap, {
+        label: "Key time",
+        value: opts.state.answers.time ?? "",
+        placeholder: "17:58",
+        onChange: (value) => opts.onAnswer("time", value),
+    });
+    renderMiniActions(wrap, {
+        onSubmit: () => opts.onSubmit(source),
+        onReset: opts.onReset,
+    });
+    renderMiniFeedback(wrap, opts.state);
+}
+
+function renderMg3Widget(
+    panel: HTMLElement,
+    opts: {
+        source: { time: string; item: string } | null;
+        state: MinigameUiState;
+        projected: ProjectedMinigameState | undefined;
+        learning: LearningProjection | null | undefined;
+        onAnswer: (field: "time" | "item", value: string) => void;
+        onSubmit: (source: { time: string; item: string }) => void;
+        onReset: () => void;
+    }
+): void {
+    const wrap = document.createElement("div");
+    wrap.className = "notebook-minigame";
+    panel.appendChild(wrap);
+
+    const title = document.createElement("div");
+    title.className = "notebook-minigame-title";
+    title.textContent = "MG3 Receipt Reading";
+    wrap.appendChild(title);
+
+    if (!opts.source) {
+        renderMiniInfo(wrap, "Read a receipt first (O9) to unlock this exercise content.");
+        return;
+    }
+
+    renderMiniSource(wrap, `Recu\nHeure: ${opts.source.time}\nArticle: ${opts.source.item}`);
+    renderProjectedStatus(wrap, opts.projected, opts.state);
+    renderScaffoldingHints(wrap, opts.learning, "MG3_RECEIPT_READING");
+    renderMiniInput(wrap, {
+        label: "Time",
+        value: opts.state.answers.time ?? "",
+        placeholder: "17:52",
+        onChange: (value) => opts.onAnswer("time", value),
+    });
+    renderMiniInput(wrap, {
+        label: "Item",
+        value: opts.state.answers.item ?? "",
+        placeholder: "cafe filtre",
+        onChange: (value) => opts.onAnswer("item", value),
+    });
+    renderMiniActions(wrap, {
+        onSubmit: () => opts.onSubmit(opts.source!),
+        onReset: opts.onReset,
+    });
+    renderMiniFeedback(wrap, opts.state);
+}
+
+function renderMg4Widget(
+    panel: HTMLElement,
+    opts: {
+        source: Mg4Source | null;
+        state: MinigameUiState;
+        projected: ProjectedMinigameState | undefined;
+        learning: LearningProjection | null | undefined;
+        onAnswer: (field: "slot1" | "slot2" | "slot3", value: string) => void;
+        onSubmit: (source: Mg4Source) => void;
+        onReset: () => void;
+    }
+): void {
+    const wrap = document.createElement("div");
+    wrap.className = "notebook-minigame";
+    panel.appendChild(wrap);
+
+    const title = document.createElement("div");
+    title.className = "notebook-minigame-title";
+    title.textContent = "MG4 Torn Note Reconstruction";
+    wrap.appendChild(title);
+
+    if (!opts.source) {
+        renderMiniInfo(wrap, "Recover torn-note evidence first to unlock this exercise content.");
+        return;
+    }
+    const source = opts.source;
+
+    renderMiniSource(wrap, `Note dechiree\n${source.prompt}\nOptions: ${source.options.join(", ")}`);
+    renderProjectedStatus(wrap, opts.projected, opts.state);
+    renderScaffoldingHints(wrap, opts.learning, "MG4_TORN_NOTE_RECONSTRUCTION");
+    renderMiniSelect(wrap, {
+        label: "Word 1",
+        value: opts.state.answers.slot1 ?? "",
+        options: source.options.map((option) => ({ value: option, label: option })),
+        placeholder: "Choose word",
+        onChange: (value) => opts.onAnswer("slot1", value),
+    });
+    renderMiniSelect(wrap, {
+        label: "Word 2",
+        value: opts.state.answers.slot2 ?? "",
+        options: source.options.map((option) => ({ value: option, label: option })),
+        placeholder: "Choose word",
+        onChange: (value) => opts.onAnswer("slot2", value),
+    });
+    renderMiniSelect(wrap, {
+        label: "Word 3",
+        value: opts.state.answers.slot3 ?? "",
+        options: source.options.map((option) => ({ value: option, label: option })),
+        placeholder: "Choose word",
+        onChange: (value) => opts.onAnswer("slot3", value),
+    });
+    renderMiniActions(wrap, {
+        onSubmit: () => opts.onSubmit(source),
+        onReset: opts.onReset,
+    });
+    renderMiniFeedback(wrap, opts.state);
+}
+
+function renderMiniSource(container: HTMLElement, text: string): void {
+    const source = document.createElement("pre");
+    source.className = "notebook-minigame-source";
+    source.textContent = text;
+    container.appendChild(source);
+}
+
+function renderMiniInfo(container: HTMLElement, text: string): void {
+    const line = document.createElement("div");
+    line.className = "notebook-minigame-info";
+    line.textContent = text;
+    container.appendChild(line);
+}
+
+function renderMiniInput(
+    container: HTMLElement,
+    opts: {
+        label: string;
+        value: string;
+        placeholder: string;
+        onChange: (value: string) => void;
+    }
+): void {
+    const row = document.createElement("label");
+    row.className = "notebook-minigame-input-row";
+    const label = document.createElement("span");
+    label.className = "notebook-minigame-label";
+    label.textContent = opts.label;
+    const input = document.createElement("input");
+    input.className = "notebook-minigame-input";
+    input.type = "text";
+    input.value = opts.value;
+    input.placeholder = opts.placeholder;
+    input.addEventListener("input", () => opts.onChange(input.value));
+    row.append(label, input);
+    container.appendChild(row);
+}
+
+function renderMiniSelect(
+    container: HTMLElement,
+    opts: {
+        label: string;
+        value: string;
+        options: Array<{ value: string; label: string }>;
+        placeholder: string;
+        onChange: (value: string) => void;
+    }
+): void {
+    const row = document.createElement("label");
+    row.className = "notebook-minigame-input-row";
+    const label = document.createElement("span");
+    label.className = "notebook-minigame-label";
+    label.textContent = opts.label;
+    const select = document.createElement("select");
+    select.className = "notebook-minigame-input";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = opts.placeholder;
+    select.appendChild(placeholder);
+    for (const option of opts.options) {
+        const node = document.createElement("option");
+        node.value = option.value;
+        node.textContent = option.label;
+        select.appendChild(node);
+    }
+    select.value = opts.value;
+    select.addEventListener("change", () => opts.onChange(select.value));
+    row.append(label, select);
+    container.appendChild(row);
+}
+
+function renderMiniActions(
+    container: HTMLElement,
+    opts: {
+        onSubmit: () => void;
+        onReset: () => void;
+    }
+): void {
+    const row = document.createElement("div");
+    row.className = "notebook-minigame-actions";
+    const submit = document.createElement("button");
+    submit.type = "button";
+    submit.className = "notebook-minigame-btn";
+    submit.textContent = "Validate";
+    submit.addEventListener("click", opts.onSubmit);
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "notebook-minigame-btn";
+    reset.textContent = "Retry";
+    reset.addEventListener("click", opts.onReset);
+    row.append(submit, reset);
+    container.appendChild(row);
+}
+
+function renderMiniFeedback(container: HTMLElement, state: MinigameUiState): void {
+    if (!state.feedback) return;
+    const line = document.createElement("div");
+    line.className = `notebook-minigame-feedback ${state.passed ? "is-pass" : "is-fail"}`;
+    line.textContent = state.feedback;
+    container.appendChild(line);
+}
+
+function renderProjectedStatus(
+    container: HTMLElement,
+    projected: ProjectedMinigameState | undefined,
+    local: MinigameUiState
+): void {
+    const line = document.createElement("div");
+    line.className = "notebook-minigame-status";
+    if (!projected) {
+        line.textContent = `Local attempts: ${local.attempts}`;
+    } else {
+        line.textContent =
+            `Projected status: ${projected.status} | projected attempts: ${projected.attempt_count} | ` +
+            `score: ${projected.score}/${projected.max_score} | local attempts: ${local.attempts}`;
+    }
+    container.appendChild(line);
+}
+
+function renderScaffoldingHints(
+    container: HTMLElement,
+    learning: NonNullable<WorldState["dialogue"]>["learning"] | null | undefined,
+    targetMinigameId: string
+): void {
+    if (!learning) return;
+    const policy = learning.scaffolding_policy;
+    if (policy.target_minigame_id && policy.target_minigame_id !== targetMinigameId) return;
+
+    const hints: string[] = [];
+    if (policy.soft_hint_key) hints.push(`Soft hint: ${policy.soft_hint_key}`);
+    if (policy.sentence_stem_key) hints.push(`Sentence stem: ${policy.sentence_stem_key}`);
+    if (policy.rephrase_set_id) hints.push(`Rephrase set: ${policy.rephrase_set_id}`);
+    if (policy.english_meta_allowed && policy.english_meta_key) {
+        hints.push(`EN meta-help: ${policy.english_meta_key}`);
+    }
+    if (hints.length === 0) return;
+
+    const block = document.createElement("div");
+    block.className = "notebook-minigame-hints";
+    block.textContent = `Scaffolding (${policy.current_hint_level}): ${hints.join(" | ")}`;
+    container.appendChild(block);
+}
+
+function evaluateMg1(
+    state: MinigameUiState,
+    source: { title: string; date: string }
+): MinigameUiState {
+    const titleOk = normalizeAnswer(state.answers.title ?? "") === normalizeAnswer(source.title);
+    const dateOk = normalizeAnswer(state.answers.date ?? "") === normalizeAnswer(source.date);
+    const passed = titleOk && dateOk;
+    const score = (titleOk ? 1 : 0) + (dateOk ? 1 : 0);
+    return {
+        ...state,
+        attempts: state.attempts + 1,
+        passed,
+        feedback: passed ? `Correct (${score}/2).` : `Incorrect (${score}/2). Check title/date and retry.`,
+    };
+}
+
+function evaluateMg3(
+    state: MinigameUiState,
+    source: { time: string; item: string }
+): MinigameUiState {
+    const timeOk = normalizeAnswer(state.answers.time ?? "") === normalizeAnswer(source.time);
+    const itemOk = normalizeAnswer(state.answers.item ?? "") === normalizeAnswer(source.item);
+    const passed = timeOk && itemOk;
+    const score = (timeOk ? 1 : 0) + (itemOk ? 1 : 0);
+    return {
+        ...state,
+        attempts: state.attempts + 1,
+        passed,
+        feedback: passed ? `Correct (${score}/2).` : `Incorrect (${score}/2). Check time/item and retry.`,
+    };
+}
+
+function evaluateMg2(
+    state: MinigameUiState,
+    source: Mg2Source
+): MinigameUiState {
+    const important = source.entries.find((row) => normalizeAnswer(row.time) === "17:58") ?? source.entries[0];
+    const badgeOk = normalizeAnswer(state.answers.badge_id ?? "") === normalizeAnswer(important?.badge_id ?? "");
+    const timeOk = normalizeAnswer(state.answers.time ?? "") === normalizeAnswer("17:58");
+    const passed = badgeOk && timeOk;
+    const score = (badgeOk ? 1 : 0) + (timeOk ? 1 : 0);
+    return {
+        ...state,
+        attempts: state.attempts + 1,
+        passed,
+        feedback: passed ? `Correct (${score}/2).` : `Incorrect (${score}/2). Find the 17:58 entry and retry.`,
+    };
+}
+
+const MG4_EXPECTED_BY_VARIANT: Record<string, [string, string, string]> = {
+    torn_note_a: ["chariot", "livraison", "17h58"],
+    torn_note_b: ["pret", "badge", "dix-huit"],
+    torn_note_c: ["vitrine", "entre-ouverte", "17h58"],
+};
+
+function evaluateMg4(
+    state: MinigameUiState,
+    source: Mg4Source
+): MinigameUiState {
+    const expected = MG4_EXPECTED_BY_VARIANT[source.variantId] ?? ["", "", ""];
+    const firstOk = normalizeAnswer(state.answers.slot1 ?? "") === normalizeAnswer(expected[0]);
+    const secondOk = normalizeAnswer(state.answers.slot2 ?? "") === normalizeAnswer(expected[1]);
+    const thirdOk = normalizeAnswer(state.answers.slot3 ?? "") === normalizeAnswer(expected[2]);
+    const passed = firstOk && secondOk && thirdOk;
+    const score = (firstOk ? 1 : 0) + (secondOk ? 1 : 0) + (thirdOk ? 1 : 0);
+    return {
+        ...state,
+        attempts: state.attempts + 1,
+        passed,
+        feedback: passed ? `Correct (${score}/3).` : `Incorrect (${score}/3). Rebuild the torn-note sequence.`,
+    };
+}
+
+function normalizeAnswer(value: string): string {
+    return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function renderEvidenceTray(panel: HTMLElement, investigation: KvpInvestigationState): void {

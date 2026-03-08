@@ -104,3 +104,72 @@ def test_visible_projection_updates_known_object_state_after_observation() -> No
     assert keypad["observed_affordances"] == ["inspect"]
     assert keypad["known_state"]["locked"] is True
     assert keypad["known_state"]["has_code_hint"] is True
+
+
+def test_visible_projection_exposes_mg_sources_after_required_observations() -> None:
+    case_state = generate_case_state_for_seed_id("A")
+    object_state = build_initial_mbam_object_state(case_state)
+    progress = build_initial_investigation_progress(case_state)
+
+    wall_read = execute_investigation_command(
+        make_investigation_command(
+            object_id="O3_WALL_LABEL",
+            affordance_id="read",
+        ),
+        case_state=case_state,
+        object_state=object_state,
+    )
+    progress = apply_execution_result_to_progress(case_state, progress, wall_read).progress_after
+
+    badge_logs = execute_investigation_command(
+        make_investigation_command(
+            object_id="O6_BADGE_TERMINAL",
+            affordance_id="view_logs",
+        ),
+        case_state=case_state,
+        object_state=wall_read.object_state_after,
+        available_prerequisites=("access:terminal_granted",),
+    )
+    progress = apply_execution_result_to_progress(case_state, progress, badge_logs).progress_after
+
+    receipt_read = execute_investigation_command(
+        make_investigation_command(
+            object_id="O9_RECEIPT_PRINTER",
+            affordance_id="read_receipt",
+        ),
+        case_state=case_state,
+        object_state=badge_logs.object_state_after,
+        available_prerequisites=("inventory:E2_CAFE_RECEIPT",),
+    )
+    progress = apply_execution_result_to_progress(case_state, progress, receipt_read).progress_after
+
+    bench_inspect = execute_investigation_command(
+        make_investigation_command(
+            object_id="O4_BENCH",
+            affordance_id="inspect",
+        ),
+        case_state=case_state,
+        object_state=receipt_read.object_state_after,
+    )
+    progress = apply_execution_result_to_progress(case_state, progress, bench_inspect).progress_after
+
+    projection = build_visible_investigation_projection(
+        case_state=case_state,
+        object_state=bench_inspect.object_state_after,
+        progress=progress,
+    )
+    wall = next(row for row in projection["objects"] if row["object_id"] == "O3_WALL_LABEL")
+    badge = next(row for row in projection["objects"] if row["object_id"] == "O6_BADGE_TERMINAL")
+    receipt = next(row for row in projection["objects"] if row["object_id"] == "O9_RECEIPT_PRINTER")
+    bench = next(row for row in projection["objects"] if row["object_id"] == "O4_BENCH")
+
+    assert wall["known_state"]["title"] == "Le Medaillon des Voyageurs"
+    assert wall["known_state"]["date"] == "1898"
+    assert badge["known_state"]["log_entry_count"] == 2
+    assert badge["known_state"]["log_entries"][0]["badge_id"] == "MBAM-STF-04"
+    assert badge["known_state"]["log_entries"][0]["time"] == "17:58"
+    assert receipt["known_state"]["time"] == "17:52"
+    assert receipt["known_state"]["item"] == "cafe filtre"
+    assert bench["known_state"]["torn_note_variant_id"] == "torn_note_a"
+    assert bench["known_state"]["torn_note_prompt"] == "___ de ___ vers ___"
+    assert bench["known_state"]["torn_note_options"][:3] == ["chariot", "livraison", "17h58"]

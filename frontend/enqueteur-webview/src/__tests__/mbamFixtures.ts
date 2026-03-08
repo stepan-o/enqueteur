@@ -181,19 +181,62 @@ export function makeMbamSnapshot(tick = 1): FullSnapshotPayload {
                     known_state: {},
                 },
                 {
+                    object_id: "O3_WALL_LABEL",
+                    affordances: ["read"],
+                    observed_affordances: ["read"],
+                    known_state: {
+                        text_variant_id: "label_variant_a",
+                        title: "Le Medaillon des Voyageurs",
+                        date: "1898",
+                    },
+                },
+                {
+                    object_id: "O4_BENCH",
+                    affordances: ["inspect"],
+                    observed_affordances: ["inspect"],
+                    known_state: {
+                        under_bench_item: false,
+                        torn_note_variant_id: "torn_note_a",
+                        torn_note_prompt: "___ de ___ vers ___",
+                        torn_note_options: ["chariot", "livraison", "17h58", "badge", "vitrine"],
+                    },
+                },
+                {
+                    object_id: "O6_BADGE_TERMINAL",
+                    affordances: ["request_access", "view_logs"],
+                    observed_affordances: ["view_logs"],
+                    known_state: {
+                        online: true,
+                        archived: false,
+                        log_entry_count: 2,
+                        log_entries: [
+                            { badge_id: "MBAM-STF-04", time: "17:58", door: "SERVICE_CORRIDOR" },
+                            { badge_id: "MBAM-STF-01", time: "17:43", door: "SECURITY_OFFICE" },
+                        ],
+                    },
+                },
+                {
                     object_id: "O9_RECEIPT_PRINTER",
                     affordances: ["ask_for_receipt", "read_receipt"],
-                    observed_affordances: [],
-                    known_state: {},
+                    observed_affordances: ["read_receipt"],
+                    known_state: {
+                        receipt_count: 1,
+                        latest_receipt_id: "R-A-1752",
+                        time: "17:52",
+                        item: "cafe filtre",
+                    },
                 },
             ],
             evidence: {
-                discovered_ids: ["E2_CAFE_RECEIPT"],
+                discovered_ids: ["E1_TORN_NOTE", "E2_CAFE_RECEIPT"],
                 collected_ids: [],
-                observed_not_collected_ids: ["clue:evidence:E2_CAFE_RECEIPT:observed_not_collected"],
+                observed_not_collected_ids: [
+                    "clue:evidence:E1_TORN_NOTE:observed_not_collected",
+                    "clue:evidence:E2_CAFE_RECEIPT:observed_not_collected",
+                ],
             },
             facts: {
-                known_fact_ids: ["N1", "N4"],
+                known_fact_ids: ["N1", "N3", "N4", "N6"],
             },
             contradictions: {
                 unlockable_edge_ids: ["E3"],
@@ -259,6 +302,30 @@ export function makeMbamSnapshot(tick = 1): FullSnapshotPayload {
                         score: 0,
                         max_score: 2,
                         status: "not_started",
+                    },
+                    {
+                        minigame_id: "MG2_BADGE_LOG",
+                        attempt_count: 1,
+                        completed: true,
+                        score: 2,
+                        max_score: 2,
+                        status: "completed",
+                    },
+                    {
+                        minigame_id: "MG3_RECEIPT_READING",
+                        attempt_count: 1,
+                        completed: true,
+                        score: 2,
+                        max_score: 2,
+                        status: "completed",
+                    },
+                    {
+                        minigame_id: "MG4_TORN_NOTE_RECONSTRUCTION",
+                        attempt_count: 1,
+                        completed: false,
+                        score: 1,
+                        max_score: 3,
+                        status: "in_progress",
                     },
                 ],
                 scaffolding_policy: {
