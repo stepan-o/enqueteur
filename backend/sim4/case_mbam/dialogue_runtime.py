@@ -17,6 +17,7 @@ from .dialogue_domain import (
     get_dialogue_intent,
 )
 from .investigation_progress import InvestigationProgressState
+from .learning_rules import effective_summary_min_fact_count, required_summary_key_fact_ids
 from .models import CaseState, SceneCompletionState, SceneId
 from .npc_state import NPCState
 from .scene_definitions import (
@@ -138,18 +139,25 @@ class DialogueSceneTurnExecutionResult:
 class SummaryCheckReport:
     required: bool
     min_fact_count: int
+    effective_min_fact_count: int
+    required_key_fact_ids: tuple[str, ...]
     provided_fact_ids: tuple[str, ...]
     accepted_fact_ids: tuple[str, ...]
     rejected_fact_ids: tuple[str, ...]
+    missing_key_fact_ids: tuple[str, ...]
     passed: bool
     code: str
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "required_key_fact_ids", _sorted_unique(self.required_key_fact_ids))
         object.__setattr__(self, "provided_fact_ids", _sorted_unique(self.provided_fact_ids))
         object.__setattr__(self, "accepted_fact_ids", _sorted_unique(self.accepted_fact_ids))
         object.__setattr__(self, "rejected_fact_ids", _sorted_unique(self.rejected_fact_ids))
+        object.__setattr__(self, "missing_key_fact_ids", _sorted_unique(self.missing_key_fact_ids))
         if self.min_fact_count < 0:
             raise ValueError("SummaryCheckReport.min_fact_count must be >= 0")
+        if self.effective_min_fact_count < 0:
+            raise ValueError("SummaryCheckReport.effective_min_fact_count must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -419,7 +427,7 @@ def _intent_affect(intent_id: str, status: str, code: str) -> tuple[float, float
     if status == "repair":
         if code in {"wrong_register", "too_aggressive"}:
             return -0.02, 0.03
-        if code in {"missing_evidence_reference", "summary_required", "summary_insufficient_facts"}:
+        if code in {"missing_evidence_reference", "summary_required", "summary_insufficient_facts", "summary_missing_key_fact"}:
             return -0.01, 0.02
         return 0.0, 0.01
     if status == "refused":
@@ -616,10 +624,21 @@ def _invalid_turn(*, request: DialogueTurnRequest, code: str) -> DialogueTurnRes
 
 def _build_summary_check_report(
     *,
+    case_state: CaseState,
+    scene_id: SceneId,
     scene_state: DialogueSceneState,
     provided_fact_ids: tuple[str, ...],
     known_facts: set[str],
 ) -> SummaryCheckReport:
+    effective_min = effective_summary_min_fact_count(
+        difficulty=case_state.difficulty_profile,
+        scene_id=scene_id,
+        base_min_fact_count=scene_state.summary_requirement.min_fact_count,
+    )
+    required_key_facts = required_summary_key_fact_ids(
+        difficulty=case_state.difficulty_profile,
+        scene_id=scene_id,
+    )
     accepted = tuple(
         sorted(
             fact_id
@@ -628,15 +647,27 @@ def _build_summary_check_report(
         )
     )
     rejected = tuple(sorted(set(provided_fact_ids).difference(accepted)))
-    passed = len(accepted) >= scene_state.summary_requirement.min_fact_count
+    missing_key = tuple(sorted(fact_id for fact_id in required_key_facts if fact_id not in set(accepted)))
+    if len(accepted) < effective_min:
+        passed = False
+        code = "summary_insufficient_facts"
+    elif missing_key:
+        passed = False
+        code = "summary_missing_key_fact"
+    else:
+        passed = True
+        code = "summary_passed"
     return SummaryCheckReport(
         required=scene_state.summary_requirement.required,
         min_fact_count=scene_state.summary_requirement.min_fact_count,
+        effective_min_fact_count=effective_min,
+        required_key_fact_ids=required_key_facts,
         provided_fact_ids=provided_fact_ids,
         accepted_fact_ids=accepted,
         rejected_fact_ids=rejected,
+        missing_key_fact_ids=missing_key,
         passed=passed,
-        code="summary_passed" if passed else "summary_insufficient_facts",
+        code=code,
     )
 
 
@@ -715,6 +746,15 @@ def execute_dialogue_turn(
         )
 
     scene_state = definition.scene_state
+    effective_summary_min = effective_summary_min_fact_count(
+        difficulty=case_state.difficulty_profile,
+        scene_id=request.scene_id,
+        base_min_fact_count=scene_state.summary_requirement.min_fact_count,
+    )
+    required_summary_keys = required_summary_key_fact_ids(
+        difficulty=case_state.difficulty_profile,
+        scene_id=request.scene_id,
+    )
     social_gate_refusal = _social_gate_refusal_code(definition, context)
     if social_gate_refusal is not None:
         turn = _refused_turn(request=request, code=social_gate_refusal)
@@ -959,9 +999,12 @@ def execute_dialogue_turn(
             summary_check=SummaryCheckReport(
                 required=True,
                 min_fact_count=scene_state.summary_requirement.min_fact_count,
+                effective_min_fact_count=effective_summary_min,
+                required_key_fact_ids=required_summary_keys,
                 provided_fact_ids=request.presented_fact_ids,
                 accepted_fact_ids=(),
                 rejected_fact_ids=request.presented_fact_ids,
+                missing_key_fact_ids=required_summary_keys,
                 passed=False,
                 code="summary_required",
             ),
@@ -969,16 +1012,21 @@ def execute_dialogue_turn(
 
     if request.intent_id == "summarize_understanding":
         summary_check = _build_summary_check_report(
+            case_state=case_state,
+            scene_id=request.scene_id,
             scene_state=scene_state,
             provided_fact_ids=request.presented_fact_ids,
             known_facts=known_facts,
         )
         summary_check_passed = summary_check.passed
         if not summary_check_passed:
+            repair_mode: RepairResponseMode = (
+                "rephrase_choice" if summary_check.code == "summary_missing_key_fact" else "sentence_stem"
+            )
             turn = _repair_turn(
                 request=request,
-                code="summary_insufficient_facts",
-                response_mode="sentence_stem",
+                code=summary_check.code,
+                response_mode=repair_mode,
                 summary_check_passed=False,
             )
             scene_after = _state_with_scene_state(definition, completion_map[request.scene_id])
@@ -1029,9 +1077,12 @@ def execute_dialogue_turn(
                 summary_check=SummaryCheckReport(
                     required=True,
                     min_fact_count=scene_state.summary_requirement.min_fact_count,
+                    effective_min_fact_count=effective_summary_min,
+                    required_key_fact_ids=required_summary_keys,
                     provided_fact_ids=request.presented_fact_ids,
                     accepted_fact_ids=(),
                     rejected_fact_ids=request.presented_fact_ids,
+                    missing_key_fact_ids=required_summary_keys,
                     passed=False,
                     code="summary_needed",
                 ),

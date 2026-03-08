@@ -11,6 +11,7 @@ from backend.sim4.case_mbam import (
     build_initial_investigation_progress,
     enter_dialogue_scene,
     execute_dialogue_turn,
+    generate_case_state,
     generate_case_state_for_seed_id,
     initialize_mbam_npc_states_from_case_state,
 )
@@ -18,8 +19,12 @@ from backend.sim4.world.context import WorldContext
 from backend.sim4.world.mbam_layout import apply_mbam_layout
 
 
-def _setup(seed: str, *, elapsed_seconds: float = 0.0):
-    case_state = generate_case_state_for_seed_id(seed)
+def _setup(seed: str, *, elapsed_seconds: float = 0.0, difficulty_profile: str | None = None):
+    case_state = (
+        generate_case_state(seed=seed, difficulty_profile=difficulty_profile)
+        if difficulty_profile is not None
+        else generate_case_state_for_seed_id(seed)
+    )
     world_ctx = WorldContext()
     apply_mbam_layout(world_ctx)
     npc_states = initialize_mbam_npc_states_from_case_state(world_ctx, case_state)
@@ -198,6 +203,73 @@ def test_summary_insufficient_facts_repairs_and_does_not_complete_scene() -> Non
     assert result.summary_check is not None
     assert result.summary_check.passed is False
     assert result.scene_state_after.completion_state == "in_progress"
+
+
+def test_summary_strictness_d0_can_complete_s5_with_relaxed_fact_count() -> None:
+    case_state, _npc_states, _progress, context, runtime = _setup("A", difficulty_profile="D0")
+    context_for_s5 = _with_npc_trust(
+        replace(
+            context,
+            known_fact_ids=("N1", "N3", "N4", "N8"),
+            collected_evidence_ids=("E2_CAFE_RECEIPT",),
+        ),
+        "elodie",
+        0.9,
+    )
+    result = execute_dialogue_turn(
+        case_state,
+        runtime,
+        DialogueTurnRequest(
+            scene_id="S5",
+            npc_id="elodie",
+            intent_id="summarize_understanding",
+            provided_slots=(
+                DialogueTurnSlotValue(slot_name="person", value="samira"),
+                DialogueTurnSlotValue(slot_name="reason", value="contradiction horaire"),
+            ),
+            presented_fact_ids=("N3",),
+        ),
+        context=context_for_s5,
+    )
+    assert result.turn_result.status == "accepted"
+    assert result.summary_check is not None
+    assert result.summary_check.passed is True
+    assert result.summary_check.effective_min_fact_count == 1
+    assert result.scene_state_after.completion_state == "completed"
+
+
+def test_summary_strictness_d1_requires_scene_key_fact() -> None:
+    case_state, _npc_states, _progress, context, runtime = _setup("A", difficulty_profile="D1")
+    context_for_s5 = _with_npc_trust(
+        replace(
+            context,
+            known_fact_ids=("N1", "N3", "N4", "N8"),
+            collected_evidence_ids=("E2_CAFE_RECEIPT",),
+        ),
+        "elodie",
+        0.9,
+    )
+    result = execute_dialogue_turn(
+        case_state,
+        runtime,
+        DialogueTurnRequest(
+            scene_id="S5",
+            npc_id="elodie",
+            intent_id="summarize_understanding",
+            provided_slots=(
+                DialogueTurnSlotValue(slot_name="person", value="samira"),
+                DialogueTurnSlotValue(slot_name="reason", value="contradiction horaire"),
+            ),
+            presented_fact_ids=("N3", "N4"),
+        ),
+        context=context_for_s5,
+    )
+    assert result.turn_result.status == "repair"
+    assert result.turn_result.code == "summary_missing_key_fact"
+    assert result.summary_check is not None
+    assert result.summary_check.passed is False
+    assert result.summary_check.required_key_fact_ids == ("N8",)
+    assert result.summary_check.missing_key_fact_ids == ("N8",)
 
 
 def test_execute_turn_rejects_wrong_npc_even_when_scene_already_in_progress() -> None:

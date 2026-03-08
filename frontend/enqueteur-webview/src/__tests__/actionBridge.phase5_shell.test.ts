@@ -54,7 +54,7 @@ describe("Phase 5 action bridge", () => {
                     displayCase.known_state = { locked: true };
                 }
                 next.facts.known_fact_ids.push("N7");
-                next.evidence.discovered_ids.push("E1_TORN_NOTE");
+                next.evidence.discovered_ids.push("E3_METHOD_TRACE");
                 store.applyDiff(makeStateDiff(state, [{ op: "SET_INVESTIGATION", investigation: next }]));
                 return true;
             },
@@ -78,7 +78,7 @@ describe("Phase 5 action bridge", () => {
         expect(result.status).toBe("accepted");
         expect(result.code).toBe("projection_affordance_observed");
         expect(result.revealed_fact_ids).toContain("N7");
-        expect(result.revealed_evidence_ids).toContain("E1_TORN_NOTE");
+        expect(result.revealed_evidence_ids).toContain("E3_METHOD_TRACE");
     });
 
     it("treats observed-not-collected evidence projection as investigation state change", async () => {

@@ -463,6 +463,10 @@ function renderLearningSlice(panel: HTMLElement, dialogue: NonNullable<WorldStat
         ["Recommended mode", learning.scaffolding_policy.recommended_mode],
         ["FR required", learning.scaffolding_policy.french_action_required ? "yes" : "no"],
         ["Meta EN help", learning.scaffolding_policy.english_meta_allowed ? "yes" : "no"],
+        ["Prompt generosity", learning.scaffolding_policy.prompt_generosity],
+        ["Confirmation", learning.scaffolding_policy.confirmation_strength],
+        ["Summary strictness", learning.scaffolding_policy.summary_strictness],
+        ["Language support", learning.scaffolding_policy.language_support_level],
         ["Policy reason", learning.scaffolding_policy.reason_code],
     ]);
     const completedMgs = learning.minigames.filter((row) => row.completed).length;

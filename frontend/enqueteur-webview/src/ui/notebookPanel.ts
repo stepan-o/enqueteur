@@ -18,6 +18,10 @@ type ProjectedMinigameState = {
     completed: boolean;
     score: number;
     max_score: number;
+    pass_score_required?: number;
+    gate_open?: boolean;
+    gate_code?: string;
+    retry_recommended?: boolean;
     status: string;
 };
 
@@ -36,6 +40,8 @@ type Mg4Source = {
     prompt: string;
     options: string[];
 };
+
+type ConfirmationStrengthMode = "explicit" | "compact";
 
 const EVIDENCE_LABELS: Record<string, string> = {
     E1_TORN_NOTE: "E1 Torn Note",
@@ -158,7 +164,7 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
                 };
             },
             onMg1Submit: (source) => {
-                mg1State = evaluateMg1(mg1State, source);
+                mg1State = evaluateMg1(mg1State, source, currentConfirmationStrength(lastState));
                 render();
             },
             onMg1Reset: () => {
@@ -180,7 +186,7 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
                 };
             },
             onMg2Submit: (source) => {
-                mg2State = evaluateMg2(mg2State, source);
+                mg2State = evaluateMg2(mg2State, source, currentConfirmationStrength(lastState));
                 render();
             },
             onMg2Reset: () => {
@@ -202,7 +208,7 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
                 };
             },
             onMg3Submit: (source) => {
-                mg3State = evaluateMg3(mg3State, source);
+                mg3State = evaluateMg3(mg3State, source, currentConfirmationStrength(lastState));
                 render();
             },
             onMg3Reset: () => {
@@ -224,7 +230,7 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
                 };
             },
             onMg4Submit: (source) => {
-                mg4State = evaluateMg4(mg4State, source);
+                mg4State = evaluateMg4(mg4State, source, currentConfirmationStrength(lastState));
                 render();
             },
             onMg4Reset: () => {
@@ -245,6 +251,11 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
     });
 
     return { root };
+}
+
+function currentConfirmationStrength(state: WorldState | null): ConfirmationStrengthMode {
+    const mode = state?.dialogue?.learning?.scaffolding_policy?.confirmation_strength;
+    return mode === "compact" ? "compact" : "explicit";
 }
 
 type MinigameRenderOpts = {
@@ -398,6 +409,7 @@ function renderMg1Widget(
         onChange: (value) => opts.onAnswer("date", value),
     });
     renderMiniActions(wrap, {
+        canSubmit: opts.projected?.gate_open ?? true,
         onSubmit: () => opts.onSubmit(opts.source!),
         onReset: opts.onReset,
     });
@@ -454,6 +466,7 @@ function renderMg2Widget(
         onChange: (value) => opts.onAnswer("time", value),
     });
     renderMiniActions(wrap, {
+        canSubmit: opts.projected?.gate_open ?? true,
         onSubmit: () => opts.onSubmit(source),
         onReset: opts.onReset,
     });
@@ -502,6 +515,7 @@ function renderMg3Widget(
         onChange: (value) => opts.onAnswer("item", value),
     });
     renderMiniActions(wrap, {
+        canSubmit: opts.projected?.gate_open ?? true,
         onSubmit: () => opts.onSubmit(opts.source!),
         onReset: opts.onReset,
     });
@@ -560,6 +574,7 @@ function renderMg4Widget(
         onChange: (value) => opts.onAnswer("slot3", value),
     });
     renderMiniActions(wrap, {
+        canSubmit: opts.projected?.gate_open ?? true,
         onSubmit: () => opts.onSubmit(source),
         onReset: opts.onReset,
     });
@@ -640,6 +655,7 @@ function renderMiniSelect(
 function renderMiniActions(
     container: HTMLElement,
     opts: {
+        canSubmit: boolean;
         onSubmit: () => void;
         onReset: () => void;
     }
@@ -650,6 +666,7 @@ function renderMiniActions(
     submit.type = "button";
     submit.className = "notebook-minigame-btn";
     submit.textContent = "Validate";
+    submit.disabled = !opts.canSubmit;
     submit.addEventListener("click", opts.onSubmit);
     const reset = document.createElement("button");
     reset.type = "button";
@@ -678,9 +695,12 @@ function renderProjectedStatus(
     if (!projected) {
         line.textContent = `Local attempts: ${local.attempts}`;
     } else {
+        const passRequired = projected.pass_score_required ?? projected.max_score;
+        const gate = projected.gate_open === false ? ` | gate: ${projected.gate_code ?? "blocked"}` : "";
         line.textContent =
             `Projected status: ${projected.status} | projected attempts: ${projected.attempt_count} | ` +
-            `score: ${projected.score}/${projected.max_score} | local attempts: ${local.attempts}`;
+            `score: ${projected.score}/${projected.max_score} (pass ${passRequired})${gate} | ` +
+            `local attempts: ${local.attempts}`;
     }
     container.appendChild(line);
 }
@@ -701,6 +721,8 @@ function renderScaffoldingHints(
     if (policy.english_meta_allowed && policy.english_meta_key) {
         hints.push(`EN meta-help: ${policy.english_meta_key}`);
     }
+    hints.push(`Prompt: ${policy.prompt_generosity}`);
+    hints.push(`Confirm: ${policy.confirmation_strength}`);
     if (hints.length === 0) return;
 
     const block = document.createElement("div");
@@ -711,7 +733,8 @@ function renderScaffoldingHints(
 
 function evaluateMg1(
     state: MinigameUiState,
-    source: { title: string; date: string }
+    source: { title: string; date: string },
+    confirmationStrength: ConfirmationStrengthMode
 ): MinigameUiState {
     const titleOk = normalizeAnswer(state.answers.title ?? "") === normalizeAnswer(source.title);
     const dateOk = normalizeAnswer(state.answers.date ?? "") === normalizeAnswer(source.date);
@@ -721,13 +744,21 @@ function evaluateMg1(
         ...state,
         attempts: state.attempts + 1,
         passed,
-        feedback: passed ? `Correct (${score}/2).` : `Incorrect (${score}/2). Check title/date and retry.`,
+        feedback:
+            confirmationStrength === "compact"
+                ? passed
+                    ? "Correct."
+                    : "Incorrect. Retry."
+                : passed
+                  ? `Correct (${score}/2).`
+                  : `Incorrect (${score}/2). Check title/date and retry.`,
     };
 }
 
 function evaluateMg3(
     state: MinigameUiState,
-    source: { time: string; item: string }
+    source: { time: string; item: string },
+    confirmationStrength: ConfirmationStrengthMode
 ): MinigameUiState {
     const timeOk = normalizeAnswer(state.answers.time ?? "") === normalizeAnswer(source.time);
     const itemOk = normalizeAnswer(state.answers.item ?? "") === normalizeAnswer(source.item);
@@ -737,13 +768,21 @@ function evaluateMg3(
         ...state,
         attempts: state.attempts + 1,
         passed,
-        feedback: passed ? `Correct (${score}/2).` : `Incorrect (${score}/2). Check time/item and retry.`,
+        feedback:
+            confirmationStrength === "compact"
+                ? passed
+                    ? "Correct."
+                    : "Incorrect. Retry."
+                : passed
+                  ? `Correct (${score}/2).`
+                  : `Incorrect (${score}/2). Check time/item and retry.`,
     };
 }
 
 function evaluateMg2(
     state: MinigameUiState,
-    source: Mg2Source
+    source: Mg2Source,
+    confirmationStrength: ConfirmationStrengthMode
 ): MinigameUiState {
     const important = source.entries.find((row) => normalizeAnswer(row.time) === "17:58") ?? source.entries[0];
     const badgeOk = normalizeAnswer(state.answers.badge_id ?? "") === normalizeAnswer(important?.badge_id ?? "");
@@ -754,7 +793,14 @@ function evaluateMg2(
         ...state,
         attempts: state.attempts + 1,
         passed,
-        feedback: passed ? `Correct (${score}/2).` : `Incorrect (${score}/2). Find the 17:58 entry and retry.`,
+        feedback:
+            confirmationStrength === "compact"
+                ? passed
+                    ? "Correct."
+                    : "Incorrect. Retry."
+                : passed
+                  ? `Correct (${score}/2).`
+                  : `Incorrect (${score}/2). Find the 17:58 entry and retry.`,
     };
 }
 
@@ -766,7 +812,8 @@ const MG4_EXPECTED_BY_VARIANT: Record<string, [string, string, string]> = {
 
 function evaluateMg4(
     state: MinigameUiState,
-    source: Mg4Source
+    source: Mg4Source,
+    confirmationStrength: ConfirmationStrengthMode
 ): MinigameUiState {
     const expected = MG4_EXPECTED_BY_VARIANT[source.variantId] ?? ["", "", ""];
     const firstOk = normalizeAnswer(state.answers.slot1 ?? "") === normalizeAnswer(expected[0]);
@@ -778,7 +825,14 @@ function evaluateMg4(
         ...state,
         attempts: state.attempts + 1,
         passed,
-        feedback: passed ? `Correct (${score}/3).` : `Incorrect (${score}/3). Rebuild the torn-note sequence.`,
+        feedback:
+            confirmationStrength === "compact"
+                ? passed
+                    ? "Correct."
+                    : "Incorrect. Retry."
+                : passed
+                  ? `Correct (${score}/3).`
+                  : `Incorrect (${score}/3). Rebuild the torn-note sequence.`,
     };
 }
 

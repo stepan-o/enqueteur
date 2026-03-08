@@ -171,10 +171,14 @@ export type KvpLearningSceneSummaryState = {
     scene_id: string;
     required: boolean;
     min_fact_count: number;
+    effective_min_fact_count: number;
+    required_key_fact_ids: string[];
     attempt_count: number;
     completed: boolean;
     summary_passed: boolean | null;
     last_summary_code: string | null;
+    status: string;
+    strictness_mode: string;
 };
 
 export type KvpLearningMinigameState = {
@@ -183,6 +187,10 @@ export type KvpLearningMinigameState = {
     completed: boolean;
     score: number;
     max_score: number;
+    pass_score_required: number;
+    gate_open: boolean;
+    gate_code: string;
+    retry_recommended: boolean;
     status: string;
 };
 
@@ -199,6 +207,10 @@ export type KvpLearningScaffoldingPolicy = {
     sentence_stem_key: string | null;
     rephrase_set_id: string | null;
     english_meta_key: string | null;
+    prompt_generosity: string;
+    confirmation_strength: string;
+    summary_strictness: string;
+    language_support_level: string;
     target_minigame_id: string | null;
 };
 
@@ -649,9 +661,12 @@ function cloneDialogueState(value: KvpDialogueState | undefined): KvpDialogueSta
             required_scene_ids: [...value.summary_rules.required_scene_ids],
         },
         learning: value.learning
-            ? {
+                ? {
                   ...value.learning,
-                  summary_by_scene: value.learning.summary_by_scene.map((row) => ({ ...row })),
+                  summary_by_scene: value.learning.summary_by_scene.map((row) => ({
+                      ...row,
+                      required_key_fact_ids: [...row.required_key_fact_ids],
+                  })),
                   minigames: value.learning.minigames.map((row) => ({ ...row })),
                   scaffolding_policy: {
                       ...value.learning.scaffolding_policy,

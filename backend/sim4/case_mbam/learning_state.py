@@ -13,6 +13,16 @@ from typing import Literal
 
 from .dialogue_runtime import DialogueSceneRuntimeState, DialogueTurnLogEntry
 from .investigation_progress import InvestigationProgressState
+from .learning_rules import (
+    difficulty_base_hint_rank,
+    difficulty_confirmation_strength,
+    difficulty_language_support_level,
+    difficulty_max_hint_rank,
+    difficulty_prompt_generosity,
+    difficulty_summary_strictness,
+    effective_summary_min_fact_count,
+    required_summary_key_fact_ids,
+)
 from .models import CaseState, DifficultyProfile, SceneId
 
 
@@ -36,14 +46,20 @@ class SceneSummaryLearningState:
     scene_id: SceneId
     required: bool
     min_fact_count: int
+    effective_min_fact_count: int
+    required_key_fact_ids: tuple[str, ...]
     attempt_count: int
     completed: bool
     summary_passed: bool | None
     last_summary_code: str | None
+    status: Literal["not_required", "not_started", "passed", "retry_required"]
+    strictness_mode: Literal["relaxed", "strict"]
 
     def __post_init__(self) -> None:
         if self.min_fact_count < 0:
             raise ValueError("SceneSummaryLearningState.min_fact_count must be >= 0")
+        if self.effective_min_fact_count < 0:
+            raise ValueError("SceneSummaryLearningState.effective_min_fact_count must be >= 0")
         if self.attempt_count < 0:
             raise ValueError("SceneSummaryLearningState.attempt_count must be >= 0")
 
@@ -55,7 +71,11 @@ class MinigameLearningState:
     completed: bool
     score: int
     max_score: int
-    status: Literal["not_started", "in_progress", "completed"]
+    pass_score_required: int
+    gate_open: bool
+    gate_code: str
+    retry_recommended: bool
+    status: Literal["not_started", "needs_retry", "completed"]
 
     def __post_init__(self) -> None:
         if self.attempt_count < 0:
@@ -64,6 +84,10 @@ class MinigameLearningState:
             raise ValueError("MinigameLearningState.max_score must be >= 0")
         if self.score < 0 or self.score > self.max_score:
             raise ValueError("MinigameLearningState.score must be in [0, max_score]")
+        if self.pass_score_required < 0 or self.pass_score_required > self.max_score:
+            raise ValueError("MinigameLearningState.pass_score_required must be in [0, max_score]")
+        if not self.gate_code:
+            raise ValueError("MinigameLearningState.gate_code must be non-empty")
 
 
 @dataclass(frozen=True)
@@ -80,6 +104,10 @@ class ScaffoldingPolicyState:
     sentence_stem_key: str | None
     rephrase_set_id: str | None
     english_meta_key: str | None
+    prompt_generosity: Literal["high", "medium"]
+    confirmation_strength: Literal["explicit", "compact"]
+    summary_strictness: Literal["relaxed", "strict"]
+    language_support_level: Literal["fr_plus_meta", "fr_primary"]
     target_minigame_id: MinigameId | None = None
 
     def __post_init__(self) -> None:
@@ -143,11 +171,11 @@ _SCENE_TO_HINT_KEYS: dict[SceneId, tuple[str, str, str, str, MinigameId | None]]
 }
 
 
-def _mg_status(*, attempt_count: int, completed: bool) -> Literal["not_started", "in_progress", "completed"]:
+def _mg_status(*, attempt_count: int, completed: bool) -> Literal["not_started", "needs_retry", "completed"]:
     if completed:
         return "completed"
     if attempt_count > 0:
-        return "in_progress"
+        return "needs_retry"
     return "not_started"
 
 
@@ -156,23 +184,41 @@ def _has_observation(progress: InvestigationProgressState, object_id: str, affor
     return needle in set(progress.observed_clue_ids)
 
 
-def _build_minigame_states(progress: InvestigationProgressState) -> tuple[MinigameLearningState, ...]:
+def _build_minigame_states(
+    *,
+    progress: InvestigationProgressState,
+    difficulty_profile: DifficultyProfile,
+) -> tuple[MinigameLearningState, ...]:
     known_facts = set(progress.known_fact_ids)
     discovered = set(progress.discovered_evidence_ids).union(progress.collected_evidence_ids)
+    observed = set(progress.observed_clue_ids)
+    _ = difficulty_profile
 
-    mg1_attempt = 1 if _has_observation(progress, "O3_WALL_LABEL", "read") else 0
+    mg1_gate_open = _has_observation(progress, "O3_WALL_LABEL", "read")
+    mg1_gate_code = "ready" if mg1_gate_open else "wait_for_label_read"
+    mg1_attempt = 1 if mg1_gate_open else 0
+    mg1_pass_score_required = 2
     mg1_completed = mg1_attempt > 0
     mg1_score = 2 if mg1_completed else 0
 
-    mg2_attempt = 1 if _has_observation(progress, "O6_BADGE_TERMINAL", "view_logs") else 0
+    mg2_gate_open = _has_observation(progress, "O6_BADGE_TERMINAL", "view_logs")
+    mg2_gate_code = "ready" if mg2_gate_open else "wait_for_badge_logs"
+    mg2_attempt = 1 if mg2_gate_open else 0
+    mg2_pass_score_required = 2
     mg2_completed = mg2_attempt > 0 and "N3" in known_facts
     mg2_score = 2 if mg2_completed else (1 if mg2_attempt else 0)
 
-    mg3_attempt = 1 if _has_observation(progress, "O9_RECEIPT_PRINTER", "read_receipt") else 0
+    mg3_gate_open = _has_observation(progress, "O9_RECEIPT_PRINTER", "read_receipt")
+    mg3_gate_code = "ready" if mg3_gate_open else "wait_for_receipt_read"
+    mg3_attempt = 1 if mg3_gate_open else 0
+    mg3_pass_score_required = 2
     mg3_completed = mg3_attempt > 0 and "N4" in known_facts
     mg3_score = 2 if mg3_completed else (1 if mg3_attempt else 0)
 
-    mg4_attempt = 1 if ("E1_TORN_NOTE" in discovered or _has_observation(progress, "O4_BENCH", "inspect")) else 0
+    mg4_gate_open = "E1_TORN_NOTE" in discovered
+    mg4_gate_code = "ready" if mg4_gate_open else "wait_for_torn_note"
+    mg4_attempt = 1 if (mg4_gate_open or "obs:O4_BENCH:inspect" in observed) else 0
+    mg4_pass_score_required = 3
     mg4_completed = "N6" in known_facts
     mg4_score = 3 if mg4_completed else (1 if mg4_attempt else 0)
 
@@ -183,6 +229,10 @@ def _build_minigame_states(progress: InvestigationProgressState) -> tuple[Miniga
             completed=mg1_completed,
             score=mg1_score,
             max_score=2,
+            pass_score_required=mg1_pass_score_required,
+            gate_open=mg1_gate_open,
+            gate_code=mg1_gate_code,
+            retry_recommended=mg1_attempt > 0 and not mg1_completed,
             status=_mg_status(attempt_count=mg1_attempt, completed=mg1_completed),
         ),
         MinigameLearningState(
@@ -191,6 +241,10 @@ def _build_minigame_states(progress: InvestigationProgressState) -> tuple[Miniga
             completed=mg2_completed,
             score=mg2_score,
             max_score=2,
+            pass_score_required=mg2_pass_score_required,
+            gate_open=mg2_gate_open,
+            gate_code=mg2_gate_code,
+            retry_recommended=mg2_attempt > 0 and not mg2_completed,
             status=_mg_status(attempt_count=mg2_attempt, completed=mg2_completed),
         ),
         MinigameLearningState(
@@ -199,6 +253,10 @@ def _build_minigame_states(progress: InvestigationProgressState) -> tuple[Miniga
             completed=mg3_completed,
             score=mg3_score,
             max_score=2,
+            pass_score_required=mg3_pass_score_required,
+            gate_open=mg3_gate_open,
+            gate_code=mg3_gate_code,
+            retry_recommended=mg3_attempt > 0 and not mg3_completed,
             status=_mg_status(attempt_count=mg3_attempt, completed=mg3_completed),
         ),
         MinigameLearningState(
@@ -207,6 +265,10 @@ def _build_minigame_states(progress: InvestigationProgressState) -> tuple[Miniga
             completed=mg4_completed,
             score=mg4_score,
             max_score=3,
+            pass_score_required=mg4_pass_score_required,
+            gate_open=mg4_gate_open,
+            gate_code=mg4_gate_code,
+            retry_recommended=mg4_attempt > 0 and not mg4_completed,
             status=_mg_status(attempt_count=mg4_attempt, completed=mg4_completed),
         ),
     )
@@ -214,6 +276,8 @@ def _build_minigame_states(progress: InvestigationProgressState) -> tuple[Miniga
 
 def _summary_state_for_scene(
     scene_id: SceneId,
+    *,
+    case_state: CaseState,
     runtime_state: DialogueSceneRuntimeState,
     recent_turns: tuple[DialogueTurnLogEntry, ...],
 ) -> SceneSummaryLearningState:
@@ -234,27 +298,46 @@ def _summary_state_for_scene(
     if last_code is not None:
         summary_passed = last_code == "summary_passed"
 
+    strictness = difficulty_summary_strictness(case_state.difficulty_profile)
+    effective_min = effective_summary_min_fact_count(
+        difficulty=case_state.difficulty_profile,
+        scene_id=scene_id,
+        base_min_fact_count=scene_def.summary_requirement.min_fact_count,
+    )
+    required_key_fact_ids = required_summary_key_fact_ids(
+        difficulty=case_state.difficulty_profile,
+        scene_id=scene_id,
+    )
+    if not scene_def.summary_requirement.required:
+        summary_status: Literal["not_required", "not_started", "passed", "retry_required"] = "not_required"
+    elif summary_passed is True:
+        summary_status = "passed"
+    elif attempts > 0:
+        summary_status = "retry_required"
+    else:
+        summary_status = "not_started"
+
     return SceneSummaryLearningState(
         scene_id=scene_id,
         required=scene_def.summary_requirement.required,
         min_fact_count=scene_def.summary_requirement.min_fact_count,
+        effective_min_fact_count=effective_min,
+        required_key_fact_ids=required_key_fact_ids,
         attempt_count=attempts,
         completed=completion_state == "completed",
         summary_passed=summary_passed,
         last_summary_code=last_code,
+        status=summary_status,
+        strictness_mode=strictness,
     )
 
 
 def _base_rank_for_difficulty(difficulty_profile: DifficultyProfile) -> int:
-    if difficulty_profile == "D0":
-        return 0
-    return 0
+    return difficulty_base_hint_rank(difficulty_profile)
 
 
 def _max_rank_for_difficulty(difficulty_profile: DifficultyProfile) -> int:
-    if difficulty_profile == "D0":
-        return 3
-    return 2
+    return difficulty_max_hint_rank(difficulty_profile)
 
 
 def _level_for_rank(rank: int) -> LearningHintLevel:
@@ -266,11 +349,16 @@ def _build_scaffolding_policy(
     *,
     case_state: CaseState,
     runtime_state: DialogueSceneRuntimeState,
+    minigames: tuple[MinigameLearningState, ...],
     recent_turns: tuple[DialogueTurnLogEntry, ...],
 ) -> ScaffoldingPolicyState:
     scene_id = runtime_state.active_scene_id
     base_rank = _base_rank_for_difficulty(case_state.difficulty_profile)
     max_rank = _max_rank_for_difficulty(case_state.difficulty_profile)
+    prompt_generosity = difficulty_prompt_generosity(case_state.difficulty_profile)
+    confirmation_strength = difficulty_confirmation_strength(case_state.difficulty_profile)
+    summary_strictness = difficulty_summary_strictness(case_state.difficulty_profile)
+    language_support_level = difficulty_language_support_level(case_state.difficulty_profile)
 
     if scene_id is None:
         level = _level_for_rank(base_rank)
@@ -288,6 +376,10 @@ def _build_scaffolding_policy(
             sentence_stem_key=None,
             rephrase_set_id=None,
             english_meta_key=None,
+            prompt_generosity=prompt_generosity,
+            confirmation_strength=confirmation_strength,
+            summary_strictness=summary_strictness,
+            language_support_level=language_support_level,
             target_minigame_id=None,
         )
 
@@ -304,17 +396,29 @@ def _build_scaffolding_policy(
         if latest_summary in {"summary_required", "summary_needed", "summary_insufficient_facts"}:
             recent_summary_pressure = 1
 
-    rank = min(max_rank, base_rank + consecutive_non_accept + recent_summary_pressure)
+    hint_key, stem_key, rephrase_key, meta_key, target_mg = _SCENE_TO_HINT_KEYS[scene_id]
+    mg_by_id = {row.minigame_id: row for row in minigames}
+    minigame_retry_pressure = 0
+    if target_mg is not None:
+        target_state = mg_by_id.get(target_mg)
+        if target_state is not None and target_state.status == "needs_retry":
+            minigame_retry_pressure = 1
+
+    rank = min(
+        max_rank,
+        base_rank + consecutive_non_accept + recent_summary_pressure + minigame_retry_pressure,
+    )
     level = _level_for_rank(rank)
     allowed = tuple(_LEVELS[: rank + 1])
-    hint_key, stem_key, rephrase_key, meta_key, target_mg = _SCENE_TO_HINT_KEYS[scene_id]
 
     english_meta_allowed = "english_meta_help" in set(allowed)
     if not english_meta_allowed:
         meta_key = None
 
     reason = "baseline_scene_support"
-    if consecutive_non_accept > 0:
+    if minigame_retry_pressure > 0:
+        reason = "minigame_retry_support"
+    elif consecutive_non_accept > 0:
         reason = "escalated_after_repairs"
     elif recent_summary_pressure > 0:
         reason = "summary_pressure_escalation"
@@ -332,6 +436,10 @@ def _build_scaffolding_policy(
         sentence_stem_key=stem_key if "sentence_stem" in set(allowed) else None,
         rephrase_set_id=rephrase_key if "rephrase_choice" in set(allowed) else None,
         english_meta_key=meta_key,
+        prompt_generosity=prompt_generosity,
+        confirmation_strength=confirmation_strength,
+        summary_strictness=summary_strictness,
+        language_support_level=language_support_level,
         target_minigame_id=target_mg,
     )
 
@@ -343,13 +451,23 @@ def build_learning_state(
     progress: InvestigationProgressState,
     recent_turns: tuple[DialogueTurnLogEntry, ...] = (),
 ) -> LearningState:
-    summary_by_scene = tuple(
-        _summary_state_for_scene(scene_id, runtime_state, recent_turns) for scene_id in _SCENE_ORDER
+    minigames = _build_minigame_states(
+        progress=progress,
+        difficulty_profile=case_state.difficulty_profile,
     )
-    minigames = _build_minigame_states(progress)
+    summary_by_scene = tuple(
+        _summary_state_for_scene(
+            scene_id,
+            case_state=case_state,
+            runtime_state=runtime_state,
+            recent_turns=recent_turns,
+        )
+        for scene_id in _SCENE_ORDER
+    )
     policy = _build_scaffolding_policy(
         case_state=case_state,
         runtime_state=runtime_state,
+        minigames=minigames,
         recent_turns=recent_turns,
     )
     return LearningState(
@@ -384,10 +502,14 @@ def build_visible_learning_projection(
                 "scene_id": row.scene_id,
                 "required": row.required,
                 "min_fact_count": row.min_fact_count,
+                "effective_min_fact_count": row.effective_min_fact_count,
+                "required_key_fact_ids": list(row.required_key_fact_ids),
                 "attempt_count": row.attempt_count,
                 "completed": row.completed,
                 "summary_passed": row.summary_passed,
                 "last_summary_code": row.last_summary_code,
+                "status": row.status,
+                "strictness_mode": row.strictness_mode,
             }
             for row in state.summary_by_scene
         ],
@@ -398,6 +520,10 @@ def build_visible_learning_projection(
                 "completed": row.completed,
                 "score": row.score,
                 "max_score": row.max_score,
+                "pass_score_required": row.pass_score_required,
+                "gate_open": row.gate_open,
+                "gate_code": row.gate_code,
+                "retry_recommended": row.retry_recommended,
                 "status": row.status,
             }
             for row in state.minigames
@@ -415,6 +541,10 @@ def build_visible_learning_projection(
             "sentence_stem_key": state.scaffolding_policy.sentence_stem_key,
             "rephrase_set_id": state.scaffolding_policy.rephrase_set_id,
             "english_meta_key": state.scaffolding_policy.english_meta_key,
+            "prompt_generosity": state.scaffolding_policy.prompt_generosity,
+            "confirmation_strength": state.scaffolding_policy.confirmation_strength,
+            "summary_strictness": state.scaffolding_policy.summary_strictness,
+            "language_support_level": state.scaffolding_policy.language_support_level,
             "target_minigame_id": state.scaffolding_policy.target_minigame_id,
         },
     }
@@ -445,15 +575,24 @@ def build_debug_learning_projection(
             "allowed_hint_levels": list(state.scaffolding_policy.allowed_hint_levels),
             "recommended_mode": state.scaffolding_policy.recommended_mode,
             "french_action_required": state.scaffolding_policy.french_action_required,
+            "prompt_generosity": state.scaffolding_policy.prompt_generosity,
+            "confirmation_strength": state.scaffolding_policy.confirmation_strength,
+            "summary_strictness": state.scaffolding_policy.summary_strictness,
+            "language_support_level": state.scaffolding_policy.language_support_level,
         },
         "summary_by_scene": [
             {
                 "scene_id": row.scene_id,
                 "required": row.required,
+                "min_fact_count": row.min_fact_count,
+                "effective_min_fact_count": row.effective_min_fact_count,
+                "required_key_fact_ids": list(row.required_key_fact_ids),
                 "attempt_count": row.attempt_count,
                 "summary_passed": row.summary_passed,
                 "last_summary_code": row.last_summary_code,
                 "completed": row.completed,
+                "status": row.status,
+                "strictness_mode": row.strictness_mode,
             }
             for row in state.summary_by_scene
         ],
@@ -463,6 +602,11 @@ def build_debug_learning_projection(
                 "attempt_count": row.attempt_count,
                 "completed": row.completed,
                 "score": row.score,
+                "max_score": row.max_score,
+                "pass_score_required": row.pass_score_required,
+                "gate_open": row.gate_open,
+                "gate_code": row.gate_code,
+                "retry_recommended": row.retry_recommended,
                 "status": row.status,
             }
             for row in state.minigames
