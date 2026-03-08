@@ -480,6 +480,58 @@ def build_learning_state(
     )
 
 
+def _build_recent_learning_outcomes(
+    *,
+    recent_turns: tuple[DialogueTurnLogEntry, ...],
+    minigames: tuple[MinigameLearningState, ...],
+    max_rows: int,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+
+    for turn in recent_turns:
+        if turn.summary_check_code is not None:
+            rows.append(
+                {
+                    "kind": "summary_check",
+                    "turn_index": turn.turn_index,
+                    "scene_id": turn.scene_id,
+                    "code": turn.summary_check_code,
+                    "passed": turn.summary_check_code == "summary_passed",
+                }
+            )
+        elif turn.status == "repair" and turn.repair_response_mode is not None:
+            rows.append(
+                {
+                    "kind": "repair_signal",
+                    "turn_index": turn.turn_index,
+                    "scene_id": turn.scene_id,
+                    "code": turn.code,
+                    "response_mode": turn.repair_response_mode,
+                }
+            )
+
+    for minigame in minigames:
+        if minigame.attempt_count <= 0 and not minigame.completed:
+            continue
+        rows.append(
+            {
+                "kind": "minigame_status",
+                "minigame_id": minigame.minigame_id,
+                "attempt_count": minigame.attempt_count,
+                "completed": minigame.completed,
+                "status": minigame.status,
+                "retry_recommended": minigame.retry_recommended,
+            }
+        )
+
+    cap = max(0, int(max_rows))
+    if cap == 0:
+        return []
+    if len(rows) > cap:
+        return rows[-cap:]
+    return rows
+
+
 def build_visible_learning_projection(
     *,
     case_state: CaseState,
@@ -547,6 +599,11 @@ def build_visible_learning_projection(
             "language_support_level": state.scaffolding_policy.language_support_level,
             "target_minigame_id": state.scaffolding_policy.target_minigame_id,
         },
+        "recent_outcomes": _build_recent_learning_outcomes(
+            recent_turns=recent_turns,
+            minigames=state.minigames,
+            max_rows=8,
+        ),
     }
 
 
@@ -611,6 +668,11 @@ def build_debug_learning_projection(
             }
             for row in state.minigames
         ],
+        "recent_outcomes": _build_recent_learning_outcomes(
+            recent_turns=recent_turns,
+            minigames=state.minigames,
+            max_rows=24,
+        ),
     }
 
 

@@ -44,6 +44,7 @@ def test_learning_projection_has_difficulty_and_scaffolding_shape() -> None:
     assert projection["scaffolding_policy"]["summary_strictness"] in {"relaxed", "strict"}
     assert isinstance(projection["summary_by_scene"], list)
     assert isinstance(projection["minigames"], list)
+    assert isinstance(projection["recent_outcomes"], list)
 
 
 def test_learning_policy_escalates_for_repeated_repair_pressure_on_active_scene() -> None:
@@ -194,3 +195,51 @@ def test_difficulty_profile_changes_scaffolding_and_summary_strictness() -> None
     assert summary_d0["S5"]["effective_min_fact_count"] == 1
     assert summary_d1["S5"]["effective_min_fact_count"] == 2
     assert summary_d1["S5"]["required_key_fact_ids"] == ["N8"]
+
+
+def test_learning_projection_includes_recent_summary_and_repair_outcomes() -> None:
+    case_state, progress, runtime = _setup("A")
+    turns = (
+        DialogueTurnLogEntry(
+            turn_index=1,
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="summarize_understanding",
+            status="repair",
+            code="summary_insufficient_facts",
+            outcome="repair",
+            response_mode="repair",
+            revealed_fact_ids=(),
+            trust_delta=0.0,
+            stress_delta=0.0,
+            missing_required_slots=(),
+            repair_response_mode="sentence_stem",
+            summary_check_code="summary_insufficient_facts",
+        ),
+        DialogueTurnLogEntry(
+            turn_index=2,
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="request_permission",
+            status="repair",
+            code="missing_slot",
+            outcome="repair",
+            response_mode="repair",
+            revealed_fact_ids=(),
+            trust_delta=0.0,
+            stress_delta=0.0,
+            missing_required_slots=("reason",),
+            repair_response_mode="rephrase_choice",
+            summary_check_code=None,
+        ),
+    )
+
+    projection = build_visible_learning_projection(
+        case_state=case_state,
+        runtime_state=runtime,
+        progress=progress,
+        recent_turns=turns,
+    )
+    outcomes = projection["recent_outcomes"]
+    assert any(row["kind"] == "summary_check" and row["code"] == "summary_insufficient_facts" for row in outcomes)
+    assert any(row["kind"] == "repair_signal" and row["response_mode"] == "rephrase_choice" for row in outcomes)

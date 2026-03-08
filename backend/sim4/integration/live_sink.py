@@ -73,6 +73,8 @@ class LiveKvpStateSink(TickOutputSink):
         investigation_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
         dialogue_visible_provider: Callable[[], Dict[str, Any] | None] | None = None,
         dialogue_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
+        learning_visible_provider: Callable[[], Dict[str, Any] | None] | None = None,
+        learning_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
     ) -> None:
         self._session = session
         self._channels = list(channels) if channels is not None else list(ALLOWED_CHANNELS)
@@ -88,6 +90,8 @@ class LiveKvpStateSink(TickOutputSink):
         self._investigation_debug_provider = investigation_debug_provider
         self._dialogue_visible_provider = dialogue_visible_provider
         self._dialogue_debug_provider = dialogue_debug_provider
+        self._learning_visible_provider = learning_visible_provider
+        self._learning_debug_provider = learning_debug_provider
 
         self._has_baseline = False
         self._prev_tick: int | None = None
@@ -149,6 +153,10 @@ class LiveKvpStateSink(TickOutputSink):
             dialogue_visible = self._dialogue_visible_provider()
             if dialogue_visible is not None:
                 state["dialogue"] = copy.deepcopy(dialogue_visible)
+        if self._learning_visible_provider is not None:
+            learning_visible = self._learning_visible_provider()
+            if learning_visible is not None:
+                state["learning"] = copy.deepcopy(learning_visible)
         if "DEBUG" in self._channels:
             # Placeholder for future debug fields; keep deterministic
             state.setdefault("debug", {})
@@ -174,6 +182,12 @@ class LiveKvpStateSink(TickOutputSink):
                     debug_state = state.get("debug")
                     if isinstance(debug_state, dict):
                         debug_state["dialogue_private"] = copy.deepcopy(dialogue_debug)
+            if self._learning_debug_provider is not None:
+                learning_debug = self._learning_debug_provider()
+                if learning_debug is not None:
+                    debug_state = state.get("debug")
+                    if isinstance(debug_state, dict):
+                        debug_state["learning_private"] = copy.deepcopy(learning_debug)
 
         # Canonicalize + hash
         canonical_state = canonicalize_state_obj(state)

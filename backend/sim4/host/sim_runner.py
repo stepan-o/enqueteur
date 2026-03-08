@@ -38,6 +38,8 @@ from backend.sim4.case_mbam import (
     build_visible_investigation_projection,
     build_visible_case_projection,
     build_visible_npc_semantic_projection,
+    build_visible_learning_projection,
+    build_debug_learning_projection,
     execute_dialogue_turn,
     generate_case_state,
     initialize_mbam_npc_states_from_case_state,
@@ -223,6 +225,8 @@ class SimRunner:
         investigation_debug_provider = self._make_investigation_debug_projection
         dialogue_visible_provider = self._make_dialogue_visible_projection
         dialogue_debug_provider = self._make_dialogue_debug_projection
+        learning_visible_provider = self._make_learning_visible_projection
+        learning_debug_provider = self._make_learning_debug_projection
 
         self._history: KvpStateHistory | None = None
         if self._offline_cfg is not None:
@@ -238,6 +242,8 @@ class SimRunner:
                 investigation_debug_provider=investigation_debug_provider,
                 dialogue_visible_provider=dialogue_visible_provider,
                 dialogue_debug_provider=dialogue_debug_provider,
+                learning_visible_provider=learning_visible_provider,
+                learning_debug_provider=learning_debug_provider,
             )
             sinks.append(self._history)
 
@@ -255,6 +261,8 @@ class SimRunner:
                     investigation_debug_provider=investigation_debug_provider,
                     dialogue_visible_provider=dialogue_visible_provider,
                     dialogue_debug_provider=dialogue_debug_provider,
+                    learning_visible_provider=learning_visible_provider,
+                    learning_debug_provider=learning_debug_provider,
                 )
             )
 
@@ -397,6 +405,34 @@ class SimRunner:
         ):
             return None
         return build_debug_dialogue_projection(
+            case_state=self._case_state,
+            runtime_state=self._dialogue_runtime_state,
+            progress=self._investigation_progress,
+            recent_turns=self._dialogue_turn_log,
+        )
+
+    def _make_learning_visible_projection(self) -> dict[str, Any] | None:
+        if (
+            self._case_state is None
+            or self._dialogue_runtime_state is None
+            or self._investigation_progress is None
+        ):
+            return None
+        return build_visible_learning_projection(
+            case_state=self._case_state,
+            runtime_state=self._dialogue_runtime_state,
+            progress=self._investigation_progress,
+            recent_turns=self._dialogue_turn_log,
+        )
+
+    def _make_learning_debug_projection(self) -> dict[str, Any] | None:
+        if (
+            self._case_state is None
+            or self._dialogue_runtime_state is None
+            or self._investigation_progress is None
+        ):
+            return None
+        return build_debug_learning_projection(
             case_state=self._case_state,
             runtime_state=self._dialogue_runtime_state,
             progress=self._investigation_progress,

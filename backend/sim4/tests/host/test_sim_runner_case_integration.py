@@ -96,6 +96,12 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert len(state["dialogue"]["scene_completion"]) == 5
     assert state["dialogue"]["revealed_fact_ids"] == ["N1"]
     assert state["dialogue"]["recent_turns"] == []
+    assert "learning" in state
+    assert state["learning"]["difficulty_profile"] in {"D0", "D1"}
+    assert state["learning"]["current_hint_level"] in {"soft_hint", "sentence_stem", "rephrase_choice", "english_meta_help"}
+    assert "minigames" in state["learning"]
+    assert "summary_by_scene" in state["learning"]
+    assert "recent_outcomes" in state["learning"]
 
     assert "debug" in state
     assert "case_private" in state["debug"]
@@ -109,6 +115,9 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert "dialogue_private" in state["debug"]
     assert "runtime_state" in state["debug"]["dialogue_private"]
     assert "recent_turns" in state["debug"]["dialogue_private"]
+    assert "learning_private" in state["debug"]
+    assert state["debug"]["learning_private"]["difficulty_profile"] in {"D0", "D1"}
+    assert "recent_outcomes" in state["debug"]["learning_private"]
 
 
 def test_runner_omits_private_case_projection_without_debug_channel(tmp_path: Path):
@@ -119,6 +128,7 @@ def test_runner_omits_private_case_projection_without_debug_channel(tmp_path: Pa
     assert "npc_semantic" in state
     assert "investigation" in state
     assert "dialogue" in state
+    assert "learning" in state
     assert "debug" not in state
 
 
