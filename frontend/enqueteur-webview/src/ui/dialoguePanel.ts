@@ -679,7 +679,7 @@ function buildSummaryPrompt(
 ): string {
     const slotsLabel = requiredSlots.length > 0 ? `Include slots: ${requiredSlots.join(", ")}.` : "No mandatory slots.";
     const keyFactHint =
-        summaryState.required_key_fact_ids.length > 0
+        summaryState.required_key_fact_count > 0
             ? "Include at least one key scene fact that you have already confirmed."
             : "Use only facts you have already unlocked.";
     const intentLabel = selectedIntent ? `Intent context: ${selectedIntent}.` : "Intent context: none.";

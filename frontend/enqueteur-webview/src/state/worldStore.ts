@@ -173,6 +173,7 @@ export type KvpLearningSceneSummaryState = {
     min_fact_count: number;
     effective_min_fact_count: number;
     required_key_fact_ids: string[];
+    required_key_fact_count: number;
     attempt_count: number;
     completed: boolean;
     summary_passed: boolean | null;
@@ -666,6 +667,10 @@ function cloneDialogueState(value: KvpDialogueState | undefined): KvpDialogueSta
                   summary_by_scene: value.learning.summary_by_scene.map((row) => ({
                       ...row,
                       required_key_fact_ids: [...row.required_key_fact_ids],
+                      required_key_fact_count:
+                          typeof row.required_key_fact_count === "number"
+                              ? row.required_key_fact_count
+                              : row.required_key_fact_ids.length,
                   })),
                   minigames: value.learning.minigames.map((row) => ({ ...row })),
                   scaffolding_policy: {

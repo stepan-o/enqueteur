@@ -393,7 +393,12 @@ def _build_scaffolding_policy(
     recent_summary_pressure = 0
     if scene_turns:
         latest_summary = next((row.summary_check_code for row in reversed(scene_turns) if row.summary_check_code), None)
-        if latest_summary in {"summary_required", "summary_needed", "summary_insufficient_facts"}:
+        if latest_summary in {
+            "summary_required",
+            "summary_needed",
+            "summary_insufficient_facts",
+            "summary_missing_key_fact",
+        }:
             recent_summary_pressure = 1
 
     hint_key, stem_key, rephrase_key, meta_key, target_mg = _SCENE_TO_HINT_KEYS[scene_id]
@@ -418,10 +423,10 @@ def _build_scaffolding_policy(
     reason = "baseline_scene_support"
     if minigame_retry_pressure > 0:
         reason = "minigame_retry_support"
-    elif consecutive_non_accept > 0:
-        reason = "escalated_after_repairs"
     elif recent_summary_pressure > 0:
         reason = "summary_pressure_escalation"
+    elif consecutive_non_accept > 0:
+        reason = "escalated_after_repairs"
 
     return ScaffoldingPolicyState(
         scene_id=scene_id,
@@ -545,6 +550,7 @@ def build_visible_learning_projection(
         progress=progress,
         recent_turns=recent_turns,
     )
+    known_fact_ids = set(progress.known_fact_ids)
     return {
         "difficulty_profile": state.difficulty_profile,
         "active_scene_id": state.active_scene_id,
@@ -555,7 +561,10 @@ def build_visible_learning_projection(
                 "required": row.required,
                 "min_fact_count": row.min_fact_count,
                 "effective_min_fact_count": row.effective_min_fact_count,
-                "required_key_fact_ids": list(row.required_key_fact_ids),
+                "required_key_fact_ids": [
+                    fact_id for fact_id in row.required_key_fact_ids if fact_id in known_fact_ids
+                ],
+                "required_key_fact_count": len(row.required_key_fact_ids),
                 "attempt_count": row.attempt_count,
                 "completed": row.completed,
                 "summary_passed": row.summary_passed,
@@ -644,6 +653,7 @@ def build_debug_learning_projection(
                 "min_fact_count": row.min_fact_count,
                 "effective_min_fact_count": row.effective_min_fact_count,
                 "required_key_fact_ids": list(row.required_key_fact_ids),
+                "required_key_fact_count": len(row.required_key_fact_ids),
                 "attempt_count": row.attempt_count,
                 "summary_passed": row.summary_passed,
                 "last_summary_code": row.last_summary_code,

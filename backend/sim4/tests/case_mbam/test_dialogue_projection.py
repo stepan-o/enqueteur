@@ -53,6 +53,8 @@ def test_visible_dialogue_projection_has_minimal_safe_shape() -> None:
     assert projection["learning"]["difficulty_profile"] in {"D0", "D1"}
     assert projection["learning"]["scaffolding_policy"]["french_action_required"] is True
     assert isinstance(projection["learning"]["recent_outcomes"], list)
+    s5 = next(row for row in projection["learning"]["summary_by_scene"] if row["scene_id"] == "S5")
+    assert "required_key_fact_count" in s5
 
 
 def test_visible_dialogue_projection_filters_unreached_hidden_fact_ids() -> None:

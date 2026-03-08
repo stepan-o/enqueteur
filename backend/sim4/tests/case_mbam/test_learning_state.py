@@ -194,7 +194,8 @@ def test_difficulty_profile_changes_scaffolding_and_summary_strictness() -> None
     summary_d1 = {row["scene_id"]: row for row in proj_d1["summary_by_scene"]}
     assert summary_d0["S5"]["effective_min_fact_count"] == 1
     assert summary_d1["S5"]["effective_min_fact_count"] == 2
-    assert summary_d1["S5"]["required_key_fact_ids"] == ["N8"]
+    assert summary_d1["S5"]["required_key_fact_count"] == 1
+    assert summary_d1["S5"]["required_key_fact_ids"] == []
 
 
 def test_learning_projection_includes_recent_summary_and_repair_outcomes() -> None:
@@ -383,3 +384,67 @@ def test_learning_projection_recent_outcomes_are_capped_and_deterministic() -> N
     )
     assert first == second
     assert len(first["recent_outcomes"]) <= 8
+
+
+def test_visible_learning_projection_does_not_leak_unreached_required_key_facts() -> None:
+    case_state, progress, runtime = _setup("A")
+    case_state = replace(case_state, difficulty_profile="D1")
+    runtime = replace(runtime, active_scene_id="S5")
+    projection = build_visible_learning_projection(
+        case_state=case_state,
+        runtime_state=runtime,
+        progress=progress,  # N8 not yet known
+        recent_turns=(),
+    )
+    rows = {row["scene_id"]: row for row in projection["summary_by_scene"]}
+    assert rows["S5"]["required_key_fact_count"] == 1
+    assert rows["S5"]["required_key_fact_ids"] == []
+
+
+def test_visible_learning_projection_reveals_required_key_fact_id_only_after_unlock() -> None:
+    case_state, progress, runtime = _setup("A")
+    case_state = replace(case_state, difficulty_profile="D1")
+    runtime = replace(runtime, active_scene_id="S5")
+    progress = replace(progress, known_fact_ids=tuple(sorted(set(progress.known_fact_ids).union({"N8"}))))
+    projection = build_visible_learning_projection(
+        case_state=case_state,
+        runtime_state=runtime,
+        progress=progress,
+        recent_turns=(),
+    )
+    rows = {row["scene_id"]: row for row in projection["summary_by_scene"]}
+    assert rows["S5"]["required_key_fact_count"] == 1
+    assert rows["S5"]["required_key_fact_ids"] == ["N8"]
+
+
+def test_summary_missing_key_fact_increases_learning_hint_pressure() -> None:
+    case_state, progress, runtime = _setup("A")
+    case_state = replace(case_state, difficulty_profile="D1")
+    runtime = replace(runtime, active_scene_id="S5")
+    turns = (
+        DialogueTurnLogEntry(
+            turn_index=1,
+            scene_id="S5",
+            npc_id="elodie",
+            intent_id="summarize_understanding",
+            status="repair",
+            code="summary_missing_key_fact",
+            outcome="repair",
+            response_mode="repair",
+            revealed_fact_ids=(),
+            trust_delta=0.0,
+            stress_delta=0.0,
+            missing_required_slots=(),
+            repair_response_mode="rephrase_choice",
+            summary_check_code="summary_missing_key_fact",
+        ),
+    )
+    projection = build_visible_learning_projection(
+        case_state=case_state,
+        runtime_state=runtime,
+        progress=progress,
+        recent_turns=turns,
+    )
+    policy = projection["scaffolding_policy"]
+    assert policy["reason_code"] == "summary_pressure_escalation"
+    assert policy["current_hint_level"] in {"sentence_stem", "rephrase_choice"}

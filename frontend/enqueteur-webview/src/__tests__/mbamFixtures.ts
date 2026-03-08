@@ -290,6 +290,7 @@ export function makeMbamSnapshot(tick = 1): FullSnapshotPayload {
                         min_fact_count: 1,
                         effective_min_fact_count: 1,
                         required_key_fact_ids: [],
+                        required_key_fact_count: 0,
                         attempt_count: 1,
                         completed: false,
                         summary_passed: null,
