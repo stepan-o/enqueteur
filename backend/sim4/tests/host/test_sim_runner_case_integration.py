@@ -103,6 +103,15 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert "summary_by_scene" in state["learning"]
     assert "recent_outcomes" in state["learning"]
     assert state["learning"] == state["dialogue"]["learning"]
+    assert "case_outcome" in state
+    assert state["case_outcome"]["primary_outcome"] in {
+        "in_progress",
+        "recovery_success",
+        "accusation_success",
+        "soft_fail",
+        "best_outcome",
+    }
+    assert "action_flags" not in state["case_outcome"]
 
     assert "debug" in state
     assert "case_private" in state["debug"]
@@ -119,6 +128,8 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert "learning_private" in state["debug"]
     assert state["debug"]["learning_private"]["difficulty_profile"] in {"D0", "D1"}
     assert "recent_outcomes" in state["debug"]["learning_private"]
+    assert "case_outcome_private" in state["debug"]
+    assert state["debug"]["case_outcome_private"]["debug_scope"] == "outcome_state_private"
 
 
 def test_runner_omits_private_case_projection_without_debug_channel(tmp_path: Path):
@@ -240,6 +251,36 @@ def test_runner_submit_dialogue_turn_updates_runtime_and_turn_log() -> None:
     assert dialogue_state is not None
     completion = dict(dialogue_state.scene_completion_states)
     assert completion["S1"] == "completed"
+
+
+def test_runner_case_outcome_evaluation_and_manual_action_flags() -> None:
+    clock = TickClock(dt=1.0)
+    ecs_world = ECSWorld()
+    world_ctx = WorldContext()
+    apply_mbam_layout(world_ctx)
+
+    runner = SimRunner(
+        clock=clock,
+        ecs_world=ecs_world,
+        world_ctx=world_ctx,
+        rng_seed=123,
+        system_scheduler=_NoopScheduler(),
+        run_anchors=default_run_anchors(seed=123, tick_rate_hz=tick_rate_hz_from_clock(clock), time_origin_ms=0),
+        render_spec=default_render_spec(),
+        channels=["WORLD"],
+        offline=None,
+        case_config=MbamCaseConfig(seed="A"),
+    )
+
+    baseline = runner.get_case_outcome_evaluation()
+    assert baseline is not None
+    assert baseline.primary_outcome == "in_progress"
+
+    runner.record_case_action_flags("action:wrong_accusation")
+    softened = runner.get_case_outcome_evaluation()
+    assert softened is not None
+    assert softened.soft_fail.triggered is True
+    assert softened.primary_outcome == "soft_fail"
 
 
 def test_runner_exports_learning_recent_outcomes_after_dialogue_turn(tmp_path: Path) -> None:

@@ -243,6 +243,17 @@ from .learning_rules import (
     effective_summary_min_fact_count,
     required_summary_key_fact_ids,
 )
+from .outcome_engine import (
+    BestOutcomeEvaluation,
+    MbamOutcomeEvaluationResult,
+    OutcomePrimary,
+    RequirementEvaluation,
+    SoftFailEvaluation,
+    action_flags_from_dialogue_turn,
+    build_debug_outcome_projection,
+    build_visible_outcome_projection,
+    evaluate_mbam_case_outcome,
+)
 
 __all__ = [
     "AlibiClaim",
@@ -332,6 +343,15 @@ __all__ = [
     "difficulty_language_support_level",
     "effective_summary_min_fact_count",
     "required_summary_key_fact_ids",
+    "OutcomePrimary",
+    "RequirementEvaluation",
+    "SoftFailEvaluation",
+    "BestOutcomeEvaluation",
+    "MbamOutcomeEvaluationResult",
+    "action_flags_from_dialogue_turn",
+    "evaluate_mbam_case_outcome",
+    "build_visible_outcome_projection",
+    "build_debug_outcome_projection",
     "AffordanceDefinition",
     "AffordanceId",
     "AffordanceRepeatPolicy",

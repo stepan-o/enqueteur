@@ -75,6 +75,8 @@ class LiveKvpStateSink(TickOutputSink):
         dialogue_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
         learning_visible_provider: Callable[[], Dict[str, Any] | None] | None = None,
         learning_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
+        outcome_visible_provider: Callable[[], Dict[str, Any] | None] | None = None,
+        outcome_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
     ) -> None:
         self._session = session
         self._channels = list(channels) if channels is not None else list(ALLOWED_CHANNELS)
@@ -92,6 +94,8 @@ class LiveKvpStateSink(TickOutputSink):
         self._dialogue_debug_provider = dialogue_debug_provider
         self._learning_visible_provider = learning_visible_provider
         self._learning_debug_provider = learning_debug_provider
+        self._outcome_visible_provider = outcome_visible_provider
+        self._outcome_debug_provider = outcome_debug_provider
 
         self._has_baseline = False
         self._prev_tick: int | None = None
@@ -157,6 +161,10 @@ class LiveKvpStateSink(TickOutputSink):
             learning_visible = self._learning_visible_provider()
             if learning_visible is not None:
                 state["learning"] = copy.deepcopy(learning_visible)
+        if self._outcome_visible_provider is not None:
+            outcome_visible = self._outcome_visible_provider()
+            if outcome_visible is not None:
+                state["case_outcome"] = copy.deepcopy(outcome_visible)
         if "DEBUG" in self._channels:
             # Placeholder for future debug fields; keep deterministic
             state.setdefault("debug", {})
@@ -188,6 +196,12 @@ class LiveKvpStateSink(TickOutputSink):
                     debug_state = state.get("debug")
                     if isinstance(debug_state, dict):
                         debug_state["learning_private"] = copy.deepcopy(learning_debug)
+            if self._outcome_debug_provider is not None:
+                outcome_debug = self._outcome_debug_provider()
+                if outcome_debug is not None:
+                    debug_state = state.get("debug")
+                    if isinstance(debug_state, dict):
+                        debug_state["case_outcome_private"] = copy.deepcopy(outcome_debug)
 
         # Canonicalize + hash
         canonical_state = canonicalize_state_obj(state)

@@ -8,6 +8,7 @@ remain untouched; this is pure orchestration.
 """
 
 from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Sequence
 import hashlib
@@ -21,13 +22,16 @@ from backend.sim4.case_mbam import (
     DialogueTurnRequest,
     DialogueSceneTurnExecutionResult,
     InvestigationProgressState,
+    MbamOutcomeEvaluationResult,
     MbamObjectStateBundle,
     NPCState,
+    action_flags_from_dialogue_turn,
     apply_dialogue_turn_to_progress,
     apply_investigation_timeline_state,
     apply_case_timeline_to_npc_states,
     build_debug_dialogue_projection,
     build_debug_investigation_projection,
+    build_debug_outcome_projection,
     build_debug_case_projection,
     build_debug_npc_semantic_projection,
     build_dialogue_execution_context,
@@ -36,10 +40,12 @@ from backend.sim4.case_mbam import (
     build_initial_mbam_object_state,
     build_visible_dialogue_projection,
     build_visible_investigation_projection,
+    build_visible_outcome_projection,
     build_visible_case_projection,
     build_visible_npc_semantic_projection,
     build_visible_learning_projection,
     build_debug_learning_projection,
+    evaluate_mbam_case_outcome,
     execute_dialogue_turn,
     generate_case_state,
     initialize_mbam_npc_states_from_case_state,
@@ -176,6 +182,9 @@ class SimRunner:
         self._investigation_progress: InvestigationProgressState | None = None
         self._dialogue_runtime_state: DialogueSceneRuntimeState | None = None
         self._dialogue_turn_log: tuple[DialogueTurnLogEntry, ...] = ()
+        self._manual_case_action_flags: tuple[str, ...] = ()
+        self._manual_case_relationship_flags: tuple[str, ...] = ()
+        self._manual_case_outcome_flags: tuple[str, ...] = ()
 
         if case_config is not None:
             truth_epoch = int(case_config.truth_epoch)
@@ -227,6 +236,8 @@ class SimRunner:
         dialogue_debug_provider = self._make_dialogue_debug_projection
         learning_visible_provider = self._make_learning_visible_projection
         learning_debug_provider = self._make_learning_debug_projection
+        outcome_visible_provider = self._make_outcome_visible_projection
+        outcome_debug_provider = self._make_outcome_debug_projection
 
         self._history: KvpStateHistory | None = None
         if self._offline_cfg is not None:
@@ -244,6 +255,8 @@ class SimRunner:
                 dialogue_debug_provider=dialogue_debug_provider,
                 learning_visible_provider=learning_visible_provider,
                 learning_debug_provider=learning_debug_provider,
+                outcome_visible_provider=outcome_visible_provider,
+                outcome_debug_provider=outcome_debug_provider,
             )
             sinks.append(self._history)
 
@@ -263,6 +276,8 @@ class SimRunner:
                     dialogue_debug_provider=dialogue_debug_provider,
                     learning_visible_provider=learning_visible_provider,
                     learning_debug_provider=learning_debug_provider,
+                    outcome_visible_provider=outcome_visible_provider,
+                    outcome_debug_provider=outcome_debug_provider,
                 )
             )
 
@@ -300,6 +315,34 @@ class SimRunner:
         """Return deterministic dialogue turn log for replay/debug."""
         return tuple(self._dialogue_turn_log)
 
+    def get_case_outcome_evaluation(self) -> MbamOutcomeEvaluationResult | None:
+        """Evaluate current deterministic MBAM outcome state for this run."""
+        return self._build_case_outcome_evaluation()
+
+    def record_case_action_flags(self, *action_flags: str) -> None:
+        """Record deterministic outcome action flags from external adapters."""
+        incoming = tuple(sorted({flag for flag in action_flags if isinstance(flag, str) and flag}))
+        if not incoming:
+            return
+        merged = tuple(sorted(set(self._manual_case_action_flags).union(incoming)))
+        self._manual_case_action_flags = merged
+
+    def record_case_relationship_flags(self, *relationship_flags: str) -> None:
+        """Record deterministic relationship flags from external adapters."""
+        incoming = tuple(sorted({flag for flag in relationship_flags if isinstance(flag, str) and flag}))
+        if not incoming:
+            return
+        merged = tuple(sorted(set(self._manual_case_relationship_flags).union(incoming)))
+        self._manual_case_relationship_flags = merged
+
+    def record_case_outcome_flags(self, *outcome_flags: str) -> None:
+        """Record deterministic outcome-state flags from external adapters."""
+        incoming = tuple(sorted({flag for flag in outcome_flags if isinstance(flag, str) and flag}))
+        if not incoming:
+            return
+        merged = tuple(sorted(set(self._manual_case_outcome_flags).union(incoming)))
+        self._manual_case_outcome_flags = merged
+
     def submit_dialogue_turn(
         self,
         request: DialogueTurnRequest,
@@ -329,6 +372,22 @@ class SimRunner:
             self._investigation_progress,
             result,
         )
+        prior_summary_pass_count = sum(1 for row in self._dialogue_turn_log if row.summary_check_code == "summary_passed")
+        derived_action_flags = action_flags_from_dialogue_turn(
+            self._case_state,
+            request,
+            result,
+            prior_summary_pass_count=prior_summary_pass_count,
+        )
+        if derived_action_flags:
+            self._investigation_progress = replace(
+                self._investigation_progress,
+                satisfied_action_flags=tuple(
+                    sorted(
+                        set(self._investigation_progress.satisfied_action_flags).union(derived_action_flags)
+                    )
+                ),
+            )
         entry = make_dialogue_turn_log_entry(result)
         existing = list(self._dialogue_turn_log)
         existing.append(entry)
@@ -438,6 +497,34 @@ class SimRunner:
             progress=self._investigation_progress,
             recent_turns=self._dialogue_turn_log,
         )
+
+    def _build_case_outcome_evaluation(self) -> MbamOutcomeEvaluationResult | None:
+        if self._case_state is None or self._investigation_progress is None:
+            return None
+        elapsed_seconds = float(self._clock.tick_index) * float(self._clock.dt)
+        return evaluate_mbam_case_outcome(
+            case_state=self._case_state,
+            progress=self._investigation_progress,
+            object_state=self._investigation_object_state,
+            npc_states=self._npc_states,
+            dialogue_turn_log=self._dialogue_turn_log,
+            elapsed_seconds=elapsed_seconds,
+            extra_action_flags=self._manual_case_action_flags,
+            relationship_flags=self._manual_case_relationship_flags,
+            outcome_flags=self._manual_case_outcome_flags,
+        )
+
+    def _make_outcome_visible_projection(self) -> dict[str, Any] | None:
+        evaluation = self._build_case_outcome_evaluation()
+        if evaluation is None:
+            return None
+        return build_visible_outcome_projection(evaluation)
+
+    def _make_outcome_debug_projection(self) -> dict[str, Any] | None:
+        evaluation = self._build_case_outcome_evaluation()
+        if evaluation is None:
+            return None
+        return build_debug_outcome_projection(evaluation)
 
     def run(
         self,
