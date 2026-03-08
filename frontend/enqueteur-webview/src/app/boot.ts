@@ -11,6 +11,7 @@ import { mountDevControls } from "../ui/devControls";
 import { mountInspectPanel } from "../ui/inspectPanel";
 import { mountDialoguePanel } from "../ui/dialoguePanel";
 import { mountNotebookPanel } from "../ui/notebookPanel";
+import { mountResolutionPanel } from "../ui/resolutionPanel";
 import { mountTimeLighting } from "../ui/timeLighting";
 import { injectMockSnapshot } from "../debug/mockKernel";
 import { createFrontendActionBridge } from "./actionBridge";
@@ -80,6 +81,9 @@ export function boot(opts: BootOpts): ViewerHandle {
     const notebookPanel = mountNotebookPanel(store);
     opts.mountEl.appendChild(notebookPanel.root);
 
+    const resolutionPanel = mountResolutionPanel(store);
+    opts.mountEl.appendChild(resolutionPanel.root);
+
     overlayStore.subscribe((o) => {
         scene.ingestOverlayEvents(o.eventsAtTick);
     });
@@ -106,6 +110,7 @@ export function boot(opts: BootOpts): ViewerHandle {
         inspector.root.style.display = "block";
         dialoguePanel.root.style.display = hudVisibleRequested ? "block" : "none";
         notebookPanel.root.style.display = hudVisibleRequested ? "block" : "none";
+        resolutionPanel.root.style.display = hudVisibleRequested ? "block" : "none";
     };
 
     const pluginRegistry = new ViewerPluginRegistry();

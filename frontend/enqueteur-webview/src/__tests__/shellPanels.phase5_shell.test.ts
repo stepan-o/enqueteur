@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mountDialoguePanel } from "../ui/dialoguePanel";
 import { mountInspectPanel } from "../ui/inspectPanel";
 import { mountNotebookPanel } from "../ui/notebookPanel";
+import { mountResolutionPanel } from "../ui/resolutionPanel";
 import { WorldStore } from "../state/worldStore";
 import { makeMbamSnapshot } from "./mbamFixtures";
 
@@ -265,5 +266,65 @@ describe("Phase 5 shell panel rendering", () => {
         const mg2Submit = mg2Card!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!;
         expect(mg2Submit.disabled).toBe(true);
         expect(panel?.textContent).toContain("Incorrect. Retry.");
+    });
+
+    it("renders terminal recap details for resolved MBAM outcomes", () => {
+        const store = new WorldStore();
+        const snapshot = makeMbamSnapshot(7);
+        if (!snapshot.state.case_recap) {
+            throw new Error("fixture must include case recap projection");
+        }
+        if (!snapshot.state.case_outcome) {
+            throw new Error("fixture must include case outcome projection");
+        }
+        snapshot.state.case_outcome.primary_outcome = "best_outcome";
+        snapshot.state.case_outcome.terminal = true;
+        snapshot.state.case_outcome.best_outcome = true;
+        snapshot.state.case_outcome.best_outcome_awarded = true;
+        snapshot.state.case_outcome.continuity_flags = [
+            "continuity:quiet_recovery",
+            "continuity:strong_key_trust",
+        ];
+        snapshot.state.case_recap = {
+            ...snapshot.state.case_recap,
+            available: true,
+            final_outcome_type: "best_outcome",
+            resolution_path: "recovery",
+            resolution_path_components: ["recovery", "accusation"],
+            key_fact_ids: ["N3", "N4", "N8"],
+            key_evidence_ids: ["E2_CAFE_RECEIPT", "E3_METHOD_TRACE"],
+            key_action_flags: ["action:recover_medallion", "action:accuse_samira"],
+            contradiction_used: true,
+            contradiction_action_flags: ["action:state_contradiction_N3_N4"],
+            contradiction_requirement_satisfied: true,
+            relationship_result_flags: ["rel_elodie_positive", "rel_marc_positive", "continuity:strong_key_trust"],
+            soft_fail: {
+                triggered: false,
+                latched: false,
+                trigger_conditions: [],
+                item_left_building: false,
+            },
+            best_outcome: {
+                awarded: true,
+                quiet_recovery: true,
+                no_public_escalation: true,
+                strong_key_trust: true,
+            },
+            continuity_flags: ["continuity:quiet_recovery", "continuity:strong_key_trust"],
+        };
+        store.applySnapshot(snapshot);
+
+        const resolution = mountResolutionPanel(store);
+        document.body.appendChild(resolution.root);
+        const panel = resolution.root.querySelector(".resolution-panel");
+
+        expect(panel?.textContent).toContain("Case Resolution");
+        expect(panel?.textContent).toContain("best_outcome");
+        expect(panel?.textContent).toContain("recovery");
+        expect(panel?.textContent).toContain("resolved");
+        expect(panel?.textContent).toContain("N3 Badge log 17h58");
+        expect(panel?.textContent).toContain("E2 Cafe Receipt");
+        expect(panel?.textContent).toContain("Best Outcome Markers");
+        expect(panel?.textContent).toContain("quiet_recovery");
     });
 });

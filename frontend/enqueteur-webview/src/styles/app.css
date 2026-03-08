@@ -691,6 +691,82 @@ button:hover {
   color: #8a3c29;
 }
 
+.resolution-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 23;
+}
+
+.resolution-panel {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  width: min(32vw, 360px);
+  max-height: min(36vh, 420px);
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 2px solid rgba(31, 38, 41, 0.2);
+  background: rgba(253, 248, 239, 0.93);
+  box-shadow: 0 8px 18px rgba(30, 35, 40, 0.14);
+  pointer-events: auto;
+}
+
+.resolution-title {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.resolution-section-title {
+  margin-top: 10px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.72;
+}
+
+.resolution-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.resolution-label {
+  opacity: 0.68;
+}
+
+.resolution-value {
+  text-align: right;
+  font-weight: 600;
+}
+
+.resolution-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.resolution-row {
+  font-size: 11px;
+  border: 1px solid rgba(31, 38, 41, 0.2);
+  border-radius: 7px;
+  padding: 4px 6px;
+  background: rgba(250, 245, 236, 0.82);
+}
+
+.resolution-info {
+  font-size: 11px;
+  margin: 4px 0;
+  opacity: 0.72;
+}
+
 @media (max-width: 820px) {
   .app-chrome {
     left: 10px;
@@ -731,5 +807,14 @@ button:hover {
     bottom: auto;
     width: auto;
     max-height: 22vh;
+  }
+
+  .resolution-panel {
+    left: 10px;
+    right: 10px;
+    top: calc(90px + 38vh + 22vh + 16px);
+    bottom: auto;
+    width: auto;
+    max-height: 18vh;
   }
 }

@@ -252,6 +252,52 @@ export type KvpDialogueState = {
     learning?: KvpLearningState | null;
 };
 
+export type KvpCaseOutcomeState = {
+    truth_epoch: number;
+    primary_outcome: string;
+    terminal: boolean;
+    recovery_success: boolean;
+    accusation_success: boolean;
+    soft_fail: boolean;
+    best_outcome: boolean;
+    contradiction_required_for_accusation: boolean;
+    contradiction_requirement_satisfied: boolean;
+    quiet_recovery: boolean;
+    public_escalation: boolean;
+    soft_fail_latched?: boolean;
+    best_outcome_awarded?: boolean;
+    soft_fail_reasons?: string[];
+    continuity_flags?: string[];
+};
+
+export type KvpCaseRecapState = {
+    truth_epoch: number;
+    available: boolean;
+    final_outcome_type: string;
+    resolution_path: string;
+    resolution_path_components: string[];
+    key_fact_ids: string[];
+    key_evidence_ids: string[];
+    key_action_flags: string[];
+    contradiction_used: boolean;
+    contradiction_action_flags: string[];
+    contradiction_requirement_satisfied: boolean;
+    relationship_result_flags: string[];
+    soft_fail: {
+        triggered: boolean;
+        latched: boolean;
+        trigger_conditions: string[];
+        item_left_building: boolean;
+    };
+    best_outcome: {
+        awarded: boolean;
+        quiet_recovery: boolean;
+        no_public_escalation: boolean;
+        strong_key_trust: boolean;
+    };
+    continuity_flags: string[];
+};
+
 export type KvpState = {
     rooms: KvpRoom[];
     agents: KvpAgent[];
@@ -263,6 +309,8 @@ export type KvpState = {
     npc_semantic?: KvpNpcSemanticState[];
     investigation?: KvpInvestigationState;
     dialogue?: KvpDialogueState;
+    case_outcome?: KvpCaseOutcomeState;
+    case_recap?: KvpCaseRecapState;
     debug?: unknown;
 };
 
@@ -289,7 +337,9 @@ export type DiffOp =
     | { op: "SET_CASE"; case: KvpCaseStateSlice | null }
     | { op: "SET_NPC_SEMANTIC"; npc_semantic: KvpNpcSemanticState[] }
     | { op: "SET_INVESTIGATION"; investigation: KvpInvestigationState | null }
-    | { op: "SET_DIALOGUE"; dialogue: KvpDialogueState | null };
+    | { op: "SET_DIALOGUE"; dialogue: KvpDialogueState | null }
+    | { op: "SET_CASE_OUTCOME"; case_outcome: KvpCaseOutcomeState | null }
+    | { op: "SET_CASE_RECAP"; case_recap: KvpCaseRecapState | null };
 
 export type FrameDiffPayload = {
     schema_version: string;
@@ -357,6 +407,8 @@ export type WorldState = {
     npcSemantic: KvpNpcSemanticState[];
     investigation: KvpInvestigationState | null;
     dialogue: KvpDialogueState | null;
+    caseOutcome: KvpCaseOutcomeState | null;
+    caseRecap: KvpCaseRecapState | null;
     debug?: unknown;
 };
 
@@ -387,6 +439,8 @@ export class WorldStore {
             npcSemantic: [],
             investigation: null,
             dialogue: null,
+            caseOutcome: null,
+            caseRecap: null,
             debug: undefined,
         };
     }
@@ -474,6 +528,8 @@ export class WorldStore {
             npcSemantic: cloneNpcSemantic(payload.state.npc_semantic),
             investigation: cloneInvestigationState(payload.state.investigation),
             dialogue: cloneDialogueState(payload.state.dialogue),
+            caseOutcome: cloneCaseOutcomeState(payload.state.case_outcome),
+            caseRecap: cloneCaseRecapState(payload.state.case_recap),
             debug: payload.state.debug,
         };
 
@@ -507,6 +563,8 @@ export class WorldStore {
         let npcSemantic = this.state.npcSemantic;
         let investigation = this.state.investigation;
         let dialogue = this.state.dialogue;
+        let caseOutcome = this.state.caseOutcome;
+        let caseRecap = this.state.caseRecap;
 
         for (const op of payload.ops) {
             switch (op.op) {
@@ -558,6 +616,12 @@ export class WorldStore {
                 case "SET_DIALOGUE":
                     dialogue = cloneDialogueState(op.dialogue ?? undefined);
                     break;
+                case "SET_CASE_OUTCOME":
+                    caseOutcome = cloneCaseOutcomeState(op.case_outcome ?? undefined);
+                    break;
+                case "SET_CASE_RECAP":
+                    caseRecap = cloneCaseRecapState(op.case_recap ?? undefined);
+                    break;
                 default:
                     this.markDesync(`Unknown diff op: ${(op as { op: string }).op}`);
                     return;
@@ -578,6 +642,8 @@ export class WorldStore {
             npcSemantic,
             investigation,
             dialogue,
+            caseOutcome,
+            caseRecap,
         };
 
         this.emit();
@@ -679,5 +745,33 @@ function cloneDialogueState(value: KvpDialogueState | undefined): KvpDialogueSta
                   },
               }
             : null,
+    };
+}
+
+function cloneCaseOutcomeState(value: KvpCaseOutcomeState | undefined): KvpCaseOutcomeState | null {
+    if (!value) return null;
+    return {
+        ...value,
+        soft_fail_reasons: [...(value.soft_fail_reasons ?? [])],
+        continuity_flags: [...(value.continuity_flags ?? [])],
+    };
+}
+
+function cloneCaseRecapState(value: KvpCaseRecapState | undefined): KvpCaseRecapState | null {
+    if (!value) return null;
+    return {
+        ...value,
+        resolution_path_components: [...value.resolution_path_components],
+        key_fact_ids: [...value.key_fact_ids],
+        key_evidence_ids: [...value.key_evidence_ids],
+        key_action_flags: [...value.key_action_flags],
+        contradiction_action_flags: [...value.contradiction_action_flags],
+        relationship_result_flags: [...value.relationship_result_flags],
+        soft_fail: {
+            ...value.soft_fail,
+            trigger_conditions: [...value.soft_fail.trigger_conditions],
+        },
+        best_outcome: { ...value.best_outcome },
+        continuity_flags: [...value.continuity_flags],
     };
 }

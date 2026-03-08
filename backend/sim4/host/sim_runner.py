@@ -39,6 +39,7 @@ from backend.sim4.case_mbam import (
     attempt_recovery_completion,
     build_debug_dialogue_projection,
     build_debug_investigation_projection,
+    build_debug_run_recap_projection,
     build_debug_outcome_projection,
     build_debug_case_projection,
     build_debug_npc_semantic_projection,
@@ -48,6 +49,7 @@ from backend.sim4.case_mbam import (
     build_initial_mbam_object_state,
     build_visible_dialogue_projection,
     build_visible_investigation_projection,
+    build_visible_run_recap_projection,
     build_visible_outcome_projection,
     build_visible_case_projection,
     build_visible_npc_semantic_projection,
@@ -249,6 +251,8 @@ class SimRunner:
         learning_debug_provider = self._make_learning_debug_projection
         outcome_visible_provider = self._make_outcome_visible_projection
         outcome_debug_provider = self._make_outcome_debug_projection
+        recap_visible_provider = self._make_case_recap_visible_projection
+        recap_debug_provider = self._make_case_recap_debug_projection
 
         self._history: KvpStateHistory | None = None
         if self._offline_cfg is not None:
@@ -268,6 +272,8 @@ class SimRunner:
                 learning_debug_provider=learning_debug_provider,
                 outcome_visible_provider=outcome_visible_provider,
                 outcome_debug_provider=outcome_debug_provider,
+                case_recap_visible_provider=recap_visible_provider,
+                case_recap_debug_provider=recap_debug_provider,
             )
             sinks.append(self._history)
 
@@ -289,6 +295,8 @@ class SimRunner:
                     learning_debug_provider=learning_debug_provider,
                     outcome_visible_provider=outcome_visible_provider,
                     outcome_debug_provider=outcome_debug_provider,
+                    case_recap_visible_provider=recap_visible_provider,
+                    case_recap_debug_provider=recap_debug_provider,
                 )
             )
 
@@ -671,6 +679,18 @@ class SimRunner:
         if evaluation is None:
             return None
         return build_debug_outcome_projection(evaluation)
+
+    def _make_case_recap_visible_projection(self) -> dict[str, Any] | None:
+        evaluation = self._build_case_outcome_evaluation()
+        if evaluation is None:
+            return None
+        return build_visible_run_recap_projection(evaluation)
+
+    def _make_case_recap_debug_projection(self) -> dict[str, Any] | None:
+        evaluation = self._build_case_outcome_evaluation()
+        if evaluation is None:
+            return None
+        return build_debug_run_recap_projection(evaluation)
 
     def run(
         self,

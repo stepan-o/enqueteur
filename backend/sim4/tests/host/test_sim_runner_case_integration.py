@@ -116,6 +116,12 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert state["case_outcome"]["soft_fail_reasons"] == []
     assert state["case_outcome"]["continuity_flags"] == []
     assert "action_flags" not in state["case_outcome"]
+    assert "case_recap" in state
+    assert state["case_recap"]["final_outcome_type"] == state["case_outcome"]["primary_outcome"]
+    assert state["case_recap"]["resolution_path"] in {"in_progress", "recovery", "accusation", "soft_fail"}
+    assert isinstance(state["case_recap"]["key_fact_ids"], list)
+    assert isinstance(state["case_recap"]["key_evidence_ids"], list)
+    assert isinstance(state["case_recap"]["continuity_flags"], list)
 
     assert "debug" in state
     assert "case_private" in state["debug"]
@@ -134,6 +140,8 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
     assert "recent_outcomes" in state["debug"]["learning_private"]
     assert "case_outcome_private" in state["debug"]
     assert state["debug"]["case_outcome_private"]["debug_scope"] == "outcome_state_private"
+    assert "case_recap_private" in state["debug"]
+    assert state["debug"]["case_recap_private"]["debug_scope"] == "run_recap_private"
 
 
 def test_runner_omits_private_case_projection_without_debug_channel(tmp_path: Path):
@@ -318,6 +326,47 @@ def test_runner_latches_soft_fail_branch_during_tick_progression() -> None:
     assert object_state is not None
     assert object_state.o2_medallion.status == "missing"
     assert object_state.o2_medallion.location == "unknown"
+
+
+def test_runner_exports_terminal_recap_after_soft_fail_tick(tmp_path: Path) -> None:
+    state, _runner = _export_single_tick_state(tmp_path, channels=["WORLD"], case_seed="A")
+    assert "case_recap" in state
+    assert state["case_recap"]["available"] is False
+
+    clock = TickClock(dt=1.0)
+    ecs_world = ECSWorld()
+    world_ctx = WorldContext()
+    apply_mbam_layout(world_ctx)
+
+    run_root = tmp_path / "run_recap_terminal_soft_fail"
+    runner = SimRunner(
+        clock=clock,
+        ecs_world=ecs_world,
+        world_ctx=world_ctx,
+        rng_seed=123,
+        system_scheduler=_NoopScheduler(),
+        run_anchors=default_run_anchors(seed=123, tick_rate_hz=tick_rate_hz_from_clock(clock), time_origin_ms=0),
+        render_spec=default_render_spec(),
+        channels=["WORLD"],
+        offline=OfflineExportConfig(
+            run_root=run_root,
+            channels=["WORLD"],
+            keyframe_ticks=[1201],
+            validate=False,
+        ),
+        case_config=MbamCaseConfig(seed="A"),
+    )
+    runner.run(num_ticks=1201)
+
+    manifest = ManifestV0_1.from_dict(json.loads((run_root / "manifest.kvp.json").read_text("utf-8")))
+    snap_ptr = manifest.snapshots[1201]
+    env = read_record(run_root / snap_ptr.rel_path)
+    terminal_state = env["payload"]["state"]
+    recap = terminal_state["case_recap"]
+    assert recap["available"] is True
+    assert recap["final_outcome_type"] == "soft_fail"
+    assert recap["resolution_path"] == "soft_fail"
+    assert "clock:post_T_PLUS_20_without_recovery" in recap["soft_fail"]["trigger_conditions"]
 
 
 def test_runner_completion_flow_apis_are_wired_and_case_gated() -> None:

@@ -17,6 +17,8 @@ describe("WorldStore Phase 5 shell ingestion", () => {
         expect(state.npcSemantic[0]?.npc_id).toBe("elodie");
         expect(state.investigation?.objects[0]?.object_id).toBe("O1_DISPLAY_CASE");
         expect(state.dialogue?.active_scene_id).toBe("S1");
+        expect(state.caseOutcome?.primary_outcome).toBe("in_progress");
+        expect(state.caseRecap?.resolution_path).toBe("in_progress");
     });
 
     it("clones nested projected structures instead of aliasing snapshot payload objects", () => {
@@ -28,12 +30,16 @@ describe("WorldStore Phase 5 shell ingestion", () => {
         snapshot.state.npc_semantic?.[0]?.visible_behavior_flags.push("leak_flag");
         snapshot.state.investigation?.facts.known_fact_ids.push("LEAK");
         snapshot.state.dialogue?.recent_turns[0]?.revealed_fact_ids.push("LEAK");
+        snapshot.state.case_outcome?.continuity_flags?.push("LEAK");
+        snapshot.state.case_recap?.key_fact_ids.push("LEAK");
 
         const state = store.getState();
         expect(state.caseState?.visible_case_slice.public_room_ids).not.toContain("LEAK");
         expect(state.npcSemantic[0]?.visible_behavior_flags).not.toContain("leak_flag");
         expect(state.investigation?.facts.known_fact_ids).not.toContain("LEAK");
         expect(state.dialogue?.recent_turns[0]?.revealed_fact_ids).not.toContain("LEAK");
+        expect(state.caseOutcome?.continuity_flags).not.toContain("LEAK");
+        expect(state.caseRecap?.key_fact_ids).not.toContain("LEAK");
     });
 
     it("applies SET_INVESTIGATION and SET_DIALOGUE diffs coherently", () => {

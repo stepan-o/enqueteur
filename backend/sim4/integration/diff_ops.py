@@ -18,7 +18,8 @@ Ops follow the KVP-0001 shape:
   - {"op": "REMOVE_EVENT", "event_key": {"tick": 1, "event_id": 5}}
 
 Ops are emitted in a deterministic order:
-  WORLD → ROOMS → AGENTS → ITEMS → OBJECTS → EVENTS, with removals before upserts within each type.
+  WORLD → CASE/NPC/INVESTIGATION/DIALOGUE/OUTCOME/RECAP → ROOMS → AGENTS → ITEMS → OBJECTS → EVENTS,
+  with removals before upserts within each entity list type.
 """
 
 from typing import Any, Dict, Iterable, List, Tuple
@@ -73,6 +74,23 @@ def compute_state_diff_ops(state_from: Dict[str, Any], state_to: Dict[str, Any])
             ops.append({"op": "CLEAR_WORLD"})
         else:
             ops.append({"op": "SET_WORLD", "world": copy.deepcopy(world_to)})
+
+    def _diff_singleton_field(field_name: str, set_op: str) -> None:
+        before = state_from.get(field_name)
+        after = state_to.get(field_name)
+        if before == after:
+            return
+        if after is None:
+            ops.append({"op": set_op, field_name: None})
+        else:
+            ops.append({"op": set_op, field_name: copy.deepcopy(after)})
+
+    _diff_singleton_field("case", "SET_CASE")
+    _diff_singleton_field("npc_semantic", "SET_NPC_SEMANTIC")
+    _diff_singleton_field("investigation", "SET_INVESTIGATION")
+    _diff_singleton_field("dialogue", "SET_DIALOGUE")
+    _diff_singleton_field("case_outcome", "SET_CASE_OUTCOME")
+    _diff_singleton_field("case_recap", "SET_CASE_RECAP")
 
     def _diff_group(
         items_from: Iterable[Any],
@@ -184,6 +202,18 @@ def apply_state_diff_ops(state: Dict[str, Any], ops: List[Dict[str, Any]]) -> Di
             if "world" in new_state:
                 del new_state["world"]
             touched["world"] = True
+        elif kind == "SET_CASE":
+            new_state["case"] = copy.deepcopy(op.get("case"))
+        elif kind == "SET_NPC_SEMANTIC":
+            new_state["npc_semantic"] = copy.deepcopy(op.get("npc_semantic"))
+        elif kind == "SET_INVESTIGATION":
+            new_state["investigation"] = copy.deepcopy(op.get("investigation"))
+        elif kind == "SET_DIALOGUE":
+            new_state["dialogue"] = copy.deepcopy(op.get("dialogue"))
+        elif kind == "SET_CASE_OUTCOME":
+            new_state["case_outcome"] = copy.deepcopy(op.get("case_outcome"))
+        elif kind == "SET_CASE_RECAP":
+            new_state["case_recap"] = copy.deepcopy(op.get("case_recap"))
         elif kind == "UPSERT_ROOM":
             room = op.get("room")
             if room is None:

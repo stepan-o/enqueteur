@@ -67,6 +67,8 @@ class KvpStateHistory(TickOutputSink, StateSource):
         learning_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
         outcome_visible_provider: Callable[[], Dict[str, Any] | None] | None = None,
         outcome_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
+        case_recap_visible_provider: Callable[[], Dict[str, Any] | None] | None = None,
+        case_recap_debug_provider: Callable[[], Dict[str, Any] | None] | None = None,
     ) -> None:
         self._channels = list(channels) if channels is not None else list(ALLOWED_CHANNELS)
         self._channels = sorted({c for c in self._channels if c in ALLOWED_CHANNELS})
@@ -84,6 +86,8 @@ class KvpStateHistory(TickOutputSink, StateSource):
         self._learning_debug_provider = learning_debug_provider
         self._outcome_visible_provider = outcome_visible_provider
         self._outcome_debug_provider = outcome_debug_provider
+        self._case_recap_visible_provider = case_recap_visible_provider
+        self._case_recap_debug_provider = case_recap_debug_provider
 
         self._state_by_tick: Dict[int, Dict[str, Any]] = {}
         self._step_hash_by_tick: Dict[int, str] = {}
@@ -144,6 +148,10 @@ class KvpStateHistory(TickOutputSink, StateSource):
             outcome_visible = self._outcome_visible_provider()
             if outcome_visible is not None:
                 state["case_outcome"] = copy.deepcopy(outcome_visible)
+        if self._case_recap_visible_provider is not None:
+            recap_visible = self._case_recap_visible_provider()
+            if recap_visible is not None:
+                state["case_recap"] = copy.deepcopy(recap_visible)
         if "DEBUG" in self._channels:
             state.setdefault("debug", {})
             if self._case_debug_projection is not None:
@@ -180,6 +188,12 @@ class KvpStateHistory(TickOutputSink, StateSource):
                     debug_state = state.get("debug")
                     if isinstance(debug_state, dict):
                         debug_state["case_outcome_private"] = copy.deepcopy(outcome_debug)
+            if self._case_recap_debug_provider is not None:
+                recap_debug = self._case_recap_debug_provider()
+                if recap_debug is not None:
+                    debug_state = state.get("debug")
+                    if isinstance(debug_state, dict):
+                        debug_state["case_recap_private"] = copy.deepcopy(recap_debug)
 
         canonical_state = canonicalize_state_obj(state)
         step_hash = compute_step_hash(canonical_state)

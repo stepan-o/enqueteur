@@ -8,6 +8,7 @@ from backend.sim4.case_mbam import (
     build_initial_dialogue_scene_runtime,
     build_initial_investigation_progress,
     build_initial_mbam_object_state,
+    build_visible_run_recap_projection,
     build_visible_outcome_projection,
     build_debug_outcome_projection,
     build_dialogue_execution_context,
@@ -238,3 +239,32 @@ def test_dialogue_turn_action_flag_derivation_and_projection_shapes() -> None:
         "continuity_flags",
     }
     assert debug["debug_scope"] == "outcome_state_private"
+
+
+def test_run_recap_projection_is_deterministic_and_terminal_only_when_resolved() -> None:
+    case_state, npc_states, progress, object_state = _setup("A")
+    in_progress_eval = evaluate_mbam_case_outcome(
+        case_state=case_state,
+        progress=progress,
+        object_state=object_state,
+        npc_states=npc_states,
+    )
+    in_progress_recap = build_visible_run_recap_projection(in_progress_eval)
+    assert in_progress_recap["available"] is False
+    assert in_progress_recap["resolution_path"] == "in_progress"
+
+    progress = replace(progress, satisfied_action_flags=("action:wrong_accusation",))
+    soft_fail_eval = evaluate_mbam_case_outcome(
+        case_state=case_state,
+        progress=progress,
+        object_state=object_state,
+        npc_states=npc_states,
+        elapsed_seconds=30.0,
+        outcome_flags=("outcome:soft_fail_latched", "item_leaves_building", "outcome:item_left_building"),
+    )
+    soft_fail_recap = build_visible_run_recap_projection(soft_fail_eval)
+    assert soft_fail_recap["available"] is True
+    assert soft_fail_recap["final_outcome_type"] == "soft_fail"
+    assert soft_fail_recap["resolution_path"] == "soft_fail"
+    assert soft_fail_recap["soft_fail"]["latched"] is True
+    assert soft_fail_recap["soft_fail"]["item_left_building"] is True

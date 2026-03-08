@@ -28,6 +28,7 @@ OutcomePrimary = Literal[
     "soft_fail",
     "best_outcome",
 ]
+RecapResolutionPath = Literal["in_progress", "recovery", "accusation", "soft_fail"]
 
 _CLOCK_POST_WITHOUT_RECOVERY_RE = re.compile(r"^clock:post_T_PLUS_(\d+)_without_recovery$")
 
@@ -50,6 +51,60 @@ def _to_jsonable(value: Any) -> Any:
 
 def _visible_continuity_flags(debug_outcome_flags: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(flag for flag in debug_outcome_flags if flag.startswith("continuity:")))
+
+
+def _contradiction_action_flags(action_flags: Iterable[str]) -> tuple[str, ...]:
+    return tuple(sorted(flag for flag in action_flags if flag.startswith("action:state_contradiction_")))
+
+
+def _resolution_path_components(evaluation: "MbamOutcomeEvaluationResult") -> tuple[str, ...]:
+    parts: list[str] = []
+    if evaluation.recovery_success.satisfied:
+        parts.append("recovery")
+    if evaluation.accusation_success.satisfied:
+        parts.append("accusation")
+    if evaluation.soft_fail.triggered:
+        parts.append("soft_fail")
+    return tuple(parts)
+
+
+def _resolve_recap_path(evaluation: "MbamOutcomeEvaluationResult") -> RecapResolutionPath:
+    if evaluation.soft_fail.triggered:
+        return "soft_fail"
+    if evaluation.best_outcome.satisfied:
+        return "recovery" if evaluation.quiet_recovery else "accusation"
+    if evaluation.recovery_success.satisfied and not evaluation.accusation_success.satisfied:
+        return "recovery"
+    if evaluation.accusation_success.satisfied and not evaluation.recovery_success.satisfied:
+        return "accusation"
+    if evaluation.recovery_success.satisfied and evaluation.accusation_success.satisfied:
+        return "recovery" if evaluation.quiet_recovery else "accusation"
+    return "in_progress"
+
+
+def _selected_requirement_facts_and_items(
+    evaluation: "MbamOutcomeEvaluationResult",
+    path: RecapResolutionPath,
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    if evaluation.best_outcome.satisfied:
+        return (
+            evaluation.best_outcome.required_fact_ids,
+            evaluation.best_outcome.required_item_ids,
+            evaluation.best_outcome.required_action_flags,
+        )
+    if path == "recovery":
+        return (
+            evaluation.recovery_success.required_fact_ids,
+            evaluation.recovery_success.required_item_ids,
+            evaluation.recovery_success.required_action_flags,
+        )
+    if path == "accusation":
+        return (
+            evaluation.accusation_success.required_fact_ids,
+            evaluation.accusation_success.required_item_ids,
+            evaluation.accusation_success.required_action_flags,
+        )
+    return ((), (), ())
 
 
 def _person_slot_value(request: DialogueTurnRequest) -> str | None:
@@ -465,8 +520,91 @@ def build_debug_outcome_projection(
     }
 
 
+def build_visible_run_recap_projection(
+    evaluation: MbamOutcomeEvaluationResult,
+    *,
+    truth_epoch: int = 1,
+) -> dict[str, Any]:
+    epoch = int(truth_epoch)
+    if epoch <= 0:
+        raise ValueError("truth_epoch must be >= 1")
+
+    path = _resolve_recap_path(evaluation)
+    components = _resolution_path_components(evaluation)
+    contradiction_flags = _contradiction_action_flags(evaluation.action_flags)
+    required_facts, required_items, required_actions = _selected_requirement_facts_and_items(evaluation, path)
+    known_fact_ids = set(evaluation.known_fact_ids)
+    known_item_ids = set(evaluation.known_item_ids)
+    action_flags = set(evaluation.action_flags)
+    debug_flags = set(evaluation.debug_outcome_flags)
+    key_facts = tuple(sorted(fact_id for fact_id in required_facts if fact_id in known_fact_ids))
+    key_items = tuple(sorted(item_id for item_id in required_items if item_id in known_item_ids))
+    key_actions = tuple(sorted(flag for flag in required_actions if flag in action_flags))
+    continuity_flags = _visible_continuity_flags(evaluation.debug_outcome_flags)
+    relationship_flags = tuple(
+        sorted(
+            set(evaluation.relationship_flags).union(
+                flag
+                for flag in continuity_flags
+                if flag in {"continuity:strong_key_trust", "continuity:relationship_penalty"}
+            )
+        )
+    )
+
+    return {
+        "truth_epoch": epoch,
+        "available": evaluation.terminal,
+        "final_outcome_type": evaluation.primary_outcome,
+        "resolution_path": path,
+        "resolution_path_components": list(components),
+        "key_fact_ids": list(key_facts),
+        "key_evidence_ids": list(key_items),
+        "key_action_flags": list(key_actions),
+        "contradiction_used": bool(contradiction_flags),
+        "contradiction_action_flags": list(contradiction_flags),
+        "contradiction_requirement_satisfied": evaluation.contradiction_requirement_satisfied,
+        "relationship_result_flags": list(relationship_flags),
+        "soft_fail": {
+            "triggered": evaluation.soft_fail.triggered,
+            "latched": "outcome:soft_fail_latched" in debug_flags,
+            "trigger_conditions": list(evaluation.soft_fail.matched_trigger_conditions),
+            "item_left_building": "item_leaves_building" in debug_flags or "outcome:item_left_building" in debug_flags,
+        },
+        "best_outcome": {
+            "awarded": "outcome:best_outcome_awarded" in debug_flags or evaluation.best_outcome.satisfied,
+            "quiet_recovery": evaluation.quiet_recovery,
+            "no_public_escalation": not evaluation.public_escalation,
+            "strong_key_trust": "continuity:strong_key_trust" in set(continuity_flags),
+        },
+        "continuity_flags": list(continuity_flags),
+    }
+
+
+def build_debug_run_recap_projection(
+    evaluation: MbamOutcomeEvaluationResult,
+    *,
+    truth_epoch: int = 1,
+) -> dict[str, Any]:
+    epoch = int(truth_epoch)
+    if epoch <= 0:
+        raise ValueError("truth_epoch must be >= 1")
+    return {
+        "debug_scope": "run_recap_private",
+        "case_id": evaluation.case_id,
+        "seed": evaluation.seed,
+        "truth_epoch": epoch,
+        "recap": build_visible_run_recap_projection(evaluation, truth_epoch=epoch),
+        "known_fact_ids": list(evaluation.known_fact_ids),
+        "known_item_ids": list(evaluation.known_item_ids),
+        "action_flags": list(evaluation.action_flags),
+        "relationship_flags": list(evaluation.relationship_flags),
+        "outcome_flags": list(evaluation.debug_outcome_flags),
+    }
+
+
 __all__ = [
     "OutcomePrimary",
+    "RecapResolutionPath",
     "RequirementEvaluation",
     "SoftFailEvaluation",
     "BestOutcomeEvaluation",
@@ -475,4 +613,6 @@ __all__ = [
     "evaluate_mbam_case_outcome",
     "build_visible_outcome_projection",
     "build_debug_outcome_projection",
+    "build_visible_run_recap_projection",
+    "build_debug_run_recap_projection",
 ]
