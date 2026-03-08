@@ -14,21 +14,28 @@ from typing import Any, Callable, Dict, Iterable, List, Sequence
 import hashlib
 
 from backend.sim4.case_mbam import (
+    CaseCompletionAttemptResult,
     CaseState,
+    ContradictionExecutionResult,
     DifficultyProfile,
     DialogueExecutionContext,
     DialogueSceneRuntimeState,
     DialogueTurnLogEntry,
     DialogueTurnRequest,
     DialogueSceneTurnExecutionResult,
+    InvestigationCommand,
+    InvestigationExecutionResult,
     InvestigationProgressState,
     MbamOutcomeEvaluationResult,
     MbamObjectStateBundle,
     NPCState,
     action_flags_from_dialogue_turn,
+    apply_execution_result_to_progress,
     apply_dialogue_turn_to_progress,
     apply_investigation_timeline_state,
     apply_case_timeline_to_npc_states,
+    attempt_accusation_completion,
+    attempt_recovery_completion,
     build_debug_dialogue_projection,
     build_debug_investigation_projection,
     build_debug_outcome_projection,
@@ -46,7 +53,9 @@ from backend.sim4.case_mbam import (
     build_visible_learning_projection,
     build_debug_learning_projection,
     evaluate_mbam_case_outcome,
+    execute_contradiction_edge,
     execute_dialogue_turn,
+    execute_investigation_command,
     generate_case_state,
     initialize_mbam_npc_states_from_case_state,
     make_dialogue_turn_log_entry,
@@ -342,6 +351,116 @@ class SimRunner:
             return
         merged = tuple(sorted(set(self._manual_case_outcome_flags).union(incoming)))
         self._manual_case_outcome_flags = merged
+
+    def submit_investigation_command(
+        self,
+        command: InvestigationCommand,
+        *,
+        available_prerequisites: Iterable[str] = (),
+    ) -> InvestigationExecutionResult | None:
+        """Execute one deterministic MBAM investigation command against runtime state."""
+        if (
+            self._case_state is None
+            or self._investigation_object_state is None
+            or self._investigation_progress is None
+        ):
+            return None
+        elapsed_seconds = float(self._clock.tick_index) * float(self._clock.dt)
+        execution = execute_investigation_command(
+            command,
+            case_state=self._case_state,
+            object_state=self._investigation_object_state,
+            elapsed_seconds=elapsed_seconds,
+            available_prerequisites=available_prerequisites,
+            consumed_action_keys=self._investigation_progress.consumed_action_keys,
+        )
+        self._investigation_object_state = execution.object_state_after
+        update = apply_execution_result_to_progress(
+            self._case_state,
+            self._investigation_progress,
+            execution,
+        )
+        self._investigation_progress = update.progress_after
+        return execution
+
+    def submit_contradiction_edge(
+        self,
+        *,
+        edge_id: str,
+    ) -> ContradictionExecutionResult | None:
+        """Record a deterministic contradiction edge when ingredient facts are known."""
+        if self._case_state is None or self._investigation_progress is None:
+            return None
+        result = execute_contradiction_edge(
+            self._case_state,
+            self._investigation_progress,
+            edge_id=edge_id,
+        )
+        if result.status == "success":
+            self._investigation_progress = result.progress_after
+        return result
+
+    def attempt_case_recovery(
+        self,
+        *,
+        quiet: bool = True,
+    ) -> CaseCompletionAttemptResult | None:
+        """Attempt deterministic recovery-path case completion."""
+        if (
+            self._case_state is None
+            or self._investigation_progress is None
+            or self._investigation_object_state is None
+        ):
+            return None
+        elapsed_seconds = float(self._clock.tick_index) * float(self._clock.dt)
+        result = attempt_recovery_completion(
+            case_state=self._case_state,
+            progress=self._investigation_progress,
+            object_state=self._investigation_object_state,
+            dialogue_runtime_state=self._dialogue_runtime_state,
+            npc_states=self._npc_states,
+            elapsed_seconds=elapsed_seconds,
+            extra_action_flags=self._manual_case_action_flags,
+            relationship_flags=self._manual_case_relationship_flags,
+            outcome_flags=self._manual_case_outcome_flags,
+            quiet=quiet,
+        )
+        self._investigation_progress = result.progress_after
+        if result.object_state_after is not None:
+            self._investigation_object_state = result.object_state_after
+        if result.applied_outcome_flags:
+            self.record_case_outcome_flags(*result.applied_outcome_flags)
+        return result
+
+    def attempt_case_accusation(
+        self,
+        *,
+        accused_id: str,
+        public: bool = False,
+    ) -> CaseCompletionAttemptResult | None:
+        """Attempt deterministic accusation-path case completion."""
+        if self._case_state is None or self._investigation_progress is None:
+            return None
+        elapsed_seconds = float(self._clock.tick_index) * float(self._clock.dt)
+        result = attempt_accusation_completion(
+            case_state=self._case_state,
+            progress=self._investigation_progress,
+            object_state=self._investigation_object_state,
+            dialogue_runtime_state=self._dialogue_runtime_state,
+            npc_states=self._npc_states,
+            elapsed_seconds=elapsed_seconds,
+            accused_id=accused_id,
+            extra_action_flags=self._manual_case_action_flags,
+            relationship_flags=self._manual_case_relationship_flags,
+            outcome_flags=self._manual_case_outcome_flags,
+            public=public,
+        )
+        self._investigation_progress = result.progress_after
+        if result.object_state_after is not None:
+            self._investigation_object_state = result.object_state_after
+        if result.applied_outcome_flags:
+            self.record_case_outcome_flags(*result.applied_outcome_flags)
+        return result
 
     def submit_dialogue_turn(
         self,

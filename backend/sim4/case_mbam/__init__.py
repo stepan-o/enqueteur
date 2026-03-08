@@ -254,6 +254,13 @@ from .outcome_engine import (
     build_visible_outcome_projection,
     evaluate_mbam_case_outcome,
 )
+from .completion_flow import (
+    CaseCompletionAttemptResult,
+    CaseCompletionPath,
+    CaseCompletionStatus,
+    attempt_accusation_completion,
+    attempt_recovery_completion,
+)
 
 __all__ = [
     "AlibiClaim",
@@ -352,6 +359,11 @@ __all__ = [
     "evaluate_mbam_case_outcome",
     "build_visible_outcome_projection",
     "build_debug_outcome_projection",
+    "CaseCompletionPath",
+    "CaseCompletionStatus",
+    "CaseCompletionAttemptResult",
+    "attempt_recovery_completion",
+    "attempt_accusation_completion",
     "AffordanceDefinition",
     "AffordanceId",
     "AffordanceRepeatPolicy",

@@ -283,6 +283,40 @@ def test_runner_case_outcome_evaluation_and_manual_action_flags() -> None:
     assert softened.primary_outcome == "soft_fail"
 
 
+def test_runner_completion_flow_apis_are_wired_and_case_gated() -> None:
+    clock = TickClock(dt=1.0)
+    ecs_world = ECSWorld()
+    world_ctx = WorldContext()
+    apply_mbam_layout(world_ctx)
+
+    runner = SimRunner(
+        clock=clock,
+        ecs_world=ecs_world,
+        world_ctx=world_ctx,
+        rng_seed=123,
+        system_scheduler=_NoopScheduler(),
+        run_anchors=default_run_anchors(seed=123, tick_rate_hz=tick_rate_hz_from_clock(clock), time_origin_ms=0),
+        render_spec=default_render_spec(),
+        channels=["WORLD"],
+        offline=None,
+        case_config=MbamCaseConfig(seed="A"),
+    )
+
+    recovery = runner.attempt_case_recovery()
+    assert recovery is not None
+    assert recovery.status == "blocked"
+    assert recovery.code in {"scene_or_trust_prerequisite_missing", "recovery_prerequisites_missing"}
+
+    accusation_invalid = runner.attempt_case_accusation(accused_id="not_a_suspect")
+    assert accusation_invalid is not None
+    assert accusation_invalid.status == "invalid"
+    assert accusation_invalid.code == "invalid_accused_id"
+
+    accusation = runner.attempt_case_accusation(accused_id="samira")
+    assert accusation is not None
+    assert accusation.status in {"blocked", "completed"}
+
+
 def test_runner_exports_learning_recent_outcomes_after_dialogue_turn(tmp_path: Path) -> None:
     clock = TickClock(dt=1.0 / 30.0)
     ecs_world = ECSWorld()
