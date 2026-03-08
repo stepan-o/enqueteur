@@ -63,6 +63,7 @@ from backend.sim4.case_mbam import (
     initialize_mbam_npc_states_from_case_state,
     make_dialogue_turn_log_entry,
 )
+from backend.sim4.case_mbam.npc_state import NPCAffectUpdate, apply_npc_affect_update
 from backend.sim4.runtime.clock import TickClock
 from backend.sim4.runtime.tick import tick as run_tick
 from backend.sim4.ecs.world import ECSWorld
@@ -197,6 +198,7 @@ class SimRunner:
         self._manual_case_action_flags: tuple[str, ...] = ()
         self._manual_case_relationship_flags: tuple[str, ...] = ()
         self._manual_case_outcome_flags: tuple[str, ...] = ()
+        self._investigation_runtime_prereq_flags: tuple[str, ...] = ()
 
         if case_config is not None:
             truth_epoch = int(case_config.truth_epoch)
@@ -376,12 +378,19 @@ class SimRunner:
         ):
             return None
         elapsed_seconds = float(self._clock.tick_index) * float(self._clock.dt)
+        effective_prereqs = tuple(
+            sorted(
+                set(available_prerequisites).union(
+                    self._derive_auto_investigation_prerequisites(command)
+                )
+            )
+        )
         execution = execute_investigation_command(
             command,
             case_state=self._case_state,
             object_state=self._investigation_object_state,
             elapsed_seconds=elapsed_seconds,
-            available_prerequisites=available_prerequisites,
+            available_prerequisites=effective_prereqs,
             consumed_action_keys=self._investigation_progress.consumed_action_keys,
         )
         self._investigation_object_state = execution.object_state_after
@@ -391,6 +400,7 @@ class SimRunner:
             execution,
         )
         self._investigation_progress = update.progress_after
+        self._update_runtime_prerequisites_after_execution(execution)
         self._apply_case_outcome_branch_transitions(elapsed_seconds=elapsed_seconds)
         return execution
 
@@ -529,6 +539,19 @@ class SimRunner:
         if cap > 0 and len(existing) > cap:
             existing = existing[-cap:]
         self._dialogue_turn_log = tuple(existing)
+        if self._npc_states is not None:
+            npc = self._npc_states.get(request.npc_id)
+            if npc is not None:
+                self._npc_states = {
+                    **self._npc_states,
+                    request.npc_id: apply_npc_affect_update(
+                        npc,
+                        NPCAffectUpdate(
+                            trust_delta=result.turn_result.trust_delta,
+                            stress_delta=result.turn_result.stress_delta,
+                        ),
+                    ),
+                }
         elapsed_seconds = float(self._clock.tick_index) * float(self._clock.dt)
         self._apply_case_outcome_branch_transitions(elapsed_seconds=elapsed_seconds)
         return result
@@ -559,6 +582,54 @@ class SimRunner:
             self._npc_states,
             elapsed_seconds=float(elapsed_seconds),
         )
+
+    def _derive_auto_investigation_prerequisites(
+        self,
+        command: InvestigationCommand,
+    ) -> tuple[str, ...]:
+        tokens = set(self._investigation_runtime_prereq_flags)
+
+        if self._dialogue_runtime_state is not None:
+            completion = dict(self._dialogue_runtime_state.scene_completion_states)
+            for scene_id in ("S2", "S4"):
+                if completion.get(scene_id) in {"available", "in_progress", "completed"}:
+                    tokens.add(f"scene:{scene_id}")
+
+        if self._case_state is not None and self._npc_states is not None:
+            marc = self._npc_states.get("marc")
+            threshold = self._case_state.scene_gates.S2.trust_threshold
+            if marc is not None and threshold is not None and marc.trust >= threshold:
+                tokens.add("trust:marc>=gate")
+
+        if self._investigation_progress is not None:
+            known_evidence = set(self._investigation_progress.discovered_evidence_ids).union(
+                self._investigation_progress.collected_evidence_ids
+            )
+            if "E2_CAFE_RECEIPT" in known_evidence:
+                tokens.add("inventory:E2_CAFE_RECEIPT")
+
+        if (
+            command.affordance_id == "attempt_code"
+            and command.item_context_id is not None
+            and command.item_context_id.isdigit()
+            and len(command.item_context_id) == 4
+        ):
+            tokens.add("input:code_4_digit")
+
+        return tuple(sorted(tokens))
+
+    def _update_runtime_prerequisites_after_execution(
+        self,
+        execution: InvestigationExecutionResult,
+    ) -> None:
+        flags = set(self._investigation_runtime_prereq_flags)
+        if (
+            execution.command.object_id == "O6_BADGE_TERMINAL"
+            and execution.command.affordance_id == "request_access"
+            and execution.ack.kind == "success"
+        ):
+            flags.add("access:terminal_granted")
+        self._investigation_runtime_prereq_flags = tuple(sorted(flags))
 
     def _make_npc_semantic_visible_projection(self) -> list[dict[str, Any]] | None:
         if self._npc_states is None:
@@ -849,8 +920,18 @@ def _build_manifest(
     diffs: Dict[int, RecordPointer] = {}
 
     kf_ticks: List[int]
+    normalized_keyframe_ticks: List[int] | None = None
     if keyframe_ticks is not None:
-        kf_ticks = list(keyframe_ticks)
+        bounded = [
+            int(t)
+            for t in keyframe_ticks
+            if int(start_tick) <= int(t) <= int(end_tick)
+        ]
+        unique_sorted = sorted(set(bounded))
+        if int(start_tick) not in unique_sorted:
+            unique_sorted.insert(0, int(start_tick))
+        kf_ticks = unique_sorted
+        normalized_keyframe_ticks = list(unique_sorted)
     else:
         kf_ticks = []
         k = int(keyframe_interval) if keyframe_interval is not None else 1
@@ -905,7 +986,7 @@ def _build_manifest(
         available_end_tick=int(end_tick),
         channels=list(channels_norm),
         keyframe_interval=int(keyframe_interval) if keyframe_interval is not None else None,
-        keyframe_ticks=list(keyframe_ticks) if keyframe_ticks is not None else None,
+        keyframe_ticks=normalized_keyframe_ticks,
         snapshots=snaps,
         diffs=DiffInventory(diffs_by_from_tick=diffs),
         integrity=integrity,

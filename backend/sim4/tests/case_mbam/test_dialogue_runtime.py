@@ -341,6 +341,32 @@ def test_dialogue_turn_can_project_revealed_facts_into_investigation_progress() 
     assert "N5" in after.known_fact_ids
 
 
+def test_s3_challenge_contradiction_can_reveal_n8_before_s5_when_ingredients_known() -> None:
+    case_state, _npc_states, _progress, context, runtime = _setup("A", elapsed_seconds=720.0)
+    context = replace(
+        context,
+        known_fact_ids=tuple(sorted(set(context.known_fact_ids).union({"N2", "N3", "N4"}))),
+        known_evidence_ids=tuple(sorted(set(context.known_evidence_ids).union({"E2_CAFE_RECEIPT"}))),
+        collected_evidence_ids=tuple(sorted(set(context.collected_evidence_ids).union({"E2_CAFE_RECEIPT"}))),
+    )
+
+    result = execute_dialogue_turn(
+        case_state,
+        runtime,
+        DialogueTurnRequest(
+            scene_id="S3",
+            npc_id="samira",
+            intent_id="challenge_contradiction",
+            provided_slots=(DialogueTurnSlotValue(slot_name="time", value="17h58"),),
+            presented_fact_ids=("N3", "N4"),
+            presented_evidence_ids=("E2_CAFE_RECEIPT",),
+        ),
+        context=context,
+    )
+    assert result.turn_result.status == "accepted"
+    assert "N8" in result.turn_result.revealed_fact_ids
+
+
 def test_present_evidence_requires_known_evidence_reference() -> None:
     case_state, _npc_states, _progress, context, runtime = _setup("A")
     trust_context = _with_npc_trust(context, "marc", 0.8)

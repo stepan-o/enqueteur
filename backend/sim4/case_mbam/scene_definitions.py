@@ -201,7 +201,7 @@ def _make_scene_definition(case_state: CaseState, scene_id: SceneId) -> MbamScen
                 "goodbye",
             ),
             required_slots=(DialogueSlotDescriptor(slot_name="time", required=True),),
-            allowed_fact_ids=("N2", "N3", "N5", "N6", "N7"),
+            allowed_fact_ids=("N2", "N3", "N5", "N6", "N7", "N8"),
             revealed_fact_ids=(),
             trust_gate=DialogueTrustGate(minimum_value=gate.trust_threshold, failure_mode="deflect"),
             stress_gate=DialogueStressGate(maximum_value=0.88, failure_mode="evade"),

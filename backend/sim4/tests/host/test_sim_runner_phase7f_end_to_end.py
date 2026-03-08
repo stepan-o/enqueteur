@@ -158,6 +158,24 @@ def _run_accusation_sequence_with_mg_proxies(runner: SimRunner, *, include_contr
     )
     assert who_turn is not None and who_turn.turn_result.status == "accepted"
 
+    reassure_1 = runner.submit_dialogue_turn(
+        DialogueTurnRequest(
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="reassure",
+        )
+    )
+    assert reassure_1 is not None and reassure_1.turn_result.status == "accepted"
+
+    reassure_2 = runner.submit_dialogue_turn(
+        DialogueTurnRequest(
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="reassure",
+        )
+    )
+    assert reassure_2 is not None and reassure_2.turn_result.status == "accepted"
+
     s1_summary = runner.submit_dialogue_turn(
         DialogueTurnRequest(
             scene_id="S1",
@@ -203,20 +221,92 @@ def _run_seed_c_accusation_success_sequence() -> tuple[dict, dict]:
 def test_phase7f_end_to_end_recovery_success_seed_a() -> None:
     runner = _make_runner(seed="A")
 
-    # Deterministic investigation interaction for recovery evidence.
+    for _ in range(8):
+        reassure = runner.submit_dialogue_turn(
+            DialogueTurnRequest(
+                scene_id="S1",
+                npc_id="elodie",
+                intent_id="reassure",
+            )
+        )
+        assert reassure is not None and reassure.turn_result.status == "accepted"
+
+    s1_summary = runner.submit_dialogue_turn(
+        DialogueTurnRequest(
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="summarize_understanding",
+            presented_fact_ids=("N1",),
+        )
+    )
+    assert s1_summary is not None and s1_summary.turn_result.status == "accepted"
+
+    n2 = runner.submit_investigation_command(
+        make_investigation_command(object_id="O8_KEYPAD_DOOR", affordance_id="inspect"),
+    )
+    assert n2 is not None and n2.ack.kind in {"success", "no_op"}
+
+    n3 = runner.submit_dialogue_turn(
+        DialogueTurnRequest(
+            scene_id="S3",
+            npc_id="samira",
+            intent_id="ask_when",
+            provided_slots=(DialogueTurnSlotValue(slot_name="time", value="17h58"),),
+        )
+    )
+    assert n3 is not None and n3.turn_result.status == "accepted"
+
+    # S4 is time-gated to T+08..T+18; advance deterministically into the window.
+    runner.run(num_ticks=480)
+
+    n4 = runner.submit_dialogue_turn(
+        DialogueTurnRequest(
+            scene_id="S4",
+            npc_id="jo",
+            intent_id="ask_when",
+            provided_slots=(DialogueTurnSlotValue(slot_name="time", value="17h52"),),
+        )
+    )
+    assert n4 is not None and n4.turn_result.status == "accepted"
+
+    ask = runner.submit_investigation_command(
+        make_investigation_command(object_id="O9_RECEIPT_PRINTER", affordance_id="ask_for_receipt"),
+    )
+    assert ask is not None and ask.ack.kind == "success"
+    read = runner.submit_investigation_command(
+        make_investigation_command(object_id="O9_RECEIPT_PRINTER", affordance_id="read_receipt"),
+    )
+    assert read is not None and read.ack.kind == "success"
+
+    contradiction = runner.submit_dialogue_turn(
+        DialogueTurnRequest(
+            scene_id="S3",
+            npc_id="samira",
+            intent_id="challenge_contradiction",
+            provided_slots=(DialogueTurnSlotValue(slot_name="time", value="17h58"),),
+            presented_fact_ids=("N3", "N4"),
+            presented_evidence_ids=("E2_CAFE_RECEIPT",),
+        )
+    )
+    assert contradiction is not None and contradiction.turn_result.status == "accepted"
+    assert "N8" in contradiction.turn_result.revealed_fact_ids
+
+    s3_summary = runner.submit_dialogue_turn(
+        DialogueTurnRequest(
+            scene_id="S3",
+            npc_id="samira",
+            intent_id="summarize_understanding",
+            provided_slots=(DialogueTurnSlotValue(slot_name="time", value="17h58"),),
+            presented_fact_ids=("N3",),
+        )
+    )
+    assert s3_summary is not None and s3_summary.turn_result.status == "accepted"
+
     trace = runner.submit_investigation_command(
         make_investigation_command(object_id="O1_DISPLAY_CASE", affordance_id="examine_surface"),
     )
     assert trace is not None and trace.ack.kind == "success"
     assert "E3_METHOD_TRACE" in trace.revealed_evidence_ids
-
-    # Current runtime still needs explicit confrontation prep for S5 gate + hidden N8 clue.
-    _inject_progress_overrides(
-        runner,
-        fact_ids=("N8",),
-        discovered_evidence_ids=("E3_METHOD_TRACE",),
-    )
-    _inject_confrontation_gate_state(runner)
 
     recovery = runner.attempt_case_recovery(quiet=True)
     assert recovery is not None
@@ -235,7 +325,6 @@ def test_phase7f_end_to_end_recovery_success_seed_a() -> None:
 def test_phase7f_end_to_end_accusation_success_seed_c_with_contradiction_enforcement() -> None:
     runner = _make_runner(seed="C")
     _run_accusation_sequence_with_mg_proxies(runner, include_contradiction=False)
-    _inject_confrontation_gate_state(runner)
 
     # First accusation must fail before contradiction action is recorded.
     blocked = runner.attempt_case_accusation(accused_id="laurent")
@@ -313,3 +402,46 @@ def test_phase7f_replay_export_reconstructs_terminal_full_run_state(tmp_path: Pa
     assert reconstructed["case_recap"]["available"] is True
     assert reconstructed["case_recap"]["final_outcome_type"] == "soft_fail"
     assert reconstructed["case_recap"]["resolution_path"] == "soft_fail"
+
+
+def test_phase7g_dialogue_turn_updates_runtime_npc_trust_and_stress() -> None:
+    runner = _make_runner(seed="C")
+    npc_before = runner.get_npc_state("elodie")
+    assert npc_before is not None
+
+    result = runner.submit_dialogue_turn(
+        DialogueTurnRequest(
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="reassure",
+        )
+    )
+    assert result is not None
+    assert result.turn_result.status == "accepted"
+    assert result.turn_result.trust_delta > 0.0
+    assert result.turn_result.stress_delta < 0.0
+
+    npc_after = runner.get_npc_state("elodie")
+    assert npc_after is not None
+    assert npc_after.trust > npc_before.trust
+    assert npc_after.stress < npc_before.stress
+
+
+def test_phase7g_runner_derives_runtime_prerequisites_for_receipt_read_flow() -> None:
+    runner = _make_runner(seed="B")
+
+    ask = runner.submit_investigation_command(
+        make_investigation_command(object_id="O9_RECEIPT_PRINTER", affordance_id="ask_for_receipt"),
+    )
+    assert ask is not None
+    assert ask.ack.kind == "success"
+    assert "E2_CAFE_RECEIPT" in ask.revealed_evidence_ids
+
+    # No explicit inventory prerequisite provided; runner should derive it
+    # from deterministic progress state after ask_for_receipt.
+    read = runner.submit_investigation_command(
+        make_investigation_command(object_id="O9_RECEIPT_PRINTER", affordance_id="read_receipt"),
+    )
+    assert read is not None
+    assert read.ack.kind == "success"
+    assert "N4" in read.fact_unlock_candidates

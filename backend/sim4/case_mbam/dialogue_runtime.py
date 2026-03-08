@@ -515,6 +515,9 @@ def _legal_turn_fact_reveals(
             candidates.add("N5")
         if intent_id == "ask_what_seen":
             candidates.update({"N5", "N6"})
+        if intent_id == "challenge_contradiction":
+            if {"N3", "N4"}.issubset(known_facts) and "E2_CAFE_RECEIPT" in known_evidence:
+                candidates.add("N8")
     elif scene_id == "S4":
         if intent_id == "ask_what_seen":
             candidates.add("N5")
