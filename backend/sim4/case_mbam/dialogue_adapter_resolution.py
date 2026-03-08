@@ -38,6 +38,15 @@ _SUMMARY_REQUIRED_CODES = {
     "summary_insufficient_facts",
     "summary_missing_key_fact",
 }
+_ALLOWED_METADATA_PREFIXES = (
+    "mode:",
+    "outcome:",
+    "source:",
+    "reason:",
+    "status:",
+    "npc:",
+)
+_MAX_PRESENTATION_TEXT_LEN = 220
 _OUTPUT_ALLOWED_KEYS = {
     "npc_utterance_text",
     "short_rephrase_line",
@@ -78,6 +87,40 @@ def _coerce_string_tuple(value: Any, *, field_name: str) -> tuple[str, ...]:
         if cleaned:
             out.append(cleaned)
     return tuple(sorted(set(out)))
+
+
+def _normalize_line(value: str | None) -> str | None:
+    if value is None:
+        return None
+    compact = " ".join(value.split()).strip()
+    if not compact:
+        return None
+    if len(compact) <= _MAX_PRESENTATION_TEXT_LEN:
+        return compact
+    return compact[: _MAX_PRESENTATION_TEXT_LEN - 1].rstrip() + "…"
+
+
+def _normalize_metadata(values: tuple[str, ...]) -> tuple[str, ...]:
+    if len(values) > 8:
+        raise ValueError("response_mode_metadata has too many entries")
+    invalid = [row for row in values if not row.startswith(_ALLOWED_METADATA_PREFIXES)]
+    if invalid:
+        raise ValueError("response_mode_metadata contains unsupported tokens")
+    return values
+
+
+def _canonicalize_output(output: DialogueAdapterOutput) -> DialogueAdapterOutput:
+    utterance = _normalize_line(output.npc_utterance_text)
+    if utterance is None:
+        raise ValueError("npc_utterance_text must be non-empty")
+    return DialogueAdapterOutput(
+        npc_utterance_text=utterance,
+        short_rephrase_line=_normalize_line(output.short_rephrase_line),
+        hint_line=_normalize_line(output.hint_line),
+        summary_prompt_line=_normalize_line(output.summary_prompt_line),
+        response_mode_metadata=_normalize_metadata(output.response_mode_metadata),
+        referenced_fact_ids=output.referenced_fact_ids,
+    )
 
 
 def _normalize_output_from_mapping(raw_output: Mapping[str, Any]) -> DialogueAdapterOutput:
@@ -126,6 +169,7 @@ def normalize_and_validate_adapter_output(
     else:
         raise TypeError("adapter output must be DialogueAdapterOutput or mapping")
 
+    output = _canonicalize_output(output)
     validate_dialogue_adapter_output(output, payload)
     _validate_turn_compatibility(output, payload)
     return output, normalized_from_mapping
@@ -257,4 +301,3 @@ __all__ = [
     "normalize_and_validate_adapter_output",
     "resolve_dialogue_adapter_output",
 ]
-

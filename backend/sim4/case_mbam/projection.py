@@ -414,6 +414,7 @@ def _visible_turn_log_row(
         "summary_check_code": entry.summary_check_code,
         "presentation_source": entry.presentation_source,
         "presentation_reason_code": entry.presentation_reason_code,
+        "presentation_metadata": list(entry.presentation_metadata),
         "npc_utterance_text": entry.npc_utterance_text,
         "short_rephrase_line": entry.short_rephrase_line,
         "hint_line": entry.hint_line,

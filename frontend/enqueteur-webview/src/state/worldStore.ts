@@ -240,6 +240,7 @@ export type KvpDialogueTurnLog = {
     summary_check_code: string | null;
     presentation_source?: string | null;
     presentation_reason_code?: string | null;
+    presentation_metadata?: string[];
     npc_utterance_text?: string | null;
     short_rephrase_line?: string | null;
     hint_line?: string | null;
@@ -728,6 +729,7 @@ function cloneDialogueState(value: KvpDialogueState | undefined): KvpDialogueSta
         recent_turns: value.recent_turns.map((turn) => ({
             ...turn,
             revealed_fact_ids: [...turn.revealed_fact_ids],
+            presentation_metadata: [...(turn.presentation_metadata ?? [])],
         })),
         summary_rules: {
             ...value.summary_rules,

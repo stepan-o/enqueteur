@@ -172,6 +172,7 @@ def test_resolution_accepts_valid_mapping_output_after_normalization() -> None:
     assert resolved.source == "adapter"
     assert resolved.reason_code == "adapter_ok"
     assert resolved.normalized_from_mapping is True
+    assert resolved.output.response_mode_metadata == ("mode:accept", "source:adapter")
 
 
 def test_resolution_falls_back_for_invalid_or_unsafe_adapter_outputs() -> None:
@@ -237,3 +238,38 @@ def test_normalization_rejects_non_mapping_non_output_objects() -> None:
         assert "DialogueAdapterOutput or mapping" in str(exc)
     else:
         raise AssertionError("normalize_and_validate_adapter_output should reject unsupported output types")
+
+
+def test_normalization_canonicalizes_whitespace_and_length_for_presented_lines() -> None:
+    payload = _build_payload("A", DialogueTurnRequest(scene_id="S1", npc_id="elodie", intent_id="ask_where"))
+    long_line = "  " + ("mot " * 120) + "  "
+    normalized, _ = normalize_and_validate_adapter_output(
+        {
+            "npc_utterance_text": long_line,
+            "hint_line": "   indice   simple   ",
+            "response_mode_metadata": ["source:adapter", "mode:accept"],
+            "referenced_fact_ids": [],
+        },
+        payload,
+    )
+    assert normalized.npc_utterance_text is not None
+    assert len(normalized.npc_utterance_text) <= 220
+    assert "  " not in normalized.npc_utterance_text
+    assert normalized.hint_line == "indice simple"
+
+
+def test_normalization_rejects_unsupported_response_metadata_tokens() -> None:
+    payload = _build_payload("A", DialogueTurnRequest(scene_id="S1", npc_id="elodie", intent_id="ask_where"))
+    resolved = resolve_dialogue_adapter_output(
+        payload,
+        adapter=_DictAdapter(
+            {
+                "npc_utterance_text": "ok",
+                "response_mode_metadata": ["secret:N8_hidden"],
+                "referenced_fact_ids": [],
+            }
+        ),
+        adapter_enabled=True,
+    )
+    assert resolved.source == "fallback"
+    assert resolved.reason_code == "adapter_invalid_value"

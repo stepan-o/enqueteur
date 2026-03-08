@@ -103,6 +103,7 @@ def test_dialogue_projection_includes_compact_recent_turn_log() -> None:
     assert "npc_utterance_text" in row
     assert "summary_prompt_line" in row
     assert "hint_line" in row
+    assert "presentation_metadata" in row
 
 
 def test_dialogue_projection_carries_presentation_text_fields_when_present() -> None:
@@ -122,6 +123,7 @@ def test_dialogue_projection_carries_presentation_text_fields_when_present() -> 
         result,
         presentation_source="adapter",
         presentation_reason_code="adapter_ok",
+        presentation_metadata=("source:style_mbam_v1", "mode:accept"),
         npc_utterance_text="Je confirme la zone concernée.",
         short_rephrase_line=None,
         hint_line="Indice: garde la structure qui, où, quand.",
@@ -136,6 +138,7 @@ def test_dialogue_projection_carries_presentation_text_fields_when_present() -> 
     row = visible["recent_turns"][0]
     assert row["presentation_source"] == "adapter"
     assert row["presentation_reason_code"] == "adapter_ok"
+    assert row["presentation_metadata"] == ["mode:accept", "source:style_mbam_v1"]
     assert row["npc_utterance_text"] == "Je confirme la zone concernée."
     assert row["hint_line"] == "Indice: garde la structure qui, où, quand."
 

@@ -39,6 +39,17 @@ def _sorted_unique(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted({v for v in values if isinstance(v, str) and v}))
 
 
+def _normalize_presentation_text(value: str | None, *, limit: int = 220) -> str | None:
+    if value is None:
+        return None
+    compact = " ".join(value.split()).strip()
+    if not compact:
+        return None
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 1].rstrip() + "…"
+
+
 @dataclass(frozen=True)
 class SceneGateCheckResult:
     passed: bool
@@ -178,6 +189,7 @@ class DialogueTurnLogEntry:
     summary_check_code: str | None
     presentation_source: str | None = None
     presentation_reason_code: str | None = None
+    presentation_metadata: tuple[str, ...] = ()
     npc_utterance_text: str | None = None
     short_rephrase_line: str | None = None
     hint_line: str | None = None
@@ -188,6 +200,11 @@ class DialogueTurnLogEntry:
             raise ValueError("DialogueTurnLogEntry.turn_index must be >= 0")
         object.__setattr__(self, "revealed_fact_ids", _sorted_unique(self.revealed_fact_ids))
         object.__setattr__(self, "missing_required_slots", _sorted_unique(self.missing_required_slots))
+        object.__setattr__(self, "presentation_metadata", _sorted_unique(self.presentation_metadata))
+        object.__setattr__(self, "npc_utterance_text", _normalize_presentation_text(self.npc_utterance_text))
+        object.__setattr__(self, "short_rephrase_line", _normalize_presentation_text(self.short_rephrase_line))
+        object.__setattr__(self, "hint_line", _normalize_presentation_text(self.hint_line))
+        object.__setattr__(self, "summary_prompt_line", _normalize_presentation_text(self.summary_prompt_line))
 
 
 def _completion_map(state: DialogueSceneRuntimeState) -> dict[SceneId, SceneCompletionState]:
@@ -1180,6 +1197,7 @@ def make_dialogue_turn_log_entry(
     *,
     presentation_source: str | None = None,
     presentation_reason_code: str | None = None,
+    presentation_metadata: tuple[str, ...] = (),
     npc_utterance_text: str | None = None,
     short_rephrase_line: str | None = None,
     hint_line: str | None = None,
@@ -1205,6 +1223,7 @@ def make_dialogue_turn_log_entry(
         summary_check_code=summary_code,
         presentation_source=presentation_source,
         presentation_reason_code=presentation_reason_code,
+        presentation_metadata=presentation_metadata,
         npc_utterance_text=npc_utterance_text,
         short_rephrase_line=short_rephrase_line,
         hint_line=hint_line,

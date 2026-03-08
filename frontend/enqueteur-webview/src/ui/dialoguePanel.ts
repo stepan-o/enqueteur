@@ -944,6 +944,12 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[]): void
                 (turn.presentation_reason_code ? ` reason:${turn.presentation_reason_code}` : "");
             row.appendChild(source);
         }
+        if (turn.presentation_metadata && turn.presentation_metadata.length > 0) {
+            const meta = document.createElement("div");
+            meta.className = "dialogue-turn-detail";
+            meta.textContent = `presentation_meta:[${turn.presentation_metadata.join(", ")}]`;
+            row.appendChild(meta);
+        }
         list.appendChild(row);
     }
 }

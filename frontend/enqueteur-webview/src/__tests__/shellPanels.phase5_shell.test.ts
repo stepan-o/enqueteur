@@ -66,6 +66,7 @@ describe("Phase 5 shell panel rendering", () => {
             summary_check_code: "summary_insufficient_facts",
             presentation_source: "adapter",
             presentation_reason_code: "adapter_ok",
+            presentation_metadata: ["mode:repair", "source:style_mbam_v1"],
             npc_utterance_text: "Très bien. Restons précis.",
             short_rephrase_line: "Essaie avec une phrase guide simple.",
             hint_line: "Indice: garde la structure qui, où, quand.",
@@ -104,6 +105,7 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("summary_prompt:Fais un court résumé en français avant de continuer.");
         expect(panel?.textContent).toContain("hint:Indice: garde la structure qui, où, quand.");
         expect(panel?.textContent).toContain("presentation:adapter");
+        expect(panel?.textContent).toContain("presentation_meta:[mode:repair, source:style_mbam_v1]");
 
         const submit = dialogue.root.querySelector<HTMLButtonElement>(".dialogue-submit");
         expect(submit?.disabled).toBe(false);

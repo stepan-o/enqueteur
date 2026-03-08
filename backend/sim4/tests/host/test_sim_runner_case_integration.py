@@ -258,11 +258,67 @@ def test_runner_submit_dialogue_turn_updates_runtime_and_turn_log() -> None:
     assert len(log_entries) == 1
     assert log_entries[0].scene_id == "S1"
     assert log_entries[0].code == "scene_completed"
+    assert log_entries[0].presentation_source in {"adapter", "fallback"}
+    assert log_entries[0].presentation_reason_code is not None
+    assert log_entries[0].npc_utterance_text is not None
+    assert isinstance(log_entries[0].presentation_metadata, tuple)
+    assert len(log_entries[0].presentation_metadata) > 0
 
     dialogue_state = runner.get_dialogue_runtime_state()
     assert dialogue_state is not None
     completion = dict(dialogue_state.scene_completion_states)
     assert completion["S1"] == "completed"
+
+
+def test_runner_replay_export_includes_dialogue_presentation_transcript_fields(tmp_path: Path) -> None:
+    clock = TickClock(dt=1.0)
+    ecs_world = ECSWorld()
+    world_ctx = WorldContext()
+    apply_mbam_layout(world_ctx)
+    run_root = tmp_path / "run_dialogue_presentation_replay"
+    runner = SimRunner(
+        clock=clock,
+        ecs_world=ecs_world,
+        world_ctx=world_ctx,
+        rng_seed=123,
+        system_scheduler=_NoopScheduler(),
+        run_anchors=default_run_anchors(seed=123, tick_rate_hz=tick_rate_hz_from_clock(clock), time_origin_ms=0),
+        render_spec=default_render_spec(),
+        channels=["WORLD", "DEBUG"],
+        offline=OfflineExportConfig(
+            run_root=run_root,
+            channels=["WORLD", "DEBUG"],
+            keyframe_ticks=[1],
+            validate=False,
+        ),
+        case_config=MbamCaseConfig(seed="A"),
+    )
+
+    turn = runner.submit_dialogue_turn(
+        DialogueTurnRequest(
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="ask_where",
+        )
+    )
+    assert turn is not None
+    runner.run(num_ticks=1)
+
+    manifest = ManifestV0_1.from_dict(json.loads((run_root / "manifest.kvp.json").read_text("utf-8")))
+    snap_ptr = manifest.snapshots[manifest.available_start_tick]
+    env = read_record(run_root / snap_ptr.rel_path)
+    state = env["payload"]["state"]
+    visible_turn = state["dialogue"]["recent_turns"][-1]
+    debug_turn = state["debug"]["dialogue_private"]["recent_turns"][-1]
+
+    assert visible_turn["presentation_source"] in {"adapter", "fallback"}
+    assert visible_turn["presentation_reason_code"] is not None
+    assert isinstance(visible_turn["npc_utterance_text"], str) and visible_turn["npc_utterance_text"]
+    assert isinstance(visible_turn["presentation_metadata"], list)
+    assert len(visible_turn["presentation_metadata"]) > 0
+    assert "mode:" in " ".join(visible_turn["presentation_metadata"])
+    assert debug_turn["presentation_source"] == visible_turn["presentation_source"]
+    assert debug_turn["npc_utterance_text"] == visible_turn["npc_utterance_text"]
 
 
 def test_runner_case_outcome_evaluation_and_manual_action_flags() -> None:

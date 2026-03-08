@@ -575,6 +575,7 @@ class SimRunner:
             result,
             presentation_source=presentation.source,
             presentation_reason_code=presentation.reason_code,
+            presentation_metadata=presentation.output.response_mode_metadata,
             npc_utterance_text=presentation.output.npc_utterance_text,
             short_rephrase_line=presentation.output.short_rephrase_line,
             hint_line=presentation.output.hint_line,
