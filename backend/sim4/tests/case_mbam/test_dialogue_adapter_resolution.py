@@ -273,3 +273,35 @@ def test_normalization_rejects_unsupported_response_metadata_tokens() -> None:
     )
     assert resolved.source == "fallback"
     assert resolved.reason_code == "adapter_invalid_value"
+
+
+def test_normalization_rejects_metadata_that_conflicts_with_deterministic_turn_semantics() -> None:
+    payload = _build_payload("A", DialogueTurnRequest(scene_id="S1", npc_id="elodie", intent_id="ask_where"))
+
+    wrong_mode = resolve_dialogue_adapter_output(
+        payload,
+        adapter=_DictAdapter(
+            {
+                "npc_utterance_text": "ok",
+                "response_mode_metadata": ["mode:repair", "source:adapter"],
+                "referenced_fact_ids": [],
+            }
+        ),
+        adapter_enabled=True,
+    )
+    assert wrong_mode.source == "fallback"
+    assert wrong_mode.reason_code == "adapter_invalid_value"
+
+    reserved_reason = resolve_dialogue_adapter_output(
+        payload,
+        adapter=_DictAdapter(
+            {
+                "npc_utterance_text": "ok",
+                "response_mode_metadata": ["reason:hidden_path", "source:adapter"],
+                "referenced_fact_ids": [],
+            }
+        ),
+        adapter_enabled=True,
+    )
+    assert reserved_reason.source == "fallback"
+    assert reserved_reason.reason_code == "adapter_invalid_value"

@@ -24,6 +24,7 @@ from .npc_state import NPCState, NpcAvailability, NpcEmotion, NpcInteractionMode
 
 DialogueAdapterResponseMode = Literal["accept", "block", "repair", "reject"]
 _FACT_ID_TOKEN_RE = re.compile(r"\bN\d+\b", re.IGNORECASE)
+_SAFE_SOURCE_TOKEN_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 
 
 def _sorted_unique(values: tuple[str, ...] | list[str] | None) -> tuple[str, ...]:
@@ -353,6 +354,35 @@ def validate_dialogue_adapter_output(output: DialogueAdapterOutput, payload: Dia
             "DialogueAdapterOutput text contains fact content outside legal visible slice: "
             + ", ".join(leaked_fact_text_ids)
         )
+
+    seen_metadata_values: dict[str, str] = {}
+    for token in output.response_mode_metadata:
+        if ":" not in token:
+            raise ValueError("DialogueAdapterOutput.response_mode_metadata contains malformed token")
+        key, value = token.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if not value:
+            raise ValueError("DialogueAdapterOutput.response_mode_metadata contains empty value")
+        prior = seen_metadata_values.get(key)
+        if prior is not None and prior != value:
+            raise ValueError(
+                f"DialogueAdapterOutput.response_mode_metadata contains conflicting {key} values"
+            )
+        seen_metadata_values[key] = value
+
+    if "mode" in seen_metadata_values and seen_metadata_values["mode"] != payload.runtime_response_mode:
+        raise ValueError("DialogueAdapterOutput.response_mode_metadata mode conflicts with deterministic turn result")
+    if "outcome" in seen_metadata_values and seen_metadata_values["outcome"] != payload.runtime_outcome:
+        raise ValueError("DialogueAdapterOutput.response_mode_metadata outcome conflicts with deterministic turn result")
+    if "status" in seen_metadata_values and seen_metadata_values["status"] != payload.turn_status:
+        raise ValueError("DialogueAdapterOutput.response_mode_metadata status conflicts with deterministic turn result")
+    if "npc" in seen_metadata_values and seen_metadata_values["npc"] != payload.npc_id:
+        raise ValueError("DialogueAdapterOutput.response_mode_metadata npc conflicts with deterministic turn result")
+    if "reason" in seen_metadata_values:
+        raise ValueError("DialogueAdapterOutput.response_mode_metadata reason is reserved for deterministic fallback")
+    if "source" in seen_metadata_values and _SAFE_SOURCE_TOKEN_RE.match(seen_metadata_values["source"]) is None:
+        raise ValueError("DialogueAdapterOutput.response_mode_metadata source is invalid")
 
 
 class DeterministicDialoguePresentationAdapter(OptionalDialoguePresentationAdapter):
