@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from backend.sim4.case_mbam import (
     InvestigationProgressState,
+    apply_outcome_branch_transitions,
     attempt_accusation_completion,
     attempt_recovery_completion,
     build_dialogue_execution_context,
@@ -179,3 +180,77 @@ def test_wrong_accusation_path_resolves_to_soft_fail_branch() -> None:
     assert result.applied_action_flags == ("action:wrong_accusation",)
     assert result.outcome_after.soft_fail.triggered is True
     assert "outcome:public_escalation" in result.applied_outcome_flags
+
+
+def test_outcome_branch_transition_latches_soft_fail_and_item_leaves_building() -> None:
+    case_state, npc_states, progress, object_state, _runtime = _setup("A")
+    progress = replace(progress, satisfied_action_flags=("action:wrong_accusation",))
+
+    first = apply_outcome_branch_transitions(
+        case_state=case_state,
+        progress=progress,
+        object_state=object_state,
+        npc_states=npc_states,
+        elapsed_seconds=780.0,
+    )
+
+    assert first.soft_fail_applied is True
+    assert "outcome:soft_fail_latched" in first.outcome_flags_after
+    assert "item_leaves_building" in first.outcome_flags_after
+    assert "outcome:item_left_building" in first.outcome_flags_after
+    assert "continuity:item_left_building" in first.continuity_flags
+    assert "continuity:relationship_penalty" in first.continuity_flags
+    assert first.object_state_after is not None
+    assert first.object_state_after.o2_medallion.location == "unknown"
+    assert first.object_state_after.o2_medallion.status == "missing"
+
+    second = apply_outcome_branch_transitions(
+        case_state=case_state,
+        progress=first.progress_after,
+        object_state=first.object_state_after,
+        npc_states=npc_states,
+        elapsed_seconds=780.0,
+        outcome_flags=first.outcome_flags_after,
+    )
+    assert second.soft_fail_applied is False
+    assert second.applied_outcome_flags == ()
+
+
+def test_outcome_branch_transition_awards_best_outcome_continuity_flags() -> None:
+    case_state, npc_states, progress, object_state, _runtime = _setup("B")
+    progress = InvestigationProgressState(
+        discovered_evidence_ids=("E2_CAFE_RECEIPT", "E3_METHOD_TRACE"),
+        collected_evidence_ids=("E2_CAFE_RECEIPT", "E3_METHOD_TRACE"),
+        observed_clue_ids=progress.observed_clue_ids,
+        known_fact_ids=tuple(sorted(set(progress.known_fact_ids).union({"N3", "N4", "N8"}))),
+        unlockable_contradiction_edge_ids=progress.unlockable_contradiction_edge_ids,
+        known_contradiction_edge_ids=progress.known_contradiction_edge_ids,
+        consumed_action_keys=progress.consumed_action_keys,
+        satisfied_action_flags=(
+            "action:recover_medallion",
+            "action:state_contradiction_N3_N4",
+            "action:accuse_samira",
+            "action:french_summary_x2",
+            "action:polite_gate_usage",
+        ),
+    )
+    object_state = replace(
+        object_state,
+        o2_medallion=replace(object_state.o2_medallion, status="recovered", location="player_inventory"),
+    )
+
+    transition = apply_outcome_branch_transitions(
+        case_state=case_state,
+        progress=progress,
+        object_state=object_state,
+        npc_states=npc_states,
+        elapsed_seconds=840.0,
+        relationship_flags=("rel_elodie_positive", "rel_marc_positive"),
+    )
+
+    assert transition.best_outcome_applied is True
+    assert transition.outcome_after.best_outcome.satisfied is True
+    assert "outcome:best_outcome_awarded" in transition.outcome_flags_after
+    assert "continuity:quiet_recovery" in transition.continuity_flags
+    assert "continuity:no_public_escalation" in transition.continuity_flags
+    assert "continuity:strong_key_trust" in transition.continuity_flags

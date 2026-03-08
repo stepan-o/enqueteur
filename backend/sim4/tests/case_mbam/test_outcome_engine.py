@@ -232,5 +232,9 @@ def test_dialogue_turn_action_flag_derivation_and_projection_shapes() -> None:
         "contradiction_requirement_satisfied",
         "quiet_recovery",
         "public_escalation",
+        "soft_fail_latched",
+        "best_outcome_awarded",
+        "soft_fail_reasons",
+        "continuity_flags",
     }
     assert debug["debug_scope"] == "outcome_state_private"

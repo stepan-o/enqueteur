@@ -105,6 +105,22 @@ class CaseCompletionAttemptResult:
     outcome_after: MbamOutcomeEvaluationResult
 
 
+@dataclass(frozen=True)
+class OutcomeBranchTransitionResult:
+    progress_before: InvestigationProgressState
+    progress_after: InvestigationProgressState
+    object_state_before: MbamObjectStateBundle | None
+    object_state_after: MbamObjectStateBundle | None
+    outcome_flags_before: tuple[str, ...]
+    outcome_flags_after: tuple[str, ...]
+    continuity_flags: tuple[str, ...]
+    applied_outcome_flags: tuple[str, ...]
+    soft_fail_applied: bool
+    best_outcome_applied: bool
+    outcome_before: MbamOutcomeEvaluationResult
+    outcome_after: MbamOutcomeEvaluationResult
+
+
 def attempt_recovery_completion(
     *,
     case_state: CaseState,
@@ -429,10 +445,132 @@ def attempt_accusation_completion(
     )
 
 
+def _continuity_flags_from_outcome_flags(flags: Iterable[str]) -> tuple[str, ...]:
+    out: set[str] = set()
+    flag_set = set(_sorted_unique(flags))
+    out.update(flag for flag in flag_set if flag.startswith("continuity:"))
+    if "item_leaves_building" in flag_set or "outcome:item_left_building" in flag_set:
+        out.add("continuity:item_left_building")
+    if "relationship_penalty_future_case" in flag_set:
+        out.add("continuity:relationship_penalty")
+    if "outcome:best_outcome_awarded" in flag_set:
+        out.add("continuity:mbam_best_outcome")
+    if "outcome:soft_fail_latched" in flag_set:
+        out.add("continuity:mbam_soft_fail")
+    return tuple(sorted(out))
+
+
+def apply_outcome_branch_transitions(
+    *,
+    case_state: CaseState,
+    progress: InvestigationProgressState,
+    object_state: MbamObjectStateBundle | None,
+    npc_states: Mapping[FixedCastId, NPCState] | None,
+    elapsed_seconds: float,
+    extra_action_flags: Iterable[str] = (),
+    relationship_flags: Iterable[str] = (),
+    outcome_flags: Iterable[str] = (),
+) -> OutcomeBranchTransitionResult:
+    """Apply deterministic soft-fail / best-outcome branch transitions.
+
+    This pass latches MBAM-specific branch flags so recap/replay flows can use a
+    stable explicit result state rather than inferring branch outcomes from UI.
+    """
+    flags_before = _sorted_unique(outcome_flags)
+    flag_set = set(flags_before)
+    progress_after = progress
+    object_after = object_state
+
+    outcome_before = evaluate_mbam_case_outcome(
+        case_state=case_state,
+        progress=progress,
+        object_state=object_state,
+        npc_states=npc_states,
+        elapsed_seconds=elapsed_seconds,
+        extra_action_flags=extra_action_flags,
+        relationship_flags=relationship_flags,
+        outcome_flags=flags_before,
+    )
+
+    soft_fail_applied = False
+    if outcome_before.soft_fail.triggered:
+        prior_count = len(flag_set)
+        flag_set.add("outcome:soft_fail_latched")
+        for outcome_flag in outcome_before.soft_fail.outcome_flags:
+            flag_set.add(outcome_flag)
+        if "item_leaves_building" in outcome_before.soft_fail.outcome_flags:
+            flag_set.add("outcome:item_left_building")
+            if object_after is not None and object_after.o2_medallion.status != "recovered":
+                object_after = replace(
+                    object_after,
+                    o2_medallion=replace(
+                        object_after.o2_medallion,
+                        status="missing",
+                        location="unknown",
+                    ),
+                )
+        soft_fail_applied = len(flag_set) > prior_count
+
+    interim_flags = tuple(sorted(flag_set))
+    outcome_interim = evaluate_mbam_case_outcome(
+        case_state=case_state,
+        progress=progress_after,
+        object_state=object_after,
+        npc_states=npc_states,
+        elapsed_seconds=elapsed_seconds,
+        extra_action_flags=extra_action_flags,
+        relationship_flags=relationship_flags,
+        outcome_flags=interim_flags,
+    )
+
+    best_outcome_applied = False
+    if outcome_interim.best_outcome.satisfied:
+        prior_count = len(flag_set)
+        flag_set.add("outcome:best_outcome_awarded")
+        if outcome_interim.quiet_recovery:
+            flag_set.add("continuity:quiet_recovery")
+        if not outcome_interim.public_escalation:
+            flag_set.add("continuity:no_public_escalation")
+        if {"rel_elodie_positive", "rel_marc_positive"}.issubset(set(outcome_interim.relationship_flags)):
+            flag_set.add("continuity:strong_key_trust")
+        best_outcome_applied = len(flag_set) > prior_count
+
+    final_flags = tuple(sorted(flag_set))
+    outcome_after = evaluate_mbam_case_outcome(
+        case_state=case_state,
+        progress=progress_after,
+        object_state=object_after,
+        npc_states=npc_states,
+        elapsed_seconds=elapsed_seconds,
+        extra_action_flags=extra_action_flags,
+        relationship_flags=relationship_flags,
+        outcome_flags=final_flags,
+    )
+    continuity_flags = _continuity_flags_from_outcome_flags(final_flags)
+    applied = tuple(sorted(set(final_flags).difference(flags_before)))
+
+    return OutcomeBranchTransitionResult(
+        progress_before=progress,
+        progress_after=progress_after,
+        object_state_before=object_state,
+        object_state_after=object_after,
+        outcome_flags_before=flags_before,
+        outcome_flags_after=final_flags,
+        continuity_flags=continuity_flags,
+        applied_outcome_flags=applied,
+        soft_fail_applied=soft_fail_applied,
+        best_outcome_applied=best_outcome_applied,
+        outcome_before=outcome_before,
+        outcome_after=outcome_after,
+    )
+
+
 __all__ = [
     "CaseCompletionPath",
     "CaseCompletionStatus",
     "CaseCompletionAttemptResult",
+    "OutcomeBranchTransitionResult",
     "attempt_recovery_completion",
     "attempt_accusation_completion",
+    "apply_outcome_branch_transitions",
 ]

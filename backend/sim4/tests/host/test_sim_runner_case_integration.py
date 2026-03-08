@@ -111,6 +111,10 @@ def test_runner_exports_visible_case_projection_for_single_tick(tmp_path: Path):
         "soft_fail",
         "best_outcome",
     }
+    assert state["case_outcome"]["soft_fail_latched"] is False
+    assert state["case_outcome"]["best_outcome_awarded"] is False
+    assert state["case_outcome"]["soft_fail_reasons"] == []
+    assert state["case_outcome"]["continuity_flags"] == []
     assert "action_flags" not in state["case_outcome"]
 
     assert "debug" in state
@@ -281,6 +285,39 @@ def test_runner_case_outcome_evaluation_and_manual_action_flags() -> None:
     assert softened is not None
     assert softened.soft_fail.triggered is True
     assert softened.primary_outcome == "soft_fail"
+
+
+def test_runner_latches_soft_fail_branch_during_tick_progression() -> None:
+    clock = TickClock(dt=1.0)
+    ecs_world = ECSWorld()
+    world_ctx = WorldContext()
+    apply_mbam_layout(world_ctx)
+
+    runner = SimRunner(
+        clock=clock,
+        ecs_world=ecs_world,
+        world_ctx=world_ctx,
+        rng_seed=123,
+        system_scheduler=_NoopScheduler(),
+        run_anchors=default_run_anchors(seed=123, tick_rate_hz=tick_rate_hz_from_clock(clock), time_origin_ms=0),
+        render_spec=default_render_spec(),
+        channels=["WORLD"],
+        offline=None,
+        case_config=MbamCaseConfig(seed="A"),
+    )
+    runner.run(num_ticks=1201)
+
+    outcome = runner.get_case_outcome_evaluation()
+    assert outcome is not None
+    assert outcome.soft_fail.triggered is True
+    assert "outcome:soft_fail_latched" in outcome.debug_outcome_flags
+    assert "item_leaves_building" in outcome.debug_outcome_flags
+    assert "outcome:item_left_building" in outcome.debug_outcome_flags
+
+    object_state = runner.get_investigation_object_state()
+    assert object_state is not None
+    assert object_state.o2_medallion.status == "missing"
+    assert object_state.o2_medallion.location == "unknown"
 
 
 def test_runner_completion_flow_apis_are_wired_and_case_gated() -> None:

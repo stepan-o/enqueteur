@@ -48,6 +48,10 @@ def _to_jsonable(value: Any) -> Any:
     return value
 
 
+def _visible_continuity_flags(debug_outcome_flags: Iterable[str]) -> tuple[str, ...]:
+    return tuple(sorted(flag for flag in debug_outcome_flags if flag.startswith("continuity:")))
+
+
 def _person_slot_value(request: DialogueTurnRequest) -> str | None:
     for slot in request.provided_slots:
         if slot.slot_name == "person":
@@ -437,6 +441,10 @@ def build_visible_outcome_projection(
         "contradiction_requirement_satisfied": evaluation.contradiction_requirement_satisfied,
         "quiet_recovery": evaluation.quiet_recovery,
         "public_escalation": evaluation.public_escalation,
+        "soft_fail_latched": "outcome:soft_fail_latched" in set(evaluation.debug_outcome_flags),
+        "best_outcome_awarded": "outcome:best_outcome_awarded" in set(evaluation.debug_outcome_flags),
+        "soft_fail_reasons": list(evaluation.soft_fail.matched_trigger_conditions),
+        "continuity_flags": list(_visible_continuity_flags(evaluation.debug_outcome_flags)),
     }
 
 

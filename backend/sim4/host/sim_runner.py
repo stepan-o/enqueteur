@@ -33,6 +33,7 @@ from backend.sim4.case_mbam import (
     apply_execution_result_to_progress,
     apply_dialogue_turn_to_progress,
     apply_investigation_timeline_state,
+    apply_outcome_branch_transitions,
     apply_case_timeline_to_npc_states,
     attempt_accusation_completion,
     attempt_recovery_completion,
@@ -234,6 +235,7 @@ class SimRunner:
                     self._case_state,
                     context=dialogue_context,
                 )
+            self._apply_case_outcome_branch_transitions(elapsed_seconds=0.0)
 
         # Build sinks
         sinks: List[TickOutputSink] = []
@@ -381,6 +383,7 @@ class SimRunner:
             execution,
         )
         self._investigation_progress = update.progress_after
+        self._apply_case_outcome_branch_transitions(elapsed_seconds=elapsed_seconds)
         return execution
 
     def submit_contradiction_edge(
@@ -398,6 +401,8 @@ class SimRunner:
         )
         if result.status == "success":
             self._investigation_progress = result.progress_after
+            elapsed_seconds = float(self._clock.tick_index) * float(self._clock.dt)
+            self._apply_case_outcome_branch_transitions(elapsed_seconds=elapsed_seconds)
         return result
 
     def attempt_case_recovery(
@@ -430,6 +435,7 @@ class SimRunner:
             self._investigation_object_state = result.object_state_after
         if result.applied_outcome_flags:
             self.record_case_outcome_flags(*result.applied_outcome_flags)
+        self._apply_case_outcome_branch_transitions(elapsed_seconds=elapsed_seconds)
         return result
 
     def attempt_case_accusation(
@@ -460,6 +466,7 @@ class SimRunner:
             self._investigation_object_state = result.object_state_after
         if result.applied_outcome_flags:
             self.record_case_outcome_flags(*result.applied_outcome_flags)
+        self._apply_case_outcome_branch_transitions(elapsed_seconds=elapsed_seconds)
         return result
 
     def submit_dialogue_turn(
@@ -514,7 +521,27 @@ class SimRunner:
         if cap > 0 and len(existing) > cap:
             existing = existing[-cap:]
         self._dialogue_turn_log = tuple(existing)
+        elapsed_seconds = float(self._clock.tick_index) * float(self._clock.dt)
+        self._apply_case_outcome_branch_transitions(elapsed_seconds=elapsed_seconds)
         return result
+
+    def _apply_case_outcome_branch_transitions(self, *, elapsed_seconds: float) -> None:
+        if self._case_state is None or self._investigation_progress is None:
+            return
+        transition = apply_outcome_branch_transitions(
+            case_state=self._case_state,
+            progress=self._investigation_progress,
+            object_state=self._investigation_object_state,
+            npc_states=self._npc_states,
+            elapsed_seconds=float(elapsed_seconds),
+            extra_action_flags=self._manual_case_action_flags,
+            relationship_flags=self._manual_case_relationship_flags,
+            outcome_flags=self._manual_case_outcome_flags,
+        )
+        self._investigation_progress = transition.progress_after
+        if transition.object_state_after is not None:
+            self._investigation_object_state = transition.object_state_after
+        self._manual_case_outcome_flags = transition.outcome_flags_after
 
     def _build_dialogue_context(self, *, elapsed_seconds: float) -> DialogueExecutionContext | None:
         if self._investigation_progress is None or self._npc_states is None:
@@ -670,6 +697,7 @@ class SimRunner:
                         self._investigation_object_state,
                         elapsed_seconds=elapsed_seconds,
                     )
+                self._apply_case_outcome_branch_transitions(elapsed_seconds=elapsed_seconds)
 
             wc = None
             if world_commands_provider is not None:

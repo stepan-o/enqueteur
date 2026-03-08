@@ -258,6 +258,8 @@ from .completion_flow import (
     CaseCompletionAttemptResult,
     CaseCompletionPath,
     CaseCompletionStatus,
+    OutcomeBranchTransitionResult,
+    apply_outcome_branch_transitions,
     attempt_accusation_completion,
     attempt_recovery_completion,
 )
@@ -362,6 +364,8 @@ __all__ = [
     "CaseCompletionPath",
     "CaseCompletionStatus",
     "CaseCompletionAttemptResult",
+    "OutcomeBranchTransitionResult",
+    "apply_outcome_branch_transitions",
     "attempt_recovery_completion",
     "attempt_accusation_completion",
     "AffordanceDefinition",
