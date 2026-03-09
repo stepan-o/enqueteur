@@ -4,9 +4,11 @@ from backend.api.cases_start import (
     CASE_START_PATH,
     ENQUETEUR_ENGINE_NAME,
     ENQUETEUR_SCHEMA_VERSION,
+    MODE_CHANNELS,
     CaseRunRegistry,
     CaseStartRequest,
     CaseStartService,
+    derive_rng_seed,
     handle_post_cases_start,
 )
 from backend.api.router import ApiRequest, build_default_router
@@ -59,6 +61,56 @@ def test_handle_post_cases_start_returns_contract_payload() -> None:
     assert registered is not None
     assert registered.run_id == payload["run_id"]
     assert registered.world_id == payload["world_id"]
+    assert registered.channels == MODE_CHANNELS["dev"]
+    assert registered.rng_seed == derive_rng_seed(case_id="MBAM_01", seed="42", difficulty_profile="D1")
+
+    case_state = registered.runner.get_case_state()
+    assert case_state is not None
+    assert case_state.case_id == "MBAM_01"
+    assert case_state.seed == payload["resolved_seed_id"]
+    assert case_state.difficulty_profile == "D1"
+
+
+def test_case_start_creates_deterministic_runner_for_same_inputs() -> None:
+    registry = CaseRunRegistry()
+    service = CaseStartService(registry=registry)
+
+    status_a, payload_a = handle_post_cases_start(
+        {
+            "case_id": "MBAM_01",
+            "seed": "A",
+            "difficulty_profile": "D0",
+            "mode": "playtest",
+        },
+        service=service,
+    )
+    status_b, payload_b = handle_post_cases_start(
+        {
+            "case_id": "MBAM_01",
+            "seed": "A",
+            "difficulty_profile": "D0",
+            "mode": "playtest",
+        },
+        service=service,
+    )
+
+    assert status_a == 200
+    assert status_b == 200
+    assert payload_a["run_id"] != payload_b["run_id"]
+    assert payload_a["world_id"] != payload_b["world_id"]
+
+    record_a = registry.get(payload_a["run_id"])
+    record_b = registry.get(payload_b["run_id"])
+    assert record_a is not None and record_b is not None
+    assert record_a.rng_seed == record_b.rng_seed
+    assert record_a.channels == record_b.channels == MODE_CHANNELS["playtest"]
+
+    case_a = record_a.runner.get_case_state()
+    case_b = record_b.runner.get_case_state()
+    assert case_a is not None and case_b is not None
+    assert case_a.case_id == case_b.case_id == "MBAM_01"
+    assert case_a.seed == case_b.seed == "A"
+    assert case_a.difficulty_profile == case_b.difficulty_profile == "D0"
 
 
 def test_case_start_route_rejects_unsupported_case_id() -> None:

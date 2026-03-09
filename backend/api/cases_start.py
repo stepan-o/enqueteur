@@ -5,15 +5,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Mapping
+import hashlib
 import uuid
 
 from backend.sim4.case_mbam import DifficultyProfile, resolve_seed_id
+from backend.sim4.ecs.world import ECSWorld
+from backend.sim4.host.kvp_defaults import default_render_spec, default_run_anchors, tick_rate_hz_from_clock
+from backend.sim4.host.sim_runner import MbamCaseConfig, SimRunner
+from backend.sim4.runtime.clock import TickClock
+from backend.sim4.world.context import WorldContext
+from backend.sim4.world.mbam_layout import apply_mbam_layout
 
 CASE_START_PATH = "/api/cases/start"
 SUPPORTED_CASE_ID = "MBAM_01"
 ENQUETEUR_ENGINE_NAME = "enqueteur"
 ENQUETEUR_SCHEMA_VERSION = "enqueteur_mbam_1"
 DEFAULT_WS_BASE_URL = "ws://localhost:7777/live"
+DEFAULT_CLOCK_DT_SECONDS = 1.0 / 30.0
+MODE_CHANNELS: dict["StartCaseMode", tuple[str, ...]] = {
+    "playtest": ("WORLD", "AGENTS", "ITEMS", "EVENTS"),
+    "dev": ("WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"),
+}
 
 StartCaseMode = Literal["playtest", "dev"]
 
@@ -120,6 +132,9 @@ class StartedCaseRun:
     resolved_seed_id: str
     ws_url: str
     started_at: str
+    rng_seed: int
+    channels: tuple[str, ...]
+    runner: SimRunner
 
 
 class CaseRunRegistry:
@@ -143,13 +158,23 @@ class CaseStartService:
         self._registry = registry if registry is not None else CaseRunRegistry()
 
     def start_case(self, req: CaseStartRequest) -> CaseStartResponse:
-        # Deterministic case mapping check now; full runtime/session startup is wired in next phase.
+        # Resolve to canonical MBAM seed ID before run bootstrapping.
         resolved_seed_id = resolve_seed_id(req.seed)
 
         run_id = str(uuid.uuid4())
         world_id = str(uuid.uuid4())
         ws_url = f"{self._ws_base_url}?run_id={run_id}"
         started_at = datetime.now(UTC).isoformat()
+        rng_seed = derive_rng_seed(case_id=req.case_id, seed=req.seed, difficulty_profile=req.difficulty_profile)
+        channels = MODE_CHANNELS[req.mode]
+        runner = create_deterministic_mbam_runner(
+            run_id=run_id,
+            world_id=world_id,
+            seed=req.seed,
+            difficulty_profile=req.difficulty_profile,
+            rng_seed=rng_seed,
+            channels=channels,
+        )
 
         self._registry.register(
             StartedCaseRun(
@@ -159,6 +184,9 @@ class CaseStartService:
                 resolved_seed_id=resolved_seed_id,
                 ws_url=ws_url,
                 started_at=started_at,
+                rng_seed=rng_seed,
+                channels=channels,
+                runner=runner,
             )
         )
 
@@ -179,6 +207,60 @@ class CaseStartService:
     @property
     def registry(self) -> CaseRunRegistry:
         return self._registry
+
+
+class _NoopScheduler:
+    def iter_phase_systems(self, phase: str):  # noqa: ARG002
+        return ()
+
+
+def derive_rng_seed(*, case_id: str, seed: str | int, difficulty_profile: DifficultyProfile) -> int:
+    """Derive a deterministic runtime RNG seed for MBAM run bootstrap."""
+    seed_text = str(seed).strip() if isinstance(seed, str) else str(seed)
+    digest = hashlib.sha256(f"{case_id}|{seed_text}|{difficulty_profile}".encode("utf-8")).digest()
+    # Keep this within signed 31-bit int range for cross-runtime compatibility.
+    rng_seed = int.from_bytes(digest[:8], "big") % 2_147_483_647
+    return rng_seed if rng_seed > 0 else 1
+
+
+def create_deterministic_mbam_runner(
+    *,
+    run_id: str,
+    world_id: str,
+    seed: str | int,
+    difficulty_profile: DifficultyProfile,
+    rng_seed: int,
+    channels: tuple[str, ...],
+) -> SimRunner:
+    """Create a deterministic MBAM run instance ready for future live-session attach."""
+    clock = TickClock(dt=DEFAULT_CLOCK_DT_SECONDS)
+    ecs_world = ECSWorld()
+    world_ctx = WorldContext()
+    apply_mbam_layout(world_ctx)
+
+    run_anchors = default_run_anchors(
+        seed=rng_seed,
+        tick_rate_hz=tick_rate_hz_from_clock(clock),
+        engine_name=ENQUETEUR_ENGINE_NAME,
+        world_id=world_id,
+        run_id=run_id,
+        time_origin_ms=0,
+    )
+
+    return SimRunner(
+        clock=clock,
+        ecs_world=ecs_world,
+        world_ctx=world_ctx,
+        rng_seed=rng_seed,
+        system_scheduler=_NoopScheduler(),
+        run_anchors=run_anchors,
+        render_spec=default_render_spec(),
+        channels=list(channels),
+        case_config=MbamCaseConfig(
+            seed=seed,
+            difficulty_profile=difficulty_profile,
+        ),
+    )
 
 
 def handle_post_cases_start(
@@ -212,6 +294,7 @@ __all__ = [
     "ENQUETEUR_ENGINE_NAME",
     "ENQUETEUR_SCHEMA_VERSION",
     "DEFAULT_WS_BASE_URL",
+    "MODE_CHANNELS",
     "StartCaseMode",
     "CaseStartValidationError",
     "CaseStartRequest",
@@ -219,5 +302,7 @@ __all__ = [
     "StartedCaseRun",
     "CaseRunRegistry",
     "CaseStartService",
+    "derive_rng_seed",
+    "create_deterministic_mbam_runner",
     "handle_post_cases_start",
 ]
