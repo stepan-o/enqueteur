@@ -18,6 +18,7 @@ import json
 import uuid
 
 from backend.sim4.case_mbam import (
+    CaseCompletionAttemptResult,
     DialogueTurnRequest,
     DialogueTurnSlotValue,
     InvestigationCommandAck,
@@ -27,6 +28,7 @@ from backend.sim4.case_mbam import (
     build_visible_npc_semantic_projection,
     build_visible_outcome_projection,
     build_visible_run_recap_projection,
+    list_affordances,
     make_investigation_command,
 )
 from backend.sim4.host.kvp_defaults import DEFAULT_ENGINE_VERSION, default_render_spec
@@ -44,6 +46,8 @@ from .cases_start import (
     get_default_case_run_registry,
 )
 from .live_commands import (
+    AttemptAccusationCommandPayload,
+    AttemptRecoveryCommandPayload,
     CommandDispatchResult,
     DialogueTurnCommandPayload,
     InvestigateObjectCommandPayload,
@@ -73,6 +77,8 @@ ENQUETEUR_ALLOWED_CHANNELS: tuple[str, ...] = (
 ALLOWED_DIFF_POLICIES: tuple[str, ...] = ("DIFF_ONLY", "PERIODIC_SNAPSHOT", "SNAPSHOT_ON_DESYNC")
 ALLOWED_SNAPSHOT_POLICIES: tuple[str, ...] = ("ON_JOIN", "NEVER")
 ALLOWED_COMPRESSION_POLICIES: tuple[str, ...] = ("NONE",)
+ENQUETEUR_RECOVERY_TARGET_ID = "O2_MEDALLION"
+ENQUETEUR_ALLOWED_SUSPECT_IDS: tuple[str, ...] = ("samira", "laurent", "outsider")
 ENQUETEUR_MINIGAME_ID_ALIASES: dict[str, str] = {
     "MG1": "MG1_LABEL_READING",
     "MG1_LABEL_READING": "MG1_LABEL_READING",
@@ -844,27 +850,154 @@ class EnqueteurLiveSessionHost:
     def _dispatch_attempt_recovery(
         self,
         *,
-        started_run: StartedCaseRun,  # noqa: ARG002
+        started_run: StartedCaseRun,
         session: EnqueteurLiveSession,  # noqa: ARG002
         command: ParsedInputCommand,
     ) -> CommandDispatchResult:
+        if not isinstance(command.payload, AttemptRecoveryCommandPayload):
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message="ATTEMPT_RECOVERY payload shape is invalid after parsing.",
+            )
+        if command.payload.target_id != ENQUETEUR_RECOVERY_TARGET_ID:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message=(
+                    f"ATTEMPT_RECOVERY target_id must be '{ENQUETEUR_RECOVERY_TARGET_ID}', "
+                    f"got '{command.payload.target_id}'."
+                ),
+            )
+
+        runner = started_run.runner
+        result = runner.attempt_case_recovery(quiet=True)
+        if result is None:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="RUNTIME_NOT_READY",
+                message="Recovery runtime state is not ready for completion attempts.",
+            )
+
+        if result.status == "completed":
+            return CommandDispatchResult.accepted_result(client_cmd_id=command.client_cmd_id)
+
+        reason_code, message = self._map_recovery_rejection(result)
         return CommandDispatchResult.rejected_result(
             client_cmd_id=command.client_cmd_id,
-            reason_code="RUNTIME_NOT_READY",
-            message="ATTEMPT_RECOVERY execution is not enabled yet.",
+            reason_code=reason_code,
+            message=message,
         )
 
     def _dispatch_attempt_accusation(
         self,
         *,
-        started_run: StartedCaseRun,  # noqa: ARG002
+        started_run: StartedCaseRun,
         session: EnqueteurLiveSession,  # noqa: ARG002
         command: ParsedInputCommand,
     ) -> CommandDispatchResult:
+        if not isinstance(command.payload, AttemptAccusationCommandPayload):
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message="ATTEMPT_ACCUSATION payload shape is invalid after parsing.",
+            )
+
+        runner = started_run.runner
+        case_state = runner.get_case_state()
+        progress = runner.get_investigation_progress()
+        if case_state is None or progress is None:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="RUNTIME_NOT_READY",
+                message="Accusation runtime state is not ready for completion attempts.",
+            )
+
+        suspect_id = command.payload.suspect_id
+        if suspect_id not in ENQUETEUR_ALLOWED_SUSPECT_IDS:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message=f"Unsupported suspect_id '{suspect_id}'.",
+            )
+
+        if self._has_duplicates(command.payload.supporting_fact_ids):
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message="supporting_fact_ids must not contain duplicates.",
+            )
+        if self._has_duplicates(command.payload.supporting_evidence_ids):
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message="supporting_evidence_ids must not contain duplicates.",
+            )
+
+        valid_fact_ids = {node.fact_id for node in case_state.truth_graph.nodes}
+        invalid_facts = tuple(
+            sorted({fact_id for fact_id in command.payload.supporting_fact_ids if fact_id not in valid_fact_ids})
+        )
+        if invalid_facts:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message=f"Unknown supporting_fact_ids: {', '.join(invalid_facts)}.",
+            )
+
+        valid_evidence_ids = self._collect_known_evidence_ids(progress=progress, case_state=case_state)
+        invalid_evidence = tuple(
+            sorted(
+                {
+                    evidence_id
+                    for evidence_id in command.payload.supporting_evidence_ids
+                    if evidence_id not in valid_evidence_ids
+                }
+            )
+        )
+        if invalid_evidence:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message=f"Unknown supporting_evidence_ids: {', '.join(invalid_evidence)}.",
+            )
+
+        known_fact_ids = set(progress.known_fact_ids)
+        known_evidence_ids = set(progress.discovered_evidence_ids).union(progress.collected_evidence_ids)
+        missing_supporting_facts = tuple(
+            fact_id for fact_id in command.payload.supporting_fact_ids if fact_id not in known_fact_ids
+        )
+        missing_supporting_evidence = tuple(
+            evidence_id
+            for evidence_id in command.payload.supporting_evidence_ids
+            if evidence_id not in known_evidence_ids
+        )
+        if missing_supporting_facts or missing_supporting_evidence:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="ACCUSATION_PREREQS_MISSING",
+                message=self._format_missing_supporting_refs(
+                    missing_fact_ids=missing_supporting_facts,
+                    missing_evidence_ids=missing_supporting_evidence,
+                ),
+            )
+
+        result = runner.attempt_case_accusation(accused_id=suspect_id)
+        if result is None:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="RUNTIME_NOT_READY",
+                message="Accusation runtime state is not ready for completion attempts.",
+            )
+
+        if result.status == "completed":
+            return CommandDispatchResult.accepted_result(client_cmd_id=command.client_cmd_id)
+
+        reason_code, message = self._map_accusation_rejection(result)
         return CommandDispatchResult.rejected_result(
             client_cmd_id=command.client_cmd_id,
-            reason_code="RUNTIME_NOT_READY",
-            message="ATTEMPT_ACCUSATION execution is not enabled yet.",
+            reason_code=reason_code,
+            message=message,
         )
 
     def _map_investigate_object_rejection(
@@ -1064,6 +1197,85 @@ class EnqueteurLiveSessionHost:
         return "INVALID_COMMAND", (
             f"Unsupported minigame submission outcome '{ack.kind}' ({ack.code})."
         )
+
+    def _has_duplicates(self, values: tuple[str, ...]) -> bool:
+        return len(values) != len(set(values))
+
+    def _collect_known_evidence_ids(self, *, progress: Any, case_state: Any) -> set[str]:
+        evidence_ids: set[str] = set(progress.discovered_evidence_ids).union(progress.collected_evidence_ids)
+        for affordance in list_affordances():
+            for evidence_id in tuple(getattr(affordance, "reveal_evidence_ids", ())):
+                if isinstance(evidence_id, str) and evidence_id:
+                    evidence_ids.add(evidence_id)
+
+        recovery_required = tuple(case_state.resolution_rules.recovery_success.required_items)
+        accusation_required = tuple(case_state.resolution_rules.accusation_success.required_items)
+        best_outcome_required = tuple(case_state.resolution_rules.best_outcome.required_items)
+        for evidence_id in recovery_required + accusation_required + best_outcome_required:
+            if isinstance(evidence_id, str) and evidence_id:
+                evidence_ids.add(evidence_id)
+
+        return evidence_ids
+
+    def _format_missing_supporting_refs(
+        self,
+        *,
+        missing_fact_ids: tuple[str, ...],
+        missing_evidence_ids: tuple[str, ...],
+    ) -> str:
+        parts: list[str] = []
+        if missing_fact_ids:
+            parts.append(f"facts: {', '.join(sorted(set(missing_fact_ids)))}")
+        if missing_evidence_ids:
+            parts.append(f"evidence: {', '.join(sorted(set(missing_evidence_ids)))}")
+        if not parts:
+            return "Supporting references are not currently available for accusation."
+        return "Supporting references are not currently available: " + "; ".join(parts) + "."
+
+    def _format_missing_resolution_requirements(self, result: CaseCompletionAttemptResult) -> str:
+        parts: list[str] = []
+        if result.missing_scene_ids:
+            parts.append(f"scene/trust: {', '.join(result.missing_scene_ids)}")
+        if result.missing_fact_ids:
+            parts.append(f"facts: {', '.join(result.missing_fact_ids)}")
+        if result.missing_item_ids:
+            parts.append(f"evidence: {', '.join(result.missing_item_ids)}")
+        if result.missing_action_flags:
+            parts.append(f"actions: {', '.join(result.missing_action_flags)}")
+        if not parts:
+            return "Completion prerequisites are not satisfied yet."
+        return "Missing prerequisites: " + "; ".join(parts) + "."
+
+    def _map_recovery_rejection(self, result: CaseCompletionAttemptResult) -> tuple[str, str]:
+        if result.status == "invalid":
+            return "INVALID_COMMAND", f"Invalid recovery attempt ({result.code})."
+        if result.status == "blocked":
+            if result.code == "scene_or_trust_prerequisite_missing":
+                return "RECOVERY_PREREQS_MISSING", self._format_missing_resolution_requirements(result)
+            if result.code in {"recovery_prerequisites_missing", "recovery_completion_requirements_unmet"}:
+                return "RECOVERY_PREREQS_MISSING", self._format_missing_resolution_requirements(result)
+            return "RECOVERY_PREREQS_MISSING", (
+                f"Recovery attempt was blocked ({result.code})."
+            )
+        return "INVALID_COMMAND", f"Unsupported recovery outcome status '{result.status}' ({result.code})."
+
+    def _map_accusation_rejection(self, result: CaseCompletionAttemptResult) -> tuple[str, str]:
+        if result.status == "invalid":
+            if result.code == "invalid_accused_id":
+                return "INVALID_COMMAND", "Invalid suspect_id for ATTEMPT_ACCUSATION."
+            return "INVALID_COMMAND", f"Invalid accusation attempt ({result.code})."
+        if result.status == "blocked":
+            if result.code in {
+                "scene_or_trust_prerequisite_missing",
+                "accusation_prerequisites_missing",
+                "accusation_completion_requirements_unmet",
+                "wrong_accusation_unresolved",
+            }:
+                return "ACCUSATION_PREREQS_MISSING", self._format_missing_resolution_requirements(result)
+            return "ACCUSATION_PREREQS_MISSING", (
+                f"Accusation attempt was blocked ({result.code})."
+            )
+        return "INVALID_COMMAND", f"Unsupported accusation outcome status '{result.status}' ({result.code})."
 
 
 _DEFAULT_ENQUETEUR_LIVE_SESSION_HOST = EnqueteurLiveSessionHost()

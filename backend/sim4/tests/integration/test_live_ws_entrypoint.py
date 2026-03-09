@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import json
 
 from backend.api.cases_start import CaseRunRegistry, CaseStartRequest, CaseStartService
@@ -38,14 +39,19 @@ class FakeWebSocket:
         self.sent_texts.append(data)
 
 
-def _start_mbam_case(*, registry: CaseRunRegistry) -> tuple[CaseStartService, dict[str, object]]:
+def _start_mbam_case(
+    *,
+    registry: CaseRunRegistry,
+    seed: str = "A",
+    difficulty_profile: str = "D0",
+) -> tuple[CaseStartService, dict[str, object]]:
     service = CaseStartService(ws_base_url="ws://localhost:7777/live", registry=registry)
     response = service.start_case(
         CaseStartRequest.from_payload(
             {
                 "case_id": "MBAM_01",
-                "seed": "A",
-                "difficulty_profile": "D0",
+                "seed": seed,
+                "difficulty_profile": difficulty_profile,
                 "mode": "playtest",
             }
         )
@@ -69,6 +75,122 @@ def _open_attached_session(host: EnqueteurLiveSessionHost, ws: FakeWebSocket, co
             connection_target=connection_target,
             host=host,
         )
+    )
+
+
+def _handshake_and_subscribe(
+    *,
+    host: EnqueteurLiveSessionHost,
+    ws: FakeWebSocket,
+    session: object,
+    channels: list[str],
+) -> None:
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": channels,
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+
+def _prime_resolution_confrontation_gate(registry: CaseRunRegistry, payload: dict[str, object]) -> None:
+    started = registry.get(str(payload["run_id"]))
+    assert started is not None
+    runner = started.runner
+    case_state = runner.get_case_state()
+    runtime = runner.get_dialogue_runtime_state()
+    npc_states = runner.get_npc_states()
+    assert case_state is not None
+    assert runtime is not None
+    assert "elodie" in npc_states
+
+    completion = dict(runtime.scene_completion_states)
+    completion["S5"] = "available"
+    surfaced = tuple(sorted(set(runtime.surfaced_scene_ids).union({"S5"})))
+    runner._dialogue_runtime_state = replace(  # type: ignore[attr-defined]
+        runtime,
+        scene_completion_states=tuple(
+            (scene_id, completion[scene_id]) for scene_id, _ in runtime.scene_completion_states
+        ),
+        surfaced_scene_ids=surfaced,
+    )
+
+    threshold = case_state.scene_gates.S5.trust_threshold
+    if threshold is not None:
+        npc_states["elodie"] = replace(
+            npc_states["elodie"],
+            trust=max(float(npc_states["elodie"].trust), float(threshold) + 0.2),
+        )
+        runner._npc_states = npc_states  # type: ignore[attr-defined]
+
+
+def _prime_resolution_progress_for_recovery(registry: CaseRunRegistry, payload: dict[str, object]) -> None:
+    started = registry.get(str(payload["run_id"]))
+    assert started is not None
+    runner = started.runner
+    case_state = runner.get_case_state()
+    progress = runner.get_investigation_progress()
+    assert case_state is not None
+    assert progress is not None
+
+    req = case_state.resolution_rules.recovery_success
+    required_actions = tuple(action for action in req.required_actions if action != "action:recover_medallion")
+    runner._investigation_progress = replace(  # type: ignore[attr-defined]
+        progress,
+        known_fact_ids=tuple(sorted(set(progress.known_fact_ids).union(req.required_fact_ids))),
+        discovered_evidence_ids=tuple(sorted(set(progress.discovered_evidence_ids).union(req.required_items))),
+        collected_evidence_ids=tuple(sorted(set(progress.collected_evidence_ids).union(req.required_items))),
+        satisfied_action_flags=tuple(sorted(set(progress.satisfied_action_flags).union(required_actions))),
+    )
+
+
+def _prime_resolution_progress_for_accusation(registry: CaseRunRegistry, payload: dict[str, object]) -> None:
+    started = registry.get(str(payload["run_id"]))
+    assert started is not None
+    runner = started.runner
+    case_state = runner.get_case_state()
+    progress = runner.get_investigation_progress()
+    assert case_state is not None
+    assert progress is not None
+
+    req = case_state.resolution_rules.accusation_success
+    required_actions = tuple(
+        action for action in req.required_actions if not action.startswith("action:accuse_")
+    )
+    runner._investigation_progress = replace(  # type: ignore[attr-defined]
+        progress,
+        known_fact_ids=tuple(sorted(set(progress.known_fact_ids).union(req.required_fact_ids))),
+        discovered_evidence_ids=tuple(sorted(set(progress.discovered_evidence_ids).union(req.required_items))),
+        collected_evidence_ids=tuple(sorted(set(progress.collected_evidence_ids).union(req.required_items))),
+        satisfied_action_flags=tuple(sorted(set(progress.satisfied_action_flags).union(required_actions))),
     )
 
 
@@ -1800,84 +1922,308 @@ def test_minigame_submit_rejects_invalid_answer_shape() -> None:
     assert rejected["payload"]["reason_code"] == "MINIGAME_INVALID_SUBMISSION"
 
 
-def test_non_minigame_phase_e_commands_route_to_runtime_not_ready_skeleton() -> None:
+def test_attempt_recovery_rejects_invalid_target_id() -> None:
     registry = CaseRunRegistry()
     _service, payload = _start_mbam_case(registry=registry)
     host = EnqueteurLiveSessionHost(run_registry=registry)
     ws = FakeWebSocket()
     session = _open_attached_session(host, ws, str(payload["ws_url"]))
 
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["WORLD", "INVESTIGATION", "EVENTS"],
+    )
+
     asyncio.run(
         handle_enqueteur_live_incoming_message(
             ws,
             session=session,
             raw_message=_envelope(
-                "VIEWER_HELLO",
+                "INPUT_COMMAND",
                 {
-                    "viewer_name": "enqueteur-webview",
-                    "viewer_version": "0.1.0",
-                    "supported_schema_versions": ["enqueteur_mbam_1"],
-                    "supports": {},
+                    "client_cmd_id": "00000000-0000-4000-8000-000000000021",
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "ATTEMPT_RECOVERY",
+                        "payload": {"target_id": "O1_DISPLAY_CASE"},
+                    },
                 },
             ),
             host=host,
         )
     )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["reason_code"] == "INVALID_COMMAND"
+
+
+def test_attempt_recovery_rejects_missing_prerequisites() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["WORLD", "INVESTIGATION", "EVENTS"],
+    )
+
     asyncio.run(
         handle_enqueteur_live_incoming_message(
             ws,
             session=session,
             raw_message=_envelope(
-                "SUBSCRIBE",
+                "INPUT_COMMAND",
                 {
-                    "stream": "LIVE",
-                    "channels": ["WORLD", "DIALOGUE", "LEARNING", "INVESTIGATION", "EVENTS"],
-                    "diff_policy": "DIFF_ONLY",
-                    "snapshot_policy": "ON_JOIN",
-                    "compression": "NONE",
+                    "client_cmd_id": "00000000-0000-4000-8000-000000000022",
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "ATTEMPT_RECOVERY",
+                        "payload": {"target_id": "O2_MEDALLION"},
+                    },
                 },
             ),
             host=host,
         )
     )
-    ws.sent_texts.clear()
 
-    command_payloads = [
-        {
-            "client_cmd_id": "00000000-0000-4000-8000-000000000021",
-            "tick_target": 1,
-            "cmd": {
-                "type": "ATTEMPT_RECOVERY",
-                "payload": {"target_id": "O2_MEDALLION"},
-            },
-        },
-        {
-            "client_cmd_id": "00000000-0000-4000-8000-000000000022",
-            "tick_target": 1,
-            "cmd": {
-                "type": "ATTEMPT_ACCUSATION",
-                "payload": {
-                    "suspect_id": "laurent",
-                    "supporting_fact_ids": ["N3", "N4", "N8"],
-                    "supporting_evidence_ids": ["E2_CAFE_RECEIPT"],
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["reason_code"] == "RECOVERY_PREREQS_MISSING"
+
+
+def test_attempt_recovery_accepts_when_requirements_are_satisfied() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    _prime_resolution_confrontation_gate(registry, payload)
+    _prime_resolution_progress_for_recovery(registry, payload)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["WORLD", "INVESTIGATION", "EVENTS"],
+    )
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": "00000000-0000-4000-8000-000000000023",
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "ATTEMPT_RECOVERY",
+                        "payload": {"target_id": "O2_MEDALLION"},
+                    },
                 },
-            },
-        },
-    ]
-
-    for idx, cmd_payload in enumerate(command_payloads):
-        asyncio.run(
-            handle_enqueteur_live_incoming_message(
-                ws,
-                session=session,
-                raw_message=_envelope("INPUT_COMMAND", cmd_payload),
-                host=host,
-            )
+            ),
+            host=host,
         )
-        rejected = _decode_sent_envelope(ws, idx)
-        assert rejected["msg_type"] == "COMMAND_REJECTED"
-        assert rejected["payload"]["client_cmd_id"] == cmd_payload["client_cmd_id"]
-        assert rejected["payload"]["reason_code"] == "RUNTIME_NOT_READY"
+    )
+
+    accepted = _decode_sent_envelope(ws, 0)
+    assert accepted["msg_type"] == "COMMAND_ACCEPTED"
+
+    asyncio.run(stream_enqueteur_frame_diff_once(ws, session=session, host=host))
+    diff_payload = _decode_sent_envelope(ws, 1)["payload"]
+    assert any(op["op"] in {"SET_RESOLUTION_STATUS", "SET_OUTCOME", "SET_RECAP"} for op in diff_payload["ops"])
+
+
+def test_attempt_accusation_rejects_invalid_suspect_id() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["WORLD", "INVESTIGATION", "EVENTS"],
+    )
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": "00000000-0000-4000-8000-000000000024",
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "ATTEMPT_ACCUSATION",
+                        "payload": {
+                            "suspect_id": "not_a_suspect",
+                            "supporting_fact_ids": [],
+                            "supporting_evidence_ids": [],
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["reason_code"] == "INVALID_COMMAND"
+
+
+def test_attempt_accusation_rejects_unknown_supporting_refs() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["WORLD", "INVESTIGATION", "EVENTS"],
+    )
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": "00000000-0000-4000-8000-000000000025",
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "ATTEMPT_ACCUSATION",
+                        "payload": {
+                            "suspect_id": "laurent",
+                            "supporting_fact_ids": ["N999"],
+                            "supporting_evidence_ids": ["E999_UNKNOWN"],
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["reason_code"] == "INVALID_COMMAND"
+
+
+def test_attempt_accusation_rejects_missing_supporting_refs_and_missing_prereqs() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["WORLD", "INVESTIGATION", "EVENTS"],
+    )
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": "00000000-0000-4000-8000-000000000026",
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "ATTEMPT_ACCUSATION",
+                        "payload": {
+                            "suspect_id": "laurent",
+                            "supporting_fact_ids": ["N3"],
+                            "supporting_evidence_ids": ["E2_CAFE_RECEIPT"],
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["reason_code"] == "ACCUSATION_PREREQS_MISSING"
+
+
+def test_attempt_accusation_accepts_when_requirements_are_satisfied() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    _prime_resolution_confrontation_gate(registry, payload)
+    _prime_resolution_progress_for_accusation(registry, payload)
+    started = registry.get(str(payload["run_id"]))
+    assert started is not None
+    case_state = started.runner.get_case_state()
+    assert case_state is not None
+    culprit_id = case_state.roles_assignment.culprit
+    supporting_facts = list(case_state.resolution_rules.accusation_success.required_fact_ids)
+    supporting_evidence = list(case_state.resolution_rules.accusation_success.required_items)
+
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["WORLD", "INVESTIGATION", "EVENTS"],
+    )
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": "00000000-0000-4000-8000-000000000027",
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "ATTEMPT_ACCUSATION",
+                        "payload": {
+                            "suspect_id": culprit_id,
+                            "supporting_fact_ids": supporting_facts,
+                            "supporting_evidence_ids": supporting_evidence,
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    accepted = _decode_sent_envelope(ws, 0)
+    assert accepted["msg_type"] == "COMMAND_ACCEPTED"
+
+    asyncio.run(stream_enqueteur_frame_diff_once(ws, session=session, host=host))
+    diff_payload = _decode_sent_envelope(ws, 1)["payload"]
+    outcome_ops = [op for op in diff_payload["ops"] if op["op"] == "SET_OUTCOME"]
+    assert outcome_ops
+    latest_outcome = outcome_ops[-1].get("outcome")
+    assert isinstance(latest_outcome, dict)
+    assert latest_outcome.get("primary_outcome") == "accusation_success"
 
 
 def test_internal_runtime_error_is_structured_and_fatal() -> None:
