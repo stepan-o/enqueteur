@@ -18,6 +18,8 @@ import json
 import uuid
 
 from backend.sim4.case_mbam import (
+    DialogueTurnRequest,
+    DialogueTurnSlotValue,
     InvestigationCommandAck,
     build_visible_dialogue_projection,
     build_visible_investigation_projection,
@@ -43,6 +45,7 @@ from .cases_start import (
 )
 from .live_commands import (
     CommandDispatchResult,
+    DialogueTurnCommandPayload,
     InvestigateObjectCommandPayload,
     InputCommandValidationError,
     ParsedInputCommand,
@@ -682,14 +685,43 @@ class EnqueteurLiveSessionHost:
     def _dispatch_dialogue_turn(
         self,
         *,
-        started_run: StartedCaseRun,  # noqa: ARG002
+        started_run: StartedCaseRun,
         session: EnqueteurLiveSession,  # noqa: ARG002
         command: ParsedInputCommand,
     ) -> CommandDispatchResult:
+        if not isinstance(command.payload, DialogueTurnCommandPayload):
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message="DIALOGUE_TURN payload shape is invalid after parsing.",
+            )
+
+        try:
+            request = self._build_dialogue_turn_request(command.payload)
+        except ValueError as exc:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message=f"Invalid DIALOGUE_TURN request: {exc}",
+            )
+
+        runner = started_run.runner
+        result = runner.submit_dialogue_turn(request)
+        if result is None:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="RUNTIME_NOT_READY",
+                message="Dialogue runtime state is not ready for scene turns.",
+            )
+
+        if result.turn_result.status == "accepted":
+            return CommandDispatchResult.accepted_result(client_cmd_id=command.client_cmd_id)
+
+        reason_code, message = self._map_dialogue_turn_rejection(result)
         return CommandDispatchResult.rejected_result(
             client_cmd_id=command.client_cmd_id,
-            reason_code="RUNTIME_NOT_READY",
-            message="DIALOGUE_TURN execution is not enabled yet.",
+            reason_code=reason_code,
+            message=message,
         )
 
     def _dispatch_minigame_submit(
@@ -772,6 +804,75 @@ class EnqueteurLiveSessionHost:
 
         return "INVALID_COMMAND", (
             f"Unsupported investigation command outcome '{ack.kind}' ({ack.code})."
+        )
+
+    def _build_dialogue_turn_request(
+        self,
+        payload: DialogueTurnCommandPayload,
+    ) -> DialogueTurnRequest:
+        slot_values: list[DialogueTurnSlotValue] = []
+        for slot_name in sorted(payload.slots.keys()):
+            value = payload.slots[slot_name]
+            if slot_name not in {"time", "location", "item", "person", "reason"}:
+                raise ValueError(f"Unsupported slot name '{slot_name}'.")
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"Slot '{slot_name}' must be a non-empty string.")
+            slot_values.append(
+                DialogueTurnSlotValue(slot_name=slot_name, value=value.strip())
+            )
+
+        return DialogueTurnRequest(
+            scene_id=payload.scene_id,
+            npc_id=payload.npc_id,
+            intent_id=payload.intent_id,
+            provided_slots=tuple(slot_values),
+        )
+
+    def _map_dialogue_turn_rejection(self, result: Any) -> tuple[str, str]:
+        turn = result.turn_result
+        status = str(getattr(turn, "status", ""))
+        code = str(getattr(turn, "code", ""))
+        scene_id = str(getattr(turn, "scene_id", ""))
+        intent_id = str(getattr(turn, "intent_id", ""))
+        npc_id = str(getattr(turn, "npc_id", ""))
+
+        if code == "scene_primary_npc_mismatch":
+            return "INVALID_NPC", (
+                f"NPC '{npc_id}' is not valid for scene '{scene_id}'."
+            )
+
+        if code in {"trust_below_threshold"} or code.startswith("insufficient_trust_"):
+            return "INSUFFICIENT_TRUST", (
+                f"Dialogue turn blocked by trust gate for scene '{scene_id}'."
+            )
+
+        if status == "blocked_gate":
+            return "SCENE_GATE_BLOCKED", (
+                f"Dialogue turn is blocked for scene '{scene_id}' ({code})."
+            )
+
+        if code == "missing_required_slots":
+            missing = tuple(getattr(turn, "missing_required_slots", ()))
+            if missing:
+                return "MISSING_REQUIRED_SLOTS", (
+                    f"Missing required slots for scene '{scene_id}' intent '{intent_id}': {', '.join(missing)}."
+                )
+            return "MISSING_REQUIRED_SLOTS", (
+                f"Missing required slots for scene '{scene_id}' intent '{intent_id}'."
+            )
+
+        if status in {"invalid_intent", "invalid_scene_state"}:
+            return "INVALID_COMMAND", (
+                f"Dialogue turn is invalid for scene '{scene_id}' and intent '{intent_id}' ({code})."
+            )
+
+        if status in {"repair", "refused"}:
+            return "SCENE_GATE_BLOCKED", (
+                f"Dialogue turn requires correction or was refused ({code})."
+            )
+
+        return "INVALID_COMMAND", (
+            f"Unsupported dialogue turn outcome '{status}' ({code})."
         )
 
 

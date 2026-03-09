@@ -1198,6 +1198,307 @@ def test_dialogue_turn_missing_slots_is_rejected_with_missing_required_slots() -
     assert ws.close_calls == []
 
 
+def test_dialogue_turn_command_is_accepted_and_updates_dialogue_diff_state() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "DIALOGUE", "INVESTIGATION", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+    client_cmd_id = "00000000-0000-4000-8000-000000000015"
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": client_cmd_id,
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "DIALOGUE_TURN",
+                        "payload": {
+                            "scene_id": "S1",
+                            "npc_id": "elodie",
+                            "intent_id": "ask_what_happened",
+                            "slots": {},
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    accepted = _decode_sent_envelope(ws, 0)
+    assert accepted["msg_type"] == "COMMAND_ACCEPTED"
+    assert accepted["payload"] == {"client_cmd_id": client_cmd_id}
+
+    asyncio.run(
+        stream_enqueteur_frame_diff_once(
+            ws,
+            session=session,
+            host=host,
+        )
+    )
+    diff_payload = _decode_sent_envelope(ws, 1)["payload"]
+    assert any(op["op"] == "APPEND_DIALOGUE_TURN" for op in diff_payload["ops"])
+
+
+def test_dialogue_turn_rejects_invalid_npc_for_scene() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "DIALOGUE"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+    client_cmd_id = "00000000-0000-4000-8000-000000000016"
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": client_cmd_id,
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "DIALOGUE_TURN",
+                        "payload": {
+                            "scene_id": "S1",
+                            "npc_id": "marc",
+                            "intent_id": "ask_what_happened",
+                            "slots": {},
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
+    assert rejected["payload"]["reason_code"] == "INVALID_NPC"
+
+
+def test_dialogue_turn_rejects_invalid_intent_for_scene() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "DIALOGUE"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+    client_cmd_id = "00000000-0000-4000-8000-000000000017"
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": client_cmd_id,
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "DIALOGUE_TURN",
+                        "payload": {
+                            "scene_id": "S1",
+                            "npc_id": "elodie",
+                            "intent_id": "request_access",
+                            "slots": {},
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
+    assert rejected["payload"]["reason_code"] == "INVALID_COMMAND"
+
+
+def test_dialogue_turn_rejects_insufficient_trust_gate() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "DIALOGUE"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+    client_cmd_id = "00000000-0000-4000-8000-000000000018"
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": client_cmd_id,
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "DIALOGUE_TURN",
+                        "payload": {
+                            "scene_id": "S2",
+                            "npc_id": "marc",
+                            "intent_id": "request_access",
+                            "slots": {"reason": "voir le terminal"},
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
+    assert rejected["payload"]["reason_code"] == "INSUFFICIENT_TRUST"
+
+
 def test_unsupported_input_command_type_is_rejected() -> None:
     registry = CaseRunRegistry()
     _service, payload = _start_mbam_case(registry=registry)
@@ -1310,19 +1611,6 @@ def test_non_investigation_commands_route_to_runtime_not_ready_skeleton() -> Non
     ws.sent_texts.clear()
 
     command_payloads = [
-        {
-            "client_cmd_id": "00000000-0000-4000-8000-000000000011",
-            "tick_target": 1,
-            "cmd": {
-                "type": "DIALOGUE_TURN",
-                "payload": {
-                    "scene_id": "S1",
-                    "npc_id": "marc",
-                    "intent_id": "request_access",
-                    "slots": {"reason": "voir les logs"},
-                },
-            },
-        },
         {
             "client_cmd_id": "00000000-0000-4000-8000-000000000012",
             "tick_target": 1,
