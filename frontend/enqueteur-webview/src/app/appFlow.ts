@@ -13,9 +13,10 @@ import {
     CaseLaunchError,
     createCaseLaunchClient,
     type CaseLaunchClient,
+    type CaseLaunchRequest,
     type CaseLaunchMetadata,
 } from "./api/caseLaunchClient";
-import { LaunchSessionStore } from "./launch/launchSessionStore";
+import { LaunchSessionStore, type LaunchFailureRecord } from "./launch/launchSessionStore";
 import { renderLoadingScreen } from "./screens/LoadingScreen";
 import { renderCaseSelectScreen } from "./screens/CaseSelectScreen";
 import { renderConnectingScreen } from "./screens/ConnectingScreen";
@@ -32,6 +33,7 @@ export type AppFlowOpts = {
 export type AppFlowHandle = {
     getState: () => AppState;
     getLaunchMetadata: () => CaseLaunchMetadata | null;
+    getLaunchFailure: () => LaunchFailureRecord | null;
     transition: (next: AppState) => void;
     destroy: () => void;
 };
@@ -71,18 +73,18 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         }
     };
 
-    const clearLaunchSession = (): void => {
-        launchSessionStore.clear();
+    const resetLaunchProgress = (): void => {
+        launchSessionStore.clearProgress();
     };
 
     const goToMainMenu = (): void => {
         cancelPendingLaunch();
-        clearLaunchSession();
+        resetLaunchProgress();
         stateStore.transition({ kind: "MAIN_MENU" });
     };
     const goToCaseSelect = (): void => {
         cancelPendingLaunch();
-        clearLaunchSession();
+        resetLaunchProgress();
         stateStore.transition({ kind: "CASE_SELECT" });
     };
     const beginCaseLaunch = (caseId: EnqueteurCaseId): void => {
@@ -98,13 +100,20 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         }
 
         cancelPendingLaunch();
-        clearLaunchSession();
+        resetLaunchProgress();
         const attemptRevision = launchRevision;
         const abortController = new AbortController();
         pendingLaunchAbortController = abortController;
+        const launchRequest: CaseLaunchRequest = {
+            caseId,
+            seed: entry.launchPreset.seed,
+            difficultyProfile: entry.launchPreset.difficultyProfile,
+            mode: entry.launchPreset.mode,
+        };
+        launchSessionStore.begin(launchRequest);
 
         stateStore.transition({ kind: "CONNECTING", caseId, phase: "CASE_LAUNCH" });
-        void requestCaseLaunch(caseId, attemptRevision, entry.launchPreset, abortController.signal);
+        void requestCaseLaunch(caseId, attemptRevision, launchRequest, abortController.signal);
     };
     const recoverFromError = (recoverTo?: AppRecoverTarget): void => {
         if (recoverTo === "CASE_SELECT") {
@@ -166,6 +175,15 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 );
                 break;
             case "CONNECTING":
+                if (state.phase !== "CASE_LAUNCH" && !launchSessionStore.getLatestMetadata()) {
+                    stateStore.transition({
+                        kind: "ERROR",
+                        code: "UNEXPECTED_STATE",
+                        message: "Launch metadata is missing; return to case selection and relaunch.",
+                        recoverTo: "CASE_SELECT",
+                    });
+                    return;
+                }
                 preGameLayer.appendChild(
                     renderConnectingScreen({
                         caseId: state.caseId,
@@ -208,26 +226,14 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     const requestCaseLaunch = async (
         caseId: EnqueteurCaseId,
         attemptRevision: number,
-        launchPreset: {
-            seed: string | number;
-            difficultyProfile: "D0" | "D1";
-            mode: "playtest" | "dev";
-        },
+        launchRequest: CaseLaunchRequest,
         signal: AbortSignal
     ): Promise<void> => {
         try {
-            const metadata = await caseLaunchClient.startCase(
-                {
-                    caseId,
-                    seed: launchPreset.seed,
-                    difficultyProfile: launchPreset.difficultyProfile,
-                    mode: launchPreset.mode,
-                },
-                { signal }
-            );
+            const metadata = await caseLaunchClient.startCase(launchRequest, { signal });
 
             if (destroyed || attemptRevision !== launchRevision) return;
-            launchSessionStore.set(metadata);
+            launchSessionStore.markSuccess(metadata);
 
             const current = stateStore.getState();
             if (current.kind === "CONNECTING" && current.caseId === caseId) {
@@ -241,11 +247,19 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             if (destroyed || attemptRevision !== launchRevision) return;
             if (isAbortError(err)) return;
 
-            clearLaunchSession();
+            const details = describeCaseLaunchError(err);
+            launchSessionStore.markFailure({
+                request: launchRequest,
+                message: details.message,
+                code: details.code,
+                field: details.field,
+                status: details.status,
+                occurredAt: new Date().toISOString(),
+            });
             stateStore.transition({
                 kind: "ERROR",
                 code: "LAUNCH_FAILURE",
-                message: formatCaseLaunchError(err),
+                message: details.message,
                 recoverTo: "CASE_SELECT",
             });
         } finally {
@@ -297,12 +311,13 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
     return {
         getState: () => stateStore.getState(),
-        getLaunchMetadata: () => launchSessionStore.getLatest(),
+        getLaunchMetadata: () => launchSessionStore.getLatestMetadata(),
+        getLaunchFailure: () => launchSessionStore.getLatestFailure(),
         transition: (next) => stateStore.transition(next),
         destroy: () => {
             destroyed = true;
             cancelPendingLaunch();
-            clearLaunchSession();
+            launchSessionStore.clear();
             mountRevision += 1;
             unsubscribe();
             viewer?.stop();
@@ -336,12 +351,30 @@ function isAbortError(err: unknown): boolean {
     return false;
 }
 
-function formatCaseLaunchError(err: unknown): string {
+function describeCaseLaunchError(err: unknown): {
+    message: string;
+    code: string;
+    field?: string;
+    status?: number;
+} {
     if (err instanceof CaseLaunchError) {
-        return err.field
+        return {
+            message: err.field
             ? `Case launch failed (${err.code}, field ${err.field}): ${err.message}`
-            : `Case launch failed (${err.code}): ${err.message}`;
+            : `Case launch failed (${err.code}): ${err.message}`,
+            code: err.code,
+            field: err.field,
+            status: err.status,
+        };
     }
-    if (err instanceof Error) return `Case launch failed: ${err.message}`;
-    return `Case launch failed: ${String(err)}`;
+    if (err instanceof Error) {
+        return {
+            message: `Case launch failed: ${err.message}`,
+            code: "CASE_LAUNCH_FAILED",
+        };
+    }
+    return {
+        message: `Case launch failed: ${String(err)}`,
+        code: "CASE_LAUNCH_FAILED",
+    };
 }

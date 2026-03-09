@@ -94,6 +94,7 @@ describe("Phase B3 case launch request flow", () => {
             phase: "SESSION_STARTUP",
         });
         expect(flow.getLaunchMetadata()).toEqual(makeLaunchMetadata());
+        expect(flow.getLaunchFailure()).toBeNull();
 
         flow.destroy();
     });
@@ -120,6 +121,41 @@ describe("Phase B3 case launch request flow", () => {
             recoverTo: "CASE_SELECT",
         });
         expect(flow.getLaunchMetadata()).toBeNull();
+        expect(flow.getLaunchFailure()).toEqual({
+            request: {
+                caseId: "MBAM_01",
+                seed: "A",
+                difficultyProfile: "D0",
+                mode: "playtest",
+            },
+            message: "Case launch failed: backend unavailable",
+            code: "CASE_LAUNCH_FAILED",
+            field: undefined,
+            status: undefined,
+            occurredAt: expect.any(String),
+        });
+
+        flow.destroy();
+    });
+
+    it("treats non-launch connecting phases without metadata as an unexpected-state error", async () => {
+        const startCase = vi.fn(async () => makeLaunchMetadata());
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CONNECTING", caseId: "MBAM_01", phase: "SESSION_STARTUP" });
+        await flushAsyncWork();
+
+        expect(flow.getState()).toEqual({
+            kind: "ERROR",
+            code: "UNEXPECTED_STATE",
+            message: "Launch metadata is missing; return to case selection and relaunch.",
+            recoverTo: "CASE_SELECT",
+        });
 
         flow.destroy();
     });
