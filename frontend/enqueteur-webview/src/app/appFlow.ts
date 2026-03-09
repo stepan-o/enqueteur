@@ -8,6 +8,8 @@ import {
 import { PRE_GAME_CASES } from "./cases/caseCatalog";
 import { renderLoadingScreen } from "./screens/LoadingScreen";
 import { renderCaseSelectScreen } from "./screens/CaseSelectScreen";
+import { renderConnectingScreen } from "./screens/ConnectingScreen";
+import { renderErrorScreen } from "./screens/ErrorScreen";
 import { renderMainMenuScreen } from "./screens/MainMenuScreen";
 
 export type AppFlowOpts = {
@@ -71,14 +73,16 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                     renderCaseSelectScreen({
                         cases: PRE_GAME_CASES,
                         onBack: () => stateStore.transition({ kind: "MAIN_MENU" }),
-                        onPickCase: (caseId) => stateStore.transition({ kind: "CONNECTING", caseId }),
+                        onPickCase: (caseId) =>
+                            stateStore.transition({ kind: "CONNECTING", caseId, phase: "CASE_LAUNCH" }),
                     })
                 );
                 break;
             case "CONNECTING":
                 preGameLayer.appendChild(
-                    renderConnecting({
+                    renderConnectingScreen({
                         caseId: state.caseId,
+                        phase: state.phase,
                         onBackToCases: () => stateStore.transition({ kind: "CASE_SELECT" }),
                         onBackToMenu: () => stateStore.transition({ kind: "MAIN_MENU" }),
                     })
@@ -87,6 +91,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             case "ERROR":
                 preGameLayer.appendChild(
                     renderErrorScreen({
+                        code: state.code,
                         message: state.message,
                         recoverTo: state.recoverTo,
                         onRecover: () => {
@@ -102,6 +107,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             default:
                 preGameLayer.appendChild(
                     renderErrorScreen({
+                        code: "UNEXPECTED_STATE",
                         message: `Unhandled app state: ${(state as { kind: string }).kind}`,
                         recoverTo: "MAIN_MENU",
                         onRecover: () => stateStore.transition({ kind: "MAIN_MENU" }),
@@ -123,6 +129,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 const message = err instanceof Error ? err.message : String(err);
                 stateStore.transition({
                     kind: "ERROR",
+                    code: "STARTUP_INCOMPATIBILITY",
                     message: `Live shell failed to mount for ${caseId}: ${message}`,
                     recoverTo: "MAIN_MENU",
                 });
@@ -163,60 +170,4 @@ function renderScreen(title: string, body: string, children: HTMLElement[] = [])
     for (const child of children) section.appendChild(child);
 
     return section;
-}
-
-function renderConnecting(opts: {
-    caseId: EnqueteurCaseId;
-    onBackToCases: () => void;
-    onBackToMenu: () => void;
-}): HTMLElement {
-    const section = renderScreen(
-        "Connecting",
-        `Preparing live launch for ${opts.caseId}. Live startup is implemented in later phases.`
-    );
-
-    const info = document.createElement("p");
-    info.className = "flow-screen-note";
-    info.textContent = "No backend call or WebSocket connect is attempted in this phase.";
-
-    const actions = document.createElement("div");
-    actions.className = "flow-actions";
-    actions.appendChild(makeActionButton("Back To Cases", opts.onBackToCases));
-    actions.appendChild(makeActionButton("Main Menu", opts.onBackToMenu));
-
-    section.appendChild(info);
-    section.appendChild(actions);
-    return section;
-}
-
-function renderErrorScreen(opts: {
-    message: string;
-    recoverTo?: "MAIN_MENU" | "CASE_SELECT";
-    onRecover: () => void;
-}): HTMLElement {
-    const section = renderScreen("Error", opts.message);
-
-    const info = document.createElement("p");
-    info.className = "flow-screen-note";
-    info.textContent =
-        opts.recoverTo === "CASE_SELECT"
-            ? "You can return to case selection."
-            : "You can return to the main menu.";
-
-    const actions = document.createElement("div");
-    actions.className = "flow-actions";
-    actions.appendChild(makeActionButton("Recover", opts.onRecover));
-
-    section.appendChild(info);
-    section.appendChild(actions);
-    return section;
-}
-
-function makeActionButton(label: string, onClick: () => void): HTMLButtonElement {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "flow-action-btn";
-    btn.textContent = label;
-    btn.addEventListener("click", onClick);
-    return btn;
 }

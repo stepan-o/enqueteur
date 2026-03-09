@@ -1,13 +1,23 @@
 export type EnqueteurCaseId = "MBAM_01";
 
+export type ConnectingPhase = "CASE_LAUNCH" | "SESSION_STARTUP" | "WAITING_FOR_BASELINE";
+
+export type AppErrorCode =
+    | "LAUNCH_FAILURE"
+    | "CONNECTION_FAILURE"
+    | "STARTUP_INCOMPATIBILITY"
+    | "UNEXPECTED_STATE";
+
+export type AppRecoverTarget = "MAIN_MENU" | "CASE_SELECT";
+
 export type AppState =
     | { kind: "BOOT" }
     | { kind: "LOADING" }
     | { kind: "MAIN_MENU" }
     | { kind: "CASE_SELECT" }
-    | { kind: "CONNECTING"; caseId: EnqueteurCaseId }
+    | { kind: "CONNECTING"; caseId: EnqueteurCaseId; phase: ConnectingPhase }
     | { kind: "LIVE_GAME"; caseId: EnqueteurCaseId }
-    | { kind: "ERROR"; message: string; recoverTo?: "MAIN_MENU" | "CASE_SELECT" };
+    | { kind: "ERROR"; code: AppErrorCode; message: string; recoverTo?: AppRecoverTarget };
 
 export type AppStateKind = AppState["kind"];
 
