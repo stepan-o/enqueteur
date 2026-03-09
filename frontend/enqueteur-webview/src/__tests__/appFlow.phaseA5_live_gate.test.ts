@@ -100,4 +100,33 @@ describe("Phase A5 app flow live shell gate", () => {
         flow.destroy();
         expect(viewer.stop).toHaveBeenCalledTimes(1);
     });
+
+    it("disposes stale viewer mounts if state exits LIVE_GAME before mount resolves", async () => {
+        const viewer = makeFakeViewer();
+        let resolveViewer: (value: ViewerHandle) => void = () => {};
+        const pendingViewer = new Promise<ViewerHandle>((resolve) => {
+            resolveViewer = resolve;
+        });
+        const createLiveViewer: NonNullable<AppFlowOpts["createLiveViewer"]> = vi.fn(
+            (_mountEl: HTMLElement) => pendingViewer
+        );
+
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            createLiveViewer,
+        });
+
+        flow.transition({ kind: "LIVE_GAME", caseId: "MBAM_01" });
+        flow.transition({ kind: "MAIN_MENU" });
+        resolveViewer(viewer);
+
+        await flushAsyncWork();
+
+        expect(createLiveViewer).toHaveBeenCalledTimes(1);
+        expect(viewer.stop).toHaveBeenCalledTimes(1);
+        expect(viewer.setVisible).not.toHaveBeenCalledWith(true);
+
+        flow.destroy();
+    });
 });

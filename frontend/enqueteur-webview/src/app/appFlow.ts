@@ -1,6 +1,7 @@
 import {
     AppStateStore,
     beginBootFlow,
+    type AppRecoverTarget,
     type AppState,
     type EnqueteurCaseId,
 } from "./appState";
@@ -44,6 +45,20 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     let bootModulePromise: Promise<typeof import("./boot")> | null = null;
     let mountRevision = 0;
     let destroyed = false;
+
+    const goToMainMenu = (): void => stateStore.transition({ kind: "MAIN_MENU" });
+    const goToCaseSelect = (): void => stateStore.transition({ kind: "CASE_SELECT" });
+    const beginCaseLaunch = (caseId: EnqueteurCaseId): void => {
+        stateStore.transition({ kind: "CONNECTING", caseId, phase: "CASE_LAUNCH" });
+    };
+    const recoverFromError = (recoverTo?: AppRecoverTarget): void => {
+        if (recoverTo === "CASE_SELECT") {
+            goToCaseSelect();
+        } else {
+            goToMainMenu();
+        }
+    };
+
     const createLiveViewer = opts.createLiveViewer ?? (async (mountEl: HTMLElement) => {
         const { boot } = await loadBootModule();
         return boot({
@@ -79,16 +94,15 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 break;
             case "MAIN_MENU":
                 preGameLayer.appendChild(renderMainMenuScreen({
-                    onCases: () => stateStore.transition({ kind: "CASE_SELECT" }),
+                    onCases: goToCaseSelect,
                 }));
                 break;
             case "CASE_SELECT":
                 preGameLayer.appendChild(
                     renderCaseSelectScreen({
                         cases: PRE_GAME_CASES,
-                        onBack: () => stateStore.transition({ kind: "MAIN_MENU" }),
-                        onPickCase: (caseId) =>
-                            stateStore.transition({ kind: "CONNECTING", caseId, phase: "CASE_LAUNCH" }),
+                        onBack: goToMainMenu,
+                        onPickCase: beginCaseLaunch,
                     })
                 );
                 break;
@@ -97,8 +111,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                     renderConnectingScreen({
                         caseId: state.caseId,
                         phase: state.phase,
-                        onBackToCases: () => stateStore.transition({ kind: "CASE_SELECT" }),
-                        onBackToMenu: () => stateStore.transition({ kind: "MAIN_MENU" }),
+                        onBackToCases: goToCaseSelect,
+                        onBackToMenu: goToMainMenu,
                     })
                 );
                 break;
@@ -108,13 +122,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                         code: state.code,
                         message: state.message,
                         recoverTo: state.recoverTo,
-                        onRecover: () => {
-                            if (state.recoverTo === "CASE_SELECT") {
-                                stateStore.transition({ kind: "CASE_SELECT" });
-                            } else {
-                                stateStore.transition({ kind: "MAIN_MENU" });
-                            }
-                        },
+                        onRecover: () => recoverFromError(state.recoverTo),
                     })
                 );
                 break;
@@ -124,7 +132,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                         code: "UNEXPECTED_STATE",
                         message: `Unhandled app state: ${(state as { kind: string }).kind}`,
                         recoverTo: "MAIN_MENU",
-                        onRecover: () => stateStore.transition({ kind: "MAIN_MENU" }),
+                        onRecover: goToMainMenu,
                     })
                 );
                 break;
@@ -151,9 +159,13 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 if (destroyed) return;
                 if (activeRevision !== mountRevision) return;
 
-                viewer = await createLiveViewer(liveLayer);
-                if (destroyed) return;
-                if (activeRevision !== mountRevision) return;
+                const nextViewer = await createLiveViewer(liveLayer);
+                if (destroyed || activeRevision !== mountRevision) {
+                    nextViewer.stop();
+                    return;
+                }
+
+                viewer = nextViewer;
                 viewer.setVisible(stateStore.getState().kind === "LIVE_GAME");
             } catch (err: unknown) {
                 if (destroyed) return;
