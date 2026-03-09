@@ -5,7 +5,17 @@ import {
     type AppState,
     type EnqueteurCaseId,
 } from "./appState";
-import { PRE_GAME_CASES } from "./cases/caseCatalog";
+import {
+    PRE_GAME_CASES,
+    getPreGameCaseEntry,
+} from "./cases/caseCatalog";
+import {
+    CaseLaunchError,
+    createCaseLaunchClient,
+    type CaseLaunchClient,
+    type CaseLaunchMetadata,
+} from "./api/caseLaunchClient";
+import { LaunchSessionStore } from "./launch/launchSessionStore";
 import { renderLoadingScreen } from "./screens/LoadingScreen";
 import { renderCaseSelectScreen } from "./screens/CaseSelectScreen";
 import { renderConnectingScreen } from "./screens/ConnectingScreen";
@@ -16,10 +26,12 @@ export type AppFlowOpts = {
     mountEl: HTMLElement;
     loadingDurationMs?: number;
     createLiveViewer?: (mountEl: HTMLElement) => ViewerHandle | Promise<ViewerHandle>;
+    caseLaunchClient?: CaseLaunchClient;
 };
 
 export type AppFlowHandle = {
     getState: () => AppState;
+    getLaunchMetadata: () => CaseLaunchMetadata | null;
     transition: (next: AppState) => void;
     destroy: () => void;
 };
@@ -41,15 +53,58 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     opts.mountEl.appendChild(root);
 
     const stateStore = new AppStateStore({ kind: "BOOT" });
+    const launchSessionStore = new LaunchSessionStore();
     let viewer: ViewerHandle | null = null;
     let bootModulePromise: Promise<typeof import("./boot")> | null = null;
     let mountRevision = 0;
     let destroyed = false;
+    let launchRevision = 0;
+    let pendingLaunchAbortController: AbortController | null = null;
 
-    const goToMainMenu = (): void => stateStore.transition({ kind: "MAIN_MENU" });
-    const goToCaseSelect = (): void => stateStore.transition({ kind: "CASE_SELECT" });
+    const caseLaunchClient = opts.caseLaunchClient ?? createCaseLaunchClient();
+
+    const cancelPendingLaunch = (): void => {
+        launchRevision += 1;
+        if (pendingLaunchAbortController) {
+            pendingLaunchAbortController.abort();
+            pendingLaunchAbortController = null;
+        }
+    };
+
+    const clearLaunchSession = (): void => {
+        launchSessionStore.clear();
+    };
+
+    const goToMainMenu = (): void => {
+        cancelPendingLaunch();
+        clearLaunchSession();
+        stateStore.transition({ kind: "MAIN_MENU" });
+    };
+    const goToCaseSelect = (): void => {
+        cancelPendingLaunch();
+        clearLaunchSession();
+        stateStore.transition({ kind: "CASE_SELECT" });
+    };
     const beginCaseLaunch = (caseId: EnqueteurCaseId): void => {
+        const entry = getPreGameCaseEntry(caseId);
+        if (!entry) {
+            stateStore.transition({
+                kind: "ERROR",
+                code: "UNEXPECTED_STATE",
+                message: `No launch preset found for case ${caseId}.`,
+                recoverTo: "CASE_SELECT",
+            });
+            return;
+        }
+
+        cancelPendingLaunch();
+        clearLaunchSession();
+        const attemptRevision = launchRevision;
+        const abortController = new AbortController();
+        pendingLaunchAbortController = abortController;
+
         stateStore.transition({ kind: "CONNECTING", caseId, phase: "CASE_LAUNCH" });
+        void requestCaseLaunch(caseId, attemptRevision, entry.launchPreset, abortController.signal);
     };
     const recoverFromError = (recoverTo?: AppRecoverTarget): void => {
         if (recoverTo === "CASE_SELECT") {
@@ -76,6 +131,10 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             liveLayer.style.display = "block";
             void mountLiveGameShell(state.caseId);
             return;
+        }
+
+        if (state.kind !== "CONNECTING") {
+            cancelPendingLaunch();
         }
 
         mountRevision += 1;
@@ -146,6 +205,56 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         return bootModulePromise;
     };
 
+    const requestCaseLaunch = async (
+        caseId: EnqueteurCaseId,
+        attemptRevision: number,
+        launchPreset: {
+            seed: string | number;
+            difficultyProfile: "D0" | "D1";
+            mode: "playtest" | "dev";
+        },
+        signal: AbortSignal
+    ): Promise<void> => {
+        try {
+            const metadata = await caseLaunchClient.startCase(
+                {
+                    caseId,
+                    seed: launchPreset.seed,
+                    difficultyProfile: launchPreset.difficultyProfile,
+                    mode: launchPreset.mode,
+                },
+                { signal }
+            );
+
+            if (destroyed || attemptRevision !== launchRevision) return;
+            launchSessionStore.set(metadata);
+
+            const current = stateStore.getState();
+            if (current.kind === "CONNECTING" && current.caseId === caseId) {
+                stateStore.transition({
+                    kind: "CONNECTING",
+                    caseId,
+                    phase: "SESSION_STARTUP",
+                });
+            }
+        } catch (err: unknown) {
+            if (destroyed || attemptRevision !== launchRevision) return;
+            if (isAbortError(err)) return;
+
+            clearLaunchSession();
+            stateStore.transition({
+                kind: "ERROR",
+                code: "LAUNCH_FAILURE",
+                message: formatCaseLaunchError(err),
+                recoverTo: "CASE_SELECT",
+            });
+        } finally {
+            if (attemptRevision === launchRevision) {
+                pendingLaunchAbortController = null;
+            }
+        }
+    };
+
     const mountLiveGameShell = async (caseId: EnqueteurCaseId): Promise<void> => {
         const activeRevision = ++mountRevision;
 
@@ -188,9 +297,12 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
     return {
         getState: () => stateStore.getState(),
+        getLaunchMetadata: () => launchSessionStore.getLatest(),
         transition: (next) => stateStore.transition(next),
         destroy: () => {
             destroyed = true;
+            cancelPendingLaunch();
+            clearLaunchSession();
             mountRevision += 1;
             unsubscribe();
             viewer?.stop();
@@ -216,4 +328,20 @@ function renderScreen(title: string, body: string, children: HTMLElement[] = [])
     for (const child of children) section.appendChild(child);
 
     return section;
+}
+
+function isAbortError(err: unknown): boolean {
+    if (err instanceof DOMException && err.name === "AbortError") return true;
+    if (err instanceof Error && err.name === "AbortError") return true;
+    return false;
+}
+
+function formatCaseLaunchError(err: unknown): string {
+    if (err instanceof CaseLaunchError) {
+        return err.field
+            ? `Case launch failed (${err.code}, field ${err.field}): ${err.message}`
+            : `Case launch failed (${err.code}): ${err.message}`;
+    }
+    if (err instanceof Error) return `Case launch failed: ${err.message}`;
+    return `Case launch failed: ${String(err)}`;
 }

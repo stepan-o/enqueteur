@@ -11,6 +11,12 @@ const CONNECTING_STEPS: readonly ConnectingStep[] = [
     { phase: "WAITING_FOR_BASELINE", label: "Waiting for baseline snapshot" },
 ];
 
+const PHASE_NOTES: Record<ConnectingPhase, string> = {
+    CASE_LAUNCH: "Requesting deterministic run launch from backend.",
+    SESSION_STARTUP: "Launch metadata received. Waiting for live-session transport wiring.",
+    WAITING_FOR_BASELINE: "Session connected. Waiting for baseline snapshot.",
+};
+
 export type ConnectingScreenOpts = {
     caseId: EnqueteurCaseId;
     phase: ConnectingPhase;
@@ -51,7 +57,7 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
 
     const note = document.createElement("p");
     note.className = "flow-screen-note";
-    note.textContent = "Backend launch and transport wiring arrive in the next phases.";
+    note.textContent = PHASE_NOTES[opts.phase];
 
     const actions = document.createElement("div");
     actions.className = "flow-actions";
