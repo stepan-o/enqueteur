@@ -2,6 +2,7 @@ import type {
     CaseLaunchMetadata,
     CaseLaunchRequest,
 } from "../api/caseLaunchClient";
+import { toLaunchSessionInfo, type LaunchSessionInfo } from "./launchSessionInfo";
 
 export type LaunchFailureRecord = {
     request: CaseLaunchRequest;
@@ -14,33 +15,37 @@ export type LaunchFailureRecord = {
 
 export class LaunchSessionStore {
     private activeRequest: CaseLaunchRequest | null = null;
-    private latestMetadata: CaseLaunchMetadata | null = null;
+    private latestSession: LaunchSessionInfo | null = null;
     private latestFailure: LaunchFailureRecord | null = null;
 
     begin(request: CaseLaunchRequest): void {
         this.activeRequest = request;
-        this.latestMetadata = null;
+        this.latestSession = null;
     }
 
-    markSuccess(metadata: CaseLaunchMetadata): void {
+    markSuccess(metadata: LaunchSessionInfo): void {
         this.activeRequest = null;
         this.latestFailure = null;
-        this.latestMetadata = metadata;
+        this.latestSession = metadata;
+    }
+
+    markSuccessFromMetadata(metadata: CaseLaunchMetadata): void {
+        this.markSuccess(toLaunchSessionInfo(metadata));
     }
 
     markFailure(record: LaunchFailureRecord): void {
         this.activeRequest = null;
-        this.latestMetadata = null;
+        this.latestSession = null;
         this.latestFailure = record;
     }
 
     clearProgress(): void {
         this.activeRequest = null;
-        this.latestMetadata = null;
+        this.latestSession = null;
     }
 
-    getLatestMetadata(): CaseLaunchMetadata | null {
-        return this.latestMetadata;
+    getLatestSession(): LaunchSessionInfo | null {
+        return this.latestSession;
     }
 
     getLatestFailure(): LaunchFailureRecord | null {
@@ -53,7 +58,7 @@ export class LaunchSessionStore {
 
     clear(): void {
         this.activeRequest = null;
-        this.latestMetadata = null;
+        this.latestSession = null;
         this.latestFailure = null;
     }
 }

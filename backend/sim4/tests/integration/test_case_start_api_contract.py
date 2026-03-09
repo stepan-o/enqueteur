@@ -9,6 +9,8 @@ from backend.api.cases_start import (
     CaseStartRequest,
     CaseStartService,
     derive_rng_seed,
+    extract_run_id_from_connection_target,
+    get_default_case_run_registry,
     handle_post_cases_start,
 )
 from backend.api.router import ApiRequest, build_default_router
@@ -145,3 +147,25 @@ def test_default_router_dispatches_post_cases_start() -> None:
     assert response.json["case_id"] == "MBAM_01"
     assert response.json["engine_name"] == ENQUETEUR_ENGINE_NAME
     assert response.json["schema_version"] == ENQUETEUR_SCHEMA_VERSION
+
+
+def test_default_handler_persists_run_for_future_connection_lookup() -> None:
+    registry = get_default_case_run_registry()
+    count_before = registry.count()
+
+    status, payload = handle_post_cases_start(
+        {
+            "case_id": "MBAM_01",
+            "seed": "B",
+            "difficulty_profile": "D0",
+            "mode": "playtest",
+        }
+    )
+
+    assert status == 200
+    assert registry.count() == count_before + 1
+    assert extract_run_id_from_connection_target(payload["ws_url"]) == payload["run_id"]
+
+    record = registry.resolve_connection_target(payload["ws_url"])
+    assert record is not None
+    assert record.run_id == payload["run_id"]

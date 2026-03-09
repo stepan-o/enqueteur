@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal, Mapping
 import hashlib
 import uuid
+from urllib.parse import parse_qs, urlparse
 
 from backend.sim4.case_mbam import DifficultyProfile, resolve_seed_id
 from backend.sim4.ecs.world import ECSWorld
@@ -149,6 +150,15 @@ class CaseRunRegistry:
     def get(self, run_id: str) -> StartedCaseRun | None:
         return self._runs.get(run_id)
 
+    def count(self) -> int:
+        return len(self._runs)
+
+    def resolve_connection_target(self, connection_target: str) -> StartedCaseRun | None:
+        run_id = extract_run_id_from_connection_target(connection_target)
+        if run_id is None:
+            return None
+        return self.get(run_id)
+
 
 class CaseStartService:
     """Launch service skeleton for deterministic MBAM case runs."""
@@ -214,6 +224,22 @@ class _NoopScheduler:
         return ()
 
 
+def extract_run_id_from_connection_target(connection_target: str) -> str | None:
+    """Extract run_id from ws connection target or accept raw run_id."""
+    text = connection_target.strip()
+    if not text:
+        return None
+    if "://" not in text and "?" not in text and "/" not in text:
+        return text
+
+    parsed = urlparse(text)
+    run_ids = parse_qs(parsed.query).get("run_id", [])
+    if not run_ids:
+        return None
+    run_id = run_ids[0].strip()
+    return run_id if run_id else None
+
+
 def derive_rng_seed(*, case_id: str, seed: str | int, difficulty_profile: DifficultyProfile) -> int:
     """Derive a deterministic runtime RNG seed for MBAM run bootstrap."""
     seed_text = str(seed).strip() if isinstance(seed, str) else str(seed)
@@ -263,13 +289,25 @@ def create_deterministic_mbam_runner(
     )
 
 
+_DEFAULT_CASE_RUN_REGISTRY = CaseRunRegistry()
+_DEFAULT_CASE_START_SERVICE = CaseStartService(registry=_DEFAULT_CASE_RUN_REGISTRY)
+
+
+def get_default_case_run_registry() -> CaseRunRegistry:
+    return _DEFAULT_CASE_RUN_REGISTRY
+
+
+def get_default_case_start_service() -> CaseStartService:
+    return _DEFAULT_CASE_START_SERVICE
+
+
 def handle_post_cases_start(
     payload: Mapping[str, Any],
     *,
     service: CaseStartService | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Route handler skeleton for POST /api/cases/start."""
-    case_service = service if service is not None else CaseStartService()
+    case_service = service if service is not None else get_default_case_start_service()
     try:
         req = CaseStartRequest.from_payload(payload)
     except CaseStartValidationError as exc:
@@ -302,6 +340,9 @@ __all__ = [
     "StartedCaseRun",
     "CaseRunRegistry",
     "CaseStartService",
+    "extract_run_id_from_connection_target",
+    "get_default_case_run_registry",
+    "get_default_case_start_service",
     "derive_rng_seed",
     "create_deterministic_mbam_runner",
     "handle_post_cases_start",

@@ -14,9 +14,10 @@ import {
     createCaseLaunchClient,
     type CaseLaunchClient,
     type CaseLaunchRequest,
-    type CaseLaunchMetadata,
 } from "./api/caseLaunchClient";
 import { LaunchSessionStore, type LaunchFailureRecord } from "./launch/launchSessionStore";
+import { getSharedLaunchSessionStore } from "./launch/sharedLaunchSessionStore";
+import type { LaunchSessionInfo } from "./launch/launchSessionInfo";
 import { renderLoadingScreen } from "./screens/LoadingScreen";
 import { renderCaseSelectScreen } from "./screens/CaseSelectScreen";
 import { renderConnectingScreen } from "./screens/ConnectingScreen";
@@ -28,11 +29,13 @@ export type AppFlowOpts = {
     loadingDurationMs?: number;
     createLiveViewer?: (mountEl: HTMLElement) => ViewerHandle | Promise<ViewerHandle>;
     caseLaunchClient?: CaseLaunchClient;
+    launchSessionStore?: LaunchSessionStore;
 };
 
 export type AppFlowHandle = {
     getState: () => AppState;
-    getLaunchMetadata: () => CaseLaunchMetadata | null;
+    getLaunchSession: () => LaunchSessionInfo | null;
+    getLaunchMetadata: () => LaunchSessionInfo | null;
     getLaunchFailure: () => LaunchFailureRecord | null;
     transition: (next: AppState) => void;
     destroy: () => void;
@@ -55,7 +58,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     opts.mountEl.appendChild(root);
 
     const stateStore = new AppStateStore({ kind: "BOOT" });
-    const launchSessionStore = new LaunchSessionStore();
+    const launchSessionStore = opts.launchSessionStore ?? getSharedLaunchSessionStore();
     let viewer: ViewerHandle | null = null;
     let bootModulePromise: Promise<typeof import("./boot")> | null = null;
     let mountRevision = 0;
@@ -175,7 +178,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 );
                 break;
             case "CONNECTING":
-                if (state.phase !== "CASE_LAUNCH" && !launchSessionStore.getLatestMetadata()) {
+                if (state.phase !== "CASE_LAUNCH" && !launchSessionStore.getLatestSession()) {
                     stateStore.transition({
                         kind: "ERROR",
                         code: "UNEXPECTED_STATE",
@@ -233,7 +236,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             const metadata = await caseLaunchClient.startCase(launchRequest, { signal });
 
             if (destroyed || attemptRevision !== launchRevision) return;
-            launchSessionStore.markSuccess(metadata);
+            launchSessionStore.markSuccessFromMetadata(metadata);
 
             const current = stateStore.getState();
             if (current.kind === "CONNECTING" && current.caseId === caseId) {
@@ -311,7 +314,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
     return {
         getState: () => stateStore.getState(),
-        getLaunchMetadata: () => launchSessionStore.getLatestMetadata(),
+        getLaunchSession: () => launchSessionStore.getLatestSession(),
+        getLaunchMetadata: () => launchSessionStore.getLatestSession(),
         getLaunchFailure: () => launchSessionStore.getLatestFailure(),
         transition: (next) => stateStore.transition(next),
         destroy: () => {
