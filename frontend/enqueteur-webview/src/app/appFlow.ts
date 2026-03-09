@@ -29,6 +29,9 @@ import {
     EnqueteurLiveClient,
     type EnqueteurChannel,
     type EnqueteurInboundEnvelopeByType,
+    type FrameDiffPayload,
+    type FullSnapshotPayload,
+    type KernelHelloPayload,
     type EnqueteurLiveClientLike,
     type EnqueteurLiveProtocolErrorCode,
     type SubscribePayload,
@@ -106,6 +109,10 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     let liveConnectionRevision = 0;
     let liveClient: EnqueteurLiveClientLike | null = null;
     let liveClientUnsubscribers: Array<() => void> = [];
+    let liveKernelHello: KernelHelloPayload | null = null;
+    let liveBaselineSnapshot: FullSnapshotPayload | null = null;
+    let livePendingDiffs: FrameDiffPayload[] = [];
+    let liveBaselineIngestedByViewer = false;
 
     const caseLaunchClient = opts.caseLaunchClient ?? createCaseLaunchClient();
     const createLiveClient = opts.createLiveClient ?? ((session: LaunchSessionInfo) => (
@@ -118,20 +125,24 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     ));
 
     const stopLiveConnection = (): void => {
-        if (!liveClient && liveClientUnsubscribers.length === 0) return;
+        if (liveClient || liveClientUnsubscribers.length > 0) {
+            liveConnectionRevision += 1;
+            const clientToDisconnect = liveClient;
+            liveClient = null;
 
-        liveConnectionRevision += 1;
-        const clientToDisconnect = liveClient;
-        liveClient = null;
+            for (const unsubscribe of liveClientUnsubscribers) unsubscribe();
+            liveClientUnsubscribers = [];
 
-        for (const unsubscribe of liveClientUnsubscribers) unsubscribe();
-        liveClientUnsubscribers = [];
-
-        try {
-            clientToDisconnect?.disconnect();
-        } catch {
-            // ignore close failures during teardown
+            try {
+                clientToDisconnect?.disconnect();
+            } catch {
+                // ignore close failures during teardown
+            }
         }
+        liveKernelHello = null;
+        liveBaselineSnapshot = null;
+        livePendingDiffs = [];
+        liveBaselineIngestedByViewer = false;
     };
 
     const cancelPendingLaunch = (): void => {
@@ -201,6 +212,24 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             autoStart: false,
         });
     });
+
+    const syncLiveStateToViewer = (): void => {
+        if (!viewer) return;
+        if (liveKernelHello) {
+            viewer.ingestLiveKernelHello?.(liveKernelHello);
+        }
+        if (!liveBaselineSnapshot) return;
+        if (!liveBaselineIngestedByViewer) {
+            viewer.ingestLiveSnapshot?.(liveBaselineSnapshot);
+            liveBaselineIngestedByViewer = true;
+        }
+        if (livePendingDiffs.length > 0) {
+            for (const diff of livePendingDiffs) {
+                viewer.ingestLiveFrameDiff?.(diff);
+            }
+            livePendingDiffs = [];
+        }
+    };
 
     const render = (state: AppState): void => {
         preGameLayer.innerHTML = "";
@@ -482,6 +511,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 return;
             }
             didValidateKernelHello = true;
+            liveKernelHello = envelope.payload;
+            syncLiveStateToViewer();
 
             const didSendSubscribe = client.sendSubscribe(LIVE_SUBSCRIBE_REQUEST);
             if (didSendSubscribe) return;
@@ -533,6 +564,10 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 failLiveConnection(ingestionError);
                 return;
             }
+            liveBaselineSnapshot = envelope.payload;
+            livePendingDiffs = [];
+            liveBaselineIngestedByViewer = false;
+            syncLiveStateToViewer();
 
             const current = stateStore.getState();
             if (current.kind !== "CONNECTING" || current.caseId !== caseId) {
@@ -547,19 +582,29 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 caseId,
             });
         });
-        subscribeToMessage("FRAME_DIFF", () => {
-            failLiveConnection({
-                reason: "BAD_SEQUENCE",
-                message: "FRAME_DIFF arrived before baseline handoff completed.",
-            });
+        subscribeToMessage("FRAME_DIFF", (envelope) => {
+            if (!didValidateSubscribed || !liveBaselineSnapshot) {
+                failLiveConnection({
+                    reason: "BAD_SEQUENCE",
+                    message: "FRAME_DIFF arrived before baseline handoff completed.",
+                });
+                return;
+            }
+            if (liveBaselineIngestedByViewer && viewer?.ingestLiveFrameDiff) {
+                viewer.ingestLiveFrameDiff(envelope.payload);
+                return;
+            }
+            livePendingDiffs.push(envelope.payload);
         });
         subscribeToMessage("COMMAND_ACCEPTED", () => {
+            if (liveBaselineSnapshot) return;
             failLiveConnection({
                 reason: "BAD_SEQUENCE",
                 message: "COMMAND_ACCEPTED is not valid during live startup handshake.",
             });
         });
         subscribeToMessage("COMMAND_REJECTED", () => {
+            if (liveBaselineSnapshot) return;
             failLiveConnection({
                 reason: "BAD_SEQUENCE",
                 message: "COMMAND_REJECTED is not valid during live startup handshake.",
@@ -589,6 +634,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
         if (viewer) {
             viewer.setVisible(true);
+            syncLiveStateToViewer();
             return;
         }
 
@@ -605,6 +651,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
                 viewer = nextViewer;
                 viewer.setVisible(stateStore.getState().kind === "LIVE_GAME");
+                syncLiveStateToViewer();
             } catch (err: unknown) {
                 if (destroyed) return;
                 if (activeRevision !== mountRevision) return;

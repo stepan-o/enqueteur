@@ -363,7 +363,7 @@ export type KernelHello = {
     schema_version: string;
     world_id: string;
     run_id: string;
-    seed: number;
+    seed: string | number;
     tick_rate_hz: number;
     time_origin_ms?: number;
 };
@@ -374,7 +374,7 @@ export type RunAnchors = {
     schema_version: string;
     world_id: string;
     run_id: string;
-    seed: number;
+    seed: string | number;
     tick_rate_hz: number;
     time_origin_ms: number;
 };

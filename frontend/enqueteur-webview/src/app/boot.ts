@@ -17,6 +17,17 @@ import { injectMockSnapshot } from "../debug/mockKernel";
 import { createFrontendActionBridge } from "./actionBridge";
 import { ViewerPluginRegistry } from "../viewers/core/viewerPlugin";
 import { createSim4ViewerPlugin } from "../viewers/sim4/sim4Plugin";
+import type {
+    FrameDiffPayload as EnqueteurFrameDiffPayload,
+    FullSnapshotPayload as EnqueteurFullSnapshotPayload,
+    KernelHelloPayload as EnqueteurKernelHelloPayload,
+} from "./live/enqueteurLiveClient";
+import {
+    convertLiveFrameDiff,
+    convertLiveFullSnapshot,
+    convertLiveKernelHello,
+    convertLiveRunAnchors,
+} from "./live/liveStateBridge";
 
 export type BootMode = "live" | "offline";
 
@@ -31,6 +42,9 @@ export type BootOpts = {
 export type ViewerHandle = {
     startOffline: (baseUrl?: string, speed?: number) => Promise<void>;
     startLive: (wsUrl?: string) => void;
+    ingestLiveKernelHello?: (payload: EnqueteurKernelHelloPayload) => void;
+    ingestLiveSnapshot?: (payload: EnqueteurFullSnapshotPayload) => void;
+    ingestLiveFrameDiff?: (payload: EnqueteurFrameDiffPayload) => void;
     stop: () => void;
     setVisible: (visible: boolean) => void;
     setDevControlsVisible: (visible: boolean) => void;
@@ -272,6 +286,30 @@ export function boot(opts: BootOpts): ViewerHandle {
         applyViewerUiVisibility();
     };
 
+    const ingestLiveKernelHello = (payload: EnqueteurKernelHelloPayload): void => {
+        store.setMode("live");
+        store.setConnected(true);
+        store.clearDesync();
+        store.setKernelHello(convertLiveKernelHello(payload));
+        store.setRunAnchors(convertLiveRunAnchors(payload));
+        if (payload.render_spec && typeof payload.render_spec === "object") {
+            store.setRenderSpec(payload.render_spec);
+        }
+    };
+
+    const ingestLiveSnapshot = (payload: EnqueteurFullSnapshotPayload): void => {
+        store.setMode("live");
+        store.setConnected(true);
+        store.clearDesync();
+        store.applySnapshot(convertLiveFullSnapshot(payload));
+    };
+
+    const ingestLiveFrameDiff = (payload: EnqueteurFrameDiffPayload): void => {
+        store.setMode("live");
+        store.setConnected(true);
+        store.applyDiff(convertLiveFrameDiff(payload, store.getState()));
+    };
+
     if (autoStart) {
         if (mode === "offline") {
             void startOffline(offlineBaseUrl, offlineSpeed);
@@ -283,6 +321,9 @@ export function boot(opts: BootOpts): ViewerHandle {
     return {
         startOffline,
         startLive,
+        ingestLiveKernelHello,
+        ingestLiveSnapshot,
+        ingestLiveFrameDiff,
         stop,
         setVisible,
         setDevControlsVisible,

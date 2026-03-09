@@ -11,6 +11,7 @@ import type {
     EnqueteurLiveClientLike,
     EnqueteurLiveProtocolError,
 } from "../app/live/enqueteurLiveClient";
+import type { ViewerHandle } from "../app/boot";
 
 function makeMountEl(): HTMLElement {
     const mountEl = document.createElement("div");
@@ -50,6 +51,9 @@ function makeFakeViewer() {
     return {
         startOffline: vi.fn(async () => {}),
         startLive: vi.fn(() => {}),
+        ingestLiveKernelHello: vi.fn((_payload: unknown) => {}),
+        ingestLiveSnapshot: vi.fn((_payload: unknown) => {}),
+        ingestLiveFrameDiff: vi.fn((_payload: unknown) => {}),
         stop: vi.fn(() => {}),
         setVisible: vi.fn((_visible: boolean) => {}),
         setDevControlsVisible: vi.fn((_visible: boolean) => {}),
@@ -249,6 +253,18 @@ describe("Phase F2 live connect app flow", () => {
             caseId: "MBAM_01",
         });
         expect(createLiveViewer).toHaveBeenCalledTimes(1);
+        expect(fakeViewer.ingestLiveKernelHello).toHaveBeenCalledTimes(1);
+        expect(fakeViewer.ingestLiveSnapshot).toHaveBeenCalledTimes(1);
+
+        scriptedLiveClient.emitMessage("FRAME_DIFF", {
+            schema_version: "enqueteur_mbam_1",
+            from_tick: 0,
+            to_tick: 1,
+            prev_step_hash: "hash-0",
+            step_hash: "hash-1",
+            ops: [],
+        });
+        expect(fakeViewer.ingestLiveFrameDiff).toHaveBeenCalledTimes(1);
 
         flow.destroy();
     });
@@ -382,6 +398,82 @@ describe("Phase F2 live connect app flow", () => {
             code: "STARTUP_INCOMPATIBILITY",
             message: "FRAME_DIFF arrived before baseline handoff completed.",
             recoverTo: "MAIN_MENU",
+        });
+
+        flow.destroy();
+    });
+
+    it("buffers FRAME_DIFF until LIVE_GAME viewer mount is ready", async () => {
+        const startCase = vi.fn(async () => makeLaunchMetadata());
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const scriptedLiveClient = new ScriptedLiveClient();
+        const createLiveClient = vi.fn(() => scriptedLiveClient);
+        const fakeViewer = makeFakeViewer();
+        let resolveViewer: (value: ViewerHandle) => void = () => {};
+        const createLiveViewer: NonNullable<AppFlowOpts["createLiveViewer"]> = vi.fn(
+            () =>
+                new Promise<ViewerHandle>((resolve) => {
+                    resolveViewer = resolve;
+                })
+        );
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+            createLiveClient,
+            createLiveViewer,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CASE_SELECT" });
+        clickFirstCaseCard();
+        await flushAsyncWork();
+
+        scriptedLiveClient.emitOpen();
+        scriptedLiveClient.emitMessage("KERNEL_HELLO", {
+            engine_name: "enqueteur",
+            engine_version: "0.1.0",
+            schema_version: "enqueteur_mbam_1",
+            world_id: "world-123",
+            run_id: "run-123",
+            seed: "A",
+            tick_rate_hz: 30,
+            time_origin_ms: 0,
+            render_spec: {},
+        });
+        scriptedLiveClient.emitMessage("SUBSCRIBED", {
+            stream_id: "stream-123",
+            effective_stream: "LIVE",
+            effective_channels: ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+            effective_diff_policy: "DIFF_ONLY",
+            effective_snapshot_policy: "ON_JOIN",
+            effective_compression: "NONE",
+        });
+        scriptedLiveClient.emitMessage("FULL_SNAPSHOT", {
+            schema_version: "enqueteur_mbam_1",
+            tick: 0,
+            step_hash: "hash-0",
+            state: { world: {} },
+        });
+        scriptedLiveClient.emitMessage("FRAME_DIFF", {
+            schema_version: "enqueteur_mbam_1",
+            from_tick: 0,
+            to_tick: 1,
+            prev_step_hash: "hash-0",
+            step_hash: "hash-1",
+            ops: [],
+        });
+
+        expect(fakeViewer.ingestLiveSnapshot).toHaveBeenCalledTimes(0);
+        expect(fakeViewer.ingestLiveFrameDiff).toHaveBeenCalledTimes(0);
+
+        resolveViewer(fakeViewer);
+        await flushAsyncWork();
+
+        expect(fakeViewer.ingestLiveSnapshot).toHaveBeenCalledTimes(1);
+        expect(fakeViewer.ingestLiveFrameDiff).toHaveBeenCalledTimes(1);
+        expect(flow.getState()).toEqual({
+            kind: "LIVE_GAME",
+            caseId: "MBAM_01",
         });
 
         flow.destroy();
