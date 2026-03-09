@@ -5,7 +5,9 @@ import {
     type AppState,
     type EnqueteurCaseId,
 } from "./appState";
+import { PRE_GAME_CASES } from "./cases/caseCatalog";
 import { renderLoadingScreen } from "./screens/LoadingScreen";
+import { renderCaseSelectScreen } from "./screens/CaseSelectScreen";
 import { renderMainMenuScreen } from "./screens/MainMenuScreen";
 
 export type AppFlowOpts = {
@@ -66,7 +68,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 break;
             case "CASE_SELECT":
                 preGameLayer.appendChild(
-                    renderCaseSelect({
+                    renderCaseSelectScreen({
+                        cases: PRE_GAME_CASES,
                         onBack: () => stateStore.transition({ kind: "MAIN_MENU" }),
                         onPickCase: (caseId) => stateStore.transition({ kind: "CONNECTING", caseId }),
                     })
@@ -158,36 +161,6 @@ function renderScreen(title: string, body: string, children: HTMLElement[] = [])
     section.appendChild(titleEl);
     section.appendChild(bodyEl);
     for (const child of children) section.appendChild(child);
-
-    return section;
-}
-
-function renderCaseSelect(opts: {
-    onBack: () => void;
-    onPickCase: (caseId: EnqueteurCaseId) => void;
-}): HTMLElement {
-    const section = renderScreen(
-        "Case Selection",
-        "Select the case to launch when live session startup becomes available."
-    );
-
-    const caseGrid = document.createElement("div");
-    caseGrid.className = "flow-case-grid";
-
-    const mbamCard = document.createElement("button");
-    mbamCard.type = "button";
-    mbamCard.className = "flow-case-card";
-    mbamCard.innerHTML = "<span class=\"flow-case-title\">MBAM_01</span><span class=\"flow-case-sub\">Le Petit Vol du Musee</span>";
-    mbamCard.addEventListener("click", () => opts.onPickCase("MBAM_01"));
-
-    caseGrid.appendChild(mbamCard);
-
-    const actions = document.createElement("div");
-    actions.className = "flow-actions";
-    actions.appendChild(makeActionButton("Back", opts.onBack));
-
-    section.appendChild(caseGrid);
-    section.appendChild(actions);
 
     return section;
 }
