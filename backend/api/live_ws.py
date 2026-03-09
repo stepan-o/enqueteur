@@ -39,6 +39,12 @@ from .cases_start import (
     extract_run_id_from_connection_target,
     get_default_case_run_registry,
 )
+from .live_commands import (
+    CommandDispatchResult,
+    InputCommandValidationError,
+    ParsedInputCommand,
+    parse_enqueteur_input_command,
+)
 
 ENQUETEUR_LIVE_WS_PATH = "/live"
 RUN_NOT_FOUND_WS_CLOSE_CODE = 4404
@@ -188,6 +194,13 @@ class EnqueteurLiveSessionHost:
         self._run_registry = run_registry if run_registry is not None else get_default_case_run_registry()
         self._sessions: dict[str, EnqueteurLiveSession] = {}
         self._closed_sessions: dict[str, EnqueteurLiveSession] = {}
+        self._input_command_handlers = {
+            "INVESTIGATE_OBJECT": self._dispatch_investigate_object,
+            "DIALOGUE_TURN": self._dispatch_dialogue_turn,
+            "MINIGAME_SUBMIT": self._dispatch_minigame_submit,
+            "ATTEMPT_RECOVERY": self._dispatch_attempt_recovery,
+            "ATTEMPT_ACCUSATION": self._dispatch_attempt_accusation,
+        }
 
     def attach_connection(self, *, connection_target: str) -> EnqueteurLiveSession:
         record = self._run_registry.resolve_connection_target(connection_target)
@@ -351,6 +364,24 @@ class EnqueteurLiveSessionHost:
     def can_deliver_state(self, connection_id: str) -> bool:
         session = self._require_session(connection_id)
         return session.protocol_state == "SUBSCRIBED" and session.phase == "SUBSCRIBED"
+
+    def dispatch_input_command(
+        self,
+        connection_id: str,
+        command: ParsedInputCommand,
+    ) -> CommandDispatchResult:
+        """Route a validated INPUT_COMMAND to the Enqueteur command handler skeleton."""
+
+        session = self._require_session(connection_id)
+        started_run = self._require_started_run(session)
+        handler = self._input_command_handlers.get(command.cmd_type)
+        if handler is None:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message=f"Unsupported command type '{command.cmd_type}'.",
+            )
+        return handler(started_run=started_run, session=session, command=command)
 
     def can_stream_frame_diff(self, connection_id: str) -> bool:
         session = self._require_session(connection_id)
@@ -602,6 +633,71 @@ class EnqueteurLiveSessionHost:
 
         return state
 
+    def _dispatch_investigate_object(
+        self,
+        *,
+        started_run: StartedCaseRun,  # noqa: ARG002
+        session: EnqueteurLiveSession,  # noqa: ARG002
+        command: ParsedInputCommand,
+    ) -> CommandDispatchResult:
+        return CommandDispatchResult.rejected_result(
+            client_cmd_id=command.client_cmd_id,
+            reason_code="RUNTIME_NOT_READY",
+            message="INVESTIGATE_OBJECT execution is not enabled yet.",
+        )
+
+    def _dispatch_dialogue_turn(
+        self,
+        *,
+        started_run: StartedCaseRun,  # noqa: ARG002
+        session: EnqueteurLiveSession,  # noqa: ARG002
+        command: ParsedInputCommand,
+    ) -> CommandDispatchResult:
+        return CommandDispatchResult.rejected_result(
+            client_cmd_id=command.client_cmd_id,
+            reason_code="RUNTIME_NOT_READY",
+            message="DIALOGUE_TURN execution is not enabled yet.",
+        )
+
+    def _dispatch_minigame_submit(
+        self,
+        *,
+        started_run: StartedCaseRun,  # noqa: ARG002
+        session: EnqueteurLiveSession,  # noqa: ARG002
+        command: ParsedInputCommand,
+    ) -> CommandDispatchResult:
+        return CommandDispatchResult.rejected_result(
+            client_cmd_id=command.client_cmd_id,
+            reason_code="RUNTIME_NOT_READY",
+            message="MINIGAME_SUBMIT execution is not enabled yet.",
+        )
+
+    def _dispatch_attempt_recovery(
+        self,
+        *,
+        started_run: StartedCaseRun,  # noqa: ARG002
+        session: EnqueteurLiveSession,  # noqa: ARG002
+        command: ParsedInputCommand,
+    ) -> CommandDispatchResult:
+        return CommandDispatchResult.rejected_result(
+            client_cmd_id=command.client_cmd_id,
+            reason_code="RUNTIME_NOT_READY",
+            message="ATTEMPT_RECOVERY execution is not enabled yet.",
+        )
+
+    def _dispatch_attempt_accusation(
+        self,
+        *,
+        started_run: StartedCaseRun,  # noqa: ARG002
+        session: EnqueteurLiveSession,  # noqa: ARG002
+        command: ParsedInputCommand,
+    ) -> CommandDispatchResult:
+        return CommandDispatchResult.rejected_result(
+            client_cmd_id=command.client_cmd_id,
+            reason_code="RUNTIME_NOT_READY",
+            message="ATTEMPT_ACCUSATION execution is not enabled yet.",
+        )
+
 
 _DEFAULT_ENQUETEUR_LIVE_SESSION_HOST = EnqueteurLiveSessionHost()
 
@@ -728,15 +824,23 @@ async def handle_enqueteur_live_incoming_message(
                     fatal=True,
                 )
 
-            client_cmd_id = _require_client_cmd_id(payload)
-            _validate_input_command_payload_shape(payload)
+            command = parse_enqueteur_input_command(payload)
+            result = session_host.dispatch_input_command(session.connection_id, command)
+            if result.accepted:
+                await _send_envelope(
+                    websocket,
+                    msg_type="COMMAND_ACCEPTED",
+                    payload={"client_cmd_id": result.client_cmd_id},
+                )
+                return
+
             await _send_envelope(
                 websocket,
                 msg_type="COMMAND_REJECTED",
                 payload={
-                    "client_cmd_id": client_cmd_id,
-                    "reason_code": "RUNTIME_NOT_READY",
-                    "message": "Command execution is not available until Phase E is enabled.",
+                    "client_cmd_id": result.client_cmd_id,
+                    "reason_code": str(result.reason_code),
+                    "message": str(result.message),
                 },
             )
             return
@@ -755,6 +859,16 @@ async def handle_enqueteur_live_incoming_message(
         )
         return
 
+    except InputCommandValidationError as exc:
+        await _send_envelope(
+            websocket,
+            msg_type="COMMAND_REJECTED",
+            payload={
+                "client_cmd_id": exc.client_cmd_id,
+                "reason_code": exc.reason_code,
+                "message": exc.message,
+            },
+        )
     except ProtocolViolationError as exc:
         await _send_error(websocket, code=exc.code, message=exc.message, fatal=exc.fatal)
         if exc.fatal:
@@ -976,57 +1090,6 @@ def _require_string_list(
     if non_empty and not out:
         raise ProtocolViolationError(code=code, message=f"{field} must be non-empty.", fatal=True)
     return out
-
-
-def _require_client_cmd_id(payload: dict[str, Any]) -> str:
-    client_cmd_id = payload.get("client_cmd_id")
-    if not isinstance(client_cmd_id, str) or not client_cmd_id.strip():
-        raise ProtocolViolationError(
-            code="INVALID_INPUT_COMMAND",
-            message="INPUT_COMMAND.client_cmd_id must be a non-empty UUID string.",
-            fatal=False,
-        )
-    try:
-        uuid.UUID(client_cmd_id.strip())
-    except ValueError as exc:
-        raise ProtocolViolationError(
-            code="INVALID_INPUT_COMMAND",
-            message="INPUT_COMMAND.client_cmd_id must be a valid UUID string.",
-            fatal=False,
-        ) from exc
-    return client_cmd_id.strip()
-
-
-def _validate_input_command_payload_shape(payload: dict[str, Any]) -> None:
-    tick_target = payload.get("tick_target")
-    if not isinstance(tick_target, int) or tick_target < 0:
-        raise ProtocolViolationError(
-            code="INVALID_INPUT_COMMAND",
-            message="INPUT_COMMAND.tick_target must be a non-negative integer.",
-            fatal=False,
-        )
-
-    cmd = payload.get("cmd")
-    if not isinstance(cmd, dict):
-        raise ProtocolViolationError(
-            code="INVALID_INPUT_COMMAND",
-            message="INPUT_COMMAND.cmd must be an object.",
-            fatal=False,
-        )
-    cmd_type = cmd.get("type")
-    if not isinstance(cmd_type, str) or not cmd_type.strip():
-        raise ProtocolViolationError(
-            code="INVALID_INPUT_COMMAND",
-            message="INPUT_COMMAND.cmd.type must be a non-empty string.",
-            fatal=False,
-        )
-    cmd_payload = cmd.get("payload")
-    if not isinstance(cmd_payload, dict):
-        raise ProtocolViolationError(
-            code="INVALID_INPUT_COMMAND",
-            message="INPUT_COMMAND.cmd.payload must be an object.",
-            fatal=False,
-        )
 
 
 def _index_by_id(rows: list[dict[str, Any]], id_field: str) -> dict[Any, dict[str, Any]]:

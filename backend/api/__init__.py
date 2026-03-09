@@ -9,6 +9,14 @@ from .cases_start import (
     CaseStartService,
     StartCaseMode,
 )
+from .live_commands import (
+    ENQUETEUR_INPUT_COMMAND_TYPES,
+    CommandDispatchResult,
+    EnqueteurCommandType,
+    InputCommandValidationError,
+    ParsedInputCommand,
+    parse_enqueteur_input_command,
+)
 from .live_ws import (
     ENQUETEUR_ALLOWED_CHANNELS,
     ENQUETEUR_LIVE_WS_PATH,
@@ -37,6 +45,7 @@ __all__ = [
     "ApiRequest",
     "ApiResponse",
     "CASE_START_PATH",
+    "ENQUETEUR_INPUT_COMMAND_TYPES",
     "ENQUETEUR_ALLOWED_CHANNELS",
     "ENQUETEUR_LIVE_WS_PATH",
     "ENQUETEUR_ENGINE_NAME",
@@ -50,10 +59,14 @@ __all__ = [
     "CaseStartRequest",
     "CaseStartResponse",
     "CaseStartService",
+    "CommandDispatchResult",
     "EnqueteurLiveSession",
     "EnqueteurLiveSessionHost",
+    "EnqueteurCommandType",
     "EnqueteurSubscribedConfig",
     "EnqueteurViewerHello",
+    "InputCommandValidationError",
+    "ParsedInputCommand",
     "ProtocolViolationError",
     "RunLookupError",
     "StartCaseMode",
@@ -62,6 +75,7 @@ __all__ = [
     "handle_enqueteur_live_disconnect",
     "handle_enqueteur_live_incoming_message",
     "open_enqueteur_live_websocket",
+    "parse_enqueteur_input_command",
     "stream_enqueteur_frame_diff_loop",
     "stream_enqueteur_frame_diff_once",
 ]
