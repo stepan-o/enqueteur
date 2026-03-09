@@ -1,6 +1,7 @@
 import {
     AppStateStore,
     type AppErrorCode,
+    type ConnectingPhase,
     type AppRecoverTarget,
     beginBootFlow,
     type AppState,
@@ -24,6 +25,12 @@ import { renderCaseSelectScreen } from "./screens/CaseSelectScreen";
 import { renderConnectingScreen } from "./screens/ConnectingScreen";
 import { renderErrorScreen } from "./screens/ErrorScreen";
 import { renderMainMenuScreen } from "./screens/MainMenuScreen";
+import {
+    EnqueteurLiveClient,
+    type EnqueteurInboundEnvelopeByType,
+    type EnqueteurLiveClientLike,
+    type EnqueteurLiveProtocolErrorCode,
+} from "./live/enqueteurLiveClient";
 
 export type AppFlowOpts = {
     mountEl: HTMLElement;
@@ -31,6 +38,7 @@ export type AppFlowOpts = {
     createLiveViewer?: (mountEl: HTMLElement) => ViewerHandle | Promise<ViewerHandle>;
     caseLaunchClient?: CaseLaunchClient;
     launchSessionStore?: LaunchSessionStore;
+    createLiveClient?: (session: LaunchSessionInfo) => EnqueteurLiveClientLike;
 };
 
 export type AppFlowHandle = {
@@ -43,6 +51,18 @@ export type AppFlowHandle = {
 };
 
 type ViewerHandle = import("./boot").ViewerHandle;
+type LiveConnectionFailureReason =
+    | EnqueteurLiveProtocolErrorCode
+    | "TRANSPORT_ERROR"
+    | "SOCKET_CLOSED"
+    | "SUBSCRIBE_SEND_FAILED"
+    | "CONNECT_THROW"
+    | string;
+
+type LiveConnectionFailure = {
+    reason: LiveConnectionFailureReason;
+    message: string;
+};
 
 export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     const root = document.createElement("div");
@@ -66,8 +86,36 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     let destroyed = false;
     let launchRevision = 0;
     let pendingLaunchAbortController: AbortController | null = null;
+    let liveConnectionRevision = 0;
+    let liveClient: EnqueteurLiveClientLike | null = null;
+    let liveClientUnsubscribers: Array<() => void> = [];
 
     const caseLaunchClient = opts.caseLaunchClient ?? createCaseLaunchClient();
+    const createLiveClient = opts.createLiveClient ?? ((session: LaunchSessionInfo) => (
+        new EnqueteurLiveClient({
+            url: session.wsUrl,
+            expectedEngineName: session.engineName,
+            expectedSchemaVersion: session.schemaVersion,
+            supportedSchemaVersions: [session.schemaVersion],
+        })
+    ));
+
+    const stopLiveConnection = (): void => {
+        if (!liveClient && liveClientUnsubscribers.length === 0) return;
+
+        liveConnectionRevision += 1;
+        const clientToDisconnect = liveClient;
+        liveClient = null;
+
+        for (const unsubscribe of liveClientUnsubscribers) unsubscribe();
+        liveClientUnsubscribers = [];
+
+        try {
+            clientToDisconnect?.disconnect();
+        } catch {
+            // ignore close failures during teardown
+        }
+    };
 
     const cancelPendingLaunch = (): void => {
         launchRevision += 1;
@@ -75,6 +123,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             pendingLaunchAbortController.abort();
             pendingLaunchAbortController = null;
         }
+        stopLiveConnection();
     };
 
     const resetLaunchProgress = (): void => {
@@ -241,11 +290,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
             const current = stateStore.getState();
             if (current.kind === "CONNECTING" && current.caseId === caseId) {
-                stateStore.transition({
-                    kind: "CONNECTING",
-                    caseId,
-                    phase: "SESSION_STARTUP",
-                });
+                transitionConnectingPhase(caseId, "SESSION_STARTUP");
+                beginLiveConnection(caseId, attemptRevision, launchSessionStore.getLatestSession());
             }
         } catch (err: unknown) {
             if (destroyed || attemptRevision !== launchRevision) return;
@@ -271,6 +317,154 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             if (attemptRevision === launchRevision) {
                 pendingLaunchAbortController = null;
             }
+        }
+    };
+
+    const transitionConnectingPhase = (
+        caseId: EnqueteurCaseId,
+        phase: ConnectingPhase
+    ): void => {
+        const current = stateStore.getState();
+        if (current.kind !== "CONNECTING" || current.caseId !== caseId) return;
+        if (current.phase === phase) return;
+
+        stateStore.transition({
+            kind: "CONNECTING",
+            caseId,
+            phase,
+        });
+    };
+
+    const beginLiveConnection = (
+        caseId: EnqueteurCaseId,
+        attemptRevision: number,
+        sessionInfo: LaunchSessionInfo | null
+    ): void => {
+        if (!sessionInfo) {
+            stateStore.transition({
+                kind: "ERROR",
+                code: "UNEXPECTED_STATE",
+                message: "Launch metadata is missing; return to case selection and relaunch.",
+                recoverTo: "CASE_SELECT",
+            });
+            return;
+        }
+
+        stopLiveConnection();
+        const connectionRevision = ++liveConnectionRevision;
+        let client: EnqueteurLiveClientLike;
+        try {
+            client = createLiveClient(sessionInfo);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            stateStore.transition({
+                kind: "ERROR",
+                code: "STARTUP_INCOMPATIBILITY",
+                message: `Live client startup failed: ${message}`,
+                recoverTo: "MAIN_MENU",
+            });
+            return;
+        }
+        liveClient = client;
+
+        const isCurrentAttempt = (): boolean =>
+            !destroyed &&
+            attemptRevision === launchRevision &&
+            connectionRevision === liveConnectionRevision &&
+            liveClient === client;
+
+        const failLiveConnection = (
+            details: LiveConnectionFailure
+        ): void => {
+            if (!isCurrentAttempt()) return;
+            stopLiveConnection();
+
+            const classification = classifyLiveConnectionFailure(details);
+            stateStore.transition({
+                kind: "ERROR",
+                code: classification.code,
+                message: details.message,
+                recoverTo: classification.recoverTo,
+            });
+        };
+
+        const subscribeToMessage = <T extends keyof EnqueteurInboundEnvelopeByType>(
+            msgType: T,
+            handler: (envelope: EnqueteurInboundEnvelopeByType[T]) => void
+        ): void => {
+            liveClientUnsubscribers.push(
+                client.onMessage(msgType, (envelope) => {
+                    if (!isCurrentAttempt()) return;
+                    handler(envelope);
+                })
+            );
+        };
+
+        liveClientUnsubscribers.push(
+            client.onOpen(() => {
+                if (!isCurrentAttempt()) return;
+                transitionConnectingPhase(caseId, "HANDSHAKING");
+            })
+        );
+        liveClientUnsubscribers.push(
+            client.onClose((event) => {
+                if (!isCurrentAttempt()) return;
+                if (stateStore.getState().kind !== "CONNECTING") return;
+                failLiveConnection({
+                    reason: "SOCKET_CLOSED",
+                    message: describeLiveSocketClose(event),
+                });
+            })
+        );
+        liveClientUnsubscribers.push(
+            client.onTransportError(() => {
+                if (!isCurrentAttempt()) return;
+                failLiveConnection({
+                    reason: "TRANSPORT_ERROR",
+                    message: "Live socket transport failed before baseline was ready.",
+                });
+            })
+        );
+        liveClientUnsubscribers.push(
+            client.onProtocolError((error) => {
+                if (!isCurrentAttempt()) return;
+                failLiveConnection({
+                    reason: error.code,
+                    message: `Live protocol error (${error.code}): ${error.message}`,
+                });
+            })
+        );
+
+        subscribeToMessage("KERNEL_HELLO", () => {
+            const didSendSubscribe = client.sendSubscribe();
+            if (didSendSubscribe) return;
+            failLiveConnection({
+                reason: "SUBSCRIBE_SEND_FAILED",
+                message: "Live session opened but SUBSCRIBE could not be sent over the WebSocket.",
+            });
+        });
+        subscribeToMessage("SUBSCRIBED", () => {
+            transitionConnectingPhase(caseId, "WAITING_FOR_BASELINE");
+        });
+        subscribeToMessage("FULL_SNAPSHOT", () => {
+            transitionConnectingPhase(caseId, "SESSION_READY");
+        });
+        subscribeToMessage("ERROR", (envelope) => {
+            failLiveConnection({
+                reason: envelope.payload.code,
+                message: `Live kernel error (${envelope.payload.code}): ${envelope.payload.message}`,
+            });
+        });
+
+        transitionConnectingPhase(caseId, "SESSION_STARTUP");
+        try {
+            client.connect();
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            failLiveConnection({
+                reason: "CONNECT_THROW",
+                message: `Live WebSocket connect failed before handshake: ${message}`,
+            });
         }
     };
 
@@ -402,4 +596,33 @@ function classifyCaseLaunchFailure(details: {
         code: "LAUNCH_FAILURE",
         recoverTo: "CASE_SELECT",
     };
+}
+
+function classifyLiveConnectionFailure(details: LiveConnectionFailure): {
+    code: AppErrorCode;
+    recoverTo: AppRecoverTarget;
+} {
+    if (
+        details.reason === "UNEXPECTED_KERNEL_IDENTITY" ||
+        details.reason === "UNSUPPORTED_KVP_VERSION" ||
+        details.reason === "INVALID_PAYLOAD" ||
+        details.reason === "SCHEMA_MISMATCH"
+    ) {
+        return {
+            code: "STARTUP_INCOMPATIBILITY",
+            recoverTo: "MAIN_MENU",
+        };
+    }
+    return {
+        code: "CONNECTION_FAILURE",
+        recoverTo: "CASE_SELECT",
+    };
+}
+
+function describeLiveSocketClose(event: CloseEvent): string {
+    const closeCode = Number.isInteger(event.code) ? String(event.code) : "unknown";
+    const reason = typeof event.reason === "string" && event.reason.length > 0
+        ? event.reason
+        : "no reason provided";
+    return `Live socket closed before baseline was ready (code ${closeCode}, reason: ${reason}).`;
 }

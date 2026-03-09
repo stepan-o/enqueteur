@@ -6,6 +6,7 @@ import {
     type CaseLaunchClient,
     type CaseLaunchMetadata,
 } from "../app/api/caseLaunchClient";
+import type { EnqueteurLiveClientLike } from "../app/live/enqueteurLiveClient";
 
 function makeMountEl(): HTMLElement {
     const mountEl = document.createElement("div");
@@ -41,6 +42,32 @@ function clickFirstCaseCard(): void {
     card.click();
 }
 
+function makeIdleLiveClient(): EnqueteurLiveClientLike & {
+    connect: ReturnType<typeof vi.fn>;
+    disconnect: ReturnType<typeof vi.fn>;
+    sendSubscribe: ReturnType<typeof vi.fn>;
+} {
+    const connect = vi.fn(() => {});
+    const disconnect = vi.fn((_code?: number, _reason?: string) => {});
+    const sendSubscribe = vi.fn(() => true);
+    const onOpen = vi.fn((_handler: () => void) => () => {});
+    const onClose = vi.fn((_handler: (event: CloseEvent) => void) => () => {});
+    const onTransportError = vi.fn((_handler: (event: Event) => void) => () => {});
+    const onProtocolError = vi.fn((_handler: unknown) => () => {});
+    const onMessage = vi.fn((_msgType: unknown, _handler: unknown) => () => {});
+
+    return {
+        connect,
+        disconnect,
+        onOpen,
+        onClose,
+        onTransportError,
+        onProtocolError,
+        onMessage: onMessage as EnqueteurLiveClientLike["onMessage"],
+        sendSubscribe,
+    };
+}
+
 beforeEach(() => {
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => {
         cb(performance.now());
@@ -63,10 +90,13 @@ describe("Phase B3 case launch request flow", () => {
                 })
         );
         const caseLaunchClient: CaseLaunchClient = { startCase };
+        const liveClient = makeIdleLiveClient();
+        const createLiveClient = vi.fn(() => liveClient);
         const flow = mountAppFlow({
             mountEl: makeMountEl(),
             loadingDurationMs: 10_000,
             caseLaunchClient,
+            createLiveClient,
         } satisfies AppFlowOpts);
 
         flow.transition({ kind: "CASE_SELECT" });
@@ -97,6 +127,14 @@ describe("Phase B3 case launch request flow", () => {
             caseId: "MBAM_01",
             phase: "SESSION_STARTUP",
         });
+        expect(createLiveClient).toHaveBeenCalledTimes(1);
+        expect(createLiveClient).toHaveBeenCalledWith(expect.objectContaining({
+            runId: "run-123",
+            wsUrl: "ws://localhost:7777/live?run_id=run-123",
+            engineName: "enqueteur",
+            schemaVersion: "enqueteur_mbam_1",
+        }));
+        expect(liveClient.connect).toHaveBeenCalledTimes(1);
         expect(flow.getLaunchMetadata()).toEqual(makeLaunchMetadata());
         expect(flow.getLaunchFailure()).toBeNull();
 
@@ -108,10 +146,12 @@ describe("Phase B3 case launch request flow", () => {
             throw new Error("backend unavailable");
         });
         const caseLaunchClient: CaseLaunchClient = { startCase };
+        const createLiveClient = vi.fn(() => makeIdleLiveClient());
         const flow = mountAppFlow({
             mountEl: makeMountEl(),
             loadingDurationMs: 10_000,
             caseLaunchClient,
+            createLiveClient,
         } satisfies AppFlowOpts);
 
         flow.transition({ kind: "CASE_SELECT" });
@@ -138,6 +178,7 @@ describe("Phase B3 case launch request flow", () => {
             status: undefined,
             occurredAt: expect.any(String),
         });
+        expect(createLiveClient).not.toHaveBeenCalled();
 
         flow.destroy();
     });
@@ -150,10 +191,12 @@ describe("Phase B3 case launch request flow", () => {
             });
         });
         const caseLaunchClient: CaseLaunchClient = { startCase };
+        const createLiveClient = vi.fn(() => makeIdleLiveClient());
         const flow = mountAppFlow({
             mountEl: makeMountEl(),
             loadingDurationMs: 10_000,
             caseLaunchClient,
+            createLiveClient,
         } satisfies AppFlowOpts);
 
         flow.transition({ kind: "CASE_SELECT" });
@@ -180,6 +223,7 @@ describe("Phase B3 case launch request flow", () => {
             status: 502,
             occurredAt: expect.any(String),
         });
+        expect(createLiveClient).not.toHaveBeenCalled();
 
         flow.destroy();
     });
@@ -187,10 +231,12 @@ describe("Phase B3 case launch request flow", () => {
     it("treats non-launch connecting phases without metadata as an unexpected-state error", async () => {
         const startCase = vi.fn(async () => makeLaunchMetadata());
         const caseLaunchClient: CaseLaunchClient = { startCase };
+        const createLiveClient = vi.fn(() => makeIdleLiveClient());
         const flow = mountAppFlow({
             mountEl: makeMountEl(),
             loadingDurationMs: 10_000,
             caseLaunchClient,
+            createLiveClient,
         } satisfies AppFlowOpts);
 
         flow.transition({ kind: "CONNECTING", caseId: "MBAM_01", phase: "SESSION_STARTUP" });
@@ -202,6 +248,7 @@ describe("Phase B3 case launch request flow", () => {
             message: "Launch metadata is missing; return to case selection and relaunch.",
             recoverTo: "CASE_SELECT",
         });
+        expect(createLiveClient).not.toHaveBeenCalled();
 
         flow.destroy();
     });

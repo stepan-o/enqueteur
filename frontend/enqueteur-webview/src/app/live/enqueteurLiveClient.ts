@@ -221,6 +221,20 @@ export type EnqueteurLiveClientWebSocket = {
     close: (code?: number, reason?: string) => void;
 };
 
+export type EnqueteurLiveClientLike = {
+    connect: () => void;
+    disconnect: (code?: number, reason?: string) => void;
+    onOpen: (handler: OpenHandler) => () => void;
+    onClose: (handler: CloseHandler) => () => void;
+    onTransportError: (handler: TransportErrorHandler) => () => void;
+    onProtocolError: (handler: ProtocolErrorHandler) => () => void;
+    onMessage: <T extends EnqueteurInboundMsgType>(
+        msgType: T,
+        handler: MessageHandler<T>
+    ) => () => void;
+    sendSubscribe: (payload?: Partial<SubscribePayload>) => boolean;
+};
+
 export type EnqueteurLiveClientOpts = {
     url: string;
     viewerName?: string;
