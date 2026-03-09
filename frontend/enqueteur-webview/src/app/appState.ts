@@ -4,8 +4,7 @@ export type ConnectingPhase =
     | "CASE_LAUNCH"
     | "SESSION_STARTUP"
     | "HANDSHAKING"
-    | "WAITING_FOR_BASELINE"
-    | "SESSION_READY";
+    | "WAITING_FOR_BASELINE";
 
 export type AppErrorCode =
     | "LAUNCH_FAILURE"

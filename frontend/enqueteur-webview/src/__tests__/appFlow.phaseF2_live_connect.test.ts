@@ -46,6 +46,17 @@ function clickFirstCaseCard(): void {
     card.click();
 }
 
+function makeFakeViewer() {
+    return {
+        startOffline: vi.fn(async () => {}),
+        startLive: vi.fn(() => {}),
+        stop: vi.fn(() => {}),
+        setVisible: vi.fn((_visible: boolean) => {}),
+        setDevControlsVisible: vi.fn((_visible: boolean) => {}),
+        setHudVisible: vi.fn((_visible: boolean) => {}),
+    };
+}
+
 class ScriptedLiveClient implements EnqueteurLiveClientLike {
     readonly connect = vi.fn(() => {});
     readonly disconnect = vi.fn((_code?: number, _reason?: string) => {});
@@ -153,12 +164,17 @@ describe("Phase F2 live connect app flow", () => {
         const caseLaunchClient: CaseLaunchClient = { startCase };
         const scriptedLiveClient = new ScriptedLiveClient();
         const createLiveClient = vi.fn(() => scriptedLiveClient);
+        const fakeViewer = makeFakeViewer();
+        const createLiveViewer: NonNullable<AppFlowOpts["createLiveViewer"]> = vi.fn(
+            async () => fakeViewer
+        );
 
         const flow = mountAppFlow({
             mountEl: makeMountEl(),
             loadingDurationMs: 10_000,
             caseLaunchClient,
             createLiveClient,
+            createLiveViewer,
         } satisfies AppFlowOpts);
 
         flow.transition({ kind: "CASE_SELECT" });
@@ -199,6 +215,13 @@ describe("Phase F2 live connect app flow", () => {
             render_spec: {},
         });
         expect(scriptedLiveClient.sendSubscribe).toHaveBeenCalledTimes(1);
+        expect(scriptedLiveClient.sendSubscribe).toHaveBeenCalledWith({
+            stream: "LIVE",
+            channels: ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+            diff_policy: "DIFF_ONLY",
+            snapshot_policy: "ON_JOIN",
+            compression: "NONE",
+        });
 
         scriptedLiveClient.emitMessage("SUBSCRIBED", {
             stream_id: "stream-123",
@@ -218,13 +241,14 @@ describe("Phase F2 live connect app flow", () => {
             schema_version: "enqueteur_mbam_1",
             tick: 0,
             step_hash: "hash-0",
-            state: {},
+            state: { world: {} },
         });
+        await flushAsyncWork();
         expect(flow.getState()).toEqual({
-            kind: "CONNECTING",
+            kind: "LIVE_GAME",
             caseId: "MBAM_01",
-            phase: "SESSION_READY",
         });
+        expect(createLiveViewer).toHaveBeenCalledTimes(1);
 
         flow.destroy();
     });
@@ -255,6 +279,108 @@ describe("Phase F2 live connect app flow", () => {
             kind: "ERROR",
             code: "STARTUP_INCOMPATIBILITY",
             message: "Live protocol error (UNEXPECTED_KERNEL_IDENTITY): Expected KERNEL_HELLO.engine_name=enqueteur, got wrong-engine.",
+            recoverTo: "MAIN_MENU",
+        });
+
+        flow.destroy();
+    });
+
+    it("treats subscribe acknowledgement mismatches as startup incompatibility", async () => {
+        const startCase = vi.fn(async () => makeLaunchMetadata());
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const scriptedLiveClient = new ScriptedLiveClient();
+        const createLiveClient = vi.fn(() => scriptedLiveClient);
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+            createLiveClient,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CASE_SELECT" });
+        clickFirstCaseCard();
+        await flushAsyncWork();
+
+        scriptedLiveClient.emitOpen();
+        scriptedLiveClient.emitMessage("KERNEL_HELLO", {
+            engine_name: "enqueteur",
+            engine_version: "0.1.0",
+            schema_version: "enqueteur_mbam_1",
+            world_id: "world-123",
+            run_id: "run-123",
+            seed: "A",
+            tick_rate_hz: 30,
+            time_origin_ms: 0,
+            render_spec: {},
+        });
+        scriptedLiveClient.emitMessage("SUBSCRIBED", {
+            stream_id: "stream-123",
+            effective_stream: "LIVE",
+            effective_channels: ["WORLD", "DEBUG"],
+            effective_diff_policy: "DIFF_ONLY",
+            effective_snapshot_policy: "ON_JOIN",
+            effective_compression: "NONE",
+        });
+
+        expect(flow.getState()).toEqual({
+            kind: "ERROR",
+            code: "STARTUP_INCOMPATIBILITY",
+            message: "SUBSCRIBED includes unexpected channels: DEBUG.",
+            recoverTo: "MAIN_MENU",
+        });
+
+        flow.destroy();
+    });
+
+    it("rejects FRAME_DIFF before baseline as a startup protocol failure", async () => {
+        const startCase = vi.fn(async () => makeLaunchMetadata());
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const scriptedLiveClient = new ScriptedLiveClient();
+        const createLiveClient = vi.fn(() => scriptedLiveClient);
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+            createLiveClient,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CASE_SELECT" });
+        clickFirstCaseCard();
+        await flushAsyncWork();
+
+        scriptedLiveClient.emitOpen();
+        scriptedLiveClient.emitMessage("KERNEL_HELLO", {
+            engine_name: "enqueteur",
+            engine_version: "0.1.0",
+            schema_version: "enqueteur_mbam_1",
+            world_id: "world-123",
+            run_id: "run-123",
+            seed: "A",
+            tick_rate_hz: 30,
+            time_origin_ms: 0,
+            render_spec: {},
+        });
+        scriptedLiveClient.emitMessage("SUBSCRIBED", {
+            stream_id: "stream-123",
+            effective_stream: "LIVE",
+            effective_channels: ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+            effective_diff_policy: "DIFF_ONLY",
+            effective_snapshot_policy: "ON_JOIN",
+            effective_compression: "NONE",
+        });
+        scriptedLiveClient.emitMessage("FRAME_DIFF", {
+            schema_version: "enqueteur_mbam_1",
+            from_tick: 0,
+            to_tick: 1,
+            prev_step_hash: "hash-0",
+            step_hash: "hash-1",
+            ops: [],
+        });
+
+        expect(flow.getState()).toEqual({
+            kind: "ERROR",
+            code: "STARTUP_INCOMPATIBILITY",
+            message: "FRAME_DIFF arrived before baseline handoff completed.",
             recoverTo: "MAIN_MENU",
         });
 

@@ -10,7 +10,6 @@ const CONNECTING_STEPS: readonly ConnectingStep[] = [
     { phase: "SESSION_STARTUP", label: "Opening live session socket" },
     { phase: "HANDSHAKING", label: "Running KVP handshake and subscribe" },
     { phase: "WAITING_FOR_BASELINE", label: "Waiting for baseline snapshot" },
-    { phase: "SESSION_READY", label: "Baseline ready for live shell handoff" },
 ];
 
 const PHASE_NOTES: Record<ConnectingPhase, string> = {
@@ -18,7 +17,6 @@ const PHASE_NOTES: Record<ConnectingPhase, string> = {
     SESSION_STARTUP: "Launch metadata received. Opening the run-specific WebSocket endpoint.",
     HANDSHAKING: "Socket connected. Exchanging VIEWER_HELLO / KERNEL_HELLO and SUBSCRIBE.",
     WAITING_FOR_BASELINE: "Session connected. Waiting for baseline snapshot.",
-    SESSION_READY: "Baseline snapshot received. LIVE_GAME handoff is pending the next integration phase.",
 };
 
 export type ConnectingScreenOpts = {

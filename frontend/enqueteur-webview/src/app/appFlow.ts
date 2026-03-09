@@ -27,9 +27,11 @@ import { renderErrorScreen } from "./screens/ErrorScreen";
 import { renderMainMenuScreen } from "./screens/MainMenuScreen";
 import {
     EnqueteurLiveClient,
+    type EnqueteurChannel,
     type EnqueteurInboundEnvelopeByType,
     type EnqueteurLiveClientLike,
     type EnqueteurLiveProtocolErrorCode,
+    type SubscribePayload,
 } from "./live/enqueteurLiveClient";
 
 export type AppFlowOpts = {
@@ -62,6 +64,21 @@ type LiveConnectionFailureReason =
 type LiveConnectionFailure = {
     reason: LiveConnectionFailureReason;
     message: string;
+};
+
+const LIVE_SUBSCRIBE_REQUEST: SubscribePayload = {
+    stream: "LIVE",
+    channels: [
+        "WORLD",
+        "NPCS",
+        "INVESTIGATION",
+        "DIALOGUE",
+        "LEARNING",
+        "EVENTS",
+    ],
+    diff_policy: "DIFF_ONLY",
+    snapshot_policy: "ON_JOIN",
+    compression: "NONE",
 };
 
 export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
@@ -372,6 +389,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             attemptRevision === launchRevision &&
             connectionRevision === liveConnectionRevision &&
             liveClient === client;
+        let didValidateKernelHello = false;
+        let didValidateSubscribed = false;
 
         const failLiveConnection = (
             details: LiveConnectionFailure
@@ -435,19 +454,116 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             })
         );
 
-        subscribeToMessage("KERNEL_HELLO", () => {
-            const didSendSubscribe = client.sendSubscribe();
+        subscribeToMessage("KERNEL_HELLO", (envelope) => {
+            const currentSession = launchSessionStore.getLatestSession();
+            if (!currentSession) {
+                failLiveConnection({
+                    reason: "UNEXPECTED_STATE",
+                    message: "Launch metadata disappeared before KERNEL_HELLO validation.",
+                });
+                return;
+            }
+
+            const currentState = stateStore.getState();
+            if (currentState.kind !== "CONNECTING" || currentState.caseId !== caseId) {
+                failLiveConnection({
+                    reason: "BAD_SEQUENCE",
+                    message: "KERNEL_HELLO arrived outside CONNECTING startup state.",
+                });
+                return;
+            }
+
+            const validationError = validateKernelHelloAgainstLaunch({
+                payload: envelope.payload,
+                sessionInfo: currentSession,
+            });
+            if (validationError) {
+                failLiveConnection(validationError);
+                return;
+            }
+            didValidateKernelHello = true;
+
+            const didSendSubscribe = client.sendSubscribe(LIVE_SUBSCRIBE_REQUEST);
             if (didSendSubscribe) return;
             failLiveConnection({
                 reason: "SUBSCRIBE_SEND_FAILED",
                 message: "Live session opened but SUBSCRIBE could not be sent over the WebSocket.",
             });
         });
-        subscribeToMessage("SUBSCRIBED", () => {
+        subscribeToMessage("SUBSCRIBED", (envelope) => {
+            if (!didValidateKernelHello) {
+                failLiveConnection({
+                    reason: "BAD_SEQUENCE",
+                    message: "SUBSCRIBED arrived before a validated KERNEL_HELLO.",
+                });
+                return;
+            }
+            const validationError = validateSubscribedAgainstRequest({
+                payload: envelope.payload,
+                requested: LIVE_SUBSCRIBE_REQUEST,
+            });
+            if (validationError) {
+                failLiveConnection(validationError);
+                return;
+            }
+            didValidateSubscribed = true;
             transitionConnectingPhase(caseId, "WAITING_FOR_BASELINE");
         });
-        subscribeToMessage("FULL_SNAPSHOT", () => {
-            transitionConnectingPhase(caseId, "SESSION_READY");
+        subscribeToMessage("FULL_SNAPSHOT", (envelope) => {
+            if (!didValidateSubscribed) {
+                failLiveConnection({
+                    reason: "BAD_SEQUENCE",
+                    message: "FULL_SNAPSHOT arrived before a validated SUBSCRIBED acknowledgment.",
+                });
+                return;
+            }
+            const currentSession = launchSessionStore.getLatestSession();
+            if (!currentSession) {
+                failLiveConnection({
+                    reason: "UNEXPECTED_STATE",
+                    message: "Launch metadata disappeared before FULL_SNAPSHOT validation.",
+                });
+                return;
+            }
+            const ingestionError = validateBaselineSnapshot({
+                payload: envelope.payload,
+                sessionInfo: currentSession,
+            });
+            if (ingestionError) {
+                failLiveConnection(ingestionError);
+                return;
+            }
+
+            const current = stateStore.getState();
+            if (current.kind !== "CONNECTING" || current.caseId !== caseId) {
+                failLiveConnection({
+                    reason: "BAD_SEQUENCE",
+                    message: "FULL_SNAPSHOT arrived while app was no longer in CONNECTING state.",
+                });
+                return;
+            }
+            stateStore.transition({
+                kind: "LIVE_GAME",
+                caseId,
+            });
+        });
+        subscribeToMessage("FRAME_DIFF", () => {
+            failLiveConnection({
+                reason: "BAD_SEQUENCE",
+                message: "FRAME_DIFF arrived before baseline handoff completed.",
+            });
+        });
+        subscribeToMessage("COMMAND_ACCEPTED", () => {
+            failLiveConnection({
+                reason: "BAD_SEQUENCE",
+                message: "COMMAND_ACCEPTED is not valid during live startup handshake.",
+            });
+        });
+        subscribeToMessage("COMMAND_REJECTED", () => {
+            failLiveConnection({
+                reason: "BAD_SEQUENCE",
+                message: "COMMAND_REJECTED is not valid during live startup handshake.",
+            });
         });
         subscribeToMessage("ERROR", (envelope) => {
             failLiveConnection({
@@ -598,6 +714,146 @@ function classifyCaseLaunchFailure(details: {
     };
 }
 
+function validateKernelHelloAgainstLaunch(args: {
+    payload: EnqueteurInboundEnvelopeByType["KERNEL_HELLO"]["payload"];
+    sessionInfo: LaunchSessionInfo;
+}): LiveConnectionFailure | null {
+    const { payload, sessionInfo } = args;
+    if (payload.engine_name !== sessionInfo.engineName) {
+        return {
+            reason: "UNEXPECTED_KERNEL_IDENTITY",
+            message: (
+                `KERNEL_HELLO engine mismatch: expected '${sessionInfo.engineName}', `
+                + `got '${payload.engine_name}'.`
+            ),
+        };
+    }
+    if (payload.schema_version !== sessionInfo.schemaVersion) {
+        return {
+            reason: "UNEXPECTED_KERNEL_IDENTITY",
+            message: (
+                `KERNEL_HELLO schema mismatch: expected '${sessionInfo.schemaVersion}', `
+                + `got '${payload.schema_version}'.`
+            ),
+        };
+    }
+    if (payload.run_id !== sessionInfo.runId) {
+        return {
+            reason: "KERNEL_HELLO_RUN_MISMATCH",
+            message: `KERNEL_HELLO run_id mismatch: expected '${sessionInfo.runId}', got '${payload.run_id}'.`,
+        };
+    }
+    if (payload.world_id !== sessionInfo.worldId) {
+        return {
+            reason: "KERNEL_HELLO_WORLD_MISMATCH",
+            message: `KERNEL_HELLO world_id mismatch: expected '${sessionInfo.worldId}', got '${payload.world_id}'.`,
+        };
+    }
+    return null;
+}
+
+function validateSubscribedAgainstRequest(args: {
+    payload: EnqueteurInboundEnvelopeByType["SUBSCRIBED"]["payload"];
+    requested: SubscribePayload;
+}): LiveConnectionFailure | null {
+    const { payload, requested } = args;
+    if (payload.effective_stream !== "LIVE") {
+        return {
+            reason: "INVALID_SUBSCRIPTION_ACK",
+            message: `SUBSCRIBED effective_stream must be LIVE, got '${payload.effective_stream}'.`,
+        };
+    }
+
+    const effectiveChannels = payload.effective_channels;
+    if (effectiveChannels.length === 0) {
+        return {
+            reason: "INVALID_SUBSCRIPTION_ACK",
+            message: "SUBSCRIBED effective_channels must be non-empty.",
+        };
+    }
+
+    if (new Set(effectiveChannels).size !== effectiveChannels.length) {
+        return {
+            reason: "INVALID_SUBSCRIPTION_ACK",
+            message: "SUBSCRIBED effective_channels contains duplicates.",
+        };
+    }
+
+    const requestedChannels = new Set<EnqueteurChannel>(requested.channels);
+    const unexpectedChannels = effectiveChannels.filter((channel) => !requestedChannels.has(channel));
+    if (unexpectedChannels.length > 0) {
+        return {
+            reason: "INVALID_SUBSCRIPTION_ACK",
+            message: (
+                `SUBSCRIBED includes unexpected channels: ${unexpectedChannels.join(", ")}.`
+            ),
+        };
+    }
+
+    if (payload.effective_diff_policy !== requested.diff_policy) {
+        return {
+            reason: "INVALID_SUBSCRIPTION_ACK",
+            message: (
+                `SUBSCRIBED diff policy mismatch: expected '${requested.diff_policy}', `
+                + `got '${payload.effective_diff_policy}'.`
+            ),
+        };
+    }
+    if (payload.effective_snapshot_policy !== requested.snapshot_policy) {
+        return {
+            reason: "INVALID_SUBSCRIPTION_ACK",
+            message: (
+                `SUBSCRIBED snapshot policy mismatch: expected '${requested.snapshot_policy}', `
+                + `got '${payload.effective_snapshot_policy}'.`
+            ),
+        };
+    }
+    if (payload.effective_compression !== requested.compression) {
+        return {
+            reason: "INVALID_SUBSCRIPTION_ACK",
+            message: (
+                `SUBSCRIBED compression mismatch: expected '${requested.compression}', `
+                + `got '${payload.effective_compression}'.`
+            ),
+        };
+    }
+
+    return null;
+}
+
+function validateBaselineSnapshot(args: {
+    payload: EnqueteurInboundEnvelopeByType["FULL_SNAPSHOT"]["payload"];
+    sessionInfo: LaunchSessionInfo;
+}): LiveConnectionFailure | null {
+    const { payload, sessionInfo } = args;
+    if (payload.schema_version !== sessionInfo.schemaVersion) {
+        return {
+            reason: "INVALID_BASELINE",
+            message: (
+                `FULL_SNAPSHOT schema mismatch: expected '${sessionInfo.schemaVersion}', `
+                + `got '${payload.schema_version}'.`
+            ),
+        };
+    }
+
+    const visibleRoots = [
+        payload.state.world,
+        payload.state.npcs,
+        payload.state.investigation,
+        payload.state.dialogue,
+        payload.state.learning,
+        payload.state.resolution,
+    ];
+    if (visibleRoots.every((root) => root === undefined)) {
+        return {
+            reason: "INVALID_BASELINE",
+            message: "FULL_SNAPSHOT.state is missing all Enqueteur visible roots.",
+        };
+    }
+
+    return null;
+}
+
 function classifyLiveConnectionFailure(details: LiveConnectionFailure): {
     code: AppErrorCode;
     recoverTo: AppRecoverTarget;
@@ -606,7 +862,17 @@ function classifyLiveConnectionFailure(details: LiveConnectionFailure): {
         details.reason === "UNEXPECTED_KERNEL_IDENTITY" ||
         details.reason === "UNSUPPORTED_KVP_VERSION" ||
         details.reason === "INVALID_PAYLOAD" ||
-        details.reason === "SCHEMA_MISMATCH"
+        details.reason === "SCHEMA_MISMATCH" ||
+        details.reason === "PROTOCOL_VIOLATION" ||
+        details.reason === "INVALID_ENVELOPE" ||
+        details.reason === "INVALID_JSON" ||
+        details.reason === "NON_TEXT_FRAME" ||
+        details.reason === "UNKNOWN_MSG_TYPE" ||
+        details.reason === "BAD_SEQUENCE" ||
+        details.reason === "INVALID_SUBSCRIPTION_ACK" ||
+        details.reason === "INVALID_BASELINE" ||
+        details.reason === "KERNEL_HELLO_RUN_MISMATCH" ||
+        details.reason === "KERNEL_HELLO_WORLD_MISMATCH"
     ) {
         return {
             code: "STARTUP_INCOMPATIBILITY",
