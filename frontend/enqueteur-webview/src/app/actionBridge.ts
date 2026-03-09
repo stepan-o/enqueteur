@@ -1,6 +1,6 @@
 // src/app/actionBridge.ts
-import type { KvpClient } from "../kvp/client";
-import type { KvpDialogueTurnLog, WorldState, WorldStore } from "../state/worldStore";
+import type { WorldState, WorldStore, KvpDialogueTurnLog } from "../state/worldStore";
+import type { InputCommandPayload } from "./live/enqueteurLiveClient";
 import type {
     DialogueTurnSubmitRequest,
     DialogueTurnSubmitResult,
@@ -9,21 +9,36 @@ import type {
     InvestigationActionRequest,
     InvestigationActionResult,
 } from "../ui/inspectPanel";
+import type {
+    MinigameSubmitRequest,
+    MinigameSubmitResult,
+} from "../ui/notebookPanel";
+import type {
+    AttemptAccusationRequest,
+    AttemptRecoveryRequest,
+    ResolutionAttemptResult,
+} from "../ui/resolutionPanel";
+import type { LiveCommandBridge, LiveCommandSubmission } from "./live/liveCommandBridge";
 
 type BridgeMode = "live" | "offline";
 
 export type FrontendActionBridgeOpts = {
     store: WorldStore;
     getMode: () => BridgeMode;
-    getClient: () => KvpClient | null;
+    getLiveCommandBridge: () => LiveCommandBridge | null;
     projectionTimeoutMs?: number;
 };
 
 export type FrontendActionBridge = {
     canSubmitInvestigationAction: () => boolean;
     canSubmitDialogueTurn: () => boolean;
+    canSubmitMinigameSubmit: () => boolean;
+    canSubmitResolutionAttempt: () => boolean;
     submitInvestigationAction: (request: InvestigationActionRequest) => Promise<InvestigationActionResult>;
     submitDialogueTurn: (request: DialogueTurnSubmitRequest) => Promise<DialogueTurnSubmitResult>;
+    submitMinigameSubmit: (request: MinigameSubmitRequest) => Promise<MinigameSubmitResult>;
+    submitAttemptRecovery: (request: AttemptRecoveryRequest) => Promise<ResolutionAttemptResult>;
+    submitAttemptAccusation: (request: AttemptAccusationRequest) => Promise<ResolutionAttemptResult>;
 };
 
 type LiveInputAvailability = {
@@ -56,14 +71,28 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
                 reason: "Action dispatch is disabled in offline/replay mode.",
             };
         }
-        const client = opts.getClient();
-        if (!client || !client.canSendSimInput()) {
+        const bridge = opts.getLiveCommandBridge();
+        if (!bridge || !bridge.canSendInputCommand()) {
             return {
                 ready: false,
                 reason: "Live runtime connection is not available.",
             };
         }
         return { ready: true, reason: null };
+    };
+
+    const submitLiveCommand = async (
+        cmd: InputCommandPayload["cmd"]
+    ): Promise<LiveCommandSubmission | null> => {
+        const availability = resolveAvailability();
+        if (!availability.ready) return null;
+
+        const bridge = opts.getLiveCommandBridge();
+        if (!bridge) return null;
+
+        return bridge.sendInputCommand(cmd, {
+            tickTarget: Math.max(0, opts.store.getState().tick + 1),
+        });
     };
 
     const submitInvestigationAction = async (
@@ -79,18 +108,25 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
         }
 
         const baseline = captureInvestigationBaseline(opts.store.getState(), request);
-        const client = opts.getClient();
-        if (!client || !client.sendSimInput({
-            type: "MBAM_INVESTIGATION_COMMAND",
-            object_id: request.caseObjectId,
-            affordance_id: request.affordanceId,
-            world_object_id: request.worldObjectId,
-            tick: request.tick,
-        })) {
+        const commandResult = await submitLiveCommand({
+            type: "INVESTIGATE_OBJECT",
+            payload: {
+                object_id: request.caseObjectId,
+                action_id: request.affordanceId,
+            },
+        });
+        if (!commandResult) {
             return {
                 status: "unavailable",
-                code: "sim_input_not_sent",
+                code: "command_send_unavailable",
                 summary: "Live runtime connection is not available.",
+            };
+        }
+        if (!commandResult.accepted) {
+            return {
+                status: mapCommandRejectionToInvestigativeStatus(commandResult.reasonCode),
+                code: commandResult.reasonCode ?? "COMMAND_REJECTED",
+                summary: formatCommandRejectionSummary(commandResult),
             };
         }
 
@@ -104,7 +140,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "submitted",
                 code: "awaiting_projection_update",
-                summary: "Command submitted; waiting for projected investigation update.",
+                summary: "Command accepted; waiting for projected investigation update.",
             };
         }
         if (projected.kind === "affordance_observed") {
@@ -137,23 +173,33 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             };
         }
 
+        const slots: Record<string, unknown> = {};
+        for (const slot of request.providedSlots) {
+            slots[slot.slot_name] = slot.value;
+        }
+
         const baselineTurnCount = opts.store.getState().dialogue?.recent_turns.length ?? 0;
-        const client = opts.getClient();
-        if (!client || !client.sendSimInput({
-            type: "MBAM_DIALOGUE_TURN",
-            scene_id: request.sceneId,
-            npc_id: request.npcId,
-            intent_id: request.intentId,
-            provided_slots: request.providedSlots,
-            presented_fact_ids: request.presentedFactIds,
-            presented_evidence_ids: request.presentedEvidenceIds,
-            utterance_text: request.utteranceText ?? null,
-            tick: request.tick,
-        })) {
+        const commandResult = await submitLiveCommand({
+            type: "DIALOGUE_TURN",
+            payload: {
+                scene_id: request.sceneId,
+                npc_id: request.npcId,
+                intent_id: request.intentId,
+                slots,
+            },
+        });
+        if (!commandResult) {
             return {
                 status: "unavailable",
-                code: "sim_input_not_sent",
+                code: "command_send_unavailable",
                 summary: "Live runtime connection is not available.",
+            };
+        }
+        if (!commandResult.accepted) {
+            return {
+                status: mapCommandRejectionToDialogueStatus(commandResult.reasonCode),
+                code: commandResult.reasonCode ?? "COMMAND_REJECTED",
+                summary: formatCommandRejectionSummary(commandResult),
             };
         }
 
@@ -167,7 +213,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "submitted",
                 code: "awaiting_projection_update",
-                summary: "Turn submitted; waiting for projected dialogue update.",
+                summary: "Turn accepted; waiting for projected dialogue update.",
             };
         }
         return {
@@ -178,12 +224,170 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
         };
     };
 
+    const submitMinigameSubmit = async (
+        request: MinigameSubmitRequest
+    ): Promise<MinigameSubmitResult> => {
+        const availability = resolveAvailability();
+        if (!availability.ready) {
+            return {
+                status: "unavailable",
+                code: "live_dispatch_unavailable",
+                summary: availability.reason ?? "Minigame dispatch unavailable.",
+            };
+        }
+
+        const commandResult = await submitLiveCommand({
+            type: "MINIGAME_SUBMIT",
+            payload: {
+                minigame_id: request.minigameId,
+                target_id: request.targetId,
+                answer: request.answer,
+            },
+        });
+        if (!commandResult) {
+            return {
+                status: "unavailable",
+                code: "command_send_unavailable",
+                summary: "Live runtime connection is not available.",
+            };
+        }
+        if (!commandResult.accepted) {
+            return {
+                status: mapCommandRejectionToGenericStatus(commandResult.reasonCode),
+                code: commandResult.reasonCode ?? "COMMAND_REJECTED",
+                summary: formatCommandRejectionSummary(commandResult),
+            };
+        }
+        return {
+            status: "submitted",
+            code: "command_accepted_waiting_projection",
+            summary: "Minigame submission accepted; waiting for authoritative diff update.",
+        };
+    };
+
+    const submitAttemptRecovery = async (
+        request: AttemptRecoveryRequest
+    ): Promise<ResolutionAttemptResult> => {
+        const availability = resolveAvailability();
+        if (!availability.ready) {
+            return {
+                status: "unavailable",
+                code: "live_dispatch_unavailable",
+                summary: availability.reason ?? "Recovery dispatch unavailable.",
+            };
+        }
+
+        const commandResult = await submitLiveCommand({
+            type: "ATTEMPT_RECOVERY",
+            payload: {
+                target_id: request.targetId,
+            },
+        });
+        if (!commandResult) {
+            return {
+                status: "unavailable",
+                code: "command_send_unavailable",
+                summary: "Live runtime connection is not available.",
+            };
+        }
+        if (!commandResult.accepted) {
+            return {
+                status: mapCommandRejectionToGenericStatus(commandResult.reasonCode),
+                code: commandResult.reasonCode ?? "COMMAND_REJECTED",
+                summary: formatCommandRejectionSummary(commandResult),
+            };
+        }
+        return {
+            status: "submitted",
+            code: "command_accepted_waiting_projection",
+            summary: "Recovery attempt accepted; waiting for authoritative diff update.",
+        };
+    };
+
+    const submitAttemptAccusation = async (
+        request: AttemptAccusationRequest
+    ): Promise<ResolutionAttemptResult> => {
+        const availability = resolveAvailability();
+        if (!availability.ready) {
+            return {
+                status: "unavailable",
+                code: "live_dispatch_unavailable",
+                summary: availability.reason ?? "Accusation dispatch unavailable.",
+            };
+        }
+
+        const commandResult = await submitLiveCommand({
+            type: "ATTEMPT_ACCUSATION",
+            payload: {
+                suspect_id: request.suspectId,
+                supporting_fact_ids: request.supportingFactIds,
+                supporting_evidence_ids: request.supportingEvidenceIds,
+            },
+        });
+        if (!commandResult) {
+            return {
+                status: "unavailable",
+                code: "command_send_unavailable",
+                summary: "Live runtime connection is not available.",
+            };
+        }
+        if (!commandResult.accepted) {
+            return {
+                status: mapCommandRejectionToGenericStatus(commandResult.reasonCode),
+                code: commandResult.reasonCode ?? "COMMAND_REJECTED",
+                summary: formatCommandRejectionSummary(commandResult),
+            };
+        }
+        return {
+            status: "submitted",
+            code: "command_accepted_waiting_projection",
+            summary: "Accusation attempt accepted; waiting for authoritative diff update.",
+        };
+    };
+
     return {
         canSubmitInvestigationAction: () => resolveAvailability().ready,
         canSubmitDialogueTurn: () => resolveAvailability().ready,
+        canSubmitMinigameSubmit: () => resolveAvailability().ready,
+        canSubmitResolutionAttempt: () => resolveAvailability().ready,
         submitInvestigationAction,
         submitDialogueTurn,
+        submitMinigameSubmit,
+        submitAttemptRecovery,
+        submitAttemptAccusation,
     };
+}
+
+function mapCommandRejectionToInvestigativeStatus(reasonCode?: string): InvestigationActionResult["status"] {
+    if (!reasonCode) return "invalid";
+    if (reasonCode === "OBJECT_ACTION_UNAVAILABLE") return "blocked";
+    if (reasonCode === "RUNTIME_NOT_READY") return "unavailable";
+    if (reasonCode.startsWith("INVALID")) return "invalid";
+    return "blocked";
+}
+
+function mapCommandRejectionToDialogueStatus(reasonCode?: string): DialogueTurnSubmitResult["status"] {
+    if (!reasonCode) return "invalid";
+    if (reasonCode === "MISSING_REQUIRED_SLOTS") return "invalid";
+    if (reasonCode === "INVALID_NPC") return "invalid";
+    if (reasonCode === "INSUFFICIENT_TRUST") return "blocked";
+    if (reasonCode === "SCENE_GATE_BLOCKED") return "blocked";
+    if (reasonCode === "RUNTIME_NOT_READY") return "unavailable";
+    if (reasonCode.startsWith("INVALID")) return "invalid";
+    return "blocked";
+}
+
+function mapCommandRejectionToGenericStatus(reasonCode?: string): "blocked" | "invalid" | "unavailable" {
+    if (!reasonCode) return "invalid";
+    if (reasonCode === "RUNTIME_NOT_READY") return "unavailable";
+    if (reasonCode.startsWith("INVALID")) return "invalid";
+    return "blocked";
+}
+
+function formatCommandRejectionSummary(result: LiveCommandSubmission): string {
+    const code = result.reasonCode ?? "COMMAND_REJECTED";
+    const message = result.message ?? "Command rejected by live runtime.";
+    return `${code}: ${message}`;
 }
 
 function captureInvestigationBaseline(

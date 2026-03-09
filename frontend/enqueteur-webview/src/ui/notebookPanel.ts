@@ -5,6 +5,28 @@ export type NotebookPanelHandle = {
     root: HTMLElement;
 };
 
+export type MinigameSubmitRequest = {
+    minigameId: "MG1" | "MG2" | "MG3" | "MG4";
+    targetId: string;
+    answer: Record<string, unknown>;
+    tick: number;
+};
+
+export type MinigameSubmitResult = {
+    status: "submitted" | "accepted" | "blocked" | "invalid" | "unavailable" | "error";
+    code: string;
+    summary?: string;
+};
+
+export type MinigameSubmitDispatcher = (
+    request: MinigameSubmitRequest
+) => Promise<MinigameSubmitResult> | MinigameSubmitResult;
+
+export type NotebookPanelOpts = {
+    dispatchMinigameSubmit?: MinigameSubmitDispatcher;
+    canDispatchMinigameSubmit?: () => boolean;
+};
+
 type MinigameUiState = {
     answers: Record<string, string>;
     attempts: number;
@@ -75,7 +97,7 @@ const OBJECT_LABELS: Record<string, string> = {
     O10_BULLETIN_BOARD: "Bulletin Board",
 };
 
-export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
+export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = {}): NotebookPanelHandle {
     const root = document.createElement("div");
     root.className = "notebook-root";
 
@@ -107,6 +129,47 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
         attempts: 0,
         feedback: null,
         passed: null,
+    };
+
+    const canDispatchLiveMinigame = (): boolean => {
+        if (!opts.dispatchMinigameSubmit) return false;
+        if (opts.canDispatchMinigameSubmit) return opts.canDispatchMinigameSubmit();
+        return true;
+    };
+
+    const applyLiveMinigameResult = (
+        state: MinigameUiState,
+        result: MinigameSubmitResult
+    ): MinigameUiState => {
+        const attemptsDelta = result.status === "unavailable" ? 0 : 1;
+        return {
+            ...state,
+            attempts: state.attempts + attemptsDelta,
+            feedback: result.summary ?? `${result.code}`,
+            passed: result.status === "accepted" ? true : result.status === "invalid" || result.status === "blocked" ? false : null,
+        };
+    };
+
+    const submitLiveMinigame = async (
+        request: MinigameSubmitRequest
+    ): Promise<MinigameSubmitResult> => {
+        if (!opts.dispatchMinigameSubmit) {
+            return {
+                status: "unavailable",
+                code: "live_dispatch_unavailable",
+                summary: "Live minigame dispatch is unavailable.",
+            };
+        }
+        try {
+            return await opts.dispatchMinigameSubmit(request);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            return {
+                status: "error",
+                code: "dispatch_error",
+                summary: message,
+            };
+        }
     };
 
     const render = (): void => {
@@ -164,8 +227,30 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
                 };
             },
             onMg1Submit: (source) => {
-                mg1State = evaluateMg1(mg1State, source, currentConfirmationStrength(lastState));
+                if (!canDispatchLiveMinigame()) {
+                    mg1State = evaluateMg1(mg1State, source, currentConfirmationStrength(lastState));
+                    render();
+                    return;
+                }
+                mg1State = {
+                    ...mg1State,
+                    feedback: "Submitting live MINIGAME_SUBMIT...",
+                    passed: null,
+                };
                 render();
+                const tick = lastState?.tick ?? 0;
+                void submitLiveMinigame({
+                    minigameId: "MG1",
+                    targetId: "O3_WALL_LABEL",
+                    answer: {
+                        title: source.title,
+                        date: source.date,
+                    },
+                    tick,
+                }).then((result) => {
+                    mg1State = applyLiveMinigameResult(mg1State, result);
+                    render();
+                });
             },
             onMg1Reset: () => {
                 mg1State = {
@@ -186,8 +271,31 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
                 };
             },
             onMg2Submit: (source) => {
-                mg2State = evaluateMg2(mg2State, source, currentConfirmationStrength(lastState));
+                if (!canDispatchLiveMinigame()) {
+                    mg2State = evaluateMg2(mg2State, source, currentConfirmationStrength(lastState));
+                    render();
+                    return;
+                }
+                mg2State = {
+                    ...mg2State,
+                    feedback: "Submitting live MINIGAME_SUBMIT...",
+                    passed: null,
+                };
                 render();
+                const tick = lastState?.tick ?? 0;
+                void submitLiveMinigame({
+                    minigameId: "MG2",
+                    targetId: "O6_BADGE_TERMINAL",
+                    answer: {
+                        selected_entry_id: source.entries.find((row) => row.badge_id === mg2State.answers.badge_id)?.badge_id
+                            ?? mg2State.answers.badge_id,
+                        time_value: mg2State.answers.time,
+                    },
+                    tick,
+                }).then((result) => {
+                    mg2State = applyLiveMinigameResult(mg2State, result);
+                    render();
+                });
             },
             onMg2Reset: () => {
                 mg2State = {
@@ -208,8 +316,34 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
                 };
             },
             onMg3Submit: (source) => {
-                mg3State = evaluateMg3(mg3State, source, currentConfirmationStrength(lastState));
+                if (!canDispatchLiveMinigame()) {
+                    mg3State = evaluateMg3(mg3State, source, currentConfirmationStrength(lastState));
+                    render();
+                    return;
+                }
+                mg3State = {
+                    ...mg3State,
+                    feedback: "Submitting live MINIGAME_SUBMIT...",
+                    passed: null,
+                };
                 render();
+                const tick = lastState?.tick ?? 0;
+                const answer: Record<string, unknown> = {
+                    time_value: mg3State.answers.time,
+                    item_value: mg3State.answers.item,
+                };
+                if (source.receiptId) {
+                    answer.receipt_id = source.receiptId;
+                }
+                void submitLiveMinigame({
+                    minigameId: "MG3",
+                    targetId: "O9_RECEIPT_PRINTER",
+                    answer,
+                    tick,
+                }).then((result) => {
+                    mg3State = applyLiveMinigameResult(mg3State, result);
+                    render();
+                });
             },
             onMg3Reset: () => {
                 mg3State = {
@@ -230,8 +364,32 @@ export function mountNotebookPanel(store: WorldStore): NotebookPanelHandle {
                 };
             },
             onMg4Submit: (source) => {
-                mg4State = evaluateMg4(mg4State, source, currentConfirmationStrength(lastState));
+                if (!canDispatchLiveMinigame()) {
+                    mg4State = evaluateMg4(mg4State, source, currentConfirmationStrength(lastState));
+                    render();
+                    return;
+                }
+                mg4State = {
+                    ...mg4State,
+                    feedback: "Submitting live MINIGAME_SUBMIT...",
+                    passed: null,
+                };
                 render();
+                const tick = lastState?.tick ?? 0;
+                void submitLiveMinigame({
+                    minigameId: "MG4",
+                    targetId: "O4_BENCH",
+                    answer: {
+                        slot1: mg4State.answers.slot1,
+                        slot2: mg4State.answers.slot2,
+                        slot3: mg4State.answers.slot3,
+                        variant_id: source.variantId,
+                    },
+                    tick,
+                }).then((result) => {
+                    mg4State = applyLiveMinigameResult(mg4State, result);
+                    render();
+                });
             },
             onMg4Reset: () => {
                 mg4State = {
@@ -272,7 +430,7 @@ type MinigameRenderOpts = {
     onMg2Submit: (source: Mg2Source) => void;
     onMg2Reset: () => void;
     onMg3Answer: (field: "time" | "item", value: string) => void;
-    onMg3Submit: (source: { time: string; item: string }) => void;
+    onMg3Submit: (source: { time: string; item: string; receiptId?: string }) => void;
     onMg3Reset: () => void;
     onMg4Answer: (field: "slot1" | "slot2" | "slot3", value: string) => void;
     onMg4Submit: (source: Mg4Source) => void;
@@ -315,10 +473,7 @@ function renderMinigames(panel: HTMLElement, opts: MinigameRenderOpts): void {
     });
 
     renderMg3Widget(panel, {
-        source:
-            typeof receiptKnownState.time === "string" && typeof receiptKnownState.item === "string"
-                ? { time: receiptKnownState.time, item: receiptKnownState.item }
-                : null,
+        source: resolveMg3Source(receiptKnownState),
         state: opts.mg3State,
         projected: mgRows.get("MG3_RECEIPT_READING"),
         learning,
@@ -365,6 +520,27 @@ function parseMg4Source(knownState: Record<string, unknown>): Mg4Source | null {
     const options = rawOptions.filter((row): row is string => typeof row === "string" && row.length > 0);
     if (options.length < 3) return null;
     return { variantId, prompt, options };
+}
+
+function resolveMg3Source(knownState: Record<string, unknown>): {
+    time: string;
+    item: string;
+    receiptId?: string;
+} | null {
+    const time = knownState.time;
+    const item = knownState.item;
+    if (typeof time !== "string" || typeof item !== "string") {
+        return null;
+    }
+    const latestReceiptId = knownState.latest_receipt_id;
+    if (typeof latestReceiptId === "string" && latestReceiptId.trim().length > 0) {
+        return {
+            time,
+            item,
+            receiptId: latestReceiptId,
+        };
+    }
+    return { time, item };
 }
 
 function renderMg1Widget(
@@ -476,12 +652,12 @@ function renderMg2Widget(
 function renderMg3Widget(
     panel: HTMLElement,
     opts: {
-        source: { time: string; item: string } | null;
+        source: { time: string; item: string; receiptId?: string } | null;
         state: MinigameUiState;
         projected: ProjectedMinigameState | undefined;
         learning: LearningProjection | null | undefined;
         onAnswer: (field: "time" | "item", value: string) => void;
-        onSubmit: (source: { time: string; item: string }) => void;
+        onSubmit: (source: { time: string; item: string; receiptId?: string }) => void;
         onReset: () => void;
     }
 ): void {

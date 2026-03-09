@@ -4,6 +4,34 @@ export type ResolutionPanelHandle = {
     root: HTMLElement;
 };
 
+export type AttemptRecoveryRequest = {
+    targetId: string;
+    tick: number;
+};
+
+export type AttemptAccusationRequest = {
+    suspectId: string;
+    supportingFactIds: string[];
+    supportingEvidenceIds: string[];
+    tick: number;
+};
+
+export type ResolutionAttemptResult = {
+    status: "submitted" | "accepted" | "blocked" | "invalid" | "unavailable" | "error";
+    code: string;
+    summary?: string;
+};
+
+export type ResolutionPanelOpts = {
+    dispatchAttemptRecovery?: (
+        request: AttemptRecoveryRequest
+    ) => Promise<ResolutionAttemptResult> | ResolutionAttemptResult;
+    dispatchAttemptAccusation?: (
+        request: AttemptAccusationRequest
+    ) => Promise<ResolutionAttemptResult> | ResolutionAttemptResult;
+    canDispatchResolutionAttempt?: () => boolean;
+};
+
 const FACT_LABELS: Record<string, string> = {
     N1: "N1 Missing item discovered",
     N2: "N2 Corridor badge access",
@@ -21,7 +49,7 @@ const EVIDENCE_LABELS: Record<string, string> = {
     E3_METHOD_TRACE: "E3 Method Trace",
 };
 
-export function mountResolutionPanel(store: WorldStore): ResolutionPanelHandle {
+export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpts = {}): ResolutionPanelHandle {
     const root = document.createElement("div");
     root.className = "resolution-root";
 
@@ -30,6 +58,9 @@ export function mountResolutionPanel(store: WorldStore): ResolutionPanelHandle {
     root.appendChild(panel);
 
     let lastState: WorldState | null = null;
+    let selectedSuspectId = "laurent";
+    let lastActionMessage: string | null = null;
+    let pendingAction = false;
 
     const render = (): void => {
         panel.innerHTML = "";
@@ -48,6 +79,7 @@ export function mountResolutionPanel(store: WorldStore): ResolutionPanelHandle {
         const outcome = lastState.caseOutcome;
         if (!recap && !outcome) {
             renderInfo(panel, "Resolution summary is not available in this projection.");
+            renderResolutionActions(panel);
             return;
         }
 
@@ -67,6 +99,7 @@ export function mountResolutionPanel(store: WorldStore): ResolutionPanelHandle {
             ["Contradiction", contradictionUsed ? "used" : (contradictionSatisfied ? "satisfied" : "pending")],
             ["Best outcome", bestAwarded ? "awarded" : "not awarded"],
         ]);
+        renderResolutionActions(panel);
 
         if (!recap) {
             return;
@@ -92,6 +125,114 @@ export function mountResolutionPanel(store: WorldStore): ResolutionPanelHandle {
         if (recap.soft_fail.triggered) {
             renderSection(panel, "Soft-Fail Triggers", recap.soft_fail.trigger_conditions);
         }
+    };
+
+    const canDispatch = (): boolean => {
+        if (!opts.canDispatchResolutionAttempt) {
+            return Boolean(opts.dispatchAttemptRecovery || opts.dispatchAttemptAccusation);
+        }
+        return opts.canDispatchResolutionAttempt();
+    };
+
+    const renderResolutionActions = (panelEl: HTMLElement): void => {
+        renderSectionTitle(panelEl, "Live Resolution Actions");
+
+        const info = document.createElement("div");
+        info.className = "resolution-info";
+        info.textContent = canDispatch()
+            ? "Submit ATTEMPT_RECOVERY / ATTEMPT_ACCUSATION to the live runtime."
+            : "Live resolution dispatch is unavailable.";
+        panelEl.appendChild(info);
+
+        if (lastActionMessage) {
+            const feedback = document.createElement("div");
+            feedback.className = "resolution-info";
+            feedback.textContent = lastActionMessage;
+            panelEl.appendChild(feedback);
+        }
+
+        const row = document.createElement("div");
+        row.className = "flow-actions";
+
+        const recoveryBtn = document.createElement("button");
+        recoveryBtn.type = "button";
+        recoveryBtn.className = "flow-action-btn";
+        recoveryBtn.textContent = pendingAction ? "Submitting..." : "Attempt Recovery";
+        recoveryBtn.disabled = pendingAction || !canDispatch() || !opts.dispatchAttemptRecovery;
+        recoveryBtn.addEventListener("click", () => {
+            if (!lastState || !opts.dispatchAttemptRecovery) return;
+            pendingAction = true;
+            lastActionMessage = "Submitting ATTEMPT_RECOVERY...";
+            render();
+            void Promise.resolve(
+                opts.dispatchAttemptRecovery({
+                    targetId: "O2_MEDALLION",
+                    tick: lastState.tick,
+                })
+            ).then((result) => {
+                pendingAction = false;
+                lastActionMessage = `${result.status.toUpperCase()} (${result.code}): ${result.summary ?? "Recovery command processed."}`;
+                render();
+            }).catch((err: unknown) => {
+                pendingAction = false;
+                const message = err instanceof Error ? err.message : String(err);
+                lastActionMessage = `ERROR (dispatch_error): ${message}`;
+                render();
+            });
+        });
+        row.appendChild(recoveryBtn);
+
+        const suspect = document.createElement("select");
+        suspect.className = "flow-action-btn";
+        for (const suspectId of ["laurent", "samira", "outsider"]) {
+            const option = document.createElement("option");
+            option.value = suspectId;
+            option.textContent = suspectId;
+            option.selected = suspectId === selectedSuspectId;
+            suspect.appendChild(option);
+        }
+        suspect.disabled = pendingAction || !canDispatch() || !opts.dispatchAttemptAccusation;
+        suspect.addEventListener("change", () => {
+            selectedSuspectId = suspect.value;
+        });
+        row.appendChild(suspect);
+
+        const accusationBtn = document.createElement("button");
+        accusationBtn.type = "button";
+        accusationBtn.className = "flow-action-btn";
+        accusationBtn.textContent = pendingAction ? "Submitting..." : "Attempt Accusation";
+        accusationBtn.disabled = pendingAction || !canDispatch() || !opts.dispatchAttemptAccusation;
+        accusationBtn.addEventListener("click", () => {
+            if (!lastState || !opts.dispatchAttemptAccusation) return;
+            pendingAction = true;
+            lastActionMessage = "Submitting ATTEMPT_ACCUSATION...";
+            render();
+            const facts = lastState.investigation?.facts.known_fact_ids ?? [];
+            const evidence = Array.from(new Set([
+                ...(lastState.investigation?.evidence.discovered_ids ?? []),
+                ...(lastState.investigation?.evidence.collected_ids ?? []),
+            ]));
+            void Promise.resolve(
+                opts.dispatchAttemptAccusation({
+                    suspectId: selectedSuspectId,
+                    supportingFactIds: [...facts],
+                    supportingEvidenceIds: [...evidence],
+                    tick: lastState.tick,
+                })
+            ).then((result) => {
+                pendingAction = false;
+                lastActionMessage = `${result.status.toUpperCase()} (${result.code}): ${result.summary ?? "Accusation command processed."}`;
+                render();
+            }).catch((err: unknown) => {
+                pendingAction = false;
+                const message = err instanceof Error ? err.message : String(err);
+                lastActionMessage = `ERROR (dispatch_error): ${message}`;
+                render();
+            });
+        });
+        row.appendChild(accusationBtn);
+
+        panelEl.appendChild(row);
     };
 
     const unsub = store.subscribe((state) => {

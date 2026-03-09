@@ -28,6 +28,7 @@ import {
     convertLiveKernelHello,
     convertLiveRunAnchors,
 } from "./live/liveStateBridge";
+import type { LiveCommandBridge } from "./live/liveCommandBridge";
 
 export type BootMode = "live" | "offline";
 
@@ -45,6 +46,7 @@ export type ViewerHandle = {
     ingestLiveKernelHello?: (payload: EnqueteurKernelHelloPayload) => void;
     ingestLiveSnapshot?: (payload: EnqueteurFullSnapshotPayload) => void;
     ingestLiveFrameDiff?: (payload: EnqueteurFrameDiffPayload) => void;
+    setLiveCommandBridge?: (bridge: LiveCommandBridge | null) => void;
     stop: () => void;
     setVisible: (visible: boolean) => void;
     setDevControlsVisible: (visible: boolean) => void;
@@ -62,12 +64,13 @@ export function boot(opts: BootOpts): ViewerHandle {
     let offlineBaseUrl = opts.offlineBaseUrl ?? env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min";
     let offlineSpeed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
     let currentMode: BootMode = mode;
+    let liveCommandBridge: LiveCommandBridge | null = null;
     let client: KvpClient | null = null;
     let activeLiveWsUrl: string | null = null;
     const actionBridge = createFrontendActionBridge({
         store,
         getMode: () => currentMode,
-        getClient: () => client,
+        getLiveCommandBridge: () => liveCommandBridge,
     });
 
     opts.mountEl.style.position = "relative";
@@ -92,10 +95,17 @@ export function boot(opts: BootOpts): ViewerHandle {
     });
     opts.mountEl.appendChild(dialoguePanel.root);
 
-    const notebookPanel = mountNotebookPanel(store);
+    const notebookPanel = mountNotebookPanel(store, {
+        dispatchMinigameSubmit: actionBridge.submitMinigameSubmit,
+        canDispatchMinigameSubmit: actionBridge.canSubmitMinigameSubmit,
+    });
     opts.mountEl.appendChild(notebookPanel.root);
 
-    const resolutionPanel = mountResolutionPanel(store);
+    const resolutionPanel = mountResolutionPanel(store, {
+        dispatchAttemptRecovery: actionBridge.submitAttemptRecovery,
+        dispatchAttemptAccusation: actionBridge.submitAttemptAccusation,
+        canDispatchResolutionAttempt: actionBridge.canSubmitResolutionAttempt,
+    });
     opts.mountEl.appendChild(resolutionPanel.root);
 
     overlayStore.subscribe((o) => {
@@ -286,6 +296,10 @@ export function boot(opts: BootOpts): ViewerHandle {
         applyViewerUiVisibility();
     };
 
+    const setLiveCommandBridge = (bridge: LiveCommandBridge | null): void => {
+        liveCommandBridge = bridge;
+    };
+
     const ingestLiveKernelHello = (payload: EnqueteurKernelHelloPayload): void => {
         store.setMode("live");
         store.setConnected(true);
@@ -324,6 +338,7 @@ export function boot(opts: BootOpts): ViewerHandle {
         ingestLiveKernelHello,
         ingestLiveSnapshot,
         ingestLiveFrameDiff,
+        setLiveCommandBridge,
         stop,
         setVisible,
         setDevControlsVisible,

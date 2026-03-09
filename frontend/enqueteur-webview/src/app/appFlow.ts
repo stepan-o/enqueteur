@@ -31,11 +31,13 @@ import {
     type EnqueteurInboundEnvelopeByType,
     type FrameDiffPayload,
     type FullSnapshotPayload,
+    type InputCommandPayload,
     type KernelHelloPayload,
     type EnqueteurLiveClientLike,
     type EnqueteurLiveProtocolErrorCode,
     type SubscribePayload,
 } from "./live/enqueteurLiveClient";
+import type { LiveCommandBridge } from "./live/liveCommandBridge";
 
 export type AppFlowOpts = {
     mountEl: HTMLElement;
@@ -69,6 +71,11 @@ type LiveConnectionFailure = {
     message: string;
 };
 
+type PendingCommandAck = {
+    timeoutId: number;
+    resolve: (value: { accepted: boolean; reasonCode?: string; message?: string }) => void;
+};
+
 const LIVE_SUBSCRIBE_REQUEST: SubscribePayload = {
     stream: "LIVE",
     channels: [
@@ -83,6 +90,7 @@ const LIVE_SUBSCRIBE_REQUEST: SubscribePayload = {
     snapshot_policy: "ON_JOIN",
     compression: "NONE",
 };
+const LIVE_COMMAND_ACK_TIMEOUT_MS = 5_000;
 
 export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     const root = document.createElement("div");
@@ -113,6 +121,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     let liveBaselineSnapshot: FullSnapshotPayload | null = null;
     let livePendingDiffs: FrameDiffPayload[] = [];
     let liveBaselineIngestedByViewer = false;
+    let liveCommandBridge: LiveCommandBridge | null = null;
+    const pendingCommandAcks = new Map<string, PendingCommandAck>();
 
     const caseLaunchClient = opts.caseLaunchClient ?? createCaseLaunchClient();
     const createLiveClient = opts.createLiveClient ?? ((session: LaunchSessionInfo) => (
@@ -123,6 +133,37 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             supportedSchemaVersions: [session.schemaVersion],
         })
     ));
+
+    const setLiveCommandBridge = (bridge: LiveCommandBridge | null): void => {
+        liveCommandBridge = bridge;
+        viewer?.setLiveCommandBridge?.(bridge);
+    };
+
+    const clearPendingCommandAcks = (
+        reasonCode: string,
+        message: string
+    ): void => {
+        for (const [clientCmdId, pending] of pendingCommandAcks.entries()) {
+            window.clearTimeout(pending.timeoutId);
+            pending.resolve({
+                accepted: false,
+                reasonCode,
+                message: `${message} (client_cmd_id=${clientCmdId})`,
+            });
+        }
+        pendingCommandAcks.clear();
+    };
+
+    const resolvePendingCommandAck = (
+        clientCmdId: string,
+        result: { accepted: boolean; reasonCode?: string; message?: string }
+    ): void => {
+        const pending = pendingCommandAcks.get(clientCmdId);
+        if (!pending) return;
+        pendingCommandAcks.delete(clientCmdId);
+        window.clearTimeout(pending.timeoutId);
+        pending.resolve(result);
+    };
 
     const stopLiveConnection = (): void => {
         if (liveClient || liveClientUnsubscribers.length > 0) {
@@ -139,6 +180,11 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 // ignore close failures during teardown
             }
         }
+        setLiveCommandBridge(null);
+        clearPendingCommandAcks(
+            "RUNTIME_NOT_READY",
+            "Live session is not connected."
+        );
         liveKernelHello = null;
         liveBaselineSnapshot = null;
         livePendingDiffs = [];
@@ -215,6 +261,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
     const syncLiveStateToViewer = (): void => {
         if (!viewer) return;
+        viewer.setLiveCommandBridge?.(liveCommandBridge);
         if (liveKernelHello) {
             viewer.ingestLiveKernelHello?.(liveKernelHello);
         }
@@ -379,6 +426,89 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             caseId,
             phase,
         });
+    };
+
+    const createLiveCommandBridgeForConnection = (args: {
+        client: EnqueteurLiveClientLike;
+        attemptRevision: number;
+        connectionRevision: number;
+    }): LiveCommandBridge => {
+        const { client, attemptRevision, connectionRevision } = args;
+        const sendInputCommand = (
+            client as unknown as { sendInputCommand?: (payload: InputCommandPayload) => boolean }
+        ).sendInputCommand;
+
+        const canSendInputCommand = (): boolean => (
+            typeof sendInputCommand === "function"
+            && !destroyed
+            && attemptRevision === launchRevision
+            && connectionRevision === liveConnectionRevision
+            && liveClient === client
+            && stateStore.getState().kind === "LIVE_GAME"
+            && liveBaselineSnapshot !== null
+        );
+
+        return {
+            canSendInputCommand,
+            sendInputCommand: async (cmd, commandOpts = {}) => {
+                if (!canSendInputCommand() || typeof sendInputCommand !== "function") {
+                    return {
+                        accepted: false,
+                        clientCmdId: makeClientCmdId(),
+                        reasonCode: "RUNTIME_NOT_READY",
+                        message: "Live runtime connection is not ready for INPUT_COMMAND dispatch.",
+                    };
+                }
+
+                const clientCmdId = makeClientCmdId();
+                const tickTarget = Math.max(
+                    0,
+                    Math.floor(commandOpts.tickTarget ?? liveBaselineSnapshot?.tick ?? 0)
+                );
+                const payload: InputCommandPayload = {
+                    client_cmd_id: clientCmdId,
+                    tick_target: tickTarget,
+                    cmd,
+                };
+
+                return new Promise((resolve) => {
+                    const timeoutId = window.setTimeout(() => {
+                        pendingCommandAcks.delete(clientCmdId);
+                        resolve({
+                            accepted: false,
+                            clientCmdId,
+                            reasonCode: "COMMAND_ACK_TIMEOUT",
+                            message: "Timed out waiting for COMMAND_ACCEPTED/COMMAND_REJECTED.",
+                        });
+                    }, LIVE_COMMAND_ACK_TIMEOUT_MS);
+
+                    pendingCommandAcks.set(clientCmdId, {
+                        timeoutId,
+                        resolve: (result) => {
+                            resolve({
+                                accepted: result.accepted,
+                                clientCmdId,
+                                reasonCode: result.reasonCode,
+                                message: result.message,
+                            });
+                        },
+                    });
+
+                    const sent = sendInputCommand(payload);
+                    if (sent) return;
+
+                    const pending = pendingCommandAcks.get(clientCmdId);
+                    if (!pending) return;
+                    pendingCommandAcks.delete(clientCmdId);
+                    window.clearTimeout(pending.timeoutId);
+                    pending.resolve({
+                        accepted: false,
+                        reasonCode: "RUNTIME_NOT_READY",
+                        message: "WebSocket is not open for INPUT_COMMAND dispatch.",
+                    });
+                });
+            },
+        };
     };
 
     const beginLiveConnection = (
@@ -567,6 +697,11 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             liveBaselineSnapshot = envelope.payload;
             livePendingDiffs = [];
             liveBaselineIngestedByViewer = false;
+            setLiveCommandBridge(createLiveCommandBridgeForConnection({
+                client,
+                attemptRevision,
+                connectionRevision,
+            }));
             syncLiveStateToViewer();
 
             const current = stateStore.getState();
@@ -596,21 +731,39 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             }
             livePendingDiffs.push(envelope.payload);
         });
-        subscribeToMessage("COMMAND_ACCEPTED", () => {
-            if (liveBaselineSnapshot) return;
-            failLiveConnection({
-                reason: "BAD_SEQUENCE",
-                message: "COMMAND_ACCEPTED is not valid during live startup handshake.",
+        subscribeToMessage("COMMAND_ACCEPTED", (envelope) => {
+            if (!liveBaselineSnapshot) {
+                failLiveConnection({
+                    reason: "BAD_SEQUENCE",
+                    message: "COMMAND_ACCEPTED is not valid during live startup handshake.",
+                });
+                return;
+            }
+            resolvePendingCommandAck(envelope.payload.client_cmd_id, {
+                accepted: true,
             });
         });
-        subscribeToMessage("COMMAND_REJECTED", () => {
-            if (liveBaselineSnapshot) return;
-            failLiveConnection({
-                reason: "BAD_SEQUENCE",
-                message: "COMMAND_REJECTED is not valid during live startup handshake.",
+        subscribeToMessage("COMMAND_REJECTED", (envelope) => {
+            if (!liveBaselineSnapshot) {
+                failLiveConnection({
+                    reason: "BAD_SEQUENCE",
+                    message: "COMMAND_REJECTED is not valid during live startup handshake.",
+                });
+                return;
+            }
+            resolvePendingCommandAck(envelope.payload.client_cmd_id, {
+                accepted: false,
+                reasonCode: envelope.payload.reason_code,
+                message: envelope.payload.message,
             });
         });
         subscribeToMessage("ERROR", (envelope) => {
+            if (liveBaselineSnapshot) {
+                clearPendingCommandAcks(
+                    envelope.payload.code,
+                    envelope.payload.message
+                );
+            }
             failLiveConnection({
                 reason: envelope.payload.code,
                 message: `Live kernel error (${envelope.payload.code}): ${envelope.payload.message}`,
@@ -706,6 +859,19 @@ function renderScreen(title: string, body: string, children: HTMLElement[] = [])
     for (const child of children) section.appendChild(child);
 
     return section;
+}
+
+function makeClientCmdId(): string {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+    }
+
+    const template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
+    return template.replace(/[xy]/g, (ch) => {
+        const rand = Math.floor(Math.random() * 16);
+        const nibble = ch === "x" ? rand : ((rand & 0x3) | 0x8);
+        return nibble.toString(16);
+    });
 }
 
 function isAbortError(err: unknown): boolean {

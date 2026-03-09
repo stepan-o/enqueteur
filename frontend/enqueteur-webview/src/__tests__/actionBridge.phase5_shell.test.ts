@@ -1,9 +1,26 @@
 import { describe, expect, it } from "vitest";
 
-import type { KvpClient } from "../kvp/client";
 import { createFrontendActionBridge } from "../app/actionBridge";
+import type { LiveCommandBridge } from "../app/live/liveCommandBridge";
 import { WorldStore } from "../state/worldStore";
 import { cloneDialogue, cloneInvestigation, makeMbamSnapshot, makeStateDiff } from "./mbamFixtures";
+
+function makeLiveCommandBridge(args: {
+    canSend?: boolean;
+    onSend: () => void;
+}): LiveCommandBridge {
+    const { canSend = true, onSend } = args;
+    return {
+        canSendInputCommand: () => canSend,
+        sendInputCommand: async () => {
+            onSend();
+            return {
+                accepted: true,
+                clientCmdId: "00000000-0000-4000-8000-000000000001",
+            };
+        },
+    };
+}
 
 describe("Phase 5 action bridge", () => {
     it("returns unavailable while offline/replay", async () => {
@@ -13,7 +30,7 @@ describe("Phase 5 action bridge", () => {
         const bridge = createFrontendActionBridge({
             store,
             getMode: () => "offline",
-            getClient: () => null,
+            getLiveCommandBridge: () => null,
             projectionTimeoutMs: 40,
         });
 
@@ -43,9 +60,8 @@ describe("Phase 5 action bridge", () => {
         const store = new WorldStore();
         store.applySnapshot(makeMbamSnapshot(2));
 
-        const fakeClient = {
-            canSendSimInput: () => true,
-            sendSimInput: () => {
+        const liveCommandBridge = makeLiveCommandBridge({
+            onSend: () => {
                 const state = store.getState();
                 const next = cloneInvestigation(state.investigation!);
                 const displayCase = next.objects.find((row) => row.object_id === "O1_DISPLAY_CASE");
@@ -56,14 +72,13 @@ describe("Phase 5 action bridge", () => {
                 next.facts.known_fact_ids.push("N7");
                 next.evidence.discovered_ids.push("E3_METHOD_TRACE");
                 store.applyDiff(makeStateDiff(state, [{ op: "SET_INVESTIGATION", investigation: next }]));
-                return true;
             },
-        } as unknown as KvpClient;
+        });
 
         const bridge = createFrontendActionBridge({
             store,
             getMode: () => "live",
-            getClient: () => fakeClient,
+            getLiveCommandBridge: () => liveCommandBridge,
             projectionTimeoutMs: 40,
         });
 
@@ -85,21 +100,19 @@ describe("Phase 5 action bridge", () => {
         const store = new WorldStore();
         store.applySnapshot(makeMbamSnapshot(2));
 
-        const fakeClient = {
-            canSendSimInput: () => true,
-            sendSimInput: () => {
+        const liveCommandBridge = makeLiveCommandBridge({
+            onSend: () => {
                 const state = store.getState();
                 const next = cloneInvestigation(state.investigation!);
                 next.evidence.observed_not_collected_ids.push("clue:evidence:E3_METHOD_TRACE:observed_not_collected");
                 store.applyDiff(makeStateDiff(state, [{ op: "SET_INVESTIGATION", investigation: next }]));
-                return true;
             },
-        } as unknown as KvpClient;
+        });
 
         const bridge = createFrontendActionBridge({
             store,
             getMode: () => "live",
-            getClient: () => fakeClient,
+            getLiveCommandBridge: () => liveCommandBridge,
             projectionTimeoutMs: 40,
         });
 
@@ -118,9 +131,8 @@ describe("Phase 5 action bridge", () => {
         const store = new WorldStore();
         store.applySnapshot(makeMbamSnapshot(3));
 
-        const fakeClient = {
-            canSendSimInput: () => true,
-            sendSimInput: () => {
+        const liveCommandBridge = makeLiveCommandBridge({
+            onSend: () => {
                 const state = store.getState();
                 const next = cloneDialogue(state.dialogue!);
                 next.recent_turns.push({
@@ -139,14 +151,13 @@ describe("Phase 5 action bridge", () => {
                     summary_check_code: "insufficient_facts",
                 });
                 store.applyDiff(makeStateDiff(state, [{ op: "SET_DIALOGUE", dialogue: next }]));
-                return true;
             },
-        } as unknown as KvpClient;
+        });
 
         const bridge = createFrontendActionBridge({
             store,
             getMode: () => "live",
-            getClient: () => fakeClient,
+            getLiveCommandBridge: () => liveCommandBridge,
             projectionTimeoutMs: 40,
         });
 
@@ -170,9 +181,8 @@ describe("Phase 5 action bridge", () => {
         const store = new WorldStore();
         store.applySnapshot(makeMbamSnapshot(4));
 
-        const fakeClient = {
-            canSendSimInput: () => true,
-            sendSimInput: () => {
+        const liveCommandBridge = makeLiveCommandBridge({
+            onSend: () => {
                 const state = store.getState();
                 const next = cloneDialogue(state.dialogue!);
                 next.recent_turns.push({
@@ -191,14 +201,13 @@ describe("Phase 5 action bridge", () => {
                     summary_check_code: null,
                 });
                 store.applyDiff(makeStateDiff(state, [{ op: "SET_DIALOGUE", dialogue: next }]));
-                return true;
             },
-        } as unknown as KvpClient;
+        });
 
         const bridge = createFrontendActionBridge({
             store,
             getMode: () => "live",
-            getClient: () => fakeClient,
+            getLiveCommandBridge: () => liveCommandBridge,
             projectionTimeoutMs: 30,
         });
 

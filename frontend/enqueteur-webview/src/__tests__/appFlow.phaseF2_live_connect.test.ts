@@ -54,6 +54,7 @@ function makeFakeViewer() {
         ingestLiveKernelHello: vi.fn((_payload: unknown) => {}),
         ingestLiveSnapshot: vi.fn((_payload: unknown) => {}),
         ingestLiveFrameDiff: vi.fn((_payload: unknown) => {}),
+        setLiveCommandBridge: vi.fn((_bridge: unknown) => {}),
         stop: vi.fn(() => {}),
         setVisible: vi.fn((_visible: boolean) => {}),
         setDevControlsVisible: vi.fn((_visible: boolean) => {}),
@@ -65,6 +66,7 @@ class ScriptedLiveClient implements EnqueteurLiveClientLike {
     readonly connect = vi.fn(() => {});
     readonly disconnect = vi.fn((_code?: number, _reason?: string) => {});
     readonly sendSubscribe = vi.fn(() => true);
+    readonly sendInputCommand = vi.fn((payload: { client_cmd_id: string }) => Boolean(payload.client_cmd_id));
 
     private readonly openHandlers = new Set<() => void>();
     private readonly closeHandlers = new Set<(event: CloseEvent) => void>();
@@ -474,6 +476,114 @@ describe("Phase F2 live connect app flow", () => {
         expect(flow.getState()).toEqual({
             kind: "LIVE_GAME",
             caseId: "MBAM_01",
+        });
+
+        flow.destroy();
+    });
+
+    it("correlates live INPUT_COMMAND acknowledgements by client_cmd_id", async () => {
+        const startCase = vi.fn(async () => makeLaunchMetadata());
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const scriptedLiveClient = new ScriptedLiveClient();
+        const createLiveClient = vi.fn(() => scriptedLiveClient);
+        const fakeViewer = makeFakeViewer();
+        const createLiveViewer: NonNullable<AppFlowOpts["createLiveViewer"]> = vi.fn(
+            async () => fakeViewer
+        );
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+            createLiveClient,
+            createLiveViewer,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CASE_SELECT" });
+        clickFirstCaseCard();
+        await flushAsyncWork();
+
+        scriptedLiveClient.emitOpen();
+        scriptedLiveClient.emitMessage("KERNEL_HELLO", {
+            engine_name: "enqueteur",
+            engine_version: "0.1.0",
+            schema_version: "enqueteur_mbam_1",
+            world_id: "world-123",
+            run_id: "run-123",
+            seed: "A",
+            tick_rate_hz: 30,
+            time_origin_ms: 0,
+            render_spec: {},
+        });
+        scriptedLiveClient.emitMessage("SUBSCRIBED", {
+            stream_id: "stream-123",
+            effective_stream: "LIVE",
+            effective_channels: ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+            effective_diff_policy: "DIFF_ONLY",
+            effective_snapshot_policy: "ON_JOIN",
+            effective_compression: "NONE",
+        });
+        scriptedLiveClient.emitMessage("FULL_SNAPSHOT", {
+            schema_version: "enqueteur_mbam_1",
+            tick: 0,
+            step_hash: "hash-0",
+            state: { world: {} },
+        });
+        await flushAsyncWork();
+
+        const bridgeCall = fakeViewer.setLiveCommandBridge.mock.calls.at(-1);
+        const liveBridge = bridgeCall?.[0] as {
+            sendInputCommand: (
+                cmd: { type: "INVESTIGATE_OBJECT"; payload: Record<string, unknown> },
+                opts?: { tickTarget?: number }
+            ) => Promise<{ accepted: boolean; clientCmdId: string; reasonCode?: string; message?: string }>;
+        };
+        expect(liveBridge).toBeTruthy();
+
+        const rejectedPromise = liveBridge.sendInputCommand(
+            {
+                type: "INVESTIGATE_OBJECT",
+                payload: { object_id: "O1_DISPLAY_CASE", action_id: "inspect" },
+            },
+            { tickTarget: 1 }
+        );
+        expect(scriptedLiveClient.sendInputCommand).toHaveBeenCalledTimes(1);
+
+        const firstCall = scriptedLiveClient.sendInputCommand.mock.calls[0];
+        expect(firstCall).toBeTruthy();
+        const firstCommandPayload = firstCall![0];
+        scriptedLiveClient.emitMessage("COMMAND_REJECTED", {
+            client_cmd_id: firstCommandPayload.client_cmd_id,
+            reason_code: "OBJECT_ACTION_UNAVAILABLE",
+            message: "Object action unavailable.",
+        });
+
+        await expect(rejectedPromise).resolves.toEqual({
+            accepted: false,
+            clientCmdId: firstCommandPayload.client_cmd_id,
+            reasonCode: "OBJECT_ACTION_UNAVAILABLE",
+            message: "Object action unavailable.",
+        });
+
+        const acceptedPromise = liveBridge.sendInputCommand(
+            {
+                type: "INVESTIGATE_OBJECT",
+                payload: { object_id: "O1_DISPLAY_CASE", action_id: "inspect" },
+            },
+            { tickTarget: 2 }
+        );
+        expect(scriptedLiveClient.sendInputCommand).toHaveBeenCalledTimes(2);
+        const secondCall = scriptedLiveClient.sendInputCommand.mock.calls[1];
+        expect(secondCall).toBeTruthy();
+        const secondCommandPayload = secondCall![0];
+        scriptedLiveClient.emitMessage("COMMAND_ACCEPTED", {
+            client_cmd_id: secondCommandPayload.client_cmd_id,
+        });
+
+        await expect(acceptedPromise).resolves.toEqual({
+            accepted: true,
+            clientCmdId: secondCommandPayload.client_cmd_id,
+            reasonCode: undefined,
+            message: undefined,
         });
 
         flow.destroy();
