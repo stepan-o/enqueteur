@@ -45,6 +45,8 @@ RUN_NOT_FOUND_WS_CLOSE_CODE = 4404
 RUN_NOT_FOUND_WS_CLOSE_REASON = "RUN_NOT_FOUND"
 PROTOCOL_VIOLATION_WS_CLOSE_CODE = 1002
 PROTOCOL_VIOLATION_WS_CLOSE_REASON = "PROTOCOL_VIOLATION"
+INTERNAL_RUNTIME_WS_CLOSE_CODE = 1011
+INTERNAL_RUNTIME_WS_CLOSE_REASON = "INTERNAL_RUNTIME_ERROR"
 
 ENQUETEUR_ALLOWED_CHANNELS: tuple[str, ...] = (
     "WORLD",
@@ -185,6 +187,7 @@ class EnqueteurLiveSessionHost:
     def __init__(self, *, run_registry: CaseRunRegistry | None = None) -> None:
         self._run_registry = run_registry if run_registry is not None else get_default_case_run_registry()
         self._sessions: dict[str, EnqueteurLiveSession] = {}
+        self._closed_sessions: dict[str, EnqueteurLiveSession] = {}
 
     def attach_connection(self, *, connection_target: str) -> EnqueteurLiveSession:
         record = self._run_registry.resolve_connection_target(connection_target)
@@ -446,23 +449,42 @@ class EnqueteurLiveSessionHost:
         close_code: int = 1000,
         close_reason: str | None = None,
     ) -> EnqueteurLiveSession:
-        session = self._require_session(connection_id)
+        session = self._sessions.get(connection_id)
+        if session is None:
+            session = self._closed_sessions.get(connection_id)
+            if session is None:
+                raise KeyError(f"Unknown connection_id: {connection_id}")
+            return session
+
         session.phase = "CLOSED"
         session.protocol_state = "CLOSED"
         session.closed_at = datetime.now(UTC).isoformat()
         session.close_code = int(close_code)
         session.close_reason = close_reason
+        self._sessions.pop(connection_id, None)
+        self._closed_sessions[connection_id] = session
         return session
 
+    def cleanup_closed_session(self, connection_id: str) -> EnqueteurLiveSession | None:
+        return self._closed_sessions.pop(connection_id, None)
+
     def get_session(self, connection_id: str) -> EnqueteurLiveSession | None:
-        return self._sessions.get(connection_id)
+        return self._sessions.get(connection_id) or self._closed_sessions.get(connection_id)
 
     def list_sessions_for_run(self, run_id: str) -> tuple[EnqueteurLiveSession, ...]:
-        return tuple(session for session in self._sessions.values() if session.run.run_id == run_id)
+        active = [session for session in self._sessions.values() if session.run.run_id == run_id]
+        closed = [session for session in self._closed_sessions.values() if session.run.run_id == run_id]
+        return tuple(active + closed)
 
     def _require_session(self, connection_id: str) -> EnqueteurLiveSession:
         session = self._sessions.get(connection_id)
         if session is None:
+            if connection_id in self._closed_sessions:
+                raise ProtocolViolationError(
+                    code="RUN_ALREADY_CLOSED",
+                    message=f"Session {connection_id} is already closed.",
+                    fatal=True,
+                )
             raise KeyError(f"Unknown connection_id: {connection_id}")
         return session
 
@@ -589,13 +611,45 @@ async def open_enqueteur_live_websocket(
     session_host = host if host is not None else get_default_enqueteur_live_session_host()
     try:
         session = session_host.attach_connection(connection_target=connection_target)
-    except RunLookupError:
+    except RunLookupError as exc:
+        await websocket.accept()
+        await _send_error(
+            websocket,
+            code="RUN_NOT_FOUND",
+            message=(
+                f"No started run exists for connection target '{exc.connection_target}'."
+            ),
+            fatal=True,
+        )
         await websocket.close(code=RUN_NOT_FOUND_WS_CLOSE_CODE, reason=RUN_NOT_FOUND_WS_CLOSE_REASON)
         raise
 
     await websocket.accept()
     session_host.mark_handshaking(session.connection_id)
     return session
+
+
+def handle_enqueteur_live_disconnect(
+    *,
+    session: EnqueteurLiveSession,
+    close_code: int = 1001,
+    close_reason: str = "CLIENT_DISCONNECT",
+    host: EnqueteurLiveSessionHost | None = None,
+) -> EnqueteurLiveSession | None:
+    """Finalize session state for a transport disconnect and clean up active maps."""
+
+    session_host = host if host is not None else get_default_enqueteur_live_session_host()
+    stored = session_host.get_session(session.connection_id)
+    if stored is None:
+        return None
+
+    closed = session_host.close_connection(
+        session.connection_id,
+        close_code=close_code,
+        close_reason=close_reason,
+    )
+    session_host.cleanup_closed_session(session.connection_id)
+    return closed
 
 
 async def handle_enqueteur_live_incoming_message(
@@ -609,6 +663,20 @@ async def handle_enqueteur_live_incoming_message(
 
     session_host = host if host is not None else get_default_enqueteur_live_session_host()
     try:
+        live_session = session_host.get_session(session.connection_id)
+        if live_session is None:
+            raise ProtocolViolationError(
+                code="RUN_NOT_FOUND",
+                message=f"Session {session.connection_id} is not bound to an active run.",
+                fatal=True,
+            )
+        if live_session.phase == "CLOSED":
+            raise ProtocolViolationError(
+                code="RUN_ALREADY_CLOSED",
+                message=f"Session {session.connection_id} is already closed.",
+                fatal=True,
+            )
+
         envelope = _decode_incoming_envelope(raw_message)
         msg_type = envelope["msg_type"]
         payload = envelope["payload"]
@@ -632,6 +700,32 @@ async def handle_enqueteur_live_incoming_message(
                 )
             return
 
+        if msg_type == "PING":
+            nonce = payload.get("nonce")
+            await _send_envelope(websocket, msg_type="PONG", payload={"nonce": nonce})
+            return
+
+        if msg_type == "INPUT_COMMAND":
+            if not session_host.can_deliver_state(session.connection_id):
+                raise ProtocolViolationError(
+                    code="BAD_SEQUENCE",
+                    message="INPUT_COMMAND is not allowed before SUBSCRIBED.",
+                    fatal=True,
+                )
+
+            client_cmd_id = _require_client_cmd_id(payload)
+            _validate_input_command_payload_shape(payload)
+            await _send_envelope(
+                websocket,
+                msg_type="COMMAND_REJECTED",
+                payload={
+                    "client_cmd_id": client_cmd_id,
+                    "reason_code": "RUNTIME_NOT_READY",
+                    "message": "Command execution is not available until Phase E is enabled.",
+                },
+            )
+            return
+
         if not session_host.can_deliver_state(session.connection_id):
             raise ProtocolViolationError(
                 code="BAD_SEQUENCE",
@@ -639,40 +733,55 @@ async def handle_enqueteur_live_incoming_message(
                 fatal=True,
             )
 
-        raise ProtocolViolationError(
+        await _send_warn(
+            websocket,
             code="UNSUPPORTED_MESSAGE",
             message=f"Unsupported msg_type: {msg_type}.",
-            fatal=False,
         )
+        return
 
     except ProtocolViolationError as exc:
         await _send_error(websocket, code=exc.code, message=exc.message, fatal=exc.fatal)
         if exc.fatal:
-            session_host.close_connection(
-                session.connection_id,
-                close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
-                close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
-            )
+            close_code = PROTOCOL_VIOLATION_WS_CLOSE_CODE
+            close_reason = PROTOCOL_VIOLATION_WS_CLOSE_REASON
+            if exc.code == "RUN_NOT_FOUND":
+                close_code = RUN_NOT_FOUND_WS_CLOSE_CODE
+                close_reason = RUN_NOT_FOUND_WS_CLOSE_REASON
+            elif exc.code == "INTERNAL_RUNTIME_ERROR":
+                close_code = INTERNAL_RUNTIME_WS_CLOSE_CODE
+                close_reason = INTERNAL_RUNTIME_WS_CLOSE_REASON
+            if session_host.get_session(session.connection_id) is not None:
+                session_host.close_connection(
+                    session.connection_id,
+                    close_code=close_code,
+                    close_reason=close_reason,
+                )
             await websocket.close(
-                code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
-                reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
+                code=close_code,
+                reason=close_reason,
             )
+            if session_host.get_session(session.connection_id) is not None:
+                session_host.cleanup_closed_session(session.connection_id)
     except Exception as exc:  # noqa: BLE001
         await _send_error(
             websocket,
-            code="INVALID_ENVELOPE",
-            message=f"Invalid live envelope: {exc}",
+            code="INTERNAL_RUNTIME_ERROR",
+            message=f"Unhandled internal runtime/session error: {exc}",
             fatal=True,
         )
-        session_host.close_connection(
-            session.connection_id,
-            close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
-            close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
-        )
+        if session_host.get_session(session.connection_id) is not None:
+            session_host.close_connection(
+                session.connection_id,
+                close_code=INTERNAL_RUNTIME_WS_CLOSE_CODE,
+                close_reason=INTERNAL_RUNTIME_WS_CLOSE_REASON,
+            )
         await websocket.close(
-            code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
-            reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
+            code=INTERNAL_RUNTIME_WS_CLOSE_CODE,
+            reason=INTERNAL_RUNTIME_WS_CLOSE_REASON,
         )
+        if session_host.get_session(session.connection_id) is not None:
+            session_host.cleanup_closed_session(session.connection_id)
 
 
 async def stream_enqueteur_frame_diff_once(
@@ -751,15 +860,38 @@ async def _send_error(
     )
 
 
+async def _send_warn(
+    websocket: EnqueteurWebSocketTransport,
+    *,
+    code: str,
+    message: str,
+) -> None:
+    await _send_envelope(
+        websocket,
+        msg_type="WARN",
+        payload={
+            "code": code,
+            "message": message,
+        },
+    )
+
+
 def _decode_incoming_envelope(raw_message: str | bytes) -> dict[str, Any]:
-    text = raw_message.decode("utf-8") if isinstance(raw_message, bytes) else raw_message
-    if not isinstance(text, str):
-        raise ValueError("Inbound websocket message must be UTF-8 text.")
-    parsed = json.loads(text)
-    if not isinstance(parsed, dict):
-        raise ValueError("Inbound websocket message must decode to an object envelope.")
-    validate_live_envelope(parsed)
-    return parsed
+    try:
+        text = raw_message.decode("utf-8") if isinstance(raw_message, bytes) else raw_message
+        if not isinstance(text, str):
+            raise ValueError("Inbound websocket message must be UTF-8 text.")
+        parsed = json.loads(text)
+        if not isinstance(parsed, dict):
+            raise ValueError("Inbound websocket message must decode to an object envelope.")
+        validate_live_envelope(parsed)
+        return parsed
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ProtocolViolationError(
+            code="PROTOCOL_VIOLATION",
+            message=f"Invalid live envelope: {exc}",
+            fatal=True,
+        ) from exc
 
 
 def _require_non_empty_str(value: Any, *, field: str, code: str) -> str:
@@ -785,6 +917,57 @@ def _require_string_list(
     if non_empty and not out:
         raise ProtocolViolationError(code=code, message=f"{field} must be non-empty.", fatal=True)
     return out
+
+
+def _require_client_cmd_id(payload: dict[str, Any]) -> str:
+    client_cmd_id = payload.get("client_cmd_id")
+    if not isinstance(client_cmd_id, str) or not client_cmd_id.strip():
+        raise ProtocolViolationError(
+            code="INVALID_INPUT_COMMAND",
+            message="INPUT_COMMAND.client_cmd_id must be a non-empty UUID string.",
+            fatal=False,
+        )
+    try:
+        uuid.UUID(client_cmd_id.strip())
+    except ValueError as exc:
+        raise ProtocolViolationError(
+            code="INVALID_INPUT_COMMAND",
+            message="INPUT_COMMAND.client_cmd_id must be a valid UUID string.",
+            fatal=False,
+        ) from exc
+    return client_cmd_id.strip()
+
+
+def _validate_input_command_payload_shape(payload: dict[str, Any]) -> None:
+    tick_target = payload.get("tick_target")
+    if not isinstance(tick_target, int) or tick_target < 0:
+        raise ProtocolViolationError(
+            code="INVALID_INPUT_COMMAND",
+            message="INPUT_COMMAND.tick_target must be a non-negative integer.",
+            fatal=False,
+        )
+
+    cmd = payload.get("cmd")
+    if not isinstance(cmd, dict):
+        raise ProtocolViolationError(
+            code="INVALID_INPUT_COMMAND",
+            message="INPUT_COMMAND.cmd must be an object.",
+            fatal=False,
+        )
+    cmd_type = cmd.get("type")
+    if not isinstance(cmd_type, str) or not cmd_type.strip():
+        raise ProtocolViolationError(
+            code="INVALID_INPUT_COMMAND",
+            message="INPUT_COMMAND.cmd.type must be a non-empty string.",
+            fatal=False,
+        )
+    cmd_payload = cmd.get("payload")
+    if not isinstance(cmd_payload, dict):
+        raise ProtocolViolationError(
+            code="INVALID_INPUT_COMMAND",
+            message="INPUT_COMMAND.cmd.payload must be an object.",
+            fatal=False,
+        )
 
 
 def _index_by_id(rows: list[dict[str, Any]], id_field: str) -> dict[Any, dict[str, Any]]:
@@ -1069,6 +1252,8 @@ __all__ = [
     "RUN_NOT_FOUND_WS_CLOSE_REASON",
     "PROTOCOL_VIOLATION_WS_CLOSE_CODE",
     "PROTOCOL_VIOLATION_WS_CLOSE_REASON",
+    "INTERNAL_RUNTIME_WS_CLOSE_CODE",
+    "INTERNAL_RUNTIME_WS_CLOSE_REASON",
     "ENQUETEUR_ALLOWED_CHANNELS",
     "LiveProtocolPhase",
     "LiveProtocolState",
@@ -1082,6 +1267,7 @@ __all__ = [
     "EnqueteurLiveSessionHost",
     "get_default_enqueteur_live_session_host",
     "open_enqueteur_live_websocket",
+    "handle_enqueteur_live_disconnect",
     "handle_enqueteur_live_incoming_message",
     "stream_enqueteur_frame_diff_once",
     "stream_enqueteur_frame_diff_loop",

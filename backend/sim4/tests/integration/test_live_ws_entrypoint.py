@@ -5,12 +5,15 @@ import json
 
 from backend.api.cases_start import CaseRunRegistry, CaseStartRequest, CaseStartService
 from backend.api.live_ws import (
+    INTERNAL_RUNTIME_WS_CLOSE_CODE,
+    INTERNAL_RUNTIME_WS_CLOSE_REASON,
     PROTOCOL_VIOLATION_WS_CLOSE_CODE,
     PROTOCOL_VIOLATION_WS_CLOSE_REASON,
     RUN_NOT_FOUND_WS_CLOSE_CODE,
     RUN_NOT_FOUND_WS_CLOSE_REASON,
     EnqueteurLiveSessionHost,
     RunLookupError,
+    handle_enqueteur_live_disconnect,
     handle_enqueteur_live_incoming_message,
     open_enqueteur_live_websocket,
     stream_enqueteur_frame_diff_loop,
@@ -103,7 +106,12 @@ def test_live_websocket_entrypoint_closes_on_missing_run() -> None:
     else:
         raise AssertionError("RunLookupError was expected for unknown run_id.")
 
-    assert ws.accept_calls == 0
+    assert ws.accept_calls == 1
+    error_env = _decode_sent_envelope(ws, 0)
+    assert error_env["msg_type"] == "ERROR"
+    error_payload = error_env["payload"]
+    assert error_payload["code"] == "RUN_NOT_FOUND"
+    assert error_payload["fatal"] is True
     assert ws.close_calls == [(RUN_NOT_FOUND_WS_CLOSE_CODE, RUN_NOT_FOUND_WS_CLOSE_REASON)]
 
 
@@ -604,6 +612,197 @@ def test_subscribe_rejects_duplicate_channels() -> None:
     assert error_payload["fatal"] is True
 
 
+def test_ping_echoes_pong_nonce() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope("PING", {"nonce": "abc123"}),
+            host=host,
+        )
+    )
+
+    pong_env = _decode_sent_envelope(ws, 0)
+    assert pong_env["msg_type"] == "PONG"
+    assert pong_env["payload"] == {"nonce": "abc123"}
+    assert ws.close_calls == []
+
+
+def test_input_command_is_explicitly_rejected_before_phase_e() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+    client_cmd_id = "00000000-0000-4000-8000-00000000000a"
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": client_cmd_id,
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "INVESTIGATE_OBJECT",
+                        "payload": {"object_id": "O1", "action_id": "inspect"},
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
+    assert rejected["payload"]["reason_code"] == "RUNTIME_NOT_READY"
+    assert ws.close_calls == []
+
+
+def test_invalid_input_command_payload_is_nonfatal_error() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": "not-a-uuid",
+                    "tick_target": 1,
+                    "cmd": {"type": "INVESTIGATE_OBJECT", "payload": {}},
+                },
+            ),
+            host=host,
+        )
+    )
+
+    error_env = _decode_sent_envelope(ws, 0)
+    assert error_env["msg_type"] == "ERROR"
+    assert error_env["payload"]["code"] == "INVALID_INPUT_COMMAND"
+    assert error_env["payload"]["fatal"] is False
+    assert ws.close_calls == []
+
+
+def test_internal_runtime_error_is_structured_and_fatal() -> None:
+    class FailingHost(EnqueteurLiveSessionHost):
+        def record_viewer_hello(self, connection_id: str, payload: dict[str, object]) -> dict[str, object]:
+            raise RuntimeError("boom")
+
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = FailingHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+
+    error_env = _decode_sent_envelope(ws, 0)
+    assert error_env["msg_type"] == "ERROR"
+    assert error_env["payload"]["code"] == "INTERNAL_RUNTIME_ERROR"
+    assert error_env["payload"]["fatal"] is True
+    assert ws.close_calls == [(INTERNAL_RUNTIME_WS_CLOSE_CODE, INTERNAL_RUNTIME_WS_CLOSE_REASON)]
+
+
 def test_live_session_host_tracks_connection_lifecycle() -> None:
     registry = CaseRunRegistry()
     _service, payload = _start_mbam_case(registry=registry)
@@ -663,3 +862,24 @@ def test_live_session_host_tracks_connection_lifecycle() -> None:
     sessions_for_run = host.list_sessions_for_run(str(payload["run_id"]))
     assert len(sessions_for_run) == 1
     assert sessions_for_run[0].phase == "CLOSED"
+
+
+def test_handle_disconnect_marks_closed_and_cleans_up_session() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    closed = handle_enqueteur_live_disconnect(
+        session=session,
+        close_code=1001,
+        close_reason="CLIENT_DISCONNECT",
+        host=host,
+    )
+    assert closed is not None
+    assert closed.phase == "CLOSED"
+    assert closed.close_code == 1001
+    assert closed.close_reason == "CLIENT_DISCONNECT"
+    assert host.get_session(session.connection_id) is None
+    assert host.list_sessions_for_run(str(payload["run_id"])) == ()
