@@ -40,6 +40,144 @@ body {
   position: relative;
 }
 
+.app-flow {
+  position: absolute;
+  inset: 0;
+}
+
+.app-flow-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.app-flow-layer-pregame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.app-flow-layer-live {
+  display: none;
+}
+
+.flow-screen {
+  width: min(720px, 92vw);
+  display: grid;
+  gap: 14px;
+  padding: clamp(18px, 4vw, 36px);
+  border-radius: 22px;
+  border: 2px solid rgba(31, 38, 41, 0.18);
+  background: rgba(255, 252, 246, 0.9);
+  box-shadow: 0 20px 44px rgba(30, 35, 40, 0.18);
+}
+
+.flow-logo {
+  width: min(460px, 74vw);
+  max-width: 100%;
+  height: auto;
+}
+
+.flow-screen-title {
+  margin: 0;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: clamp(26px, 5vw, 42px);
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+}
+
+.flow-screen-body,
+.flow-screen-note {
+  margin: 0;
+  color: var(--ink-1);
+  font-size: clamp(14px, 2vw, 17px);
+}
+
+.flow-screen-note {
+  opacity: 0.82;
+}
+
+.flow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.flow-action-btn {
+  border: 1px solid rgba(31, 38, 41, 0.35);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink-0);
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.flow-action-btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.flow-case-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.flow-case-card {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  border: 2px solid rgba(31, 38, 41, 0.22);
+  border-radius: 14px;
+  background: rgba(254, 250, 242, 0.96);
+  color: var(--ink-0);
+  padding: 14px;
+  cursor: pointer;
+}
+
+.flow-case-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.flow-case-title {
+  font-family: "Chivo Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  opacity: 0.72;
+}
+
+.flow-case-sub {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: clamp(18px, 2.8vw, 26px);
+  line-height: 1.12;
+}
+
+.flow-pulse {
+  height: 6px;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(30, 127, 136, 0.28) 0%,
+      rgba(30, 127, 136, 0.92) 42%,
+      rgba(30, 127, 136, 0.28) 100%
+    );
+  background-size: 200% 100%;
+  animation: flowPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes flowPulse {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
 .app-chrome {
   position: absolute;
   top: 14px;
