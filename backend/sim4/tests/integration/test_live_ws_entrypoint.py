@@ -194,6 +194,96 @@ def _prime_resolution_progress_for_accusation(registry: CaseRunRegistry, payload
     )
 
 
+def _run_live_sequence_and_capture_final_snapshot(*, seed: str) -> dict[str, object]:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry, seed=seed, difficulty_profile="D0")
+    _prime_resolution_confrontation_gate(registry, payload)
+    _prime_resolution_progress_for_accusation(registry, payload)
+
+    started = registry.get(str(payload["run_id"]))
+    assert started is not None
+    case_state = started.runner.get_case_state()
+    assert case_state is not None
+    culprit_id = case_state.roles_assignment.culprit
+    supporting_facts = list(case_state.resolution_rules.accusation_success.required_fact_ids)
+    supporting_evidence = list(case_state.resolution_rules.accusation_success.required_items)
+
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["WORLD", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+    )
+
+    command_payloads = [
+        {
+            "client_cmd_id": "00000000-0000-4000-8000-000000000031",
+            "tick_target": 1,
+            "cmd": {
+                "type": "INVESTIGATE_OBJECT",
+                "payload": {"object_id": "O4_BENCH", "action_id": "inspect"},
+            },
+        },
+        {
+            "client_cmd_id": "00000000-0000-4000-8000-000000000032",
+            "tick_target": 2,
+            "cmd": {
+                "type": "DIALOGUE_TURN",
+                "payload": {
+                    "scene_id": "S1",
+                    "npc_id": "elodie",
+                    "intent_id": "ask_what_happened",
+                    "slots": {},
+                },
+            },
+        },
+        {
+            "client_cmd_id": "00000000-0000-4000-8000-000000000033",
+            "tick_target": 3,
+            "cmd": {
+                "type": "MINIGAME_SUBMIT",
+                "payload": {
+                    "minigame_id": "MG1",
+                    "target_id": "O3_WALL_LABEL",
+                    "answer": {"label_guess": "Le Medaillon des Voyageurs"},
+                },
+            },
+        },
+        {
+            "client_cmd_id": "00000000-0000-4000-8000-000000000034",
+            "tick_target": 4,
+            "cmd": {
+                "type": "ATTEMPT_ACCUSATION",
+                "payload": {
+                    "suspect_id": culprit_id,
+                    "supporting_fact_ids": supporting_facts,
+                    "supporting_evidence_ids": supporting_evidence,
+                },
+            },
+        },
+    ]
+
+    for cmd_payload in command_payloads:
+        before = len(ws.sent_texts)
+        asyncio.run(
+            handle_enqueteur_live_incoming_message(
+                ws,
+                session=session,
+                raw_message=_envelope("INPUT_COMMAND", cmd_payload),
+                host=host,
+            )
+        )
+        accepted = _decode_sent_envelope(ws, before)
+        assert accepted["msg_type"] == "COMMAND_ACCEPTED"
+        assert accepted["payload"]["client_cmd_id"] == cmd_payload["client_cmd_id"]
+        asyncio.run(stream_enqueteur_frame_diff_once(ws, session=session, host=host))
+
+    return host.build_full_snapshot_payload(session.connection_id)
+
+
 def test_live_websocket_entrypoint_attaches_to_started_run() -> None:
     registry = CaseRunRegistry()
     _service, payload = _start_mbam_case(registry=registry)
@@ -1247,6 +1337,58 @@ def test_invalid_input_command_payload_is_rejected_with_reason_code() -> None:
     assert ws.close_calls == []
 
 
+def test_malformed_input_command_variants_are_rejected_and_echo_client_cmd_id() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["WORLD", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+    )
+
+    malformed_payloads = [
+        {
+            "client_cmd_id": "00000000-0000-4000-8000-000000000041",
+            "tick_target": -1,
+            "cmd": {"type": "INVESTIGATE_OBJECT", "payload": {"object_id": "O4_BENCH", "action_id": "inspect"}},
+        },
+        {
+            "client_cmd_id": "00000000-0000-4000-8000-000000000042",
+            "tick_target": 1,
+            "cmd": "not-an-object",
+        },
+        {
+            "client_cmd_id": "00000000-0000-4000-8000-000000000043",
+            "tick_target": 1,
+            "cmd": {"type": "MINIGAME_SUBMIT", "payload": {"minigame_id": "MG1", "target_id": "O3_WALL_LABEL", "answer": []}},
+        },
+        {
+            "client_cmd_id": "00000000-0000-4000-8000-000000000044",
+            "tick_target": 1,
+            "cmd": {"type": "ATTEMPT_ACCUSATION", "payload": {"suspect_id": "laurent"}},
+        },
+    ]
+
+    for idx, malformed in enumerate(malformed_payloads):
+        asyncio.run(
+            handle_enqueteur_live_incoming_message(
+                ws,
+                session=session,
+                raw_message=_envelope("INPUT_COMMAND", malformed),
+                host=host,
+            )
+        )
+        rejected = _decode_sent_envelope(ws, idx)
+        assert rejected["msg_type"] == "COMMAND_REJECTED"
+        assert rejected["payload"]["client_cmd_id"] == malformed["client_cmd_id"]
+        assert rejected["payload"]["reason_code"] == "INVALID_COMMAND"
+
+
 def test_dialogue_turn_missing_slots_is_rejected_with_missing_required_slots() -> None:
     registry = CaseRunRegistry()
     _service, payload = _start_mbam_case(registry=registry)
@@ -1935,6 +2077,7 @@ def test_attempt_recovery_rejects_invalid_target_id() -> None:
         session=session,
         channels=["WORLD", "INVESTIGATION", "EVENTS"],
     )
+    client_cmd_id = "00000000-0000-4000-8000-000000000021"
 
     asyncio.run(
         handle_enqueteur_live_incoming_message(
@@ -1943,7 +2086,7 @@ def test_attempt_recovery_rejects_invalid_target_id() -> None:
             raw_message=_envelope(
                 "INPUT_COMMAND",
                 {
-                    "client_cmd_id": "00000000-0000-4000-8000-000000000021",
+                    "client_cmd_id": client_cmd_id,
                     "tick_target": 1,
                     "cmd": {
                         "type": "ATTEMPT_RECOVERY",
@@ -1957,6 +2100,7 @@ def test_attempt_recovery_rejects_invalid_target_id() -> None:
 
     rejected = _decode_sent_envelope(ws, 0)
     assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
     assert rejected["payload"]["reason_code"] == "INVALID_COMMAND"
 
 
@@ -1973,6 +2117,7 @@ def test_attempt_recovery_rejects_missing_prerequisites() -> None:
         session=session,
         channels=["WORLD", "INVESTIGATION", "EVENTS"],
     )
+    client_cmd_id = "00000000-0000-4000-8000-000000000022"
 
     asyncio.run(
         handle_enqueteur_live_incoming_message(
@@ -1981,7 +2126,7 @@ def test_attempt_recovery_rejects_missing_prerequisites() -> None:
             raw_message=_envelope(
                 "INPUT_COMMAND",
                 {
-                    "client_cmd_id": "00000000-0000-4000-8000-000000000022",
+                    "client_cmd_id": client_cmd_id,
                     "tick_target": 1,
                     "cmd": {
                         "type": "ATTEMPT_RECOVERY",
@@ -1995,6 +2140,7 @@ def test_attempt_recovery_rejects_missing_prerequisites() -> None:
 
     rejected = _decode_sent_envelope(ws, 0)
     assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
     assert rejected["payload"]["reason_code"] == "RECOVERY_PREREQS_MISSING"
 
 
@@ -2013,6 +2159,7 @@ def test_attempt_recovery_accepts_when_requirements_are_satisfied() -> None:
         session=session,
         channels=["WORLD", "INVESTIGATION", "EVENTS"],
     )
+    client_cmd_id = "00000000-0000-4000-8000-000000000023"
 
     asyncio.run(
         handle_enqueteur_live_incoming_message(
@@ -2021,7 +2168,7 @@ def test_attempt_recovery_accepts_when_requirements_are_satisfied() -> None:
             raw_message=_envelope(
                 "INPUT_COMMAND",
                 {
-                    "client_cmd_id": "00000000-0000-4000-8000-000000000023",
+                    "client_cmd_id": client_cmd_id,
                     "tick_target": 1,
                     "cmd": {
                         "type": "ATTEMPT_RECOVERY",
@@ -2035,6 +2182,7 @@ def test_attempt_recovery_accepts_when_requirements_are_satisfied() -> None:
 
     accepted = _decode_sent_envelope(ws, 0)
     assert accepted["msg_type"] == "COMMAND_ACCEPTED"
+    assert accepted["payload"]["client_cmd_id"] == client_cmd_id
 
     asyncio.run(stream_enqueteur_frame_diff_once(ws, session=session, host=host))
     diff_payload = _decode_sent_envelope(ws, 1)["payload"]
@@ -2054,6 +2202,7 @@ def test_attempt_accusation_rejects_invalid_suspect_id() -> None:
         session=session,
         channels=["WORLD", "INVESTIGATION", "EVENTS"],
     )
+    client_cmd_id = "00000000-0000-4000-8000-000000000024"
 
     asyncio.run(
         handle_enqueteur_live_incoming_message(
@@ -2062,7 +2211,7 @@ def test_attempt_accusation_rejects_invalid_suspect_id() -> None:
             raw_message=_envelope(
                 "INPUT_COMMAND",
                 {
-                    "client_cmd_id": "00000000-0000-4000-8000-000000000024",
+                    "client_cmd_id": client_cmd_id,
                     "tick_target": 1,
                     "cmd": {
                         "type": "ATTEMPT_ACCUSATION",
@@ -2080,6 +2229,7 @@ def test_attempt_accusation_rejects_invalid_suspect_id() -> None:
 
     rejected = _decode_sent_envelope(ws, 0)
     assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
     assert rejected["payload"]["reason_code"] == "INVALID_COMMAND"
 
 
@@ -2096,6 +2246,7 @@ def test_attempt_accusation_rejects_unknown_supporting_refs() -> None:
         session=session,
         channels=["WORLD", "INVESTIGATION", "EVENTS"],
     )
+    client_cmd_id = "00000000-0000-4000-8000-000000000025"
 
     asyncio.run(
         handle_enqueteur_live_incoming_message(
@@ -2104,7 +2255,7 @@ def test_attempt_accusation_rejects_unknown_supporting_refs() -> None:
             raw_message=_envelope(
                 "INPUT_COMMAND",
                 {
-                    "client_cmd_id": "00000000-0000-4000-8000-000000000025",
+                    "client_cmd_id": client_cmd_id,
                     "tick_target": 1,
                     "cmd": {
                         "type": "ATTEMPT_ACCUSATION",
@@ -2122,6 +2273,7 @@ def test_attempt_accusation_rejects_unknown_supporting_refs() -> None:
 
     rejected = _decode_sent_envelope(ws, 0)
     assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
     assert rejected["payload"]["reason_code"] == "INVALID_COMMAND"
 
 
@@ -2138,6 +2290,7 @@ def test_attempt_accusation_rejects_missing_supporting_refs_and_missing_prereqs(
         session=session,
         channels=["WORLD", "INVESTIGATION", "EVENTS"],
     )
+    client_cmd_id = "00000000-0000-4000-8000-000000000026"
 
     asyncio.run(
         handle_enqueteur_live_incoming_message(
@@ -2146,7 +2299,7 @@ def test_attempt_accusation_rejects_missing_supporting_refs_and_missing_prereqs(
             raw_message=_envelope(
                 "INPUT_COMMAND",
                 {
-                    "client_cmd_id": "00000000-0000-4000-8000-000000000026",
+                    "client_cmd_id": client_cmd_id,
                     "tick_target": 1,
                     "cmd": {
                         "type": "ATTEMPT_ACCUSATION",
@@ -2164,6 +2317,7 @@ def test_attempt_accusation_rejects_missing_supporting_refs_and_missing_prereqs(
 
     rejected = _decode_sent_envelope(ws, 0)
     assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
     assert rejected["payload"]["reason_code"] == "ACCUSATION_PREREQS_MISSING"
 
 
@@ -2190,6 +2344,7 @@ def test_attempt_accusation_accepts_when_requirements_are_satisfied() -> None:
         session=session,
         channels=["WORLD", "INVESTIGATION", "EVENTS"],
     )
+    client_cmd_id = "00000000-0000-4000-8000-000000000027"
 
     asyncio.run(
         handle_enqueteur_live_incoming_message(
@@ -2198,7 +2353,7 @@ def test_attempt_accusation_accepts_when_requirements_are_satisfied() -> None:
             raw_message=_envelope(
                 "INPUT_COMMAND",
                 {
-                    "client_cmd_id": "00000000-0000-4000-8000-000000000027",
+                    "client_cmd_id": client_cmd_id,
                     "tick_target": 1,
                     "cmd": {
                         "type": "ATTEMPT_ACCUSATION",
@@ -2216,6 +2371,7 @@ def test_attempt_accusation_accepts_when_requirements_are_satisfied() -> None:
 
     accepted = _decode_sent_envelope(ws, 0)
     assert accepted["msg_type"] == "COMMAND_ACCEPTED"
+    assert accepted["payload"]["client_cmd_id"] == client_cmd_id
 
     asyncio.run(stream_enqueteur_frame_diff_once(ws, session=session, host=host))
     diff_payload = _decode_sent_envelope(ws, 1)["payload"]
@@ -2224,6 +2380,17 @@ def test_attempt_accusation_accepts_when_requirements_are_satisfied() -> None:
     latest_outcome = outcome_ops[-1].get("outcome")
     assert isinstance(latest_outcome, dict)
     assert latest_outcome.get("primary_outcome") == "accusation_success"
+
+
+def test_live_command_sequence_is_deterministic_for_same_seed() -> None:
+    first = _run_live_sequence_and_capture_final_snapshot(seed="A")
+    second = _run_live_sequence_and_capture_final_snapshot(seed="A")
+
+    assert first["schema_version"] == "enqueteur_mbam_1"
+    assert second["schema_version"] == "enqueteur_mbam_1"
+    assert first["tick"] == second["tick"]
+    assert first["step_hash"] == second["step_hash"]
+    assert first["state"] == second["state"]
 
 
 def test_internal_runtime_error_is_structured_and_fatal() -> None:
