@@ -48,6 +48,7 @@ from .live_commands import (
     DialogueTurnCommandPayload,
     InvestigateObjectCommandPayload,
     InputCommandValidationError,
+    MinigameSubmitCommandPayload,
     ParsedInputCommand,
     parse_enqueteur_input_command,
 )
@@ -72,6 +73,38 @@ ENQUETEUR_ALLOWED_CHANNELS: tuple[str, ...] = (
 ALLOWED_DIFF_POLICIES: tuple[str, ...] = ("DIFF_ONLY", "PERIODIC_SNAPSHOT", "SNAPSHOT_ON_DESYNC")
 ALLOWED_SNAPSHOT_POLICIES: tuple[str, ...] = ("ON_JOIN", "NEVER")
 ALLOWED_COMPRESSION_POLICIES: tuple[str, ...] = ("NONE",)
+ENQUETEUR_MINIGAME_ID_ALIASES: dict[str, str] = {
+    "MG1": "MG1_LABEL_READING",
+    "MG1_LABEL_READING": "MG1_LABEL_READING",
+    "MG2": "MG2_BADGE_LOG",
+    "MG2_BADGE_LOG": "MG2_BADGE_LOG",
+    "MG3": "MG3_RECEIPT_READING",
+    "MG3_RECEIPT_READING": "MG3_RECEIPT_READING",
+    "MG4": "MG4_TORN_NOTE_RECONSTRUCTION",
+    "MG4_TORN_NOTE_RECONSTRUCTION": "MG4_TORN_NOTE_RECONSTRUCTION",
+}
+ENQUETEUR_MINIGAME_TARGETS: dict[str, str] = {
+    "MG1_LABEL_READING": "O3_WALL_LABEL",
+    "MG2_BADGE_LOG": "O6_BADGE_TERMINAL",
+    "MG3_RECEIPT_READING": "O9_RECEIPT_PRINTER",
+    "MG4_TORN_NOTE_RECONSTRUCTION": "O4_BENCH",
+}
+ENQUETEUR_MINIGAME_ACTION_PLAN: dict[str, tuple[tuple[str, str], ...]] = {
+    "MG1_LABEL_READING": (
+        ("O3_WALL_LABEL", "read"),
+    ),
+    "MG2_BADGE_LOG": (
+        ("O6_BADGE_TERMINAL", "request_access"),
+        ("O6_BADGE_TERMINAL", "view_logs"),
+    ),
+    "MG3_RECEIPT_READING": (
+        ("O9_RECEIPT_PRINTER", "ask_for_receipt"),
+        ("O9_RECEIPT_PRINTER", "read_receipt"),
+    ),
+    "MG4_TORN_NOTE_RECONSTRUCTION": (
+        ("O4_BENCH", "inspect"),
+    ),
+}
 
 LiveProtocolPhase = Literal["CONNECTED", "HANDSHAKING", "SUBSCRIBED", "CLOSED"]
 LiveProtocolState = Literal["AWAITING_VIEWER_HELLO", "AWAITING_SUBSCRIBE", "SUBSCRIBED", "CLOSED"]
@@ -727,15 +760,86 @@ class EnqueteurLiveSessionHost:
     def _dispatch_minigame_submit(
         self,
         *,
-        started_run: StartedCaseRun,  # noqa: ARG002
+        started_run: StartedCaseRun,
         session: EnqueteurLiveSession,  # noqa: ARG002
         command: ParsedInputCommand,
     ) -> CommandDispatchResult:
-        return CommandDispatchResult.rejected_result(
-            client_cmd_id=command.client_cmd_id,
-            reason_code="RUNTIME_NOT_READY",
-            message="MINIGAME_SUBMIT execution is not enabled yet.",
+        if not isinstance(command.payload, MinigameSubmitCommandPayload):
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message="MINIGAME_SUBMIT payload shape is invalid after parsing.",
+            )
+
+        canonical_minigame_id = self._canonical_minigame_id(command.payload.minigame_id)
+        if canonical_minigame_id is None:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message=f"Unknown minigame_id '{command.payload.minigame_id}'.",
+            )
+
+        expected_target = ENQUETEUR_MINIGAME_TARGETS[canonical_minigame_id]
+        if command.payload.target_id != expected_target:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="MINIGAME_INVALID_STATE",
+                message=(
+                    f"Minigame '{canonical_minigame_id}' expects target_id '{expected_target}', "
+                    f"got '{command.payload.target_id}'."
+                ),
+            )
+
+        answer_error = self._validate_minigame_answer_payload(
+            minigame_id=canonical_minigame_id,
+            answer=command.payload.answer,
         )
+        if answer_error is not None:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="MINIGAME_INVALID_SUBMISSION",
+                message=answer_error,
+            )
+
+        action_plan = ENQUETEUR_MINIGAME_ACTION_PLAN[canonical_minigame_id]
+        runner = started_run.runner
+
+        for object_id, action_id in action_plan:
+            item_context_id = self._resolve_minigame_item_context(
+                minigame_id=canonical_minigame_id,
+                action_id=action_id,
+                answer=command.payload.answer,
+            )
+            execution = runner.submit_investigation_command(
+                make_investigation_command(
+                    object_id=object_id,
+                    affordance_id=action_id,
+                    item_context_id=item_context_id,
+                )
+            )
+            if execution is None:
+                return CommandDispatchResult.rejected_result(
+                    client_cmd_id=command.client_cmd_id,
+                    reason_code="RUNTIME_NOT_READY",
+                    message="Minigame runtime state is not ready for submissions.",
+                )
+
+            ack = execution.ack
+            if ack.kind in {"success", "no_op"}:
+                continue
+
+            reason_code, message = self._map_minigame_submit_rejection(
+                minigame_id=canonical_minigame_id,
+                target_id=command.payload.target_id,
+                ack=ack,
+            )
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code=reason_code,
+                message=message,
+            )
+
+        return CommandDispatchResult.accepted_result(client_cmd_id=command.client_cmd_id)
 
     def _dispatch_attempt_recovery(
         self,
@@ -873,6 +977,92 @@ class EnqueteurLiveSessionHost:
 
         return "INVALID_COMMAND", (
             f"Unsupported dialogue turn outcome '{status}' ({code})."
+        )
+
+    def _canonical_minigame_id(self, raw_minigame_id: str) -> str | None:
+        normalized = raw_minigame_id.strip().upper()
+        return ENQUETEUR_MINIGAME_ID_ALIASES.get(normalized)
+
+    def _validate_minigame_answer_payload(
+        self,
+        *,
+        minigame_id: str,
+        answer: dict[str, Any],
+    ) -> str | None:
+        if not answer:
+            return "answer must contain at least one field for MINIGAME_SUBMIT."
+
+        for key, value in answer.items():
+            if not isinstance(key, str) or not key.strip():
+                return "answer contains an invalid key; keys must be non-empty strings."
+            if not self._is_valid_minigame_answer_value(value):
+                return (
+                    f"answer field '{key}' uses an unsupported value shape for MINIGAME_SUBMIT."
+                )
+
+        if minigame_id == "MG2_BADGE_LOG":
+            selected = answer.get("selected_entry_id")
+            time_value = answer.get("time_value")
+            if not isinstance(selected, str) or not selected.strip():
+                return "MG2_BADGE_LOG answer requires non-empty selected_entry_id."
+            if not isinstance(time_value, str) or not time_value.strip():
+                return "MG2_BADGE_LOG answer requires non-empty time_value."
+
+        return None
+
+    def _is_valid_minigame_answer_value(self, value: Any, *, depth: int = 0) -> bool:
+        if depth > 3:
+            return False
+        if isinstance(value, (str, int, float, bool)):
+            return True
+        if isinstance(value, list):
+            return all(self._is_valid_minigame_answer_value(item, depth=depth + 1) for item in value)
+        if isinstance(value, dict):
+            return all(
+                isinstance(key, str)
+                and key.strip()
+                and self._is_valid_minigame_answer_value(item, depth=depth + 1)
+                for key, item in value.items()
+            )
+        return False
+
+    def _resolve_minigame_item_context(
+        self,
+        *,
+        minigame_id: str,
+        action_id: str,
+        answer: dict[str, Any],
+    ) -> str | None:
+        if minigame_id == "MG3_RECEIPT_READING" and action_id == "read_receipt":
+            receipt_id = answer.get("receipt_id")
+            if isinstance(receipt_id, str) and receipt_id.strip():
+                return receipt_id.strip()
+        return None
+
+    def _map_minigame_submit_rejection(
+        self,
+        *,
+        minigame_id: str,
+        target_id: str,
+        ack: InvestigationCommandAck,
+    ) -> tuple[str, str]:
+        if ack.code in {"unknown_object_id", "unknown_affordance_id", "affordance_not_allowed_for_object"}:
+            return "INVALID_COMMAND", (
+                f"Minigame '{minigame_id}' is mapped to an unsupported object action."
+            )
+
+        if ack.kind in {"blocked_prerequisite", "state_consumed"}:
+            return "MINIGAME_INVALID_STATE", (
+                f"Minigame '{minigame_id}' is not currently available for target '{target_id}' ({ack.code})."
+            )
+
+        if ack.kind == "invalid_action":
+            return "INVALID_COMMAND", (
+                f"Invalid minigame action mapping for '{minigame_id}' ({ack.code})."
+            )
+
+        return "INVALID_COMMAND", (
+            f"Unsupported minigame submission outcome '{ack.kind}' ({ack.code})."
         )
 
 

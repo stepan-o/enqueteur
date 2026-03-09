@@ -1568,7 +1568,239 @@ def test_unsupported_input_command_type_is_rejected() -> None:
     assert ws.close_calls == []
 
 
-def test_non_investigation_commands_route_to_runtime_not_ready_skeleton() -> None:
+def test_minigame_submit_command_is_accepted_and_updates_learning_diff_state() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "INVESTIGATION", "LEARNING", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+    client_cmd_id = "00000000-0000-4000-8000-000000000012"
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": client_cmd_id,
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "MINIGAME_SUBMIT",
+                        "payload": {
+                            "minigame_id": "MG1",
+                            "target_id": "O3_WALL_LABEL",
+                            "answer": {"label_guess": "Le Medaillon des Voyageurs"},
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    accepted = _decode_sent_envelope(ws, 0)
+    assert accepted["msg_type"] == "COMMAND_ACCEPTED"
+    assert accepted["payload"] == {"client_cmd_id": client_cmd_id}
+    assert ws.close_calls == []
+
+    asyncio.run(
+        stream_enqueteur_frame_diff_once(
+            ws,
+            session=session,
+            host=host,
+        )
+    )
+    diff_payload = _decode_sent_envelope(ws, 1)["payload"]
+    assert any(op["op"] == "SET_OBJECT_INVESTIGATION_STATE" for op in diff_payload["ops"])
+    assert any(
+        op["op"] == "UPSERT_MINIGAME_STATE"
+        and op.get("minigame_state", {}).get("minigame_id") == "MG1_LABEL_READING"
+        and op.get("minigame_state", {}).get("completed") is True
+        for op in diff_payload["ops"]
+    )
+
+
+def test_minigame_submit_rejects_mismatched_target_id() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "INVESTIGATION", "LEARNING", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+    client_cmd_id = "00000000-0000-4000-8000-000000000013"
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": client_cmd_id,
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "MINIGAME_SUBMIT",
+                        "payload": {
+                            "minigame_id": "MG1",
+                            "target_id": "O6_BADGE_TERMINAL",
+                            "answer": {"label_guess": "Le Medaillon des Voyageurs"},
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
+    assert rejected["payload"]["reason_code"] == "MINIGAME_INVALID_STATE"
+
+
+def test_minigame_submit_rejects_invalid_answer_shape() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "INVESTIGATION", "LEARNING", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+    client_cmd_id = "00000000-0000-4000-8000-000000000014"
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": client_cmd_id,
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "MINIGAME_SUBMIT",
+                        "payload": {
+                            "minigame_id": "MG1",
+                            "target_id": "O3_WALL_LABEL",
+                            "answer": {},
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
+    assert rejected["payload"]["reason_code"] == "MINIGAME_INVALID_SUBMISSION"
+
+
+def test_non_minigame_phase_e_commands_route_to_runtime_not_ready_skeleton() -> None:
     registry = CaseRunRegistry()
     _service, payload = _start_mbam_case(registry=registry)
     host = EnqueteurLiveSessionHost(run_registry=registry)
@@ -1612,19 +1844,7 @@ def test_non_investigation_commands_route_to_runtime_not_ready_skeleton() -> Non
 
     command_payloads = [
         {
-            "client_cmd_id": "00000000-0000-4000-8000-000000000012",
-            "tick_target": 1,
-            "cmd": {
-                "type": "MINIGAME_SUBMIT",
-                "payload": {
-                    "minigame_id": "MG2",
-                    "target_id": "O6_BADGE_TERMINAL",
-                    "answer": {"selected_entry_id": "entry_3"},
-                },
-            },
-        },
-        {
-            "client_cmd_id": "00000000-0000-4000-8000-000000000013",
+            "client_cmd_id": "00000000-0000-4000-8000-000000000021",
             "tick_target": 1,
             "cmd": {
                 "type": "ATTEMPT_RECOVERY",
@@ -1632,7 +1852,7 @@ def test_non_investigation_commands_route_to_runtime_not_ready_skeleton() -> Non
             },
         },
         {
-            "client_cmd_id": "00000000-0000-4000-8000-000000000014",
+            "client_cmd_id": "00000000-0000-4000-8000-000000000022",
             "tick_target": 1,
             "cmd": {
                 "type": "ATTEMPT_ACCUSATION",
