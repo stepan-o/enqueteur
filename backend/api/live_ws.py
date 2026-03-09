@@ -18,12 +18,14 @@ import json
 import uuid
 
 from backend.sim4.case_mbam import (
+    InvestigationCommandAck,
     build_visible_dialogue_projection,
     build_visible_investigation_projection,
     build_visible_learning_projection,
     build_visible_npc_semantic_projection,
     build_visible_outcome_projection,
     build_visible_run_recap_projection,
+    make_investigation_command,
 )
 from backend.sim4.host.kvp_defaults import DEFAULT_ENGINE_VERSION, default_render_spec
 from backend.sim4.integration.canonicalize import canonicalize_state_obj
@@ -41,6 +43,7 @@ from .cases_start import (
 )
 from .live_commands import (
     CommandDispatchResult,
+    InvestigateObjectCommandPayload,
     InputCommandValidationError,
     ParsedInputCommand,
     parse_enqueteur_input_command,
@@ -636,14 +639,44 @@ class EnqueteurLiveSessionHost:
     def _dispatch_investigate_object(
         self,
         *,
-        started_run: StartedCaseRun,  # noqa: ARG002
+        started_run: StartedCaseRun,
         session: EnqueteurLiveSession,  # noqa: ARG002
         command: ParsedInputCommand,
     ) -> CommandDispatchResult:
+        if not isinstance(command.payload, InvestigateObjectCommandPayload):
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message="INVESTIGATE_OBJECT payload shape is invalid after parsing.",
+            )
+
+        runner = started_run.runner
+        execution = runner.submit_investigation_command(
+            make_investigation_command(
+                object_id=command.payload.object_id,
+                affordance_id=command.payload.action_id,
+            )
+        )
+        if execution is None:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="RUNTIME_NOT_READY",
+                message="Investigation runtime state is not ready for object commands.",
+            )
+
+        ack = execution.ack
+        if ack.kind in {"success", "no_op"}:
+            return CommandDispatchResult.accepted_result(client_cmd_id=command.client_cmd_id)
+
+        reason_code, message = self._map_investigate_object_rejection(
+            object_id=command.payload.object_id,
+            action_id=command.payload.action_id,
+            ack=ack,
+        )
         return CommandDispatchResult.rejected_result(
             client_cmd_id=command.client_cmd_id,
-            reason_code="RUNTIME_NOT_READY",
-            message="INVESTIGATE_OBJECT execution is not enabled yet.",
+            reason_code=reason_code,
+            message=message,
         )
 
     def _dispatch_dialogue_turn(
@@ -696,6 +729,49 @@ class EnqueteurLiveSessionHost:
             client_cmd_id=command.client_cmd_id,
             reason_code="RUNTIME_NOT_READY",
             message="ATTEMPT_ACCUSATION execution is not enabled yet.",
+        )
+
+    def _map_investigate_object_rejection(
+        self,
+        *,
+        object_id: str,
+        action_id: str,
+        ack: InvestigationCommandAck,
+    ) -> tuple[str, str]:
+        if ack.code == "unknown_object_id":
+            return "INVALID_OBJECT", f"Unknown object_id '{object_id}'."
+
+        if ack.code in {"unknown_affordance_id", "affordance_not_allowed_for_object"}:
+            return "OBJECT_ACTION_UNAVAILABLE", (
+                f"Action '{action_id}' is not available for object '{object_id}'."
+            )
+
+        if ack.kind == "blocked_prerequisite":
+            if any(str(token).startswith("scene:") for token in ack.missing_prerequisites):
+                return "SCENE_GATE_BLOCKED", (
+                    f"Scene gate blocked action '{action_id}' on object '{object_id}'."
+                )
+            if ack.missing_prerequisites:
+                needed = ", ".join(ack.missing_prerequisites)
+                return "OBJECT_ACTION_UNAVAILABLE", (
+                    f"Action '{action_id}' on object '{object_id}' is blocked by prerequisites: {needed}."
+                )
+            return "OBJECT_ACTION_UNAVAILABLE", (
+                f"Action '{action_id}' on object '{object_id}' is currently unavailable."
+            )
+
+        if ack.kind == "state_consumed":
+            return "OBJECT_ACTION_UNAVAILABLE", (
+                f"Action '{action_id}' on object '{object_id}' has already been consumed."
+            )
+
+        if ack.kind == "invalid_action":
+            return "INVALID_COMMAND", (
+                f"Invalid investigation action '{action_id}' for object '{object_id}' ({ack.code})."
+            )
+
+        return "INVALID_COMMAND", (
+            f"Unsupported investigation command outcome '{ack.kind}' ({ack.code})."
         )
 
 
