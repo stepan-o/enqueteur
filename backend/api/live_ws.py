@@ -10,14 +10,24 @@ Phase D2 scope:
 State streaming and gameplay command execution are intentionally deferred.
 """
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 import json
 import uuid
 
+from backend.sim4.case_mbam import (
+    build_visible_dialogue_projection,
+    build_visible_investigation_projection,
+    build_visible_learning_projection,
+    build_visible_npc_semantic_projection,
+    build_visible_outcome_projection,
+    build_visible_run_recap_projection,
+)
 from backend.sim4.host.kvp_defaults import DEFAULT_ENGINE_VERSION, default_render_spec
+from backend.sim4.integration.canonicalize import canonicalize_state_obj
 from backend.sim4.integration.live_envelope import make_live_envelope, validate_live_envelope
+from backend.sim4.integration.step_hash import compute_step_hash
 
 from .cases_start import (
     DEFAULT_CLOCK_DT_SECONDS,
@@ -158,6 +168,8 @@ class EnqueteurLiveSession:
     connected_at: str
     viewer_hello: EnqueteurViewerHello | None = None
     subscribed_config: EnqueteurSubscribedConfig | None = None
+    baseline_sent: bool = False
+    baseline_tick: int | None = None
     closed_at: str | None = None
     close_code: int | None = None
     close_reason: str | None = None
@@ -333,6 +345,34 @@ class EnqueteurLiveSessionHost:
         session = self._require_session(connection_id)
         return session.protocol_state == "SUBSCRIBED" and session.phase == "SUBSCRIBED"
 
+    def build_full_snapshot_payload(self, connection_id: str) -> dict[str, Any]:
+        session = self._require_session(connection_id)
+        if session.subscribed_config is None:
+            raise ProtocolViolationError(
+                code="NOT_SUBSCRIBED",
+                message="Cannot build FULL_SNAPSHOT before SUBSCRIBED.",
+                fatal=True,
+            )
+        started_run = self._require_started_run(session)
+        runner = started_run.runner
+        channels = set(session.subscribed_config.effective_channels)
+        tick = int(runner.get_tick_index())
+        state = self._build_channel_scoped_state(runner=runner, channels=channels)
+        canonical_state = canonicalize_state_obj(state)
+        step_hash = compute_step_hash(canonical_state)
+        return {
+            "schema_version": session.run.schema_version,
+            "tick": tick,
+            "step_hash": step_hash,
+            "state": canonical_state,
+        }
+
+    def mark_baseline_sent(self, connection_id: str, *, tick: int) -> EnqueteurLiveSession:
+        session = self._require_session(connection_id)
+        session.baseline_sent = True
+        session.baseline_tick = int(tick)
+        return session
+
     def close_connection(
         self,
         connection_id: str,
@@ -360,6 +400,16 @@ class EnqueteurLiveSessionHost:
             raise KeyError(f"Unknown connection_id: {connection_id}")
         return session
 
+    def _require_started_run(self, session: EnqueteurLiveSession) -> StartedCaseRun:
+        record = self._run_registry.get(session.run.run_id)
+        if record is None:
+            raise ProtocolViolationError(
+                code="RUN_NOT_FOUND",
+                message=f"Run {session.run.run_id} is not available for live attachment.",
+                fatal=True,
+            )
+        return record
+
     def _require_protocol_state(
         self,
         session: EnqueteurLiveSession,
@@ -376,6 +426,78 @@ class EnqueteurLiveSessionHost:
                 ),
                 fatal=True,
             )
+
+    def _build_channel_scoped_state(self, *, runner: Any, channels: set[str]) -> dict[str, Any]:
+        case_state = runner.get_case_state()
+        progress = runner.get_investigation_progress()
+        object_state = runner.get_investigation_object_state()
+        dialogue_state = runner.get_dialogue_runtime_state()
+        recent_turns = runner.get_dialogue_turn_log()
+        evaluation = runner.get_case_outcome_evaluation()
+
+        state: dict[str, Any] = {}
+
+        if "WORLD" in channels:
+            world_snapshot = runner.get_world_snapshot()
+            state["world"] = {
+                "rooms": [asdict(room) for room in world_snapshot.rooms],
+                "doors": [asdict(door) for door in world_snapshot.doors],
+                "objects": [asdict(obj) for obj in world_snapshot.objects],
+                "clock": {
+                    "tick": int(world_snapshot.tick_index),
+                    "day_index": int(world_snapshot.day_index),
+                    "tick_in_day": int(world_snapshot.tick_in_day),
+                    "time_of_day": float(world_snapshot.time_of_day),
+                    "day_phase": str(world_snapshot.day_phase),
+                },
+            }
+
+        if "NPCS" in channels:
+            npcs = build_visible_npc_semantic_projection(runner.get_npc_states())
+            state["npcs"] = {"npcs": npcs}
+
+        if "INVESTIGATION" in channels and case_state is not None and object_state is not None and progress is not None:
+            state["investigation"] = build_visible_investigation_projection(
+                case_state=case_state,
+                object_state=object_state,
+                progress=progress,
+            )
+
+        if "DIALOGUE" in channels and case_state is not None and dialogue_state is not None and progress is not None:
+            dialogue_projection = build_visible_dialogue_projection(
+                case_state=case_state,
+                runtime_state=dialogue_state,
+                progress=progress,
+                recent_turns=recent_turns,
+            )
+            if "LEARNING" not in channels and isinstance(dialogue_projection, dict):
+                dialogue_projection.pop("learning", None)
+            state["dialogue"] = dialogue_projection
+
+        if "LEARNING" in channels and case_state is not None and dialogue_state is not None and progress is not None:
+            state["learning"] = build_visible_learning_projection(
+                case_state=case_state,
+                runtime_state=dialogue_state,
+                progress=progress,
+                recent_turns=recent_turns,
+            )
+
+        # KVP-ENQ-0001 snapshot shape includes resolution; we scope it to EVENTS.
+        if "EVENTS" in channels:
+            if evaluation is None:
+                state["resolution"] = {
+                    "status": "in_progress",
+                    "outcome": None,
+                    "recap": None,
+                }
+            else:
+                state["resolution"] = {
+                    "status": "resolved" if evaluation.terminal else "in_progress",
+                    "outcome": build_visible_outcome_projection(evaluation),
+                    "recap": build_visible_run_recap_projection(evaluation) if evaluation.terminal else None,
+                }
+
+        return state
 
 
 _DEFAULT_ENQUETEUR_LIVE_SESSION_HOST = EnqueteurLiveSessionHost()
@@ -433,6 +555,13 @@ async def handle_enqueteur_live_incoming_message(
         if msg_type == "SUBSCRIBE":
             subscribed = session_host.record_subscribe(session.connection_id, payload)
             await _send_envelope(websocket, msg_type="SUBSCRIBED", payload=subscribed)
+            if subscribed["effective_snapshot_policy"] == "ON_JOIN":
+                snapshot = session_host.build_full_snapshot_payload(session.connection_id)
+                await _send_envelope(websocket, msg_type="FULL_SNAPSHOT", payload=snapshot)
+                session_host.mark_baseline_sent(
+                    session.connection_id,
+                    tick=int(snapshot["tick"]),
+                )
             return
 
         if not session_host.can_deliver_state(session.connection_id):

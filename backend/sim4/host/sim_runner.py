@@ -77,6 +77,7 @@ from backend.sim4.world.context import WorldContext
 
 from backend.sim4.snapshot.output import TickOutputSink
 from backend.sim4.snapshot.world_snapshot import WorldSnapshot
+from backend.sim4.snapshot.world_snapshot_builder import build_world_snapshot
 
 from backend.sim4.integration.kvp_state_history import KvpStateHistory
 from backend.sim4.integration.live_session import LiveSession
@@ -326,6 +327,20 @@ class SimRunner:
     def get_case_state(self) -> CaseState | None:
         """Return attached MBAM CaseState for this run, if configured."""
         return self._case_state
+
+    def get_tick_index(self) -> int:
+        """Return current deterministic runtime tick index."""
+        return int(self._clock.tick_index)
+
+    def get_world_snapshot(self) -> WorldSnapshot:
+        """Build a deterministic world snapshot from current runtime state."""
+        tick_index = self.get_tick_index()
+        return build_world_snapshot(
+            tick_index=tick_index,
+            episode_id=0,
+            world_ctx=self._world_ctx,
+            ecs_world=self._ecs_world,
+        )
 
     def get_npc_states(self) -> dict[str, NPCState]:
         """Return a copy of initialized MBAM runtime NPC states."""

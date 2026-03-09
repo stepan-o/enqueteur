@@ -105,7 +105,7 @@ def test_live_websocket_entrypoint_closes_on_missing_run() -> None:
     assert ws.close_calls == [(RUN_NOT_FOUND_WS_CLOSE_CODE, RUN_NOT_FOUND_WS_CLOSE_REASON)]
 
 
-def test_handshake_then_subscribe_emits_kernel_hello_and_subscribed() -> None:
+def test_handshake_then_subscribe_emits_kernel_hello_subscribed_and_baseline() -> None:
     registry = CaseRunRegistry()
     _service, payload = _start_mbam_case(registry=registry)
     host = EnqueteurLiveSessionHost(run_registry=registry)
@@ -180,6 +180,117 @@ def test_handshake_then_subscribe_emits_kernel_hello_and_subscribed() -> None:
     assert subscribed_payload["effective_diff_policy"] == "DIFF_ONLY"
     assert subscribed_payload["effective_snapshot_policy"] == "ON_JOIN"
     assert host.can_deliver_state(session.connection_id) is True
+
+    snapshot = _decode_sent_envelope(ws, 2)
+    assert snapshot["msg_type"] == "FULL_SNAPSHOT"
+    snapshot_payload = snapshot["payload"]
+    assert snapshot_payload["schema_version"] == "enqueteur_mbam_1"
+    assert isinstance(snapshot_payload["tick"], int)
+    assert isinstance(snapshot_payload["step_hash"], str)
+    state = snapshot_payload["state"]
+    assert set(state.keys()) == {"world", "npcs", "investigation", "dialogue", "learning", "resolution"}
+
+    subscribed_state = host.get_session(session.connection_id)
+    assert subscribed_state is not None
+    assert subscribed_state.baseline_sent is True
+    assert subscribed_state.baseline_tick == snapshot_payload["tick"]
+
+
+def test_subscribe_with_snapshot_never_does_not_emit_baseline() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "NEVER",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+
+    assert len(ws.sent_texts) == 2
+    assert _decode_sent_envelope(ws, 0)["msg_type"] == "KERNEL_HELLO"
+    assert _decode_sent_envelope(ws, 1)["msg_type"] == "SUBSCRIBED"
+    stored = host.get_session(session.connection_id)
+    assert stored is not None
+    assert stored.baseline_sent is False
+    assert stored.baseline_tick is None
+
+
+def test_full_snapshot_respects_subscribed_channel_scope() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+
+    snapshot = _decode_sent_envelope(ws, 2)
+    assert snapshot["msg_type"] == "FULL_SNAPSHOT"
+    snapshot_state = snapshot["payload"]["state"]
+    assert set(snapshot_state.keys()) == {"world", "resolution"}
 
 
 def test_viewer_hello_requires_enqueteur_schema_support() -> None:
@@ -342,6 +453,8 @@ def test_live_session_host_tracks_connection_lifecycle() -> None:
     assert current is not None
     assert current.phase == "SUBSCRIBED"
     assert current.protocol_state == "SUBSCRIBED"
+    assert current.baseline_sent is True
+    assert current.baseline_tick is not None
 
     closed = host.close_connection(
         session.connection_id,
