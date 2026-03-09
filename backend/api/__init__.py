@@ -25,6 +25,8 @@ from .live_ws import (
     get_default_enqueteur_live_session_host,
     handle_enqueteur_live_incoming_message,
     open_enqueteur_live_websocket,
+    stream_enqueteur_frame_diff_loop,
+    stream_enqueteur_frame_diff_once,
 )
 from .router import ApiRequest, ApiResponse, build_default_router
 
@@ -54,4 +56,6 @@ __all__ = [
     "get_default_enqueteur_live_session_host",
     "handle_enqueteur_live_incoming_message",
     "open_enqueteur_live_websocket",
+    "stream_enqueteur_frame_diff_loop",
+    "stream_enqueteur_frame_diff_once",
 ]

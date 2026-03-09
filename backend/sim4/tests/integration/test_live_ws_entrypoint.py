@@ -13,6 +13,8 @@ from backend.api.live_ws import (
     RunLookupError,
     handle_enqueteur_live_incoming_message,
     open_enqueteur_live_websocket,
+    stream_enqueteur_frame_diff_loop,
+    stream_enqueteur_frame_diff_once,
 )
 from backend.sim4.integration.live_envelope import make_live_envelope
 
@@ -291,6 +293,198 @@ def test_full_snapshot_respects_subscribed_channel_scope() -> None:
     assert snapshot["msg_type"] == "FULL_SNAPSHOT"
     snapshot_state = snapshot["payload"]["state"]
     assert set(snapshot_state.keys()) == {"world", "resolution"}
+
+
+def test_stream_frame_diff_once_emits_ordered_hash_chained_payload() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    baseline = _decode_sent_envelope(ws, 2)["payload"]
+
+    payload_diff = asyncio.run(
+        stream_enqueteur_frame_diff_once(
+            ws,
+            session=session,
+            host=host,
+        )
+    )
+    diff_env = _decode_sent_envelope(ws, 3)
+    assert diff_env["msg_type"] == "FRAME_DIFF"
+    diff_payload = diff_env["payload"]
+    assert diff_payload == payload_diff
+    assert diff_payload["schema_version"] == "enqueteur_mbam_1"
+    assert diff_payload["from_tick"] == baseline["tick"]
+    assert diff_payload["to_tick"] == baseline["tick"] + 1
+    assert diff_payload["prev_step_hash"] == baseline["step_hash"]
+    assert isinstance(diff_payload["step_hash"], str)
+    assert isinstance(diff_payload["ops"], list)
+    assert any(op["op"] == "SET_CLOCK" for op in diff_payload["ops"])
+
+    stored = host.get_session(session.connection_id)
+    assert stored is not None
+    assert stored.last_tick == diff_payload["to_tick"]
+    assert stored.last_step_hash == diff_payload["step_hash"]
+
+
+def test_frame_diff_respects_subscribed_channel_scope() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+
+    asyncio.run(
+        stream_enqueteur_frame_diff_once(
+            ws,
+            session=session,
+            host=host,
+        )
+    )
+
+    diff_payload = _decode_sent_envelope(ws, 3)["payload"]
+    op_names = {op["op"] for op in diff_payload["ops"]}
+    allowed_world_resolution_ops = {
+        "UPSERT_ROOM",
+        "REMOVE_ROOM",
+        "UPSERT_DOOR",
+        "REMOVE_DOOR",
+        "UPSERT_OBJECT",
+        "REMOVE_OBJECT",
+        "SET_CLOCK",
+        "SET_RESOLUTION_STATUS",
+        "SET_OUTCOME",
+        "SET_RECAP",
+    }
+    assert op_names.issubset(allowed_world_resolution_ops)
+    assert "UPSERT_NPC" not in op_names
+    assert "REVEAL_FACT" not in op_names
+    assert "SET_ACTIVE_SCENE" not in op_names
+    assert "SET_HINT_LEVEL" not in op_names
+
+
+def test_stream_frame_diff_loop_stops_at_max_frames() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+
+    count = asyncio.run(
+        stream_enqueteur_frame_diff_loop(
+            ws,
+            session=session,
+            host=host,
+            max_frames=3,
+            tick_interval_seconds=0.0,
+        )
+    )
+    assert count == 3
+    frame_diff_types = [json.loads(text)["msg_type"] for text in ws.sent_texts if json.loads(text)["msg_type"] == "FRAME_DIFF"]
+    assert len(frame_diff_types) == 3
 
 
 def test_viewer_hello_requires_enqueteur_schema_support() -> None:

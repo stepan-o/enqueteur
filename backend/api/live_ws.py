@@ -13,6 +13,7 @@ State streaming and gameplay command execution are intentionally deferred.
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
+import asyncio
 import json
 import uuid
 
@@ -170,6 +171,9 @@ class EnqueteurLiveSession:
     subscribed_config: EnqueteurSubscribedConfig | None = None
     baseline_sent: bool = False
     baseline_tick: int | None = None
+    last_state: dict[str, Any] | None = None
+    last_step_hash: str | None = None
+    last_tick: int | None = None
     closed_at: str | None = None
     close_code: int | None = None
     close_reason: str | None = None
@@ -367,11 +371,73 @@ class EnqueteurLiveSessionHost:
             "state": canonical_state,
         }
 
-    def mark_baseline_sent(self, connection_id: str, *, tick: int) -> EnqueteurLiveSession:
+    def mark_baseline_sent(
+        self,
+        connection_id: str,
+        *,
+        tick: int,
+        step_hash: str,
+        state: dict[str, Any],
+    ) -> EnqueteurLiveSession:
         session = self._require_session(connection_id)
         session.baseline_sent = True
         session.baseline_tick = int(tick)
+        session.last_tick = int(tick)
+        session.last_step_hash = str(step_hash)
+        session.last_state = canonicalize_state_obj(state)
         return session
+
+    def advance_runner_and_build_frame_diff_payload(self, connection_id: str) -> dict[str, Any]:
+        session = self._require_session(connection_id)
+        if session.subscribed_config is None or not session.baseline_sent:
+            raise ProtocolViolationError(
+                code="NOT_READY_FOR_DIFF",
+                message="Cannot stream FRAME_DIFF before SUBSCRIBED baseline delivery.",
+                fatal=True,
+            )
+        if session.last_state is None or session.last_step_hash is None or session.last_tick is None:
+            raise ProtocolViolationError(
+                code="MISSING_BASELINE",
+                message="Live session is missing baseline cursor for FRAME_DIFF streaming.",
+                fatal=True,
+            )
+
+        started_run = self._require_started_run(session)
+        runner = started_run.runner
+        channels = set(session.subscribed_config.effective_channels)
+
+        from_tick = int(session.last_tick)
+        prev_step_hash = str(session.last_step_hash)
+
+        runner.run(num_ticks=1)
+        to_tick = int(runner.get_tick_index())
+        if to_tick != from_tick + 1:
+            raise ProtocolViolationError(
+                code="INVALID_TICK_SEQUENCE",
+                message=f"Expected to_tick={from_tick + 1}, got {to_tick}.",
+                fatal=True,
+            )
+
+        next_state = canonicalize_state_obj(self._build_channel_scoped_state(runner=runner, channels=channels))
+        step_hash = compute_step_hash(next_state)
+        ops = _compute_enqueteur_frame_diff_ops(
+            state_from=session.last_state,
+            state_to=next_state,
+            channels=channels,
+        )
+
+        session.last_tick = to_tick
+        session.last_step_hash = step_hash
+        session.last_state = next_state
+
+        return {
+            "schema_version": session.run.schema_version,
+            "from_tick": from_tick,
+            "to_tick": to_tick,
+            "prev_step_hash": prev_step_hash,
+            "step_hash": step_hash,
+            "ops": ops,
+        }
 
     def close_connection(
         self,
@@ -561,6 +627,8 @@ async def handle_enqueteur_live_incoming_message(
                 session_host.mark_baseline_sent(
                     session.connection_id,
                     tick=int(snapshot["tick"]),
+                    step_hash=str(snapshot["step_hash"]),
+                    state=dict(snapshot["state"]),
                 )
             return
 
@@ -605,6 +673,54 @@ async def handle_enqueteur_live_incoming_message(
             code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
             reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
         )
+
+
+async def stream_enqueteur_frame_diff_once(
+    websocket: EnqueteurWebSocketTransport,
+    *,
+    session: EnqueteurLiveSession,
+    host: EnqueteurLiveSessionHost | None = None,
+) -> dict[str, Any]:
+    """Advance one authoritative tick and emit one FRAME_DIFF envelope."""
+
+    session_host = host if host is not None else get_default_enqueteur_live_session_host()
+    payload = session_host.advance_runner_and_build_frame_diff_payload(session.connection_id)
+    await _send_envelope(websocket, msg_type="FRAME_DIFF", payload=payload)
+    return payload
+
+
+async def stream_enqueteur_frame_diff_loop(
+    websocket: EnqueteurWebSocketTransport,
+    *,
+    session: EnqueteurLiveSession,
+    host: EnqueteurLiveSessionHost | None = None,
+    max_frames: int | None = None,
+    tick_interval_seconds: float = 0.0,
+) -> int:
+    """Stream FRAME_DIFF envelopes until closed or max_frames reached."""
+
+    session_host = host if host is not None else get_default_enqueteur_live_session_host()
+    sent = 0
+    while True:
+        current = session_host.get_session(session.connection_id)
+        if current is None or current.phase == "CLOSED":
+            break
+        if not session_host.can_deliver_state(session.connection_id):
+            break
+        if max_frames is not None and sent >= int(max_frames):
+            break
+
+        await stream_enqueteur_frame_diff_once(
+            websocket,
+            session=session,
+            host=session_host,
+        )
+        sent += 1
+
+        if tick_interval_seconds > 0:
+            await asyncio.sleep(float(tick_interval_seconds))
+
+    return sent
 
 
 async def _send_envelope(websocket: EnqueteurWebSocketTransport, *, msg_type: str, payload: dict[str, Any]) -> None:
@@ -671,6 +787,282 @@ def _require_string_list(
     return out
 
 
+def _index_by_id(rows: list[dict[str, Any]], id_field: str) -> dict[Any, dict[str, Any]]:
+    indexed: dict[Any, dict[str, Any]] = {}
+    for row in rows:
+        ident = row.get(id_field)
+        if ident is None:
+            continue
+        indexed[ident] = row
+    return indexed
+
+
+def _append_upsert_remove_ops(
+    *,
+    ops: list[dict[str, Any]],
+    prev_rows: list[dict[str, Any]],
+    next_rows: list[dict[str, Any]],
+    id_field: str,
+    remove_op: str,
+    upsert_op: str,
+    payload_field: str,
+) -> None:
+    prev_by_id = _index_by_id(prev_rows, id_field)
+    next_by_id = _index_by_id(next_rows, id_field)
+    removed = sorted([ident for ident in prev_by_id if ident not in next_by_id])
+    changed = sorted(
+        [ident for ident in next_by_id if ident not in prev_by_id or next_by_id[ident] != prev_by_id[ident]]
+    )
+
+    for ident in removed:
+        ops.append({"op": remove_op, id_field: ident})
+    for ident in changed:
+        ops.append({"op": upsert_op, payload_field: next_by_id[ident]})
+
+
+def _append_upsert_only_ops(
+    *,
+    ops: list[dict[str, Any]],
+    prev_rows: list[dict[str, Any]],
+    next_rows: list[dict[str, Any]],
+    id_field: str,
+    upsert_op: str,
+    payload_field: str,
+) -> None:
+    prev_by_id = _index_by_id(prev_rows, id_field)
+    next_by_id = _index_by_id(next_rows, id_field)
+    changed = sorted(
+        [ident for ident in next_by_id if ident not in prev_by_id or next_by_id[ident] != prev_by_id[ident]]
+    )
+    for ident in changed:
+        ops.append({"op": upsert_op, payload_field: next_by_id[ident]})
+
+
+def _append_list_additions(
+    *,
+    ops: list[dict[str, Any]],
+    prev_values: list[str],
+    next_values: list[str],
+    op: str,
+    field: str,
+) -> None:
+    prev_set = set(prev_values)
+    for value in sorted([v for v in next_values if v not in prev_set]):
+        ops.append({"op": op, field: value})
+
+
+def _append_list_removals(
+    *,
+    ops: list[dict[str, Any]],
+    prev_values: list[str],
+    next_values: list[str],
+    op: str,
+    field: str,
+) -> None:
+    next_set = set(next_values)
+    for value in sorted([v for v in prev_values if v not in next_set]):
+        ops.append({"op": op, field: value})
+
+
+def _append_dialogue_turn_ops(
+    *,
+    ops: list[dict[str, Any]],
+    prev_turns: list[dict[str, Any]],
+    next_turns: list[dict[str, Any]],
+) -> None:
+    prev_indices = {int(turn.get("turn_index")) for turn in prev_turns if isinstance(turn.get("turn_index"), int)}
+    new_turns = [
+        turn for turn in next_turns
+        if isinstance(turn.get("turn_index"), int) and int(turn["turn_index"]) not in prev_indices
+    ]
+    for turn in sorted(new_turns, key=lambda row: int(row["turn_index"])):
+        ops.append({"op": "APPEND_DIALOGUE_TURN", "turn": turn})
+
+
+def _append_learning_outcome_ops(
+    *,
+    ops: list[dict[str, Any]],
+    prev_rows: list[dict[str, Any]],
+    next_rows: list[dict[str, Any]],
+) -> None:
+    if not next_rows:
+        return
+    start_idx = 0
+    if len(prev_rows) <= len(next_rows) and next_rows[:len(prev_rows)] == prev_rows:
+        start_idx = len(prev_rows)
+    for row in next_rows[start_idx:]:
+        ops.append({"op": "APPEND_LEARNING_OUTCOME", "outcome": row})
+
+
+def _compute_enqueteur_frame_diff_ops(
+    *,
+    state_from: dict[str, Any],
+    state_to: dict[str, Any],
+    channels: set[str],
+) -> list[dict[str, Any]]:
+    ops: list[dict[str, Any]] = []
+
+    if "WORLD" in channels:
+        prev_world = state_from.get("world") if isinstance(state_from.get("world"), dict) else {}
+        next_world = state_to.get("world") if isinstance(state_to.get("world"), dict) else {}
+        _append_upsert_remove_ops(
+            ops=ops,
+            prev_rows=list(prev_world.get("rooms", [])),
+            next_rows=list(next_world.get("rooms", [])),
+            id_field="room_id",
+            remove_op="REMOVE_ROOM",
+            upsert_op="UPSERT_ROOM",
+            payload_field="room",
+        )
+        _append_upsert_remove_ops(
+            ops=ops,
+            prev_rows=list(prev_world.get("doors", [])),
+            next_rows=list(next_world.get("doors", [])),
+            id_field="door_id",
+            remove_op="REMOVE_DOOR",
+            upsert_op="UPSERT_DOOR",
+            payload_field="door",
+        )
+        _append_upsert_remove_ops(
+            ops=ops,
+            prev_rows=list(prev_world.get("objects", [])),
+            next_rows=list(next_world.get("objects", [])),
+            id_field="object_id",
+            remove_op="REMOVE_OBJECT",
+            upsert_op="UPSERT_OBJECT",
+            payload_field="object",
+        )
+        if prev_world.get("clock") != next_world.get("clock"):
+            ops.append({"op": "SET_CLOCK", "clock": next_world.get("clock")})
+
+    if "NPCS" in channels:
+        prev_npcs = state_from.get("npcs") if isinstance(state_from.get("npcs"), dict) else {}
+        next_npcs = state_to.get("npcs") if isinstance(state_to.get("npcs"), dict) else {}
+        _append_upsert_remove_ops(
+            ops=ops,
+            prev_rows=list(prev_npcs.get("npcs", [])),
+            next_rows=list(next_npcs.get("npcs", [])),
+            id_field="npc_id",
+            remove_op="REMOVE_NPC",
+            upsert_op="UPSERT_NPC",
+            payload_field="npc",
+        )
+
+    if "INVESTIGATION" in channels:
+        prev_inv = state_from.get("investigation") if isinstance(state_from.get("investigation"), dict) else {}
+        next_inv = state_to.get("investigation") if isinstance(state_to.get("investigation"), dict) else {}
+        prev_evidence = prev_inv.get("evidence") if isinstance(prev_inv.get("evidence"), dict) else {}
+        next_evidence = next_inv.get("evidence") if isinstance(next_inv.get("evidence"), dict) else {}
+        prev_facts = prev_inv.get("facts") if isinstance(prev_inv.get("facts"), dict) else {}
+        next_facts = next_inv.get("facts") if isinstance(next_inv.get("facts"), dict) else {}
+        prev_contra = prev_inv.get("contradictions") if isinstance(prev_inv.get("contradictions"), dict) else {}
+        next_contra = next_inv.get("contradictions") if isinstance(next_inv.get("contradictions"), dict) else {}
+
+        _append_list_additions(
+            ops=ops,
+            prev_values=list(prev_evidence.get("discovered_ids", [])),
+            next_values=list(next_evidence.get("discovered_ids", [])),
+            op="REVEAL_EVIDENCE",
+            field="evidence_id",
+        )
+        _append_list_additions(
+            ops=ops,
+            prev_values=list(prev_evidence.get("collected_ids", [])),
+            next_values=list(next_evidence.get("collected_ids", [])),
+            op="COLLECT_EVIDENCE",
+            field="evidence_id",
+        )
+        _append_upsert_only_ops(
+            ops=ops,
+            prev_rows=list(prev_inv.get("objects", [])),
+            next_rows=list(next_inv.get("objects", [])),
+            id_field="object_id",
+            upsert_op="SET_OBJECT_INVESTIGATION_STATE",
+            payload_field="object_state",
+        )
+        _append_list_additions(
+            ops=ops,
+            prev_values=list(prev_facts.get("known_fact_ids", [])),
+            next_values=list(next_facts.get("known_fact_ids", [])),
+            op="REVEAL_FACT",
+            field="fact_id",
+        )
+        _append_list_additions(
+            ops=ops,
+            prev_values=list(prev_contra.get("unlockable_edge_ids", [])),
+            next_values=list(next_contra.get("unlockable_edge_ids", [])),
+            op="MAKE_CONTRADICTION_AVAILABLE",
+            field="contradiction_id",
+        )
+        _append_list_removals(
+            ops=ops,
+            prev_values=list(prev_contra.get("unlockable_edge_ids", [])),
+            next_values=list(next_contra.get("unlockable_edge_ids", [])),
+            op="CLEAR_CONTRADICTION_AVAILABLE",
+            field="contradiction_id",
+        )
+
+    if "DIALOGUE" in channels:
+        prev_dialogue = state_from.get("dialogue") if isinstance(state_from.get("dialogue"), dict) else {}
+        next_dialogue = state_to.get("dialogue") if isinstance(state_to.get("dialogue"), dict) else {}
+        if prev_dialogue.get("active_scene_id") != next_dialogue.get("active_scene_id"):
+            ops.append({"op": "SET_ACTIVE_SCENE", "scene_id": next_dialogue.get("active_scene_id")})
+        _append_upsert_only_ops(
+            ops=ops,
+            prev_rows=list(prev_dialogue.get("scene_completion", [])),
+            next_rows=list(next_dialogue.get("scene_completion", [])),
+            id_field="scene_id",
+            upsert_op="UPSERT_SCENE_STATE",
+            payload_field="scene_state",
+        )
+        _append_dialogue_turn_ops(
+            ops=ops,
+            prev_turns=list(prev_dialogue.get("recent_turns", [])),
+            next_turns=list(next_dialogue.get("recent_turns", [])),
+        )
+
+    if "LEARNING" in channels:
+        prev_learning = state_from.get("learning") if isinstance(state_from.get("learning"), dict) else {}
+        next_learning = state_to.get("learning") if isinstance(state_to.get("learning"), dict) else {}
+        if prev_learning.get("current_hint_level") != next_learning.get("current_hint_level"):
+            ops.append({"op": "SET_HINT_LEVEL", "hint_level": next_learning.get("current_hint_level")})
+        _append_upsert_only_ops(
+            ops=ops,
+            prev_rows=list(prev_learning.get("minigames", [])),
+            next_rows=list(next_learning.get("minigames", [])),
+            id_field="minigame_id",
+            upsert_op="UPSERT_MINIGAME_STATE",
+            payload_field="minigame_state",
+        )
+        prev_summary_state = {
+            "summary_by_scene": prev_learning.get("summary_by_scene"),
+            "scaffolding_policy": prev_learning.get("scaffolding_policy"),
+        }
+        next_summary_state = {
+            "summary_by_scene": next_learning.get("summary_by_scene"),
+            "scaffolding_policy": next_learning.get("scaffolding_policy"),
+        }
+        if prev_summary_state != next_summary_state:
+            ops.append({"op": "SET_SUMMARY_STATE", "summary_state": next_summary_state})
+        _append_learning_outcome_ops(
+            ops=ops,
+            prev_rows=list(prev_learning.get("recent_outcomes", [])),
+            next_rows=list(next_learning.get("recent_outcomes", [])),
+        )
+
+    if "EVENTS" in channels:
+        prev_resolution = state_from.get("resolution") if isinstance(state_from.get("resolution"), dict) else {}
+        next_resolution = state_to.get("resolution") if isinstance(state_to.get("resolution"), dict) else {}
+        if prev_resolution.get("status") != next_resolution.get("status"):
+            ops.append({"op": "SET_RESOLUTION_STATUS", "status": next_resolution.get("status")})
+        if prev_resolution.get("outcome") != next_resolution.get("outcome"):
+            ops.append({"op": "SET_OUTCOME", "outcome": next_resolution.get("outcome")})
+        if prev_resolution.get("recap") != next_resolution.get("recap"):
+            ops.append({"op": "SET_RECAP", "recap": next_resolution.get("recap")})
+
+    return ops
+
+
 __all__ = [
     "ENQUETEUR_LIVE_WS_PATH",
     "RUN_NOT_FOUND_WS_CLOSE_CODE",
@@ -691,4 +1083,6 @@ __all__ = [
     "get_default_enqueteur_live_session_host",
     "open_enqueteur_live_websocket",
     "handle_enqueteur_live_incoming_message",
+    "stream_enqueteur_frame_diff_once",
+    "stream_enqueteur_frame_diff_loop",
 ]
