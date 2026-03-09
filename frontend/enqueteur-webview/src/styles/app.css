@@ -72,10 +72,36 @@ body {
   box-shadow: 0 20px 44px rgba(30, 35, 40, 0.18);
 }
 
+.flow-screen-loading,
+.flow-screen-menu {
+  max-width: 720px;
+}
+
+.flow-logo-slot {
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+}
+
 .flow-logo {
   width: min(460px, 74vw);
   max-width: 100%;
   height: auto;
+}
+
+.flow-logo-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  min-width: min(460px, 74vw);
+  max-width: 100%;
+  border: 2px dashed rgba(31, 38, 41, 0.24);
+  border-radius: 12px;
+  color: rgba(31, 38, 41, 0.62);
+  font-family: "Fraunces", Georgia, serif;
+  font-size: clamp(20px, 4vw, 34px);
+  letter-spacing: 0.06em;
 }
 
 .flow-screen-title {
@@ -103,6 +129,10 @@ body {
   gap: 10px;
 }
 
+.flow-menu-actions {
+  margin-top: 2px;
+}
+
 .flow-action-btn {
   border: 1px solid rgba(31, 38, 41, 0.35);
   border-radius: 12px;
@@ -118,6 +148,10 @@ body {
 .flow-action-btn:hover {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.flow-menu-placeholder {
+  margin-top: -2px;
 }
 
 .flow-case-grid {

@@ -5,6 +5,8 @@ import {
     type AppState,
     type EnqueteurCaseId,
 } from "./appState";
+import { renderLoadingScreen } from "./screens/LoadingScreen";
+import { renderMainMenuScreen } from "./screens/MainMenuScreen";
 
 export type AppFlowOpts = {
     mountEl: HTMLElement;
@@ -54,16 +56,12 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 break;
             case "LOADING":
                 preGameLayer.appendChild(
-                    renderScreen(
-                        "Loading",
-                        "Loading frontend systems and UI shell.",
-                        [renderLogo(), renderPulseBar()]
-                    )
+                    renderLoadingScreen({ logoSrc: "/logo/low-res/enqueteur_logo_title.png" })
                 );
                 break;
             case "MAIN_MENU":
-                preGameLayer.appendChild(renderMainMenu({
-                    onStart: () => stateStore.transition({ kind: "CASE_SELECT" }),
+                preGameLayer.appendChild(renderMainMenuScreen({
+                    onCases: () => stateStore.transition({ kind: "CASE_SELECT" }),
                 }));
                 break;
             case "CASE_SELECT":
@@ -161,36 +159,6 @@ function renderScreen(title: string, body: string, children: HTMLElement[] = [])
     section.appendChild(bodyEl);
     for (const child of children) section.appendChild(child);
 
-    return section;
-}
-
-function renderLogo(): HTMLElement {
-    const img = document.createElement("img");
-    img.className = "flow-logo";
-    img.src = "/logo/low-res/enqueteur_logo_title.png";
-    img.alt = "Enqueteur";
-    return img;
-}
-
-function renderPulseBar(): HTMLElement {
-    const bar = document.createElement("div");
-    bar.className = "flow-pulse";
-    return bar;
-}
-
-function renderMainMenu(opts: { onStart: () => void }): HTMLElement {
-    const section = renderScreen(
-        "Enqueteur",
-        "Choose a path to begin your investigation."
-    );
-
-    const actions = document.createElement("div");
-    actions.className = "flow-actions";
-
-    const startBtn = makeActionButton("Cases", opts.onStart);
-    actions.appendChild(startBtn);
-
-    section.appendChild(actions);
     return section;
 }
 
