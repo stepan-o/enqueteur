@@ -1,4 +1,3 @@
-import { boot, type ViewerHandle } from "./boot";
 import {
     AppStateStore,
     beginBootFlow,
@@ -15,6 +14,7 @@ import { renderMainMenuScreen } from "./screens/MainMenuScreen";
 export type AppFlowOpts = {
     mountEl: HTMLElement;
     loadingDurationMs?: number;
+    createLiveViewer?: (mountEl: HTMLElement) => ViewerHandle | Promise<ViewerHandle>;
 };
 
 export type AppFlowHandle = {
@@ -22,6 +22,8 @@ export type AppFlowHandle = {
     transition: (next: AppState) => void;
     destroy: () => void;
 };
+
+type ViewerHandle = import("./boot").ViewerHandle;
 
 export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     const root = document.createElement("div");
@@ -39,6 +41,17 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
     const stateStore = new AppStateStore({ kind: "BOOT" });
     let viewer: ViewerHandle | null = null;
+    let bootModulePromise: Promise<typeof import("./boot")> | null = null;
+    let mountRevision = 0;
+    let destroyed = false;
+    const createLiveViewer = opts.createLiveViewer ?? (async (mountEl: HTMLElement) => {
+        const { boot } = await loadBootModule();
+        return boot({
+            mountEl,
+            mode: "live",
+            autoStart: false,
+        });
+    });
 
     const render = (state: AppState): void => {
         preGameLayer.innerHTML = "";
@@ -46,10 +59,11 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         if (state.kind === "LIVE_GAME") {
             preGameLayer.style.display = "none";
             liveLayer.style.display = "block";
-            mountLiveGameShell(state.caseId);
+            void mountLiveGameShell(state.caseId);
             return;
         }
 
+        mountRevision += 1;
         preGameLayer.style.display = "flex";
         liveLayer.style.display = "none";
         viewer?.setVisible(false);
@@ -117,15 +131,34 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         }
     };
 
-    const mountLiveGameShell = (caseId: EnqueteurCaseId): void => {
+    const loadBootModule = (): Promise<typeof import("./boot")> => {
+        if (!bootModulePromise) {
+            bootModulePromise = import("./boot");
+        }
+        return bootModulePromise;
+    };
+
+    const mountLiveGameShell = async (caseId: EnqueteurCaseId): Promise<void> => {
+        const activeRevision = ++mountRevision;
+
+        if (viewer) {
+            viewer.setVisible(true);
+            return;
+        }
+
         if (!viewer) {
             try {
-                viewer = boot({
-                    mountEl: liveLayer,
-                    mode: "live",
-                    autoStart: false,
-                });
+                if (destroyed) return;
+                if (activeRevision !== mountRevision) return;
+
+                viewer = await createLiveViewer(liveLayer);
+                if (destroyed) return;
+                if (activeRevision !== mountRevision) return;
+                viewer.setVisible(stateStore.getState().kind === "LIVE_GAME");
             } catch (err: unknown) {
+                if (destroyed) return;
+                if (activeRevision !== mountRevision) return;
+
                 const message = err instanceof Error ? err.message : String(err);
                 stateStore.transition({
                     kind: "ERROR",
@@ -136,7 +169,6 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 return;
             }
         }
-        viewer.setVisible(true);
     };
 
     const unsubscribe = stateStore.subscribe(render);
@@ -146,6 +178,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         getState: () => stateStore.getState(),
         transition: (next) => stateStore.transition(next),
         destroy: () => {
+            destroyed = true;
+            mountRevision += 1;
             unsubscribe();
             viewer?.stop();
             root.remove();
