@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mountAppFlow, type AppFlowOpts } from "../app/appFlow";
-import type { CaseLaunchClient, CaseLaunchMetadata } from "../app/api/caseLaunchClient";
+import {
+    CaseLaunchError,
+    type CaseLaunchClient,
+    type CaseLaunchMetadata,
+} from "../app/api/caseLaunchClient";
 
 function makeMountEl(): HTMLElement {
     const mountEl = document.createElement("div");
@@ -132,6 +136,48 @@ describe("Phase B3 case launch request flow", () => {
             code: "CASE_LAUNCH_FAILED",
             field: undefined,
             status: undefined,
+            occurredAt: expect.any(String),
+        });
+
+        flow.destroy();
+    });
+
+    it("routes invalid launch contract responses into startup incompatibility", async () => {
+        const startCase = vi.fn(async () => {
+            throw new CaseLaunchError("Expected 'schema_version' to be 'enqueteur_mbam_1'.", {
+                status: 502,
+                code: "INVALID_RESPONSE",
+            });
+        });
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CASE_SELECT" });
+        clickFirstCaseCard();
+        await flushAsyncWork();
+
+        expect(flow.getState()).toEqual({
+            kind: "ERROR",
+            code: "STARTUP_INCOMPATIBILITY",
+            message: "Case launch failed (INVALID_RESPONSE): Expected 'schema_version' to be 'enqueteur_mbam_1'.",
+            recoverTo: "MAIN_MENU",
+        });
+        expect(flow.getLaunchMetadata()).toBeNull();
+        expect(flow.getLaunchFailure()).toEqual({
+            request: {
+                caseId: "MBAM_01",
+                seed: "A",
+                difficultyProfile: "D0",
+                mode: "playtest",
+            },
+            message: "Case launch failed (INVALID_RESPONSE): Expected 'schema_version' to be 'enqueteur_mbam_1'.",
+            code: "INVALID_RESPONSE",
+            field: undefined,
+            status: 502,
             occurredAt: expect.any(String),
         });
 

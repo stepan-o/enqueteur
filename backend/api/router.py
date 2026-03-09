@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
-from .cases_start import CASE_START_PATH, CaseStartService, handle_post_cases_start
+from .cases_start import (
+    CASE_START_PATH,
+    CaseStartService,
+    get_default_case_start_service,
+    handle_post_cases_start,
+)
 
 
 @dataclass(frozen=True)
@@ -42,7 +47,7 @@ class ApiRouter:
 
 
 def build_default_router(*, case_start_service: CaseStartService | None = None) -> ApiRouter:
-    service = case_start_service if case_start_service is not None else CaseStartService()
+    service = case_start_service if case_start_service is not None else get_default_case_start_service()
     router = ApiRouter()
     router.add(
         method="POST",

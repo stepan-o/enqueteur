@@ -1,7 +1,8 @@
 import {
     AppStateStore,
-    beginBootFlow,
+    type AppErrorCode,
     type AppRecoverTarget,
+    beginBootFlow,
     type AppState,
     type EnqueteurCaseId,
 } from "./appState";
@@ -251,6 +252,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             if (isAbortError(err)) return;
 
             const details = describeCaseLaunchError(err);
+            const appError = classifyCaseLaunchFailure(details);
             launchSessionStore.markFailure({
                 request: launchRequest,
                 message: details.message,
@@ -261,9 +263,9 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             });
             stateStore.transition({
                 kind: "ERROR",
-                code: "LAUNCH_FAILURE",
+                code: appError.code,
                 message: details.message,
-                recoverTo: "CASE_SELECT",
+                recoverTo: appError.recoverTo,
             });
         } finally {
             if (attemptRevision === launchRevision) {
@@ -380,5 +382,24 @@ function describeCaseLaunchError(err: unknown): {
     return {
         message: `Case launch failed: ${String(err)}`,
         code: "CASE_LAUNCH_FAILED",
+    };
+}
+
+function classifyCaseLaunchFailure(details: {
+    code: string;
+    status?: number;
+}): {
+    code: AppErrorCode;
+    recoverTo: AppRecoverTarget;
+} {
+    if (details.code === "INVALID_RESPONSE") {
+        return {
+            code: "STARTUP_INCOMPATIBILITY",
+            recoverTo: "MAIN_MENU",
+        };
+    }
+    return {
+        code: "LAUNCH_FAILURE",
+        recoverTo: "CASE_SELECT",
     };
 }

@@ -62,6 +62,11 @@ class CaseStartRequest:
                 field="case_id",
                 code="UNSUPPORTED_CASE",
             )
+        if isinstance(seed, bool):
+            raise CaseStartValidationError(
+                "seed must be a string or integer (boolean values are not allowed).",
+                field="seed",
+            )
         if not isinstance(seed, (str, int)):
             raise CaseStartValidationError(
                 "seed must be a string or integer.",

@@ -2,6 +2,8 @@ import type { EnqueteurCaseId } from "../appState";
 
 export type CaseLaunchDifficultyProfile = "D0" | "D1";
 export type CaseLaunchMode = "playtest" | "dev";
+export const ENQUETEUR_ENGINE_NAME = "enqueteur";
+export const ENQUETEUR_SCHEMA_VERSION = "enqueteur_mbam_1";
 
 export type CaseLaunchRequest = {
     caseId: EnqueteurCaseId;
@@ -113,6 +115,10 @@ function parseCaseLaunchMetadata(payload: Record<string, unknown>): CaseLaunchMe
     const caseId = requireCaseId(payload.case_id);
     const difficultyProfile = requireDifficultyProfile(payload.difficulty_profile);
     const mode = requireMode(payload.mode);
+    const engineName = requireExactString(payload.engine_name, "engine_name", ENQUETEUR_ENGINE_NAME);
+    const schemaVersion = requireExactString(payload.schema_version, "schema_version", ENQUETEUR_SCHEMA_VERSION);
+    const wsUrl = requireWsUrl(payload.ws_url);
+    const startedAt = requireTimestamp(payload.started_at, "started_at");
     const seed = payload.seed;
     if (!isSeed(seed)) {
         throw invalidResponse("Missing or invalid 'seed' in case launch response.");
@@ -126,10 +132,10 @@ function parseCaseLaunchMetadata(payload: Record<string, unknown>): CaseLaunchMe
         resolvedSeedId: requireString(payload.resolved_seed_id, "resolved_seed_id"),
         difficultyProfile,
         mode,
-        engineName: requireString(payload.engine_name, "engine_name"),
-        schemaVersion: requireString(payload.schema_version, "schema_version"),
-        wsUrl: requireString(payload.ws_url, "ws_url"),
-        startedAt: requireString(payload.started_at, "started_at"),
+        engineName,
+        schemaVersion,
+        wsUrl,
+        startedAt,
     };
 }
 
@@ -151,6 +157,35 @@ function requireMode(value: unknown): CaseLaunchMode {
 function requireString(value: unknown, field: string): string {
     const parsed = asString(value);
     if (!parsed) {
+        throw invalidResponse(`Missing or invalid '${field}' in case launch response.`);
+    }
+    return parsed;
+}
+
+function requireExactString(value: unknown, field: string, expected: string): string {
+    const parsed = requireString(value, field);
+    if (parsed !== expected) {
+        throw invalidResponse(`Expected '${field}' to be '${expected}' in case launch response.`);
+    }
+    return parsed;
+}
+
+function requireWsUrl(value: unknown): string {
+    const parsed = requireString(value, "ws_url");
+    try {
+        const url = new URL(parsed);
+        if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+            throw invalidResponse("Missing or invalid 'ws_url' in case launch response.");
+        }
+    } catch {
+        throw invalidResponse("Missing or invalid 'ws_url' in case launch response.");
+    }
+    return parsed;
+}
+
+function requireTimestamp(value: unknown, field: string): string {
+    const parsed = requireString(value, field);
+    if (!Number.isFinite(Date.parse(parsed))) {
         throw invalidResponse(`Missing or invalid '${field}' in case launch response.`);
     }
     return parsed;

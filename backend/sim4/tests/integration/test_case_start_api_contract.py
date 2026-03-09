@@ -129,6 +129,20 @@ def test_case_start_route_rejects_unsupported_case_id() -> None:
     assert payload["error"]["field"] == "case_id"
 
 
+def test_case_start_route_rejects_boolean_seed_values() -> None:
+    status, payload = handle_post_cases_start(
+        {
+            "case_id": "MBAM_01",
+            "seed": True,
+            "difficulty_profile": "D0",
+        }
+    )
+
+    assert status == 400
+    assert payload["error"]["code"] == "INVALID_REQUEST"
+    assert payload["error"]["field"] == "seed"
+
+
 def test_default_router_dispatches_post_cases_start() -> None:
     router = build_default_router()
     response = router.dispatch(
@@ -147,6 +161,29 @@ def test_default_router_dispatches_post_cases_start() -> None:
     assert response.json["case_id"] == "MBAM_01"
     assert response.json["engine_name"] == ENQUETEUR_ENGINE_NAME
     assert response.json["schema_version"] == ENQUETEUR_SCHEMA_VERSION
+
+
+def test_default_router_uses_shared_registry_for_future_attach() -> None:
+    registry = get_default_case_run_registry()
+    count_before = registry.count()
+    router = build_default_router()
+
+    response = router.dispatch(
+        ApiRequest(
+            method="POST",
+            path=CASE_START_PATH,
+            json={
+                "case_id": "MBAM_01",
+                "seed": "C",
+                "difficulty_profile": "D0",
+                "mode": "playtest",
+            },
+        )
+    )
+
+    assert response.status == 200
+    assert registry.count() == count_before + 1
+    assert registry.get(response.json["run_id"]) is not None
 
 
 def test_default_handler_persists_run_for_future_connection_lookup() -> None:
