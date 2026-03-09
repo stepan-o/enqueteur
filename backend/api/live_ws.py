@@ -18,10 +18,12 @@ import json
 import uuid
 
 from backend.sim4.case_mbam import (
+    CaseState,
     CaseCompletionAttemptResult,
     DialogueTurnRequest,
     DialogueTurnSlotValue,
     InvestigationCommandAck,
+    InvestigationProgressState,
     build_visible_dialogue_projection,
     build_visible_investigation_projection,
     build_visible_learning_projection,
@@ -419,6 +421,12 @@ class EnqueteurLiveSessionHost:
 
         session = self._require_session(connection_id)
         started_run = self._require_started_run(session)
+        tick_rejection = self._validate_tick_target_for_immediate_live_apply(
+            command=command,
+            started_run=started_run,
+        )
+        if tick_rejection is not None:
+            return tick_rejection
         handler = self._input_command_handlers.get(command.cmd_type)
         if handler is None:
             return CommandDispatchResult.rejected_result(
@@ -1201,7 +1209,38 @@ class EnqueteurLiveSessionHost:
     def _has_duplicates(self, values: tuple[str, ...]) -> bool:
         return len(values) != len(set(values))
 
-    def _collect_known_evidence_ids(self, *, progress: Any, case_state: Any) -> set[str]:
+    def _validate_tick_target_for_immediate_live_apply(
+        self,
+        *,
+        command: ParsedInputCommand,
+        started_run: StartedCaseRun,
+    ) -> CommandDispatchResult | None:
+        current_tick = int(started_run.runner.get_tick_index())
+        if command.tick_target < current_tick:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message=(
+                    f"tick_target {command.tick_target} is behind current tick {current_tick}."
+                ),
+            )
+        if command.tick_target > current_tick + 1:
+            return CommandDispatchResult.rejected_result(
+                client_cmd_id=command.client_cmd_id,
+                reason_code="INVALID_COMMAND",
+                message=(
+                    f"tick_target {command.tick_target} is too far ahead of current tick {current_tick}; "
+                    "live host supports immediate or next-tick commands only."
+                ),
+            )
+        return None
+
+    def _collect_known_evidence_ids(
+        self,
+        *,
+        progress: InvestigationProgressState,
+        case_state: CaseState,
+    ) -> set[str]:
         evidence_ids: set[str] = set(progress.discovered_evidence_ids).union(progress.collected_evidence_ids)
         for affordance in list_affordances():
             for evidence_id in tuple(getattr(affordance, "reveal_evidence_ids", ())):
@@ -1418,8 +1457,8 @@ async def handle_enqueteur_live_incoming_message(
                 msg_type="COMMAND_REJECTED",
                 payload={
                     "client_cmd_id": result.client_cmd_id,
-                    "reason_code": str(result.reason_code),
-                    "message": str(result.message),
+                    "reason_code": str(result.reason_code or "INVALID_COMMAND"),
+                    "message": str(result.message or "Command rejected."),
                 },
             )
             return

@@ -1389,6 +1389,89 @@ def test_malformed_input_command_variants_are_rejected_and_echo_client_cmd_id() 
         assert rejected["payload"]["reason_code"] == "INVALID_COMMAND"
 
 
+def test_input_command_rejects_stale_tick_target() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["WORLD", "INVESTIGATION", "EVENTS"],
+    )
+
+    asyncio.run(stream_enqueteur_frame_diff_once(ws, session=session, host=host))
+    ws.sent_texts.clear()
+
+    client_cmd_id = "00000000-0000-4000-8000-000000000045"
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": client_cmd_id,
+                    "tick_target": 0,
+                    "cmd": {
+                        "type": "INVESTIGATE_OBJECT",
+                        "payload": {"object_id": "O4_BENCH", "action_id": "inspect"},
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
+    assert rejected["payload"]["reason_code"] == "INVALID_COMMAND"
+
+
+def test_input_command_rejects_far_future_tick_target() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["WORLD", "INVESTIGATION", "EVENTS"],
+    )
+
+    client_cmd_id = "00000000-0000-4000-8000-000000000046"
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": client_cmd_id,
+                    "tick_target": 10,
+                    "cmd": {
+                        "type": "INVESTIGATE_OBJECT",
+                        "payload": {"object_id": "O4_BENCH", "action_id": "inspect"},
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+
+    rejected = _decode_sent_envelope(ws, 0)
+    assert rejected["msg_type"] == "COMMAND_REJECTED"
+    assert rejected["payload"]["client_cmd_id"] == client_cmd_id
+    assert rejected["payload"]["reason_code"] == "INVALID_COMMAND"
+
+
 def test_dialogue_turn_missing_slots_is_rejected_with_missing_required_slots() -> None:
     registry = CaseRunRegistry()
     _service, payload = _start_mbam_case(registry=registry)
