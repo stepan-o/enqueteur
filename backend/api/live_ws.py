@@ -352,6 +352,17 @@ class EnqueteurLiveSessionHost:
         session = self._require_session(connection_id)
         return session.protocol_state == "SUBSCRIBED" and session.phase == "SUBSCRIBED"
 
+    def can_stream_frame_diff(self, connection_id: str) -> bool:
+        session = self._require_session(connection_id)
+        return (
+            session.protocol_state == "SUBSCRIBED"
+            and session.phase == "SUBSCRIBED"
+            and session.baseline_sent
+            and session.last_state is not None
+            and session.last_step_hash is not None
+            and session.last_tick is not None
+        )
+
     def build_full_snapshot_payload(self, connection_id: str) -> dict[str, Any]:
         session = self._require_session(connection_id)
         if session.subscribed_config is None:
@@ -485,7 +496,11 @@ class EnqueteurLiveSessionHost:
                     message=f"Session {connection_id} is already closed.",
                     fatal=True,
                 )
-            raise KeyError(f"Unknown connection_id: {connection_id}")
+            raise ProtocolViolationError(
+                code="RUN_NOT_FOUND",
+                message=f"Session {connection_id} is not tracked by this host.",
+                fatal=True,
+            )
         return session
 
     def _require_started_run(self, session: EnqueteurLiveSession) -> StartedCaseRun:
@@ -816,15 +831,59 @@ async def stream_enqueteur_frame_diff_loop(
             break
         if not session_host.can_deliver_state(session.connection_id):
             break
+        if not session_host.can_stream_frame_diff(session.connection_id):
+            # The loop only streams post-baseline diffs; ON_JOIN baseline or replay
+            # recovery must establish the diff cursor first.
+            await _send_warn(
+                websocket,
+                code="BASELINE_REQUIRED",
+                message="FRAME_DIFF streaming is blocked until a baseline cursor is established.",
+            )
+            break
         if max_frames is not None and sent >= int(max_frames):
             break
 
-        await stream_enqueteur_frame_diff_once(
-            websocket,
-            session=session,
-            host=session_host,
-        )
-        sent += 1
+        try:
+            await stream_enqueteur_frame_diff_once(
+                websocket,
+                session=session,
+                host=session_host,
+            )
+            sent += 1
+        except ProtocolViolationError as exc:
+            await _send_error(websocket, code=exc.code, message=exc.message, fatal=exc.fatal)
+            if exc.fatal:
+                session_host.close_connection(
+                    session.connection_id,
+                    close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
+                    close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
+                )
+                await websocket.close(
+                    code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
+                    reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
+                )
+                session_host.cleanup_closed_session(session.connection_id)
+            break
+        except Exception as exc:  # noqa: BLE001
+            await _send_error(
+                websocket,
+                code="INTERNAL_RUNTIME_ERROR",
+                message=f"Unhandled internal runtime/session error during FRAME_DIFF: {exc}",
+                fatal=True,
+            )
+            if session_host.get_session(session.connection_id) is not None:
+                session_host.close_connection(
+                    session.connection_id,
+                    close_code=INTERNAL_RUNTIME_WS_CLOSE_CODE,
+                    close_reason=INTERNAL_RUNTIME_WS_CLOSE_REASON,
+                )
+            await websocket.close(
+                code=INTERNAL_RUNTIME_WS_CLOSE_CODE,
+                reason=INTERNAL_RUNTIME_WS_CLOSE_REASON,
+            )
+            if session_host.get_session(session.connection_id) is not None:
+                session_host.cleanup_closed_session(session.connection_id)
+            break
 
         if tick_interval_seconds > 0:
             await asyncio.sleep(float(tick_interval_seconds))

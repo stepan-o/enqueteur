@@ -495,6 +495,121 @@ def test_stream_frame_diff_loop_stops_at_max_frames() -> None:
     assert len(frame_diff_types) == 3
 
 
+def test_stream_loop_warns_when_baseline_cursor_is_missing() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "NEVER",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+    count = asyncio.run(
+        stream_enqueteur_frame_diff_loop(
+            ws,
+            session=session,
+            host=host,
+            max_frames=2,
+            tick_interval_seconds=0.0,
+        )
+    )
+    assert count == 0
+    warn_env = _decode_sent_envelope(ws, 0)
+    assert warn_env["msg_type"] == "WARN"
+    assert warn_env["payload"]["code"] == "BASELINE_REQUIRED"
+    assert ws.close_calls == []
+
+
+def test_unsupported_allowed_message_emits_warn_nonfatal() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+    ws.sent_texts.clear()
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope("UNSUBSCRIBE", {"stream_id": "S1"}),
+            host=host,
+        )
+    )
+
+    warn_env = _decode_sent_envelope(ws, 0)
+    assert warn_env["msg_type"] == "WARN"
+    assert warn_env["payload"]["code"] == "UNSUPPORTED_MESSAGE"
+    assert ws.close_calls == []
+
+
 def test_viewer_hello_requires_enqueteur_schema_support() -> None:
     registry = CaseRunRegistry()
     _service, payload = _start_mbam_case(registry=registry)
@@ -525,6 +640,29 @@ def test_viewer_hello_requires_enqueteur_schema_support() -> None:
     error_payload = error_env["payload"]
     assert error_payload["code"] == "SCHEMA_MISMATCH"
     assert error_payload["fatal"] is True
+    assert ws.close_calls == [(PROTOCOL_VIOLATION_WS_CLOSE_CODE, PROTOCOL_VIOLATION_WS_CLOSE_REASON)]
+
+
+def test_invalid_envelope_is_protocol_violation_and_closes() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message="{\"not\":\"an envelope\"}",
+            host=host,
+        )
+    )
+
+    error_env = _decode_sent_envelope(ws, 0)
+    assert error_env["msg_type"] == "ERROR"
+    assert error_env["payload"]["code"] == "PROTOCOL_VIOLATION"
+    assert error_env["payload"]["fatal"] is True
     assert ws.close_calls == [(PROTOCOL_VIOLATION_WS_CLOSE_CODE, PROTOCOL_VIOLATION_WS_CLOSE_REASON)]
 
 
