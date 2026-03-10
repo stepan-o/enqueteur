@@ -13,6 +13,13 @@ export type MbamOnboardingView = {
     steps: MbamOnboardingStep[];
 };
 
+export type MbamCaseSetupGuide = {
+    incident: string;
+    firstInspect: string;
+    firstTalkTo: string;
+    progressionPath: string[];
+};
+
 export type MbamPlaytestPathStep = {
     id:
         | "starter_investigation"
@@ -41,6 +48,7 @@ export type MbamObjectGuide = {
 
 const CASE_TITLE = "MBAM / Le Petit Vol du Musee";
 const CASE_SUMMARY = "Recover the missing medallion by piecing together a reliable timeline.";
+const CASE_INCIDENT = "A gallery medallion is missing shortly before closing.";
 const MBAM_OBJECT_GUIDES: MbamObjectGuide[] = [
     {
         object_id: "O1_DISPLAY_CASE",
@@ -125,6 +133,60 @@ export function labelMbamContradictionEdge(edgeId: string): string {
     return CONTRADICTION_EDGE_LABELS[edgeId] ?? edgeId;
 }
 
+export function buildMbamCaseSetupGuide(state: WorldState): MbamCaseSetupGuide {
+    const investigation = state.investigation;
+    const dialogue = state.dialogue;
+
+    const displayCaseObserved = isAffordanceObserved(state, "O1_DISPLAY_CASE");
+    const wallLabelObserved = isAffordanceObserved(state, "O3_WALL_LABEL");
+    const badgeObserved = isAffordanceObserved(state, "O6_BADGE_TERMINAL");
+    const receiptObserved = isAffordanceObserved(state, "O9_RECEIPT_PRINTER");
+    const hasDialogueTurn = (dialogue?.recent_turns.length ?? 0) > 0;
+    const contradictionRequired = investigation?.contradictions.required_for_accusation ?? false;
+    const contradictionSatisfied = investigation?.contradictions.requirement_satisfied ?? false;
+
+    const firstInspect = (() => {
+        if (!displayCaseObserved && !wallLabelObserved) {
+            return "Inspect the Display Case, then read the Wall Label in the gallery.";
+        }
+        if (!displayCaseObserved) {
+            return "Inspect the Display Case in the gallery.";
+        }
+        if (!wallLabelObserved) {
+            return "Read the Wall Label near the display case.";
+        }
+        if (!badgeObserved) {
+            return "Check the Badge Terminal in the security office.";
+        }
+        if (!receiptObserved) {
+            return "Check the Receipt Printer at the cafe counter.";
+        }
+        return "Continue with remaining object leads in Case Notes.";
+    })();
+
+    const firstTalkTo = (() => {
+        if (!hasDialogueTurn) return "Talk to Elodie first to anchor what happened and when.";
+        if (!badgeObserved) return "Talk to Marc if you need access to security logs.";
+        if (contradictionRequired && !contradictionSatisfied) {
+            return "Question timeline details, then challenge contradictions in surfaced scenes.";
+        }
+        return "Keep questioning witnesses to corroborate your timeline.";
+    })();
+
+    const progressionPath = [
+        "Inspect scene objects to collect concrete clues.",
+        "Use Conversations (in French) to test and confirm those clues.",
+        "Cross-check timeline clues before final recovery or accusation attempts.",
+    ];
+
+    return {
+        incident: CASE_INCIDENT,
+        firstInspect,
+        firstTalkTo,
+        progressionPath,
+    };
+}
+
 export function buildMbamPlaytestPathView(state: WorldState): MbamPlaytestPathView {
     const investigation = state.investigation;
     const dialogue = state.dialogue;
@@ -150,7 +212,7 @@ export function buildMbamPlaytestPathView(state: WorldState): MbamPlaytestPathVi
         },
         {
             id: "first_dialogue",
-            label: "Submit your first structured dialogue turn.",
+            label: "Talk to Elodie and submit your first dialogue turn.",
             done: firstDialogue,
         },
         {
@@ -223,7 +285,7 @@ export function buildMbamOnboardingView(state: WorldState): MbamOnboardingView {
         },
         {
             id: "dialogue_turn",
-            label: "Question someone in Conversations (in French).",
+            label: "Talk to Elodie first in Conversations (in French).",
             done: hasDialogueTurn,
         },
         {
@@ -267,7 +329,7 @@ function resolveCurrentLead(ctx: {
     if (!ctx.displayCaseObserved) return "Begin in the gallery: inspect the Display Case.";
     if (!ctx.wallLabelObserved) return "Read the Wall Label and note title/date anchors.";
     if (!ctx.clueProgress) return "Follow object leads to uncover your first clues.";
-    if (!ctx.hasDialogueTurn) return "Open Conversations and ask your first question in French.";
+    if (!ctx.hasDialogueTurn) return "Open Conversations and talk to Elodie first in French.";
     if (ctx.contradictionRequired && !ctx.contradictionSatisfied) {
         if (ctx.contradictionUnlockable) return "You have a contradiction lead. Tighten your timeline next.";
         return "Build a stronger contradiction before making an accusation.";

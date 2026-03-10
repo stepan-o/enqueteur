@@ -1,6 +1,6 @@
 // src/ui/dialoguePanel.ts
 import type { KvpDialogueTurnLog, KvpNpcSemanticState, WorldState, WorldStore } from "../state/worldStore";
-import { labelMbamContradictionEdge } from "./mbamOnboarding";
+import { buildMbamCaseSetupGuide, buildMbamOnboardingView, labelMbamContradictionEdge } from "./mbamOnboarding";
 
 export type DialogueTurnSlotValue = {
     slot_name: string;
@@ -261,6 +261,8 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         }
         panel.style.display = "block";
         const dialogue = lastState.dialogue;
+        const onboarding = buildMbamOnboardingView(lastState);
+        const setupGuide = buildMbamCaseSetupGuide(lastState);
         const detailed = presentationProfile !== "demo";
 
         const title = document.createElement("div");
@@ -285,6 +287,14 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
 
         renderSectionTitle(panel, "Character Read");
         renderNpcStateCard(panel, npcCardState);
+        const completedSetupSteps = onboarding.steps.filter((step) => step.done).length;
+        const needsStarterGuidance = completedSetupSteps < 2 || dialogue.recent_turns.length === 0;
+        if (needsStarterGuidance) {
+            renderSectionTitle(panel, "Case Setup Hint");
+            renderInfo(panel, `What happened: ${setupGuide.incident}`);
+            renderInfo(panel, `Inspect first: ${setupGuide.firstInspect}`);
+            renderInfo(panel, `Talk first: ${setupGuide.firstTalkTo}`);
+        }
 
         renderDataLines(panel, detailed
             ? [
@@ -320,12 +330,12 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
 
         renderSectionTitle(panel, "Choose Your Line");
         if (!focusSceneId || !sceneConfig || !focusNpcId) {
-            renderInfo(panel, "No active conversation scene is ready yet.");
+            renderInfo(panel, "No active conversation scene is ready yet. Inspect early case objects first.");
         } else {
             if (dialogue.recent_turns.length === 0) {
                 renderInfo(
                     panel,
-                    "Start simple: ask what/when/where, then summarize in French to move the scene forward."
+                    `Start simple with ${focusNpcId}: ask what/when/where, then summarize in French to move the scene forward.`
                 );
             }
             const allowedIntents = sceneConfig.allowedIntents;

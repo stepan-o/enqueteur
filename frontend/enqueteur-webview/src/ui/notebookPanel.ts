@@ -1,6 +1,7 @@
 // src/ui/notebookPanel.ts
 import type { KvpInvestigationState, WorldState, WorldStore } from "../state/worldStore";
 import {
+    buildMbamCaseSetupGuide,
     buildMbamOnboardingView,
     buildMbamPlaytestPathView,
     getMbamObjectGuide,
@@ -210,10 +211,16 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
         }
 
         const onboarding = buildMbamOnboardingView(lastState);
+        const setupGuide = buildMbamCaseSetupGuide(lastState);
         const playtestPath = buildMbamPlaytestPathView(lastState);
         const isDemoProfile = presentationProfile === "demo";
         renderSectionTitle(panel, "Case Brief");
         renderInfo(panel, onboarding.caseSummary);
+        renderSectionTitle(panel, "Case Setup");
+        renderInfo(panel, `What happened: ${setupGuide.incident}`);
+        renderInfo(panel, `Inspect first: ${setupGuide.firstInspect}`);
+        renderInfo(panel, `Talk first: ${setupGuide.firstTalkTo}`);
+        renderInfo(panel, `How to progress: ${setupGuide.progressionPath.join(" Then ")}`);
         renderSectionTitle(panel, "Start Here");
         renderOnboardingSteps(panel, onboarding.steps);
         renderInfo(panel, `Current lead: ${onboarding.currentLead}`);

@@ -132,6 +132,8 @@ describe("Phase 5 shell panel rendering", () => {
 
         expect(panel?.textContent).toContain("Evidence Tray");
         expect(panel?.textContent).toContain("Case Brief");
+        expect(panel?.textContent).toContain("Case Setup");
+        expect(panel?.textContent).toContain("What happened: A gallery medallion is missing shortly before closing.");
         expect(panel?.textContent).toContain("Start Here");
         expect(panel?.textContent).toContain("Inspect the Display Case and Wall Label in the gallery.");
         expect(panel?.textContent).toContain("Current lead:");

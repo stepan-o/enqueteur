@@ -9,6 +9,7 @@ import type {
     KvpRoom,
 } from "../state/worldStore";
 import {
+    buildMbamCaseSetupGuide,
     buildMbamOnboardingView,
     getMbamObjectGuide,
     hintMbamAction,
@@ -483,6 +484,7 @@ function renderRecentDialogueHint(panel: HTMLElement, state: WorldState, detaile
 
 function renderObjectPrompt(panel: HTMLElement, caseObjectId: string, state: WorldState): void {
     const onboarding = buildMbamOnboardingView(state);
+    const setupGuide = buildMbamCaseSetupGuide(state);
     const promptByObject: Record<string, string> = {
         O1_DISPLAY_CASE: "Starter lead: inspect + check lock to confirm what changed in the gallery.",
         O3_WALL_LABEL: "Read and note title/date. It helps anchor timeline dialogue.",
@@ -494,6 +496,23 @@ function renderObjectPrompt(panel: HTMLElement, caseObjectId: string, state: Wor
     note.className = "inspect-note";
     note.textContent = promptByObject[caseObjectId] ?? onboarding.currentLead;
     panel.appendChild(note);
+
+    const starterIds = ["O1_DISPLAY_CASE", "O3_WALL_LABEL"];
+    const starterComplete = starterIds.every((objectId) => isInvestigationObjectObserved(state, objectId));
+    if (!starterComplete) {
+        const starterNote = document.createElement("div");
+        starterNote.className = "inspect-note";
+        starterNote.textContent = starterIds.includes(caseObjectId)
+            ? "Priority start object: this is one of your first checks."
+            : "For your first pass, inspect the Display Case and Wall Label first.";
+        panel.appendChild(starterNote);
+    } else if ((state.dialogue?.recent_turns.length ?? 0) === 0) {
+        const talkNote = document.createElement("div");
+        talkNote.className = "inspect-note";
+        talkNote.textContent = `Next step: ${setupGuide.firstTalkTo}`;
+        panel.appendChild(talkNote);
+    }
+
     if (state.investigation?.contradictions.required_for_accusation && !state.investigation.contradictions.requirement_satisfied) {
         const contradictionNote = document.createElement("div");
         contradictionNote.className = "inspect-note";
@@ -582,4 +601,10 @@ function findObjectByOccupant(state: WorldState, agentId: number): KvpObject | n
         if (obj.occupant_agent_id === agentId) return obj;
     }
     return null;
+}
+
+function isInvestigationObjectObserved(state: WorldState, objectId: string): boolean {
+    const objectRow = state.investigation?.objects.find((row) => row.object_id === objectId);
+    if (!objectRow) return false;
+    return objectRow.observed_affordances.length > 0;
 }

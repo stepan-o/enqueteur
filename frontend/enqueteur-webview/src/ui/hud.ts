@@ -1,6 +1,6 @@
 // src/ui/hud.ts
 import type { WorldStore, WorldState, KvpEvent, KvpRoom } from "../state/worldStore";
-import { buildMbamOnboardingView } from "./mbamOnboarding";
+import { buildMbamCaseSetupGuide, buildMbamOnboardingView } from "./mbamOnboarding";
 import type { OverlayStore, OverlayState, UIOverlayEvent } from "../state/overlayStore";
 
 export type HudProfile = "demo" | "playtest" | "dev";
@@ -158,6 +158,7 @@ function renderHud(
         }
     } else if (profile === "playtest") {
         const onboarding = buildMbamOnboardingView(state);
+        const setupGuide = buildMbamCaseSetupGuide(state);
         lines.push(`Session:   ${connected ? "Live" : "Connecting..."}`);
         lines.push(`Case:      ${onboarding.caseTitle}`);
         lines.push(`Day:       ${state.world?.day_index ?? 1}`);
@@ -170,10 +171,16 @@ function renderHud(
         lines.push(`Evidence:  ${evidenceCount} found`);
         lines.push(`Scene:     ${state.dialogue?.active_scene_id ?? "-"}`);
         lines.push(`Lead:      ${truncateText(onboarding.currentLead, 44)}`);
+        lines.push(`Start:     ${truncateText(setupGuide.firstInspect, 44)}`);
     } else {
         const onboarding = buildMbamOnboardingView(state);
+        const setupGuide = buildMbamCaseSetupGuide(state);
         lines.push(`Session:   ${connected ? "Live" : "Connecting..."}`);
+        lines.push(`Case:      ${onboarding.caseTitle}`);
         lines.push(`Objective: Recover the missing medallion.`);
+        lines.push(`Incident:  ${truncateText(setupGuide.incident, 52)}`);
+        lines.push(`Inspect:   ${truncateText(setupGuide.firstInspect, 52)}`);
+        lines.push(`Talk to:   ${truncateText(setupGuide.firstTalkTo, 52)}`);
         lines.push(`Scene:     ${state.dialogue?.active_scene_id ?? "-"}`);
         lines.push(`Lead:      ${truncateText(onboarding.currentLead, 52)}`);
     }
@@ -227,7 +234,13 @@ function renderFeed(
             el.feedBody.textContent = "No events yet";
         } else {
             const onboarding = buildMbamOnboardingView(state);
-            el.feedBody.textContent = `No activity yet\nTip: ${truncateText(onboarding.currentLead, 48)}`;
+            const setupGuide = buildMbamCaseSetupGuide(state);
+            el.feedBody.textContent = (
+                `No activity yet\n`
+                + `Start: ${truncateText(setupGuide.firstInspect, 48)}\n`
+                + `Then: ${truncateText(setupGuide.firstTalkTo, 48)}\n`
+                + `Tip: ${truncateText(onboarding.currentLead, 48)}`
+            );
         }
         return;
     }
@@ -275,10 +288,11 @@ function formatWorldEvent(ev: KvpEvent, rooms: Map<number, KvpRoom>): string {
 function formatWorldEventPlaytest(ev: KvpEvent, rooms: Map<number, KvpRoom>): string {
     const payload = (ev.payload ?? {}) as Record<string, unknown>;
     const kind = String(payload.kind ?? ev.origin ?? "event");
+    const userKind = describePlayerFacingEvent(kind);
     const roomId = toNumber(payload.room_id ?? payload.previous_room_id);
     const roomLabel = roomId !== null ? rooms.get(roomId)?.label : null;
     const detail = roomLabel ? ` · ${roomLabel}` : "";
-    return `${kind}${detail}`;
+    return `${userKind}${detail}`;
 }
 
 function formatOverlayEvent(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>): string {
@@ -297,6 +311,7 @@ function formatOverlayEvent(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>): st
 
 function formatOverlayEventPlaytest(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>): string {
     const data = ev.data ?? {};
+    const userKind = describePlayerFacingEvent(ev.kind);
     const roomId = toNumber(data.room_id);
     const agentId = toNumber(data.agent_id);
     let detail = "";
@@ -306,7 +321,28 @@ function formatOverlayEventPlaytest(ev: UIOverlayEvent, rooms: Map<number, KvpRo
     } else if (agentId !== null) {
         detail = ` · Agent ${agentId}`;
     }
-    return `${ev.kind}${detail}`;
+    return `${userKind}${detail}`;
+}
+
+function describePlayerFacingEvent(kind: string): string {
+    const lower = kind.toLowerCase();
+    if (lower.includes("dialogue")) return "Conversation updated";
+    if (lower.includes("investigation")) return "Case clue updated";
+    if (lower.includes("object")) return "Object interaction updated";
+    if (lower.includes("minigame")) return "Field exercise updated";
+    if (lower.includes("contradiction")) return "Contradiction progress updated";
+    if (lower.includes("resolution") || lower.includes("outcome")) return "Case outcome updated";
+    if (lower.includes("warning")) return "Case warning";
+    return humanizeEventKind(kind);
+}
+
+function humanizeEventKind(kind: string): string {
+    const normalized = kind
+        .replace(/[._:]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    if (!normalized) return "Case update";
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
 function toNumber(val: unknown): number | null {
