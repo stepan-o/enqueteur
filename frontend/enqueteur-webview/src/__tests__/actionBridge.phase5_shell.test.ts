@@ -375,10 +375,10 @@ describe("Phase 5 action bridge", () => {
 
         expect(minigame.status).toBe("blocked");
         expect(minigame.code).toBe("MINIGAME_INVALID_STATE");
-        expect(minigame.summary).toContain("MINIGAME_INVALID_STATE");
+        expect(minigame.summary).toBe("This exercise is not open yet. Follow the current clues first.");
 
         expect(accusation.status).toBe("invalid");
         expect(accusation.code).toBe("INVALID_COMMAND");
-        expect(accusation.summary).toContain("INVALID_COMMAND");
+        expect(accusation.summary).toBe("That action payload was not valid. Reopen the panel and try again.");
     });
 });

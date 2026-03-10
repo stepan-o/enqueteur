@@ -22,6 +22,8 @@ const PHASE_NOTES: Record<ConnectingPhase, string> = {
 export type ConnectingScreenOpts = {
     caseId: EnqueteurCaseId;
     phase: ConnectingPhase;
+    demoPathLabel?: string;
+    blockedStateHint?: string;
     warningMessage?: string;
     onBackToCases: () => void;
     onBackToMenu: () => void;
@@ -62,6 +64,22 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
     note.className = "flow-screen-note";
     note.textContent = PHASE_NOTES[opts.phase];
 
+    const demoPath = opts.demoPathLabel
+        ? document.createElement("p")
+        : null;
+    if (demoPath) {
+        demoPath.className = "flow-screen-note";
+        demoPath.textContent = `Demo route: ${opts.demoPathLabel}`;
+    }
+
+    const blockedHint = opts.blockedStateHint
+        ? document.createElement("p")
+        : null;
+    if (blockedHint) {
+        blockedHint.className = "flow-screen-note";
+        blockedHint.textContent = opts.blockedStateHint ?? "";
+    }
+
     const warning = opts.warningMessage
         ? document.createElement("p")
         : null;
@@ -79,6 +97,12 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
     section.appendChild(bodyEl);
     section.appendChild(steps);
     section.appendChild(note);
+    if (demoPath) {
+        section.appendChild(demoPath);
+    }
+    if (blockedHint) {
+        section.appendChild(blockedHint);
+    }
     if (warning) {
         section.appendChild(warning);
     }

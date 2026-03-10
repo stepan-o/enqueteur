@@ -220,7 +220,10 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
         renderInfo(panel, `What happened: ${setupGuide.incident}`);
         renderInfo(panel, `Inspect first: ${setupGuide.firstInspect}`);
         renderInfo(panel, `Talk first: ${setupGuide.firstTalkTo}`);
-        renderInfo(panel, `How to progress: ${setupGuide.progressionPath.join(" Then ")}`);
+        renderInfo(panel, "Default demo route:");
+        for (const step of setupGuide.progressionPath) {
+            renderInfo(panel, `- ${step}`);
+        }
         renderSectionTitle(panel, "Start Here");
         renderOnboardingSteps(panel, onboarding.steps);
         renderInfo(panel, `Current lead: ${onboarding.currentLead}`);
@@ -966,10 +969,17 @@ function renderProjectedStatus(
     line.className = "notebook-minigame-status";
     if (isDemoProfile) {
         if (!projected) {
-            line.textContent = "Status: waiting";
+            line.textContent = "Status: waiting for the first authoritative update.";
         } else {
-            const gateState = projected.gate_open === false ? "blocked" : "ready";
-            line.textContent = `Status: ${projected.status} (${gateState})`;
+            if (projected.gate_open === false) {
+                line.textContent = "Status: blocked until prerequisite clues are confirmed.";
+            } else if (projected.status === "completed") {
+                line.textContent = "Status: completed.";
+            } else if (projected.status === "passed") {
+                line.textContent = "Status: passed.";
+            } else {
+                line.textContent = "Status: available.";
+            }
         }
     } else if (!projected) {
         line.textContent = `Local attempts: ${local.attempts}`;

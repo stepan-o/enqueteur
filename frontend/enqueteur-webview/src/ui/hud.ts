@@ -178,6 +178,7 @@ function renderHud(
         lines.push(`Session:   ${connected ? "Live" : "Connecting..."}`);
         lines.push(`Case:      ${onboarding.caseTitle}`);
         lines.push(`Objective: Recover the missing medallion.`);
+        lines.push("Route:     Inspect -> Talk -> Minigame -> Contradiction -> Final Decision");
         lines.push(`Incident:  ${truncateText(setupGuide.incident, 52)}`);
         lines.push(`Inspect:   ${truncateText(setupGuide.firstInspect, 52)}`);
         lines.push(`Talk to:   ${truncateText(setupGuide.firstTalkTo, 52)}`);

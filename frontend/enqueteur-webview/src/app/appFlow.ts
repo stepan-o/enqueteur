@@ -416,6 +416,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                     renderConnectingScreen({
                         caseId: state.caseId,
                         phase: state.phase,
+                        demoPathLabel: getPreGameCaseEntry(state.caseId)?.defaultDemoPath.title,
+                        blockedStateHint: getPreGameCaseEntry(state.caseId)?.defaultDemoPath.blockedStateHint,
                         warningMessage: liveWarningMessage ?? undefined,
                         onBackToCases: goToCaseSelect,
                         onBackToMenu: goToMainMenu,

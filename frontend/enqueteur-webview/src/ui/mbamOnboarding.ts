@@ -174,9 +174,11 @@ export function buildMbamCaseSetupGuide(state: WorldState): MbamCaseSetupGuide {
     })();
 
     const progressionPath = [
-        "Inspect scene objects to collect concrete clues.",
-        "Use Conversations (in French) to test and confirm those clues.",
-        "Cross-check timeline clues before final recovery or accusation attempts.",
+        "Inspect the Display Case and Wall Label to anchor the opening timeline.",
+        "Talk to Elodie first in Conversations to validate the opening clue chain.",
+        "Complete at least one Case Notes minigame to strengthen corroboration.",
+        "Use badge/receipt clues to prepare or unlock contradiction readiness.",
+        "Attempt Recovery or Accusation, then review the final recap.",
     ];
 
     return {

@@ -57,9 +57,19 @@ function makeCaseCard(
     subtitle.className = "flow-screen-note";
     subtitle.textContent = entry.subtitle;
 
+    const demoRoute = document.createElement("span");
+    demoRoute.className = "flow-screen-note";
+    demoRoute.textContent = `Default demo route: ${entry.defaultDemoPath.title}`;
+
+    const demoSummary = document.createElement("span");
+    demoSummary.className = "flow-screen-note";
+    demoSummary.textContent = entry.defaultDemoPath.summary;
+
     card.appendChild(code);
     card.appendChild(label);
     card.appendChild(subtitle);
+    card.appendChild(demoRoute);
+    card.appendChild(demoSummary);
     card.addEventListener("click", () => onPickCase(entry.caseId));
     return card;
 }

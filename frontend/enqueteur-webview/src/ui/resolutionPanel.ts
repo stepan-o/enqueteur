@@ -486,9 +486,10 @@ function formatAttemptResult(
             : `${title} sent. Waiting for outcome update.`;
     }
     if (result.status === "blocked") {
+        const reason = mapAttemptReasonCode(result.code, result.summary);
         return detailed
-            ? `${title} blocked: ${mapAttemptReasonCode(result.code)} [${result.code}]`
-            : `${title} blocked: ${mapAttemptReasonCode(result.code)}.`;
+            ? `${title} blocked: ${reason} [${result.code}]`
+            : `${title} blocked: ${reason}.`;
     }
     if (result.status === "invalid") {
         return detailed
@@ -510,12 +511,17 @@ function formatAttemptResult(
         : `${title}: ${result.summary ?? "Command processed."}`;
 }
 
-function mapAttemptReasonCode(code: string): string {
-    if (code === "ACCUSATION_PREREQS_MISSING") return "missing accusation requirements";
-    if (code === "RECOVERY_PREREQS_MISSING") return "missing recovery requirements";
+function mapAttemptReasonCode(code: string, summary?: string): string {
+    if (code === "ACCUSATION_PREREQS_MISSING") {
+        return "you still need contradiction support before accusing";
+    }
+    if (code === "RECOVERY_PREREQS_MISSING") {
+        return "you need one or two more corroborated clues first";
+    }
     if (code === "RUNTIME_NOT_READY") return "connection not ready";
-    if (code === "INVALID_COMMAND") return "not allowed in the current case state";
-    return "blocked by case rules";
+    if (code === "INVALID_COMMAND") return "that action was not valid in the current case state";
+    if (summary && summary.trim().length > 0) return summary;
+    return "blocked by current case rules";
 }
 
 function humanizeToken(value: string): string {
