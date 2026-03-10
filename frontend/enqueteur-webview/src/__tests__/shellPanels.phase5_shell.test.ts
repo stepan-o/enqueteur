@@ -475,8 +475,8 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("best_outcome");
         expect(panel?.textContent).toContain("recovery");
         expect(panel?.textContent).toContain("resolved");
-        expect(panel?.textContent).toContain("N3 Badge log 17h58");
-        expect(panel?.textContent).toContain("E2 Cafe Receipt");
+        expect(panel?.textContent).toContain("Badge log at 17h58 (N3)");
+        expect(panel?.textContent).toContain("Cafe receipt (E2_CAFE_RECEIPT)");
         expect(panel?.textContent).toContain("Best Outcome Markers");
         expect(panel?.textContent).toContain("quiet_recovery");
     });

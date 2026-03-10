@@ -74,8 +74,47 @@ describe("Phase 7 terminal path resolution panel smoke", () => {
         document.body.appendChild(panelHandle.root);
         const text = panelHandle.root.textContent ?? "";
         expect(text).toContain("Decision Readiness");
-        expect(text).toContain("Recovery: available");
-        expect(text).toContain("Accusation: blocked (contradiction requirement not met yet)");
+        expect(text).toContain("Recoveryavailable - your corroboration is strong enough to proceed");
+        expect(text).toContain("Accusationblocked - you still need contradiction support before accusing");
+        panelHandle.root.remove();
+    });
+
+    it("renders external-demo-friendly recap language without debug-style outcome codes", () => {
+        const store = new WorldStore();
+        const snapshot = makeMbamSnapshot(22);
+        if (!snapshot.state.case_outcome || !snapshot.state.case_recap) {
+            throw new Error("fixture must include case outcome + recap projections");
+        }
+        snapshot.state.case_outcome = {
+            ...snapshot.state.case_outcome,
+            primary_outcome: "recovery_success",
+            terminal: true,
+            recovery_success: true,
+            accusation_success: false,
+            soft_fail: false,
+        };
+        snapshot.state.case_recap = {
+            ...snapshot.state.case_recap,
+            available: true,
+            final_outcome_type: "recovery_success",
+            resolution_path: "recovery",
+            key_fact_ids: ["N1", "N3", "N4"],
+            key_evidence_ids: ["E2_CAFE_RECEIPT"],
+            key_action_flags: ["action:recover_medallion"],
+            contradiction_action_flags: ["action:state_contradiction_N3_N4"],
+        };
+        store.applySnapshot(snapshot);
+
+        const panelHandle = mountResolutionPanel(store, {
+            presentationProfile: "demo",
+        });
+        document.body.appendChild(panelHandle.root);
+        const text = panelHandle.root.textContent ?? "";
+        expect(text).toContain("Case Outcome");
+        expect(text).toContain("Recovery Success");
+        expect(text).toContain("What You Proved");
+        expect(text).toContain("What Mattered Most");
+        expect(text).not.toContain("Resolution path");
         panelHandle.root.remove();
     });
 });

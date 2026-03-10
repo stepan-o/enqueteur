@@ -968,6 +968,40 @@ button:hover {
   margin-bottom: 8px;
 }
 
+.resolution-outcome-hero {
+  border: 1px solid rgba(31, 38, 41, 0.2);
+  border-radius: 10px;
+  padding: 8px 9px;
+  margin: 4px 0 8px;
+  background: rgba(246, 240, 228, 0.82);
+}
+
+.resolution-outcome-hero[data-tone="good"] {
+  border-color: rgba(40, 120, 82, 0.35);
+  background: rgba(232, 247, 238, 0.84);
+}
+
+.resolution-outcome-hero[data-tone="mixed"] {
+  border-color: rgba(150, 108, 42, 0.35);
+  background: rgba(250, 240, 222, 0.9);
+}
+
+.resolution-outcome-hero[data-tone="incomplete"] {
+  border-color: rgba(42, 108, 150, 0.35);
+  background: rgba(231, 241, 250, 0.84);
+}
+
+.resolution-outcome-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.resolution-outcome-subtitle {
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.84;
+}
+
 .resolution-section-title {
   margin-top: 10px;
   margin-bottom: 6px;
