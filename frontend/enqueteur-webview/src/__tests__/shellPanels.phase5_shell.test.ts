@@ -34,7 +34,7 @@ describe("Phase 5 shell panel rendering", () => {
         inspect.setSelection({ kind: "object", id: 3002 });
 
         const panel = inspect.root.querySelector(".inspect-panel");
-        expect(panel?.textContent).toContain("Interaction");
+        expect(panel?.textContent).toContain("Investigation Actions");
         expect(panel?.textContent).toContain("Field Prompt");
         expect(panel?.textContent).toContain("O1_DISPLAY_CASE");
         expect(panel?.textContent).toContain("Location hint");
@@ -45,7 +45,7 @@ describe("Phase 5 shell panel rendering", () => {
         buttons[0]?.click();
         await flushUi();
 
-        expect(panel?.textContent).toContain("Last Action Result");
+        expect(panel?.textContent).toContain("Latest Result");
         expect(panel?.textContent).toContain("projection_affordance_observed");
         expect(panel?.textContent).toContain("accepted");
     });
@@ -90,11 +90,11 @@ describe("Phase 5 shell panel rendering", () => {
         dialogue.setInspectSelection({ kind: "room", id: 1 });
 
         const panel = dialogue.root.querySelector(".dialogue-panel");
-        expect(panel?.textContent).toContain("NPC State Card");
-        expect(panel?.textContent).toContain("Scaffolding");
-        expect(panel?.textContent).toContain("Summary & Hint Ladder");
-        expect(panel?.textContent).toContain("Contradiction Route");
-        expect(panel?.textContent).toContain("Hint ladder");
+        expect(panel?.textContent).toContain("Character Read");
+        expect(panel?.textContent).toContain("Conversation Support");
+        expect(panel?.textContent).toContain("Summary Guidance");
+        expect(panel?.textContent).toContain("Contradiction Clues");
+        expect(panel?.textContent).toContain("Hint track");
         expect(panel?.textContent).toContain("Soft Hint - current");
         expect(panel?.textContent).toContain("Sentence Stem - locked");
         expect(panel?.textContent).toContain("Prompt:");
@@ -103,10 +103,10 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("Emotion");
         expect(panel?.textContent).toContain("Stance");
         expect(panel?.textContent).toContain("Trust trend");
-        expect(panel?.textContent).toContain("Recent Structured Turns");
-        expect(panel?.textContent).toContain("Known facts you can cite:");
-        expect(panel?.textContent).toContain("Known evidence you can cite:");
-        expect(panel?.textContent).toContain("npc: Très bien. Restons précis.");
+        expect(panel?.textContent).toContain("Recent Conversation Turns");
+        expect(panel?.textContent).toContain("Facts you can cite:");
+        expect(panel?.textContent).toContain("Evidence you can cite:");
+        expect(panel?.textContent).toContain("NPC: Très bien. Restons précis.");
         expect(panel?.textContent).toContain("rephrase:Essaie avec une phrase guide simple.");
         expect(panel?.textContent).toContain("summary_prompt:Fais un court résumé en français avant de continuer.");
         expect(panel?.textContent).toContain("hint:Indice: garde la structure qui, où, quand.");
@@ -118,7 +118,7 @@ describe("Phase 5 shell panel rendering", () => {
         submit?.click();
         await flushUi();
 
-        expect(panel?.textContent).toContain("Last Submission");
+        expect(panel?.textContent).toContain("Latest Attempt");
         expect(panel?.textContent).toContain("summary_ok");
     });
 
@@ -140,17 +140,17 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("Next:");
         expect(panel?.textContent).toContain("Key Object Leads");
         expect(panel?.textContent).toContain("E2 Cafe Receipt");
-        expect(panel?.textContent).toContain("Fact Visibility");
+        expect(panel?.textContent).toContain("Known Facts");
         expect(panel?.textContent).toContain("N1");
         expect(panel?.textContent).toContain("Contradictions");
         expect(panel?.textContent).toContain("Unlockable edges");
-        expect(panel?.textContent).toContain("Action route");
+        expect(panel?.textContent).toContain("Where to use");
         expect(panel?.textContent).toContain("Timeline Clues");
-        expect(panel?.textContent).toContain("Mini-Exercises");
-        expect(panel?.textContent).toContain("MG1 Wall Label Reading");
-        expect(panel?.textContent).toContain("MG2 Badge Log Read");
-        expect(panel?.textContent).toContain("MG3 Receipt Reading");
-        expect(panel?.textContent).toContain("MG4 Torn Note Reconstruction");
+        expect(panel?.textContent).toContain("Field Exercises");
+        expect(panel?.textContent).toContain("Wall Label Check (MG1)");
+        expect(panel?.textContent).toContain("Badge Log Check (MG2)");
+        expect(panel?.textContent).toContain("Receipt Check (MG3)");
+        expect(panel?.textContent).toContain("Torn Note Rebuild (MG4)");
     });
 
     it("demotes internal-only notebook guidance in demo presentation profile", () => {
@@ -178,10 +178,10 @@ describe("Phase 5 shell panel rendering", () => {
         const panel = notebook.root.querySelector(".notebook-panel");
         const cards = Array.from(notebook.root.querySelectorAll<HTMLElement>(".notebook-minigame"));
 
-        const mg1 = cards.find((card) => card.textContent?.includes("MG1 Wall Label Reading"));
-        const mg2 = cards.find((card) => card.textContent?.includes("MG2 Badge Log Read"));
-        const mg3 = cards.find((card) => card.textContent?.includes("MG3 Receipt Reading"));
-        const mg4 = cards.find((card) => card.textContent?.includes("MG4 Torn Note Reconstruction"));
+        const mg1 = cards.find((card) => card.textContent?.includes("Wall Label Check (MG1)"));
+        const mg2 = cards.find((card) => card.textContent?.includes("Badge Log Check (MG2)"));
+        const mg3 = cards.find((card) => card.textContent?.includes("Receipt Check (MG3)"));
+        const mg4 = cards.find((card) => card.textContent?.includes("Torn Note Rebuild (MG4)"));
         expect(mg1).toBeTruthy();
         expect(mg2).toBeTruthy();
         expect(mg3).toBeTruthy();
@@ -342,10 +342,10 @@ describe("Phase 5 shell panel rendering", () => {
         const panel = dialogue.root.querySelector(".dialogue-panel");
         expect(panel?.textContent).toContain("Difficulty");
         expect(panel?.textContent).toContain("D1");
-        expect(panel?.textContent).toContain("FR required");
+        expect(panel?.textContent).toContain("French required");
         expect(panel?.textContent).toContain("yes");
-        expect(panel?.textContent).toContain("Meta EN help");
-        expect(panel?.textContent).toContain("no");
+        expect(panel?.textContent).toContain("English help");
+        expect(panel?.textContent).toContain("off");
         expect(panel?.textContent).toContain("English Meta-Help - locked");
         expect(panel?.textContent).toContain("Choose one:");
     });
@@ -371,8 +371,8 @@ describe("Phase 5 shell panel rendering", () => {
         document.body.appendChild(notebook.root);
         const panel = notebook.root.querySelector(".notebook-panel");
         const cards = Array.from(notebook.root.querySelectorAll<HTMLElement>(".notebook-minigame"));
-        const mg1Card = cards.find((card) => card.textContent?.includes("MG1 Wall Label Reading"));
-        const mg2Card = cards.find((card) => card.textContent?.includes("MG2 Badge Log Read"));
+        const mg1Card = cards.find((card) => card.textContent?.includes("Wall Label Check (MG1)"));
+        const mg2Card = cards.find((card) => card.textContent?.includes("Badge Log Check (MG2)"));
         expect(mg1Card).toBeTruthy();
         expect(mg2Card).toBeTruthy();
 
@@ -404,7 +404,7 @@ describe("Phase 5 shell panel rendering", () => {
         document.body.appendChild(notebook.root);
         const panel = notebook.root.querySelector(".notebook-panel");
         const cards = Array.from(notebook.root.querySelectorAll<HTMLElement>(".notebook-minigame"));
-        const mg1Card = cards.find((card) => card.textContent?.includes("MG1 Wall Label Reading"));
+        const mg1Card = cards.find((card) => card.textContent?.includes("Wall Label Check (MG1)"));
         expect(mg1Card).toBeTruthy();
 
         const mg1Inputs = Array.from(mg1Card!.querySelectorAll<HTMLInputElement>("input.notebook-minigame-input"));
@@ -415,7 +415,7 @@ describe("Phase 5 shell panel rendering", () => {
         mg1Card!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!.click();
         await flushUi();
 
-        expect(panel?.textContent).toContain("Live minigame dispatch is unavailable.");
+        expect(panel?.textContent).toContain("Can't submit right now. Connection is not ready.");
         expect(panel?.textContent).not.toContain("Correct (2/2).");
     });
 
@@ -469,7 +469,7 @@ describe("Phase 5 shell panel rendering", () => {
         document.body.appendChild(resolution.root);
         const panel = resolution.root.querySelector(".resolution-panel");
 
-        expect(panel?.textContent).toContain("Decision Board");
+        expect(panel?.textContent).toContain("Final Decision");
         expect(panel?.textContent).toContain("best_outcome");
         expect(panel?.textContent).toContain("recovery");
         expect(panel?.textContent).toContain("resolved");

@@ -175,7 +175,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
             return {
                 status: "unavailable",
                 code: "live_dispatch_unavailable",
-                summary: "Live minigame dispatch is unavailable.",
+                summary: "Can't submit right now. Connection is not ready.",
             };
         }
         try {
@@ -205,7 +205,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
 
         const investigation = lastState.investigation;
         if (!investigation) {
-            renderInfo(panel, "Investigation projection not available in current state.");
+            renderInfo(panel, "Case notes are still loading.");
             return;
         }
 
@@ -236,7 +236,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
         renderSectionTitle(panel, "Evidence Tray");
         renderEvidenceTray(panel, investigation);
 
-        renderSectionTitle(panel, "Fact Visibility");
+        renderSectionTitle(panel, "Known Facts");
         renderFactVisibility(panel, investigation);
 
         renderSectionTitle(panel, "Contradictions");
@@ -245,7 +245,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
         renderSectionTitle(panel, "Timeline Clues");
         renderTimeline(panel, investigation);
 
-        renderSectionTitle(panel, "Mini-Exercises");
+        renderSectionTitle(panel, "Field Exercises");
         renderMinigames(panel, {
             isDemoProfile,
             state: lastState,
@@ -269,7 +269,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
                         mg1State = applyLiveMinigameResult(mg1State, {
                             status: "unavailable",
                             code: "live_dispatch_unavailable",
-                            summary: "Live minigame dispatch is unavailable.",
+                            summary: "Can't submit right now. Connection is not ready.",
                         });
                         render();
                         return;
@@ -280,7 +280,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
                 }
                 mg1State = {
                     ...mg1State,
-                    feedback: "Submitting live MINIGAME_SUBMIT...",
+                    feedback: "Submitting answer...",
                     passed: null,
                 };
                 render();
@@ -322,7 +322,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
                         mg2State = applyLiveMinigameResult(mg2State, {
                             status: "unavailable",
                             code: "live_dispatch_unavailable",
-                            summary: "Live minigame dispatch is unavailable.",
+                            summary: "Can't submit right now. Connection is not ready.",
                         });
                         render();
                         return;
@@ -333,7 +333,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
                 }
                 mg2State = {
                     ...mg2State,
-                    feedback: "Submitting live MINIGAME_SUBMIT...",
+                    feedback: "Submitting answer...",
                     passed: null,
                 };
                 render();
@@ -376,7 +376,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
                         mg3State = applyLiveMinigameResult(mg3State, {
                             status: "unavailable",
                             code: "live_dispatch_unavailable",
-                            summary: "Live minigame dispatch is unavailable.",
+                            summary: "Can't submit right now. Connection is not ready.",
                         });
                         render();
                         return;
@@ -387,7 +387,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
                 }
                 mg3State = {
                     ...mg3State,
-                    feedback: "Submitting live MINIGAME_SUBMIT...",
+                    feedback: "Submitting answer...",
                     passed: null,
                 };
                 render();
@@ -433,7 +433,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
                         mg4State = applyLiveMinigameResult(mg4State, {
                             status: "unavailable",
                             code: "live_dispatch_unavailable",
-                            summary: "Live minigame dispatch is unavailable.",
+                            summary: "Can't submit right now. Connection is not ready.",
                         });
                         render();
                         return;
@@ -444,7 +444,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
                 }
                 mg4State = {
                     ...mg4State,
-                    feedback: "Submitting live MINIGAME_SUBMIT...",
+                    feedback: "Submitting answer...",
                     passed: null,
                 };
                 render();
@@ -646,11 +646,11 @@ function renderMg1Widget(
 
     const title = document.createElement("div");
     title.className = "notebook-minigame-title";
-    title.textContent = "MG1 Wall Label Reading";
+    title.textContent = "Wall Label Check (MG1)";
     wrap.appendChild(title);
 
     if (!opts.source) {
-        renderMiniInfo(wrap, "Read the wall label first (O3) to unlock this exercise content.");
+        renderMiniInfo(wrap, "Read the wall label first (O3) to unlock this exercise.");
         return;
     }
 
@@ -696,11 +696,11 @@ function renderMg2Widget(
 
     const title = document.createElement("div");
     title.className = "notebook-minigame-title";
-    title.textContent = "MG2 Badge Log Read";
+    title.textContent = "Badge Log Check (MG2)";
     wrap.appendChild(title);
 
     if (!opts.source) {
-        renderMiniInfo(wrap, "Open and read badge logs first (O6) to unlock this exercise content.");
+        renderMiniInfo(wrap, "Read badge logs first (O6) to unlock this exercise.");
         return;
     }
     const source = opts.source;
@@ -754,11 +754,11 @@ function renderMg3Widget(
 
     const title = document.createElement("div");
     title.className = "notebook-minigame-title";
-    title.textContent = "MG3 Receipt Reading";
+    title.textContent = "Receipt Check (MG3)";
     wrap.appendChild(title);
 
     if (!opts.source) {
-        renderMiniInfo(wrap, "Read a receipt first (O9) to unlock this exercise content.");
+        renderMiniInfo(wrap, "Read a receipt first (O9) to unlock this exercise.");
         return;
     }
 
@@ -804,11 +804,11 @@ function renderMg4Widget(
 
     const title = document.createElement("div");
     title.className = "notebook-minigame-title";
-    title.textContent = "MG4 Torn Note Reconstruction";
+    title.textContent = "Torn Note Rebuild (MG4)";
     wrap.appendChild(title);
 
     if (!opts.source) {
-        renderMiniInfo(wrap, "Recover torn-note evidence first to unlock this exercise content.");
+        renderMiniInfo(wrap, "Recover torn-note evidence first to unlock this exercise.");
         return;
     }
     const source = opts.source;
@@ -929,13 +929,13 @@ function renderMiniActions(
     const submit = document.createElement("button");
     submit.type = "button";
     submit.className = "notebook-minigame-btn";
-    submit.textContent = "Validate";
+    submit.textContent = "Submit";
     submit.disabled = !opts.canSubmit;
     submit.addEventListener("click", opts.onSubmit);
     const reset = document.createElement("button");
     reset.type = "button";
     reset.className = "notebook-minigame-btn";
-    reset.textContent = "Retry";
+    reset.textContent = "Reset";
     reset.addEventListener("click", opts.onReset);
     row.append(submit, reset);
     container.appendChild(row);
@@ -959,7 +959,7 @@ function renderProjectedStatus(
     line.className = "notebook-minigame-status";
     if (isDemoProfile) {
         if (!projected) {
-            line.textContent = "Status: pending";
+            line.textContent = "Status: waiting";
         } else {
             const gateState = projected.gate_open === false ? "blocked" : "ready";
             line.textContent = `Status: ${projected.status} (${gateState})`;
@@ -1136,7 +1136,7 @@ function renderKeyObjectLeads(
         });
 
     if (leadRows.length === 0) {
-        renderInfo(panel, "No object leads surfaced yet.");
+        renderInfo(panel, "No object leads are visible yet.");
         return;
     }
 
@@ -1155,13 +1155,13 @@ function renderKeyObjectLeads(
         line.className = "notebook-row";
         if (nextAction) line.classList.add("is-lead");
         line.textContent = isDemoProfile
-            ? `${title}  ${observedCount}/${totalCount} actions reviewed`
-            : `${title} (${row.object_id})  ${observedCount}/${totalCount} actions reviewed`;
+            ? `${title}  ${observedCount}/${totalCount} leads checked`
+            : `${title} (${row.object_id})  ${observedCount}/${totalCount} leads checked`;
         list.appendChild(line);
 
         const detail = document.createElement("div");
         detail.className = "notebook-mini";
-        const locationHint = guide?.location_hint ?? "Location hint unavailable.";
+        const locationHint = guide?.location_hint ?? "Location hint not available.";
         const nextHint = nextAction
             ? `Next: ${labelMbamAction(nextAction)}. ${hintMbamAction(nextAction)}`
             : "All listed actions reviewed.";
@@ -1177,7 +1177,7 @@ function renderEvidenceTray(panel: HTMLElement, investigation: KvpInvestigationS
     const collected = new Set(investigation.evidence.collected_ids);
     const discovered = investigation.evidence.discovered_ids;
     if (discovered.length === 0 && investigation.evidence.observed_not_collected_ids.length === 0) {
-        renderInfo(panel, "No evidence discovered yet.");
+        renderInfo(panel, "No evidence found yet.");
         return;
     }
 
@@ -1188,7 +1188,7 @@ function renderEvidenceTray(panel: HTMLElement, investigation: KvpInvestigationS
     for (const evidenceId of discovered) {
         const row = document.createElement("div");
         row.className = "notebook-row";
-        row.textContent = `${labelForEvidence(evidenceId)}  ${collected.has(evidenceId) ? "[collected]" : "[discovered]"}`;
+        row.textContent = `${labelForEvidence(evidenceId)}  ${collected.has(evidenceId) ? "(collected)" : "(found)"}`;
         list.appendChild(row);
     }
 
@@ -1197,7 +1197,7 @@ function renderEvidenceTray(panel: HTMLElement, investigation: KvpInvestigationS
         if (collected.has(evidenceId)) continue;
         const row = document.createElement("div");
         row.className = "notebook-row is-observed";
-        row.textContent = `${labelForEvidence(evidenceId)}  [observed-not-collected]`;
+        row.textContent = `${labelForEvidence(evidenceId)}  (seen, not collected)`;
         list.appendChild(row);
     }
 
@@ -1212,7 +1212,7 @@ function renderEvidenceTray(panel: HTMLElement, investigation: KvpInvestigationS
 function renderFactVisibility(panel: HTMLElement, investigation: KvpInvestigationState): void {
     const knownFacts = investigation.facts.known_fact_ids;
     if (knownFacts.length === 0) {
-        renderInfo(panel, "No visible facts unlocked yet.");
+        renderInfo(panel, "No known facts yet.");
         return;
     }
     const list = document.createElement("div");
@@ -1237,7 +1237,7 @@ function renderContradictions(
     const contradictionScenes = ["S3", "S5"].filter((sceneId) => surfaced.has(sceneId));
     const actionRoute = contradictionScenes.length > 0
         ? `Conversations: present_evidence / challenge_contradiction in ${contradictionScenes.join(", ")}`
-        : "Conversations: present_evidence first; contradiction scenes surface as case progresses.";
+        : "Conversations: present evidence first; contradiction scenes appear as the case advances.";
 
     renderLines(panel, isDemoProfile
         ? [
@@ -1250,7 +1250,7 @@ function renderContradictions(
             ["Requirement satisfied", contradictions.requirement_satisfied ? "yes" : "no"],
             ["Unlockable edges", String(contradictions.unlockable_edge_ids.length)],
             ["Known edges", String(contradictions.known_edge_ids.length)],
-            ["Action route", actionRoute],
+            ["Where to use", actionRoute],
         ]);
 
     if (!isDemoProfile && contradictions.unlockable_edge_ids.length > 0) {
@@ -1268,17 +1268,17 @@ function renderContradictions(
     if (!contradictions.requirement_satisfied && contradictions.unlockable_edge_ids.length > 0) {
         renderInfo(
             panel,
-            "Potential contradiction leads found. Corroborate timeline clues, then use challenge_contradiction in Conversations."
+            "Potential contradiction leads found. Corroborate timeline clues, then challenge the contradiction in Conversations."
         );
     } else if (!contradictions.requirement_satisfied) {
         renderInfo(
             panel,
-            "No contradiction link confirmed yet. Keep gathering object + dialogue timeline clues."
+            "No contradiction link confirmed yet. Keep gathering timeline clues from objects and conversations."
         );
     } else {
         renderInfo(
             panel,
-            "Contradiction requirement is ready. You can press accusation/recovery decisions with stronger support."
+            "Contradiction path is ready. Final decisions are now better supported."
         );
     }
 }
@@ -1287,7 +1287,7 @@ function renderTimeline(panel: HTMLElement, investigation: KvpInvestigationState
     const knownFactSet = new Set(investigation.facts.known_fact_ids);
     const ordered = FACT_TIMELINE_ORDER.filter((factId) => knownFactSet.has(factId));
     if (ordered.length === 0) {
-        renderInfo(panel, "No timeline clues visible yet.");
+        renderInfo(panel, "No timeline clues yet.");
         return;
     }
     const list = document.createElement("div");
@@ -1299,7 +1299,7 @@ function renderTimeline(panel: HTMLElement, investigation: KvpInvestigationState
         row.textContent = `${factId}  ${labelForFact(factId)}`;
         list.appendChild(row);
     }
-    renderInfo(panel, "Timeline clues feed contradiction checks and accusation readiness.");
+    renderInfo(panel, "Timeline clues help you challenge contradictions and support final decisions.");
 }
 
 function renderSectionTitle(panel: HTMLElement, text: string): void {

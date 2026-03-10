@@ -44,9 +44,9 @@ describe("Phase 7 terminal path resolution panel smoke", () => {
             const panelHandle = mountResolutionPanel(store);
             document.body.appendChild(panelHandle.root);
             const text = panelHandle.root.textContent ?? "";
-            expect(text).toContain("Decision Board");
-            expect(text).toContain("Attempt Readiness");
-            expect(text).toContain("Why This Outcome");
+            expect(text).toContain("Final Decision");
+            expect(text).toContain("Decision Readiness");
+            expect(text).toContain("Why This Ending");
             expect(text).toContain(scenario.outcome);
             expect(text).toContain(scenario.path);
             panelHandle.root.remove();
@@ -73,9 +73,9 @@ describe("Phase 7 terminal path resolution panel smoke", () => {
         });
         document.body.appendChild(panelHandle.root);
         const text = panelHandle.root.textContent ?? "";
-        expect(text).toContain("Attempt Readiness");
+        expect(text).toContain("Decision Readiness");
         expect(text).toContain("Recovery: available");
-        expect(text).toContain("Accusation: blocked (contradiction prerequisite not yet satisfied)");
+        expect(text).toContain("Accusation: blocked (contradiction requirement not met yet)");
         panelHandle.root.remove();
     });
 });

@@ -13,11 +13,11 @@ export function renderCaseSelectScreen(opts: CaseSelectScreenOpts): HTMLElement 
 
     const titleEl = document.createElement("h1");
     titleEl.className = "flow-screen-title";
-    titleEl.textContent = "Case Selection";
+    titleEl.textContent = "Choose A Case";
 
     const bodyEl = document.createElement("p");
     bodyEl.className = "flow-screen-body";
-    bodyEl.textContent = "Select a case to launch a live playtest session.";
+    bodyEl.textContent = "Pick a case to begin a live investigation.";
 
     const caseGrid = document.createElement("div");
     caseGrid.className = "flow-case-grid";
@@ -28,7 +28,7 @@ export function renderCaseSelectScreen(opts: CaseSelectScreenOpts): HTMLElement 
 
     const actions = document.createElement("div");
     actions.className = "flow-actions";
-    actions.appendChild(makeActionButton("Back", opts.onBack));
+    actions.appendChild(makeActionButton("Back To Menu", opts.onBack));
 
     section.appendChild(titleEl);
     section.appendChild(bodyEl);

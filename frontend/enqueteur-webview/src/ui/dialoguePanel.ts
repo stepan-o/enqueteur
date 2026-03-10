@@ -283,7 +283,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             slotValues = syncSlotValues(slotValues, requiredSlots);
         }
 
-        renderSectionTitle(panel, "NPC State Card");
+        renderSectionTitle(panel, "Character Read");
         renderNpcStateCard(panel, npcCardState);
 
         renderDataLines(panel, detailed
@@ -307,7 +307,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         renderSceneProgress(panel, dialogue.scene_completion, dialogue.surfaced_scene_ids, focusSceneId);
 
         if (detailed) {
-            renderSectionTitle(panel, "Summary & Hint Ladder");
+            renderSectionTitle(panel, "Summary Guidance");
             renderSummaryHintSection(panel, {
                 dialogue,
                 focusSceneId,
@@ -315,17 +315,17 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
                 requiredSlots,
             });
         }
-        renderSectionTitle(panel, "Contradiction Route");
+        renderSectionTitle(panel, "Contradiction Clues");
         renderContradictionRoute(panel, lastState, focusSceneId, selectedIntent, detailed);
 
-        renderSectionTitle(panel, "Action Composer");
+        renderSectionTitle(panel, "Choose Your Line");
         if (!focusSceneId || !sceneConfig || !focusNpcId) {
-            renderInfo(panel, "No active or surfaced scene available for structured turn entry.");
+            renderInfo(panel, "No active conversation scene is ready yet.");
         } else {
             if (dialogue.recent_turns.length === 0) {
                 renderInfo(
                     panel,
-                    "Starter flow: ask what/when/where first, then summarize in French to lock scene progress."
+                    "Start simple: ask what/when/where, then summarize in French to move the scene forward."
                 );
             }
             const allowedIntents = sceneConfig.allowedIntents;
@@ -367,7 +367,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
                 });
                 renderReferenceInputsHint(panel, lastState);
             } else {
-                renderInfo(panel, "Use intent + slots, then submit. Corroborate with Case Notes before contradiction moves.");
+                renderInfo(panel, "Pick an intent, fill required details, then submit. Cross-check Case Notes before contradiction moves.");
             }
 
             const minFacts = dialogue.summary_rules.current_scene_min_fact_count;
@@ -375,7 +375,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             if (summaryRequired) {
                 renderInfo(
                     panel,
-                    `Summary required: ${minFacts ?? 1} accepted fact(s), target language FR.`
+                    `A French summary is required here. Include at least ${minFacts ?? 1} confirmed fact(s).`
                 );
             }
             if (detailed && (selectedIntent === "present_evidence" || selectedIntent === "challenge_contradiction")) {
@@ -390,7 +390,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             submitBtn.type = "button";
             submitBtn.className = "dialogue-submit";
             submitBtn.disabled = !canSubmit;
-            submitBtn.textContent = pending ? "Sending..." : "Submit Structured Turn";
+            submitBtn.textContent = pending ? "Sending..." : "Submit Line";
             submitBtn.addEventListener("click", () => {
                 if (!selectedIntent) return;
                 const currentTick = lastState?.tick ?? 0;
@@ -440,12 +440,12 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             panel.appendChild(submitBtn);
 
             if (!dispatchAvailable) {
-                renderInfo(panel, "Live dialogue dispatch unavailable in this mode; replay visualization remains active.");
+                renderInfo(panel, "Conversation sending is unavailable in this mode.");
             }
         }
 
         if (submitFeedback) {
-            renderSectionTitle(panel, "Last Submission");
+            renderSectionTitle(panel, "Latest Attempt");
             renderDataLines(panel, [
                 ["Tick", String(submitFeedback.tick)],
                 ["Scene", submitFeedback.sceneId],
@@ -455,7 +455,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             ]);
         }
 
-        renderSectionTitle(panel, "Recent Structured Turns");
+        renderSectionTitle(panel, "Recent Conversation Turns");
         renderTranscript(panel, dialogue.recent_turns, detailed);
     };
 
@@ -485,7 +485,7 @@ async function submitTurn(
         return {
             status: "unavailable",
             code: "dispatch_unavailable",
-            summary: "No dialogue dispatcher configured.",
+            summary: "Conversation sending is not configured.",
         };
     }
     return dispatch(request);
@@ -567,7 +567,7 @@ function roomTokenFromSelection(state: WorldState, selection: Exclude<DialogueIn
 
 function renderNpcStateCard(panel: HTMLElement, npc: KvpNpcSemanticState | null): void {
     if (!npc) {
-        renderInfo(panel, "No visible NPC semantic state available.");
+        renderInfo(panel, "No character is in focus yet.");
         return;
     }
     const card = document.createElement("div");
@@ -594,18 +594,18 @@ function renderNpcStateCard(panel: HTMLElement, npc: KvpNpcSemanticState | null)
 function renderLearningSlice(panel: HTMLElement, dialogue: NonNullable<WorldState["dialogue"]>): void {
     const learning = dialogue.learning;
     if (!learning) return;
-    renderSectionTitle(panel, "Scaffolding");
+    renderSectionTitle(panel, "Conversation Support");
     renderDataLines(panel, [
         ["Difficulty", learning.difficulty_profile],
         ["Hint level", learning.current_hint_level],
-        ["Recommended mode", learning.scaffolding_policy.recommended_mode],
-        ["FR required", learning.scaffolding_policy.french_action_required ? "yes" : "no"],
-        ["Meta EN help", learning.scaffolding_policy.english_meta_allowed ? "yes" : "no"],
-        ["Prompt generosity", learning.scaffolding_policy.prompt_generosity],
-        ["Confirmation", learning.scaffolding_policy.confirmation_strength],
+        ["Suggested style", learning.scaffolding_policy.recommended_mode],
+        ["French required", learning.scaffolding_policy.french_action_required ? "yes" : "no"],
+        ["English help", learning.scaffolding_policy.english_meta_allowed ? "allowed" : "off"],
+        ["Prompt level", learning.scaffolding_policy.prompt_generosity],
+        ["Feedback style", learning.scaffolding_policy.confirmation_strength],
         ["Summary strictness", learning.scaffolding_policy.summary_strictness],
         ["Language support", learning.scaffolding_policy.language_support_level],
-        ["Policy reason", learning.scaffolding_policy.reason_code],
+        ["Support profile", learning.scaffolding_policy.reason_code],
     ]);
     const completedMgs = learning.minigames.filter((row) => row.completed).length;
     renderInfo(
@@ -625,17 +625,17 @@ function renderSummaryHintSection(
 ): void {
     const learning = opts.dialogue.learning;
     if (!learning) {
-        renderInfo(panel, "Learning projection unavailable for summary/hint surfaces.");
+        renderInfo(panel, "Summary guidance is unavailable in this view.");
         return;
     }
     if (!opts.focusSceneId) {
-        renderInfo(panel, "No focus scene for summary prompt.");
+        renderInfo(panel, "No scene selected for summary guidance.");
         return;
     }
 
     const summaryState = learning.summary_by_scene.find((row) => row.scene_id === opts.focusSceneId) ?? null;
     if (!summaryState) {
-        renderInfo(panel, "No summary rule projection for current scene.");
+        renderInfo(panel, "No summary guidance is available for this scene yet.");
         return;
     }
 
@@ -693,12 +693,12 @@ function renderHintLadder(
 
     const title = document.createElement("div");
     title.className = "dialogue-hint-ladder-title";
-    title.textContent = `Hint ladder (${learning.current_hint_level}, ${learning.difficulty_profile})`;
+    title.textContent = `Hint track (${learning.current_hint_level}, ${learning.difficulty_profile})`;
     ladder.appendChild(title);
 
     const policy = learning.scaffolding_policy;
     if (policy.scene_id && policy.scene_id !== sceneId) {
-        renderInfo(ladder, `Policy currently tuned for scene ${policy.scene_id}; showing current projection.`);
+        renderInfo(ladder, `Hints are tuned for scene ${policy.scene_id}; showing current guidance.`);
     }
 
     const allowed = new Set(policy.allowed_hint_levels);
@@ -733,7 +733,7 @@ function renderContradictionRoute(
     const investigation = state.investigation;
     const dialogue = state.dialogue;
     if (!investigation || !dialogue) {
-        renderInfo(panel, "Contradiction projection unavailable.");
+        renderInfo(panel, "Contradiction clues are not available yet.");
         return;
     }
 
@@ -777,24 +777,24 @@ function renderContradictionRoute(
     if (contradictions.requirement_satisfied) {
         renderInfo(
             panel,
-            "Contradiction requirement is satisfied. Use present_evidence/challenge_contradiction where surfaced."
+            "Contradiction path is ready. Use Present Evidence or Challenge Contradiction where available."
         );
     } else if (contradictions.unlockable_edge_ids.length > 0) {
         renderInfo(
             panel,
-            "You have contradiction leads. Corroborate timeline facts/evidence and press challenge_contradiction."
+            "You have contradiction leads. Corroborate timeline clues, then challenge the contradiction."
         );
     } else {
         renderInfo(
             panel,
-            "No contradiction lead yet. Build timeline support from object actions and dialogue turns."
+            "No contradiction lead yet. Build timeline support through object checks and conversations."
         );
     }
     if (focusSceneId && !sceneSupportsContradictionIntent(focusSceneId)) {
-        renderInfo(panel, `Focus scene ${focusSceneId} does not currently support contradiction intent.`);
+        renderInfo(panel, `Scene ${focusSceneId} does not currently allow contradiction actions.`);
     }
     if (selectedIntent === "challenge_contradiction" && !contradictions.requirement_satisfied) {
-        renderInfo(panel, "Selected intent may remain blocked until contradiction readiness improves.");
+        renderInfo(panel, "This action may stay blocked until contradiction readiness improves.");
     }
 }
 
@@ -845,9 +845,9 @@ function resolveHintBody(
 ): string {
     if (!isAllowed) {
         if (level === "english_meta_help" && !policy.english_meta_allowed) {
-            return "Not available at current difficulty/state.";
+            return "Not available at this difficulty right now.";
         }
-        return "Locked until additional repair/summary pressure or easier difficulty support.";
+        return "Locked until more repair pressure or easier support settings.";
     }
 
     if (level === "soft_hint") {
@@ -864,9 +864,9 @@ function resolveHintBody(
         return `Choose one: ${options.join(" / ")}`;
     }
     if (!policy.english_meta_allowed) {
-        return "English meta-help unavailable at this difficulty/state.";
+        return "English framing help is unavailable at this difficulty.";
     }
-    return EN_META_HELP_COPY[policy.english_meta_key ?? ""] ?? "English framing only; final action must remain in French.";
+    return EN_META_HELP_COPY[policy.english_meta_key ?? ""] ?? "English framing is okay, but the final action must stay in French.";
 }
 
 function appendNpcLine(parent: HTMLElement, labelText: string, valueText: string): void {
@@ -956,7 +956,7 @@ function renderSlotInputs(
     }
 ): void {
     if (opts.requiredSlots.length === 0) {
-        renderInfo(panel, "No required slots for this intent/scene combination.");
+        renderInfo(panel, "No required details for this intent in the current scene.");
         return;
     }
     for (const slotName of opts.requiredSlots) {
@@ -969,7 +969,7 @@ function renderSlotInputs(
         input.className = "dialogue-input";
         input.type = "text";
         input.value = opts.values[slotName] ?? "";
-        input.placeholder = `enter ${slotName}`;
+        input.placeholder = `Enter ${humanizeToken(slotName).toLowerCase()}`;
         input.addEventListener("input", () => {
             opts.onChange(slotName, input.value);
         });
@@ -991,7 +991,7 @@ function renderAuxInputs(
 ): void {
     const facts = renderAuxInput("Facts to reference (csv)", opts.factInput, "N1,N3", opts.onFactChange);
     const evidence = renderAuxInput(
-        "Evidence to reference (csv)",
+        "Evidence to reference (comma-separated)",
         opts.evidenceInput,
         "E2_CAFE_RECEIPT",
         opts.onEvidenceChange
@@ -1010,8 +1010,8 @@ function renderReferenceInputsHint(panel: HTMLElement, state: WorldState): void 
     const knownEvidence = state.investigation?.evidence.discovered_ids ?? [];
     const factsLabel = knownFacts.length > 0 ? knownFacts.join(", ") : "none yet";
     const evidenceLabel = knownEvidence.length > 0 ? knownEvidence.join(", ") : "none yet";
-    renderInfo(panel, `Known facts you can cite: ${factsLabel}`);
-    renderInfo(panel, `Known evidence you can cite: ${evidenceLabel}`);
+    renderInfo(panel, `Facts you can cite: ${factsLabel}`);
+    renderInfo(panel, `Evidence you can cite: ${evidenceLabel}`);
 }
 
 function renderContradictionIntentHint(
@@ -1024,20 +1024,20 @@ function renderContradictionIntentHint(
     if (selectedIntent === "present_evidence") {
         renderInfo(
             panel,
-            "present_evidence works best with one timeline fact + one evidence item from Case Notes."
+            "Present Evidence works best with one timeline fact plus one evidence item from Case Notes."
         );
         return;
     }
     if (contradictions.requirement_satisfied) {
         renderInfo(
             panel,
-            "challenge_contradiction is ready. Use your strongest corroborated timeline references."
+            "Challenge Contradiction is ready. Use your strongest corroborated timeline references."
         );
         return;
     }
     renderInfo(
         panel,
-        "challenge_contradiction may be rejected until contradiction readiness is satisfied."
+        "Challenge Contradiction may be rejected until readiness is satisfied."
     );
 }
 
@@ -1064,7 +1064,7 @@ function renderAuxInput(
 
 function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[], detailed: boolean): void {
     if (turns.length === 0) {
-        renderInfo(panel, "No dialogue turns recorded in current projection.");
+        renderInfo(panel, "No conversation turns recorded yet.");
         return;
     }
     const list = document.createElement("div");
@@ -1089,7 +1089,7 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[], detai
         if (turn.npc_utterance_text) {
             const speech = document.createElement("div");
             speech.className = "dialogue-turn-detail";
-            speech.textContent = `npc: ${turn.npc_utterance_text}`;
+            speech.textContent = `NPC: ${turn.npc_utterance_text}`;
             row.appendChild(speech);
         }
 

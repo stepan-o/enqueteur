@@ -6,17 +6,17 @@ type ConnectingStep = {
 };
 
 const CONNECTING_STEPS: readonly ConnectingStep[] = [
-    { phase: "CASE_LAUNCH", label: "Case launch in progress" },
-    { phase: "SESSION_STARTUP", label: "Opening live session socket" },
-    { phase: "HANDSHAKING", label: "Running KVP handshake and subscribe" },
-    { phase: "WAITING_FOR_BASELINE", label: "Waiting for baseline snapshot" },
+    { phase: "CASE_LAUNCH", label: "Opening case file" },
+    { phase: "SESSION_STARTUP", label: "Joining live session" },
+    { phase: "HANDSHAKING", label: "Confirming session" },
+    { phase: "WAITING_FOR_BASELINE", label: "Loading first scene" },
 ];
 
 const PHASE_NOTES: Record<ConnectingPhase, string> = {
-    CASE_LAUNCH: "Requesting deterministic run launch from backend.",
-    SESSION_STARTUP: "Launch metadata received. Opening the run-specific WebSocket endpoint.",
-    HANDSHAKING: "Socket connected. Confirming session compatibility and stream subscription.",
-    WAITING_FOR_BASELINE: "Session connected. Waiting for initial world baseline.",
+    CASE_LAUNCH: "Creating your run and preparing the case.",
+    SESSION_STARTUP: "Case is ready. Opening the live connection.",
+    HANDSHAKING: "Connection is open. Verifying the session and joining the stream.",
+    WAITING_FOR_BASELINE: "Receiving the initial world state.",
 };
 
 export type ConnectingScreenOpts = {
@@ -33,11 +33,11 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
 
     const titleEl = document.createElement("h1");
     titleEl.className = "flow-screen-title";
-    titleEl.textContent = "Connecting";
+    titleEl.textContent = "Entering Case";
 
     const bodyEl = document.createElement("p");
     bodyEl.className = "flow-screen-body";
-    bodyEl.textContent = `Preparing ${opts.caseId} for live play.`;
+    bodyEl.textContent = `Preparing ${opts.caseId}.`;
 
     const steps = document.createElement("ol");
     steps.className = "flow-connection-steps";
@@ -67,7 +67,7 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
         : null;
     if (warning) {
         warning.className = "flow-screen-note";
-        warning.textContent = opts.warningMessage ?? "";
+        warning.textContent = formatWarning(opts.warningMessage ?? "");
     }
 
     const actions = document.createElement("div");
@@ -84,6 +84,16 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
     }
     section.appendChild(actions);
     return section;
+}
+
+function formatWarning(raw: string): string {
+    const normalized = raw.trim();
+    const match = normalized.match(/^Live warning \(([^)]+)\):\s*(.+)$/);
+    if (match) {
+        const [, code, message] = match;
+        return `Connection note: ${message} (${code}).`;
+    }
+    return normalized;
 }
 
 function makeActionButton(label: string, onClick: () => void): HTMLButtonElement {

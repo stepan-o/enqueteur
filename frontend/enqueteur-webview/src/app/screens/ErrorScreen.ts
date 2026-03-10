@@ -10,10 +10,10 @@ export type ErrorScreenOpts = {
 };
 
 const ERROR_TITLES: Record<AppErrorCode, string> = {
-    LAUNCH_FAILURE: "Case launch failed",
-    CONNECTION_FAILURE: "Live connection failed",
-    STARTUP_INCOMPATIBILITY: "Startup incompatibility",
-    UNEXPECTED_STATE: "Unexpected startup state",
+    LAUNCH_FAILURE: "Couldn't start this case",
+    CONNECTION_FAILURE: "Connection failed",
+    STARTUP_INCOMPATIBILITY: "Version mismatch",
+    UNEXPECTED_STATE: "Startup interrupted",
 };
 
 export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
@@ -22,7 +22,7 @@ export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
 
     const titleEl = document.createElement("h1");
     titleEl.className = "flow-screen-title";
-    titleEl.textContent = "Error";
+    titleEl.textContent = "Something Went Wrong";
 
     const bodyEl = document.createElement("p");
     bodyEl.className = "flow-screen-body";
@@ -30,14 +30,14 @@ export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
 
     const detail = document.createElement("p");
     detail.className = "flow-screen-note";
-    detail.textContent = opts.message;
+    detail.textContent = humanizeErrorMessage(opts.message);
 
     const hint = document.createElement("p");
     hint.className = "flow-screen-note";
     hint.textContent =
         opts.recoverTo === "CASE_SELECT"
-            ? "Return to case selection and retry launch."
-            : "Return to the main menu.";
+            ? "Return to case selection and try again."
+            : "Return to the main menu and restart the case.";
 
     const actions = document.createElement("div");
     actions.className = "flow-actions";
@@ -62,9 +62,31 @@ export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
 }
 
 function defaultRetryLabel(code: AppErrorCode): string {
-    if (code === "LAUNCH_FAILURE") return "Retry Launch";
-    if (code === "CONNECTION_FAILURE") return "Retry Connection";
+    if (code === "LAUNCH_FAILURE") return "Try Launch Again";
+    if (code === "CONNECTION_FAILURE") return "Try Reconnecting";
     return "Retry";
+}
+
+function humanizeErrorMessage(message: string): string {
+    if (message.includes("Launch metadata is missing")) {
+        return "Case setup was interrupted. Please pick the case again.";
+    }
+    if (
+        message.includes("KERNEL_HELLO")
+        || message.includes("SUBSCRIBED")
+        || message.includes("FULL_SNAPSHOT")
+        || message.includes("schema mismatch")
+        || message.includes("engine mismatch")
+    ) {
+        return "This client and server are not in sync for startup. Return to menu and relaunch.";
+    }
+    if (message.includes("WebSocket") || message.includes("socket")) {
+        return "The live connection closed before the case was ready.";
+    }
+    if (message.startsWith("Case launch failed")) {
+        return "The case could not be opened right now.";
+    }
+    return message;
 }
 
 function makeActionButton(label: string, onClick: () => void): HTMLButtonElement {

@@ -12,7 +12,7 @@ export function renderMainMenuScreen(opts: MainMenuScreenOpts): HTMLElement {
 
     const bodyEl = document.createElement("p");
     bodyEl.className = "flow-screen-body";
-    bodyEl.textContent = "Begin your investigation.";
+    bodyEl.textContent = "Step into the case.";
 
     const actions = document.createElement("div");
     actions.className = "flow-actions flow-menu-actions";
@@ -20,13 +20,13 @@ export function renderMainMenuScreen(opts: MainMenuScreenOpts): HTMLElement {
     const casesBtn = document.createElement("button");
     casesBtn.type = "button";
     casesBtn.className = "flow-action-btn";
-    casesBtn.textContent = "Cases";
+    casesBtn.textContent = "Start Case";
     casesBtn.addEventListener("click", opts.onCases);
     actions.appendChild(casesBtn);
 
     const placeholder = document.createElement("p");
     placeholder.className = "flow-screen-note flow-menu-placeholder";
-    placeholder.textContent = "More menu options can be added here in later phases.";
+    placeholder.textContent = "Demo build: additional menu options can be added later.";
 
     section.appendChild(titleEl);
     section.appendChild(bodyEl);

@@ -140,7 +140,7 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
                                 result: {
                                     status: "unavailable",
                                     code: "dispatch_unavailable",
-                                    summary: "Action dispatch is unavailable in this mode.",
+                                    summary: "This action cannot be sent right now.",
                                 },
                             };
                         } else {
@@ -183,7 +183,7 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
         panel.appendChild(title);
         const line = document.createElement("div");
         line.className = "inspect-line";
-        line.textContent = "No data available.";
+        line.textContent = "Nothing to inspect here yet.";
         panel.appendChild(line);
     };
 
@@ -247,7 +247,7 @@ function renderAgent(
 ): void {
     const title = document.createElement("div");
     title.className = "inspect-title";
-    title.textContent = `Agent ${agent.agent_id}`;
+    title.textContent = `Character ${agent.agent_id}`;
     panel.appendChild(title);
 
     const roomLabel = state.rooms.get(agent.room_id)?.label ?? `Room ${agent.room_id}`;
@@ -269,10 +269,10 @@ function renderAgent(
     renderLines(panel, lines);
 
     if (state.npcSemantic.length > 0) {
-        renderSectionTitle(panel, "Character Cues");
+        renderSectionTitle(panel, "Character Notes");
         renderLines(panel, [
-            ["Visible profiles", String(state.npcSemantic.length)],
-            ["Tip", "Select an object to view available actions."],
+            ["Profiles in view", String(state.npcSemantic.length)],
+            ["Tip", "Select an object to see what you can do next."],
         ]);
     }
 }
@@ -315,11 +315,11 @@ function renderObjectActionPanel(
     }
 
     const caseObjectId = resolveCaseObjectId(obj, state);
-    renderSectionTitle(panel, "Interaction");
+    renderSectionTitle(panel, "Investigation Actions");
     if (!caseObjectId) {
         renderLines(panel, [
-            ["Case Object", "not mapped"],
-            ["Reason", "This world object has no MBAM v1 affordance binding."],
+            ["Object Link", "not available"],
+            ["Reason", "This object is not interactable in this case."],
         ]);
         return;
     }
@@ -332,17 +332,17 @@ function renderObjectActionPanel(
     }
 
     if (!investigationObject || !state.investigation) {
-        renderLines(panel, [["Investigation State", "not available in current snapshot"]]);
+        renderLines(panel, [["Investigation Notes", "loading"]]);
         return;
     }
 
     renderLines(panel, [
-        ["Affordances", String(investigationObject.affordances.length)],
-        ["Observed", String(investigationObject.observed_affordances.length)],
-        ["Evidence discovered", String(state.investigation.evidence.discovered_ids.length)],
+        ["Available actions", String(investigationObject.affordances.length)],
+        ["Actions reviewed", String(investigationObject.observed_affordances.length)],
+        ["Evidence found", String(state.investigation.evidence.discovered_ids.length)],
         ["Evidence collected", String(state.investigation.evidence.collected_ids.length)],
-        ["Facts known", String(state.investigation.facts.known_fact_ids.length)],
-        ["Contradictions unlockable", String(state.investigation.contradictions.unlockable_edge_ids.length)],
+        ["Facts learned", String(state.investigation.facts.known_fact_ids.length)],
+        ["Contradiction leads", String(state.investigation.contradictions.unlockable_edge_ids.length)],
     ]);
     renderObjectPrompt(panel, caseObjectId, state);
 
@@ -406,7 +406,7 @@ function renderActionButtons(
             ? opts.canDispatchInvestigationAction()
             : Boolean(opts.dispatchInvestigationAction);
         const blockedReason = !isDispatchAvailable
-            ? "Live action dispatch unavailable in replay/offline mode."
+            ? "Action sending is unavailable in this mode."
             : null;
 
         btn.disabled = isPending || !isDispatchAvailable;
@@ -426,7 +426,7 @@ function renderActionButtons(
         const info = document.createElement("div");
         info.className = "inspect-note";
         info.textContent = observed
-            ? `Reviewed in this run (${affordanceId}).`
+            ? `Already checked in this run.`
             : blockedReason
               ? blockedReason
               : `New lead: ${hintMbamAction(affordanceId)}`;
@@ -445,7 +445,7 @@ function renderLastActionFeedback(
     const expectedSelectionKey = selectionKeyForObject(worldObjectId, caseObjectId);
     if (feedback.selectionKey !== expectedSelectionKey) return;
 
-    renderSectionTitle(panel, "Last Action Result");
+    renderSectionTitle(panel, "Latest Result");
     renderLines(panel, detailed
         ? [
             ["Affordance", `${labelMbamAction(feedback.affordanceId)} (${feedback.affordanceId})`],
@@ -453,7 +453,7 @@ function renderLastActionFeedback(
             ["Code", feedback.result.code],
             ["Tick", String(feedback.tick)],
             ["Summary", feedback.result.summary ?? "none"],
-            ["Guidance", describeInvestigationFeedback(feedback.result)],
+            ["Next step", describeInvestigationFeedback(feedback.result)],
             ["Facts", String(feedback.result.revealed_fact_ids?.length ?? 0)],
             ["Evidence", String(feedback.result.revealed_evidence_ids?.length ?? 0)],
         ]
@@ -468,16 +468,16 @@ function renderRecentDialogueHint(panel: HTMLElement, state: WorldState, detaile
     const dialogue = state.dialogue;
     if (!dialogue || dialogue.recent_turns.length === 0) return;
     const recent = dialogue.recent_turns[dialogue.recent_turns.length - 1] as KvpDialogueTurnLog;
-    renderSectionTitle(panel, "Recent Dialogue Context");
+    renderSectionTitle(panel, "Recent Conversation");
     renderLines(panel, detailed
         ? [
             ["Scene", recent.scene_id],
             ["Intent", recent.intent_id],
-            ["Turn status", `${recent.status}/${recent.code}`],
+            ["Result", `${recent.status}/${recent.code}`],
         ]
         : [
             ["Scene", recent.scene_id],
-            ["Status", recent.status],
+            ["Result", recent.status],
         ]);
 }
 
@@ -498,7 +498,7 @@ function renderObjectPrompt(panel: HTMLElement, caseObjectId: string, state: Wor
         const contradictionNote = document.createElement("div");
         contradictionNote.className = "inspect-note";
         contradictionNote.textContent =
-            "Contradiction path active: timeline-friendly object actions are especially valuable before accusation.";
+            "Contradictions matter for accusation. Prioritize timeline-focused object checks.";
         panel.appendChild(contradictionNote);
     }
 }
@@ -506,32 +506,32 @@ function renderObjectPrompt(panel: HTMLElement, caseObjectId: string, state: Wor
 function describeInvestigationFeedback(result: InvestigationActionResult): string {
     if (result.status === "accepted") {
         if (result.code === "projection_affordance_observed") {
-            return "Action registered. Review newly observed clues and continue with other new leads.";
+            return "Action confirmed. Review new clues and keep following leads.";
         }
         if (result.code === "projection_state_changed") {
-            return "State changed. Cross-check Case Notes and timeline clues.";
+            return "Something changed. Cross-check Case Notes and timeline clues.";
         }
-        return "Command accepted. Wait for live projection updates.";
+        return "Action accepted. Wait for the case view to update.";
     }
     if (result.status === "submitted") {
-        return "Command accepted; waiting for authoritative diff.";
+        return "Action sent. Waiting for update.";
     }
     if (result.status === "unavailable") {
-        return "Live runtime is unavailable. Reconnect and retry.";
+        return "Connection is not ready. Reconnect and try again.";
     }
     if (result.status === "invalid") {
-        return "Invalid action payload for current object. Use listed actions only.";
+        return "That action is not valid here. Use one of the listed actions.";
     }
     if (result.code === "SCENE_GATE_BLOCKED") {
-        return "Blocked by scene gate. Advance dialogue or gather more clues first.";
+        return "Blocked for now. Advance the case with more dialogue or clues first.";
     }
     if (result.code === "OBJECT_ACTION_UNAVAILABLE") {
-        return "This action is currently blocked for this object state. Try another lead.";
+        return "This action is currently blocked. Try another lead.";
     }
     if (result.code === "RUNTIME_NOT_READY") {
-        return "Runtime not ready. Wait for sync and retry.";
+        return "Connection is still settling. Wait a moment and retry.";
     }
-    return result.summary ?? "Action blocked by live runtime.";
+    return result.summary ?? "Action blocked right now.";
 }
 
 function resolveCaseObjectId(obj: KvpObject, state: WorldState): string | null {

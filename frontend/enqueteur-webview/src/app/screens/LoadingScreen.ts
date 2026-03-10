@@ -8,11 +8,11 @@ export function renderLoadingScreen(opts: LoadingScreenOpts = {}): HTMLElement {
 
     const titleEl = document.createElement("h1");
     titleEl.className = "flow-screen-title";
-    titleEl.textContent = "Loading";
+    titleEl.textContent = "Preparing Case";
 
     const bodyEl = document.createElement("p");
     bodyEl.className = "flow-screen-body";
-    bodyEl.textContent = "Loading frontend systems and UI shell.";
+    bodyEl.textContent = "Setting up the investigation space.";
 
     const logoSlot = document.createElement("div");
     logoSlot.className = "flow-logo-slot";
@@ -37,7 +37,7 @@ export function renderLoadingScreen(opts: LoadingScreenOpts = {}): HTMLElement {
 
     const note = document.createElement("p");
     note.className = "flow-screen-note";
-    note.textContent = "Logo slot is ready for final brand art.";
+    note.textContent = "Logo placeholder: final key art can be dropped in here.";
 
     section.appendChild(titleEl);
     section.appendChild(bodyEl);

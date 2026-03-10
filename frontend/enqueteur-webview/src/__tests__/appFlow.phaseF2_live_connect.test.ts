@@ -813,7 +813,7 @@ describe("Phase F2 live connect app flow", () => {
             code: "DEGRADED_MODE",
             message: "backend warming caches",
         });
-        expect(document.body.textContent).toContain("Live warning (DEGRADED_MODE): backend warming caches");
+        expect(document.body.textContent).toContain("Connection note: backend warming caches (DEGRADED_MODE).");
 
         scriptedLiveClient.emitOpen();
         scriptedLiveClient.emitMessage("KERNEL_HELLO", {

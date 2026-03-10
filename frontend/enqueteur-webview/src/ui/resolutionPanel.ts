@@ -98,7 +98,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
 
         const title = document.createElement("div");
         title.className = "resolution-title";
-        title.textContent = "Decision Board";
+        title.textContent = "Final Decision";
         panel.appendChild(title);
 
         const recap = lastState.caseRecap;
@@ -111,7 +111,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
             hasAccusationDispatcher: Boolean(opts.dispatchAttemptAccusation),
         });
         if (!recap && !outcome) {
-            renderInfo(panel, "Resolution summary is not available in this projection.");
+            renderInfo(panel, "Final report is not available yet.");
             renderResolutionActions(panel, readiness, detailed);
             return;
         }
@@ -131,7 +131,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
                 ["Resolution path", path],
                 ["Status", available ? "resolved" : "in progress"],
                 ["Contradiction", contradictionUsed ? "used" : (contradictionSatisfied ? "satisfied" : "pending")],
-                ["Best outcome", bestAwarded ? "awarded" : "not awarded"],
+                ["Best outcome", bestAwarded ? "earned" : "not earned"],
             ]
             : [
                 ["Outcome", finalOutcome],
@@ -139,12 +139,12 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
                 ["Status", available ? "resolved" : "in progress"],
             ]);
         renderInfo(panel, summarizeOutcome(finalOutcome, path, recap?.soft_fail.triggered ?? false, bestAwarded));
-        renderSectionTitle(panel, "Attempt Readiness");
+        renderSectionTitle(panel, "Decision Readiness");
         renderLines(panel, [
             ["Recovery", `${readiness.recovery.state} - ${readiness.recovery.reason}`],
             ["Accusation", `${readiness.accusation.state} - ${readiness.accusation.reason}`],
-            ["Support packet", `${readiness.supportFactCount} facts / ${readiness.supportEvidenceCount} evidence`],
-            ["Contradiction requirement", readiness.contradictionRequired ? (readiness.contradictionSatisfied ? "ready" : "pending") : "not required"],
+            ["Support", `${readiness.supportFactCount} facts / ${readiness.supportEvidenceCount} evidence`],
+            ["Contradiction", readiness.contradictionRequired ? (readiness.contradictionSatisfied ? "ready" : "pending") : "not required"],
         ]);
         renderResolutionActions(panel, readiness, detailed);
 
@@ -152,11 +152,11 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
             return;
         }
         if (!recap.available) {
-            renderInfo(panel, "Final recap unlocks when the run reaches a terminal outcome.");
+            renderInfo(panel, "The full recap appears once the case reaches an ending.");
             return;
         }
 
-        renderSection(panel, "Why This Outcome", buildOutcomeWhyRows(recap, outcome));
+        renderSection(panel, "Why This Ending", buildOutcomeWhyRows(recap, outcome));
         renderSection(panel, "Key Facts", recap.key_fact_ids.map((factId) => FACT_LABELS[factId] ?? factId));
         renderSection(panel, "Key Evidence", recap.key_evidence_ids.map((evidenceId) => EVIDENCE_LABELS[evidenceId] ?? evidenceId));
         renderSection(panel, "Path Highlights", [
@@ -174,10 +174,10 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         if (recap.best_outcome.no_public_escalation) markers.push("no_public_escalation");
         if (recap.best_outcome.strong_key_trust) markers.push("strong_key_trust");
         if (markers.length > 0) {
-            renderSection(panel, "Best Outcome Markers", markers.map((marker) => formatBestOutcomeMarker(marker, detailed)));
+        renderSection(panel, "Best Outcome Markers", markers.map((marker) => formatBestOutcomeMarker(marker, detailed)));
         }
         if (recap.soft_fail.triggered) {
-            renderSection(panel, "Soft-Fail Triggers", recap.soft_fail.trigger_conditions.map((trigger) => formatSoftFailTrigger(trigger, detailed)));
+            renderSection(panel, "Setback Triggers", recap.soft_fail.trigger_conditions.map((trigger) => formatSoftFailTrigger(trigger, detailed)));
         }
     };
 
@@ -193,13 +193,13 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         readiness: ResolutionReadiness,
         detailed: boolean
     ): void => {
-        renderSectionTitle(panelEl, "Resolution Actions");
+        renderSectionTitle(panelEl, "Final Actions");
 
         const info = document.createElement("div");
         info.className = "resolution-info";
         info.textContent = readiness.terminal
-            ? "Case is already resolved. Use recap sections to review what mattered."
-            : "Use recovery or accusation when your support packet is strong enough.";
+            ? "This case is already closed. Review the recap to see what mattered."
+            : "Use Recovery or Accusation when your support is strong enough.";
         panelEl.appendChild(info);
 
         if (lastActionMessage) {
@@ -215,12 +215,12 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         const recoveryBtn = document.createElement("button");
         recoveryBtn.type = "button";
         recoveryBtn.className = "flow-action-btn";
-        recoveryBtn.textContent = pendingAction ? "Submitting..." : "Attempt Recovery";
+        recoveryBtn.textContent = pendingAction ? "Sending..." : "Attempt Recovery";
         recoveryBtn.disabled = pendingAction || readiness.recovery.state === "blocked";
         recoveryBtn.addEventListener("click", () => {
             if (!lastState || !opts.dispatchAttemptRecovery) return;
             pendingAction = true;
-            lastActionMessage = "Submitting ATTEMPT_RECOVERY...";
+            lastActionMessage = "Sending recovery attempt...";
             render();
             void Promise.resolve(
                 opts.dispatchAttemptRecovery({
@@ -234,7 +234,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
             }).catch((err: unknown) => {
                 pendingAction = false;
                 const message = err instanceof Error ? err.message : String(err);
-                lastActionMessage = `ERROR (dispatch_error): ${message}`;
+                lastActionMessage = `Could not send recovery attempt: ${message}`;
                 render();
             });
         });
@@ -258,12 +258,12 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         const accusationBtn = document.createElement("button");
         accusationBtn.type = "button";
         accusationBtn.className = "flow-action-btn";
-        accusationBtn.textContent = pendingAction ? "Submitting..." : "Attempt Accusation";
+        accusationBtn.textContent = pendingAction ? "Sending..." : "Attempt Accusation";
         accusationBtn.disabled = pendingAction || readiness.accusation.state === "blocked";
         accusationBtn.addEventListener("click", () => {
             if (!lastState || !opts.dispatchAttemptAccusation) return;
             pendingAction = true;
-            lastActionMessage = "Submitting ATTEMPT_ACCUSATION...";
+            lastActionMessage = "Sending accusation attempt...";
             render();
             const facts = lastState.investigation?.facts.known_fact_ids ?? [];
             const evidence = Array.from(new Set([
@@ -284,7 +284,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
             }).catch((err: unknown) => {
                 pendingAction = false;
                 const message = err instanceof Error ? err.message : String(err);
-                lastActionMessage = `ERROR (dispatch_error): ${message}`;
+                lastActionMessage = `Could not send accusation attempt: ${message}`;
                 render();
             });
         });
@@ -347,30 +347,30 @@ function buildResolutionReadiness(
         ?? false;
 
     const baseBlockedReason = terminal
-        ? "case already resolved"
+        ? "case already closed"
         : !opts.canDispatch
-          ? "live command channel unavailable"
+          ? "connection is not ready"
           : "";
 
     const recovery: AttemptReadiness = (() => {
         if (baseBlockedReason.length > 0) return { state: "blocked", reason: baseBlockedReason };
-        if (!opts.hasRecoveryDispatcher) return { state: "blocked", reason: "recovery command unavailable" };
+        if (!opts.hasRecoveryDispatcher) return { state: "blocked", reason: "recovery action unavailable" };
         if (knownFacts.length < 2 || knownEvidence.length < 1) {
-            return { state: "risky", reason: "limited corroboration may lower outcome quality" };
+            return { state: "risky", reason: "support is thin; outcome may be weaker" };
         }
-        return { state: "available", reason: "sufficient support packet available" };
+        return { state: "available", reason: "support is strong enough to proceed" };
     })();
 
     const accusation: AttemptReadiness = (() => {
         if (baseBlockedReason.length > 0) return { state: "blocked", reason: baseBlockedReason };
-        if (!opts.hasAccusationDispatcher) return { state: "blocked", reason: "accusation command unavailable" };
+        if (!opts.hasAccusationDispatcher) return { state: "blocked", reason: "accusation action unavailable" };
         if (contradictionRequired && !contradictionSatisfied) {
-            return { state: "blocked", reason: "contradiction prerequisite not yet satisfied" };
+            return { state: "blocked", reason: "contradiction requirement not met yet" };
         }
         if (knownFacts.length < 3 || knownEvidence.length < 1) {
-            return { state: "risky", reason: "supporting facts/evidence are still thin" };
+            return { state: "risky", reason: "supporting clues are still thin" };
         }
-        return { state: "available", reason: "prerequisites appear ready" };
+        return { state: "available", reason: "requirements appear ready" };
     })();
 
     return {
@@ -482,7 +482,7 @@ function formatAttemptResult(
     const title = kind === "recovery" ? "Recovery" : "Accusation";
     if (result.status === "accepted" || result.status === "submitted") {
         return detailed
-            ? `${title} sent. Waiting for authoritative outcome update. [${result.code}]`
+            ? `${title} sent. Waiting for case outcome update. [${result.code}]`
             : `${title} sent. Waiting for outcome update.`;
     }
     if (result.status === "blocked") {
@@ -492,18 +492,18 @@ function formatAttemptResult(
     }
     if (result.status === "invalid") {
         return detailed
-            ? `${title} invalid: command payload/prereq mismatch. [${result.code}]`
-            : `${title} invalid: payload/prereq mismatch.`;
+            ? `${title} invalid: details or prerequisites do not match. [${result.code}]`
+            : `${title} invalid: details or prerequisites do not match.`;
     }
     if (result.status === "unavailable") {
         return detailed
-            ? `${title} unavailable: live session not ready. [${result.code}]`
-            : `${title} unavailable: live session not ready.`;
+            ? `${title} unavailable: connection not ready. [${result.code}]`
+            : `${title} unavailable: connection not ready.`;
     }
     if (result.status === "error") {
         return detailed
-            ? `${title} dispatch error: ${result.summary ?? "unknown error"} [${result.code}]`
-            : `${title} dispatch error: ${result.summary ?? "unknown error"}`;
+            ? `${title} send error: ${result.summary ?? "unknown error"} [${result.code}]`
+            : `${title} send error: ${result.summary ?? "unknown error"}`;
     }
     return detailed
         ? `${title}: ${result.summary ?? "Command processed."} [${result.code}]`
@@ -511,11 +511,11 @@ function formatAttemptResult(
 }
 
 function mapAttemptReasonCode(code: string): string {
-    if (code === "ACCUSATION_PREREQS_MISSING") return "missing accusation prerequisites";
-    if (code === "RECOVERY_PREREQS_MISSING") return "missing recovery prerequisites";
-    if (code === "RUNTIME_NOT_READY") return "runtime not ready";
-    if (code === "INVALID_COMMAND") return "command not legal in current state";
-    return "blocked by runtime rules";
+    if (code === "ACCUSATION_PREREQS_MISSING") return "missing accusation requirements";
+    if (code === "RECOVERY_PREREQS_MISSING") return "missing recovery requirements";
+    if (code === "RUNTIME_NOT_READY") return "connection not ready";
+    if (code === "INVALID_COMMAND") return "not allowed in the current case state";
+    return "blocked by case rules";
 }
 
 function humanizeToken(value: string): string {

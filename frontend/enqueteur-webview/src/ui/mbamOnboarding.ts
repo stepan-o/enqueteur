@@ -40,7 +40,7 @@ export type MbamObjectGuide = {
 };
 
 const CASE_TITLE = "MBAM / Le Petit Vol du Musee";
-const CASE_SUMMARY = "Recover the missing medallion by building a corroborated timeline.";
+const CASE_SUMMARY = "Recover the missing medallion by piecing together a reliable timeline.";
 const MBAM_OBJECT_GUIDES: MbamObjectGuide[] = [
     {
         object_id: "O1_DISPLAY_CASE",
@@ -92,14 +92,14 @@ const ACTION_LABELS: Record<string, string> = {
     read_receipt: "Read receipt",
 };
 const ACTION_HINTS: Record<string, string> = {
-    inspect: "Use this to gather baseline scene clues.",
-    check_lock: "Useful for confirming tamper/timing details.",
-    examine_surface: "Look for traces that support timeline reasoning.",
-    read: "Extract concrete anchors (names, times, labels).",
-    request_access: "Opens procedural paths when logs are gated.",
-    view_logs: "Strong source for contradiction timeline checks.",
-    ask_for_receipt: "Can surface corroborating purchase records.",
-    read_receipt: "Use receipt time/item to support dialogue claims.",
+    inspect: "Start here to spot what changed at the scene.",
+    check_lock: "Confirm whether the case was tampered with.",
+    examine_surface: "Look for traces that clarify who handled the object.",
+    read: "Capture concrete anchors like names, dates, and labels.",
+    request_access: "Ask politely to unlock restricted records.",
+    view_logs: "Use this to anchor movement times.",
+    ask_for_receipt: "Can reveal a supporting timeline clue.",
+    read_receipt: "Use receipt time/item to support your questioning.",
 };
 const CONTRADICTION_EDGE_LABELS: Record<string, string> = {
     E3: "Potential timeline mismatch",
@@ -118,7 +118,7 @@ export function labelMbamAction(actionId: string): string {
 }
 
 export function hintMbamAction(actionId: string): string {
-    return ACTION_HINTS[actionId] ?? "Run this action to progress investigation context.";
+    return ACTION_HINTS[actionId] ?? "Try this action to move the investigation forward.";
 }
 
 export function labelMbamContradictionEdge(edgeId: string): string {
@@ -218,17 +218,17 @@ export function buildMbamOnboardingView(state: WorldState): MbamOnboardingView {
         },
         {
             id: "log_clues",
-            label: "Collect your first clues in Case Notes (facts/evidence).",
+            label: "Record your first clues in Case Notes.",
             done: clueProgress,
         },
         {
             id: "dialogue_turn",
-            label: "Use Conversations to submit a structured French turn.",
+            label: "Question someone in Conversations (in French).",
             done: hasDialogueTurn,
         },
         {
             id: "contradiction_readiness",
-            label: "Cross-check timeline clues and contradiction readiness.",
+            label: "Cross-check timeline clues and prepare a contradiction.",
             done: contradictionProgress,
         },
     ];
@@ -262,17 +262,17 @@ function resolveCurrentLead(ctx: {
     contradictionSatisfied: boolean;
     contradictionUnlockable: boolean;
 }): string {
-    if (!ctx.hasBaseline) return "Waiting for case baseline...";
-    if (ctx.isTerminal) return "Case resolved. Review the Decision Board recap.";
+    if (!ctx.hasBaseline) return "Setting the scene...";
+    if (ctx.isTerminal) return "Case closed. Review the final decision recap.";
     if (!ctx.displayCaseObserved) return "Begin in the gallery: inspect the Display Case.";
     if (!ctx.wallLabelObserved) return "Read the Wall Label and note title/date anchors.";
-    if (!ctx.clueProgress) return "Follow object actions to surface your first clues.";
-    if (!ctx.hasDialogueTurn) return "Open Conversations and submit one French turn.";
+    if (!ctx.clueProgress) return "Follow object leads to uncover your first clues.";
+    if (!ctx.hasDialogueTurn) return "Open Conversations and ask your first question in French.";
     if (ctx.contradictionRequired && !ctx.contradictionSatisfied) {
-        if (ctx.contradictionUnlockable) return "Timeline clues can unlock contradictions. Press that path next.";
-        return "Build contradiction readiness before attempting accusation.";
+        if (ctx.contradictionUnlockable) return "You have a contradiction lead. Tighten your timeline next.";
+        return "Build a stronger contradiction before making an accusation.";
     }
-    return "Keep corroborating facts before a final resolution attempt.";
+    return "Keep corroborating clues before making your final decision.";
 }
 
 function isAffordanceObserved(state: WorldState, objectId: string): boolean {
