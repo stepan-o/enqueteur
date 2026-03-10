@@ -588,4 +588,213 @@ describe("Phase F2 live connect app flow", () => {
 
         flow.destroy();
     });
+
+    it("routes LIVE_GAME socket disconnects to recoverable connection failure and supports retry", async () => {
+        const startCase = vi.fn(async () => makeLaunchMetadata());
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const scriptedLiveClient = new ScriptedLiveClient();
+        const createLiveClient = vi.fn(() => scriptedLiveClient);
+        const fakeViewer = makeFakeViewer();
+        const createLiveViewer: NonNullable<AppFlowOpts["createLiveViewer"]> = vi.fn(
+            async () => fakeViewer
+        );
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+            createLiveClient,
+            createLiveViewer,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CASE_SELECT" });
+        clickFirstCaseCard();
+        await flushAsyncWork();
+
+        scriptedLiveClient.emitOpen();
+        scriptedLiveClient.emitMessage("KERNEL_HELLO", {
+            engine_name: "enqueteur",
+            engine_version: "0.1.0",
+            schema_version: "enqueteur_mbam_1",
+            world_id: "world-123",
+            run_id: "run-123",
+            seed: "A",
+            tick_rate_hz: 30,
+            time_origin_ms: 0,
+            render_spec: {},
+        });
+        scriptedLiveClient.emitMessage("SUBSCRIBED", {
+            stream_id: "stream-123",
+            effective_stream: "LIVE",
+            effective_channels: ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+            effective_diff_policy: "DIFF_ONLY",
+            effective_snapshot_policy: "ON_JOIN",
+            effective_compression: "NONE",
+        });
+        scriptedLiveClient.emitMessage("FULL_SNAPSHOT", {
+            schema_version: "enqueteur_mbam_1",
+            tick: 0,
+            step_hash: "hash-0",
+            state: { world: {} },
+        });
+        await flushAsyncWork();
+
+        scriptedLiveClient.emitClose(1006, "network_lost");
+        expect(flow.getState()).toEqual({
+            kind: "ERROR",
+            code: "CONNECTION_FAILURE",
+            message: "Live session disconnected (code 1006, reason: network_lost).",
+            recoverTo: "CASE_SELECT",
+        });
+
+        const retryButton = Array.from(document.querySelectorAll<HTMLButtonElement>(".flow-action-btn"))
+            .find((btn) => btn.textContent === "Retry Connection");
+        expect(retryButton).toBeTruthy();
+        retryButton?.click();
+
+        expect(createLiveClient).toHaveBeenCalledTimes(2);
+        expect(scriptedLiveClient.connect).toHaveBeenCalledTimes(2);
+        expect(flow.getState()).toEqual({
+            kind: "CONNECTING",
+            caseId: "MBAM_01",
+            phase: "SESSION_STARTUP",
+        });
+
+        flow.destroy();
+    });
+
+    it("surfaces WARN during CONNECTING and keeps non-fatal runtime ERROR out of fatal flow", async () => {
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const startCase = vi.fn(async () => makeLaunchMetadata());
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const scriptedLiveClient = new ScriptedLiveClient();
+        const createLiveClient = vi.fn(() => scriptedLiveClient);
+        const fakeViewer = makeFakeViewer();
+        const createLiveViewer: NonNullable<AppFlowOpts["createLiveViewer"]> = vi.fn(
+            async () => fakeViewer
+        );
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+            createLiveClient,
+            createLiveViewer,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CASE_SELECT" });
+        clickFirstCaseCard();
+        await flushAsyncWork();
+
+        scriptedLiveClient.emitMessage("WARN", {
+            code: "DEGRADED_MODE",
+            message: "backend warming caches",
+        });
+        expect(document.body.textContent).toContain("Live warning (DEGRADED_MODE): backend warming caches");
+
+        scriptedLiveClient.emitOpen();
+        scriptedLiveClient.emitMessage("KERNEL_HELLO", {
+            engine_name: "enqueteur",
+            engine_version: "0.1.0",
+            schema_version: "enqueteur_mbam_1",
+            world_id: "world-123",
+            run_id: "run-123",
+            seed: "A",
+            tick_rate_hz: 30,
+            time_origin_ms: 0,
+            render_spec: {},
+        });
+        scriptedLiveClient.emitMessage("SUBSCRIBED", {
+            stream_id: "stream-123",
+            effective_stream: "LIVE",
+            effective_channels: ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+            effective_diff_policy: "DIFF_ONLY",
+            effective_snapshot_policy: "ON_JOIN",
+            effective_compression: "NONE",
+        });
+        scriptedLiveClient.emitMessage("FULL_SNAPSHOT", {
+            schema_version: "enqueteur_mbam_1",
+            tick: 0,
+            step_hash: "hash-0",
+            state: { world: {} },
+        });
+        await flushAsyncWork();
+
+        scriptedLiveClient.emitMessage("ERROR", {
+            code: "INTERNAL_RUNTIME_ERROR",
+            message: "temporary degradation",
+            fatal: false,
+        });
+
+        expect(flow.getState()).toEqual({
+            kind: "LIVE_GAME",
+            caseId: "MBAM_01",
+        });
+        expect(warnSpy).toHaveBeenCalledWith("Live warning (INTERNAL_RUNTIME_ERROR): temporary degradation");
+
+        flow.destroy();
+    });
+
+    it("routes fatal backend ERROR during LIVE_GAME into connection failure", async () => {
+        const startCase = vi.fn(async () => makeLaunchMetadata());
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const scriptedLiveClient = new ScriptedLiveClient();
+        const createLiveClient = vi.fn(() => scriptedLiveClient);
+        const fakeViewer = makeFakeViewer();
+        const createLiveViewer: NonNullable<AppFlowOpts["createLiveViewer"]> = vi.fn(
+            async () => fakeViewer
+        );
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+            createLiveClient,
+            createLiveViewer,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CASE_SELECT" });
+        clickFirstCaseCard();
+        await flushAsyncWork();
+
+        scriptedLiveClient.emitOpen();
+        scriptedLiveClient.emitMessage("KERNEL_HELLO", {
+            engine_name: "enqueteur",
+            engine_version: "0.1.0",
+            schema_version: "enqueteur_mbam_1",
+            world_id: "world-123",
+            run_id: "run-123",
+            seed: "A",
+            tick_rate_hz: 30,
+            time_origin_ms: 0,
+            render_spec: {},
+        });
+        scriptedLiveClient.emitMessage("SUBSCRIBED", {
+            stream_id: "stream-123",
+            effective_stream: "LIVE",
+            effective_channels: ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+            effective_diff_policy: "DIFF_ONLY",
+            effective_snapshot_policy: "ON_JOIN",
+            effective_compression: "NONE",
+        });
+        scriptedLiveClient.emitMessage("FULL_SNAPSHOT", {
+            schema_version: "enqueteur_mbam_1",
+            tick: 0,
+            step_hash: "hash-0",
+            state: { world: {} },
+        });
+        await flushAsyncWork();
+
+        scriptedLiveClient.emitMessage("ERROR", {
+            code: "INTERNAL_RUNTIME_ERROR",
+            message: "fatal runtime failure",
+            fatal: true,
+        });
+
+        expect(flow.getState()).toEqual({
+            kind: "ERROR",
+            code: "CONNECTION_FAILURE",
+            message: "Live kernel error (INTERNAL_RUNTIME_ERROR): fatal runtime failure",
+            recoverTo: "CASE_SELECT",
+        });
+
+        flow.destroy();
+    });
 });

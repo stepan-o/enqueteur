@@ -4,6 +4,8 @@ export type ErrorScreenOpts = {
     code: AppErrorCode;
     message: string;
     recoverTo?: AppRecoverTarget;
+    onRetry?: () => void;
+    retryLabel?: string;
     onRecover: () => void;
 };
 
@@ -39,6 +41,11 @@ export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
 
     const actions = document.createElement("div");
     actions.className = "flow-actions";
+    if (opts.onRetry) {
+        actions.appendChild(
+            makeActionButton(opts.retryLabel ?? defaultRetryLabel(opts.code), opts.onRetry)
+        );
+    }
     actions.appendChild(
         makeActionButton(
             opts.recoverTo === "CASE_SELECT" ? "Back To Cases" : "Back To Main Menu",
@@ -52,6 +59,12 @@ export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
     section.appendChild(hint);
     section.appendChild(actions);
     return section;
+}
+
+function defaultRetryLabel(code: AppErrorCode): string {
+    if (code === "LAUNCH_FAILURE") return "Retry Launch";
+    if (code === "CONNECTION_FAILURE") return "Retry Connection";
+    return "Retry";
 }
 
 function makeActionButton(label: string, onClick: () => void): HTMLButtonElement {

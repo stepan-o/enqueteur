@@ -66,9 +66,12 @@ type LiveConnectionFailureReason =
     | "CONNECT_THROW"
     | string;
 
+type LiveConnectionStage = "STARTUP" | "RUNTIME";
+
 type LiveConnectionFailure = {
     reason: LiveConnectionFailureReason;
     message: string;
+    stage?: LiveConnectionStage;
 };
 
 type PendingCommandAck = {
@@ -121,6 +124,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     let liveBaselineSnapshot: FullSnapshotPayload | null = null;
     let livePendingDiffs: FrameDiffPayload[] = [];
     let liveBaselineIngestedByViewer = false;
+    let liveWarningMessage: string | null = null;
     let liveCommandBridge: LiveCommandBridge | null = null;
     const pendingCommandAcks = new Map<string, PendingCommandAck>();
 
@@ -185,6 +189,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             "RUNTIME_NOT_READY",
             "Live session is not connected."
         );
+        liveWarningMessage = null;
         liveKernelHello = null;
         liveBaselineSnapshot = null;
         livePendingDiffs = [];
@@ -250,6 +255,39 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         }
     };
 
+    const retryLaunchFromFailure = (): void => {
+        const latestFailure = launchSessionStore.getLatestFailure();
+        if (!latestFailure) {
+            goToCaseSelect();
+            return;
+        }
+        beginCaseLaunch(latestFailure.request.caseId);
+    };
+
+    const retryLiveConnectionFromSession = (): void => {
+        const latestSession = launchSessionStore.getLatestSession();
+        if (!latestSession) {
+            goToCaseSelect();
+            return;
+        }
+
+        launchRevision += 1;
+        if (pendingLaunchAbortController) {
+            pendingLaunchAbortController.abort();
+            pendingLaunchAbortController = null;
+        }
+        stopLiveConnection();
+        liveWarningMessage = null;
+
+        const attemptRevision = launchRevision;
+        stateStore.transition({
+            kind: "CONNECTING",
+            caseId: latestSession.caseId,
+            phase: "SESSION_STARTUP",
+        });
+        beginLiveConnection(latestSession.caseId, attemptRevision, latestSession);
+    };
+
     const createLiveViewer = opts.createLiveViewer ?? (async (mountEl: HTMLElement) => {
         const { boot } = await loadBootModule();
         return boot({
@@ -276,6 +314,25 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             }
             livePendingDiffs = [];
         }
+    };
+
+    const resolveErrorRetry = (state: Extract<AppState, { kind: "ERROR" }>): {
+        label: string;
+        run: () => void;
+    } | null => {
+        if (state.code === "LAUNCH_FAILURE" && launchSessionStore.getLatestFailure()) {
+            return {
+                label: "Retry Launch",
+                run: retryLaunchFromFailure,
+            };
+        }
+        if (state.code === "CONNECTION_FAILURE" && launchSessionStore.getLatestSession()) {
+            return {
+                label: "Retry Connection",
+                run: retryLiveConnectionFromSession,
+            };
+        }
+        return null;
     };
 
     const render = (state: AppState): void => {
@@ -334,21 +391,26 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                     renderConnectingScreen({
                         caseId: state.caseId,
                         phase: state.phase,
+                        warningMessage: liveWarningMessage ?? undefined,
                         onBackToCases: goToCaseSelect,
                         onBackToMenu: goToMainMenu,
                     })
                 );
                 break;
-            case "ERROR":
+            case "ERROR": {
+                const retry = resolveErrorRetry(state);
                 preGameLayer.appendChild(
                     renderErrorScreen({
                         code: state.code,
                         message: state.message,
                         recoverTo: state.recoverTo,
+                        onRetry: retry?.run,
+                        retryLabel: retry?.label,
                         onRecover: () => recoverFromError(state.recoverTo),
                     })
                 );
                 break;
+            }
             default:
                 preGameLayer.appendChild(
                     renderErrorScreen({
@@ -550,20 +612,47 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             liveClient === client;
         let didValidateKernelHello = false;
         let didValidateSubscribed = false;
+        liveWarningMessage = null;
+
+        const currentConnectionStage = (): LiveConnectionStage => (
+            liveBaselineSnapshot ? "RUNTIME" : "STARTUP"
+        );
 
         const failLiveConnection = (
             details: LiveConnectionFailure
         ): void => {
             if (!isCurrentAttempt()) return;
+            const stage = details.stage ?? currentConnectionStage();
             stopLiveConnection();
 
-            const classification = classifyLiveConnectionFailure(details);
+            const classification = classifyLiveConnectionFailure(details, stage);
             stateStore.transition({
                 kind: "ERROR",
                 code: classification.code,
                 message: details.message,
                 recoverTo: classification.recoverTo,
             });
+        };
+
+        const handleKernelWarning = (
+            code: string,
+            message: string
+        ): void => {
+            const formatted = `Live warning (${code}): ${message}`;
+            const currentState = stateStore.getState();
+            if (currentState.kind === "CONNECTING" && currentState.caseId === caseId) {
+                liveWarningMessage = formatted;
+                stateStore.transition({ ...currentState });
+                return;
+            }
+
+            const currentSession = launchSessionStore.getLatestSession();
+            if (
+                currentSession?.mode === "dev"
+                || Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV)
+            ) {
+                console.warn(formatted);
+            }
         };
 
         const subscribeToMessage = <T extends keyof EnqueteurInboundEnvelopeByType>(
@@ -587,10 +676,12 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         liveClientUnsubscribers.push(
             client.onClose((event) => {
                 if (!isCurrentAttempt()) return;
-                if (stateStore.getState().kind !== "CONNECTING") return;
+                const currentState = stateStore.getState();
+                if (currentState.kind !== "CONNECTING" && currentState.kind !== "LIVE_GAME") return;
                 failLiveConnection({
                     reason: "SOCKET_CLOSED",
-                    message: describeLiveSocketClose(event),
+                    message: describeLiveSocketClose(event, currentConnectionStage()),
+                    stage: currentConnectionStage(),
                 });
             })
         );
@@ -599,7 +690,10 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 if (!isCurrentAttempt()) return;
                 failLiveConnection({
                     reason: "TRANSPORT_ERROR",
-                    message: "Live socket transport failed before baseline was ready.",
+                    message: currentConnectionStage() === "STARTUP"
+                        ? "Live socket transport failed before baseline was ready."
+                        : "Live socket transport failed during active session.",
+                    stage: currentConnectionStage(),
                 });
             })
         );
@@ -609,6 +703,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 failLiveConnection({
                     reason: error.code,
                     message: `Live protocol error (${error.code}): ${error.message}`,
+                    stage: currentConnectionStage(),
                 });
             })
         );
@@ -757,7 +852,14 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 message: envelope.payload.message,
             });
         });
+        subscribeToMessage("WARN", (envelope) => {
+            handleKernelWarning(envelope.payload.code, envelope.payload.message);
+        });
         subscribeToMessage("ERROR", (envelope) => {
+            if (liveBaselineSnapshot && !envelope.payload.fatal) {
+                handleKernelWarning(envelope.payload.code, envelope.payload.message);
+                return;
+            }
             if (liveBaselineSnapshot) {
                 clearPendingCommandAcks(
                     envelope.payload.code,
@@ -767,6 +869,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             failLiveConnection({
                 reason: envelope.payload.code,
                 message: `Live kernel error (${envelope.payload.code}): ${envelope.payload.message}`,
+                stage: currentConnectionStage(),
             });
         });
 
@@ -1067,7 +1170,10 @@ function validateBaselineSnapshot(args: {
     return null;
 }
 
-function classifyLiveConnectionFailure(details: LiveConnectionFailure): {
+function classifyLiveConnectionFailure(
+    details: LiveConnectionFailure,
+    stage: LiveConnectionStage
+): {
     code: AppErrorCode;
     recoverTo: AppRecoverTarget;
 } {
@@ -1087,6 +1193,12 @@ function classifyLiveConnectionFailure(details: LiveConnectionFailure): {
         details.reason === "KERNEL_HELLO_RUN_MISMATCH" ||
         details.reason === "KERNEL_HELLO_WORLD_MISMATCH"
     ) {
+        if (stage === "RUNTIME") {
+            return {
+                code: "CONNECTION_FAILURE",
+                recoverTo: "CASE_SELECT",
+            };
+        }
         return {
             code: "STARTUP_INCOMPATIBILITY",
             recoverTo: "MAIN_MENU",
@@ -1098,10 +1210,13 @@ function classifyLiveConnectionFailure(details: LiveConnectionFailure): {
     };
 }
 
-function describeLiveSocketClose(event: CloseEvent): string {
+function describeLiveSocketClose(event: CloseEvent, stage: LiveConnectionStage): string {
     const closeCode = Number.isInteger(event.code) ? String(event.code) : "unknown";
     const reason = typeof event.reason === "string" && event.reason.length > 0
         ? event.reason
         : "no reason provided";
+    if (stage === "RUNTIME") {
+        return `Live session disconnected (code ${closeCode}, reason: ${reason}).`;
+    }
     return `Live socket closed before baseline was ready (code ${closeCode}, reason: ${reason}).`;
 }

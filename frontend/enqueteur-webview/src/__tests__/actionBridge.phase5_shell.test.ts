@@ -7,13 +7,13 @@ import { cloneDialogue, cloneInvestigation, makeMbamSnapshot, makeStateDiff } fr
 
 function makeLiveCommandBridge(args: {
     canSend?: boolean;
-    onSend: () => void;
+    onSend: (params: { cmd: { type: string; payload: Record<string, unknown> }; opts?: { tickTarget?: number } }) => void;
 }): LiveCommandBridge {
     const { canSend = true, onSend } = args;
     return {
         canSendInputCommand: () => canSend,
-        sendInputCommand: async () => {
-            onSend();
+        sendInputCommand: async (cmd, opts) => {
+            onSend({ cmd, opts });
             return {
                 accepted: true,
                 clientCmdId: "00000000-0000-4000-8000-000000000001",
@@ -223,5 +223,162 @@ describe("Phase 5 action bridge", () => {
 
         expect(result.status).toBe("submitted");
         expect(result.code).toBe("awaiting_projection_update");
+    });
+
+    it("maps shell action requests to Enqueteur live INPUT_COMMAND payload shapes", async () => {
+        const store = new WorldStore();
+        store.applySnapshot(makeMbamSnapshot(5));
+        const sent: Array<{ cmd: { type: string; payload: Record<string, unknown> }; opts?: { tickTarget?: number } }> = [];
+
+        const liveCommandBridge = makeLiveCommandBridge({
+            onSend: ({ cmd, opts }) => {
+                sent.push({ cmd, opts });
+            },
+        });
+
+        const bridge = createFrontendActionBridge({
+            store,
+            getMode: () => "live",
+            getLiveCommandBridge: () => liveCommandBridge,
+            projectionTimeoutMs: 30,
+        });
+
+        await bridge.submitInvestigationAction({
+            worldObjectId: 3002,
+            caseObjectId: "O1_DISPLAY_CASE",
+            affordanceId: "inspect",
+            tick: 5,
+        });
+        await bridge.submitDialogueTurn({
+            sceneId: "S2",
+            npcId: "marc",
+            intentId: "request_access",
+            providedSlots: [{ slot_name: "reason", value: "verify timeline" }],
+            presentedFactIds: ["N3"],
+            presentedEvidenceIds: ["E2_CAFE_RECEIPT"],
+            tick: 5,
+        });
+        await bridge.submitMinigameSubmit({
+            minigameId: "MG2",
+            targetId: "O6_BADGE_TERMINAL",
+            answer: { selected_entry_id: "entry_3", time_value: "17:58" },
+            tick: 5,
+        });
+        await bridge.submitAttemptRecovery({
+            targetId: "O2_MEDALLION",
+            tick: 5,
+        });
+        await bridge.submitAttemptAccusation({
+            suspectId: "samira",
+            supportingFactIds: ["N3", "N4"],
+            supportingEvidenceIds: ["E2_CAFE_RECEIPT"],
+            tick: 5,
+        });
+
+        expect(sent).toHaveLength(5);
+        expect(sent[0]).toMatchObject({
+            cmd: {
+                type: "INVESTIGATE_OBJECT",
+                payload: {
+                    object_id: "O1_DISPLAY_CASE",
+                    action_id: "inspect",
+                },
+            },
+            opts: { tickTarget: 6 },
+        });
+        expect(sent[1]).toMatchObject({
+            cmd: {
+                type: "DIALOGUE_TURN",
+                payload: {
+                    scene_id: "S2",
+                    npc_id: "marc",
+                    intent_id: "request_access",
+                    slots: { reason: "verify timeline" },
+                },
+            },
+            opts: { tickTarget: 6 },
+        });
+        expect(sent[2]).toMatchObject({
+            cmd: {
+                type: "MINIGAME_SUBMIT",
+                payload: {
+                    minigame_id: "MG2",
+                    target_id: "O6_BADGE_TERMINAL",
+                    answer: { selected_entry_id: "entry_3", time_value: "17:58" },
+                },
+            },
+            opts: { tickTarget: 6 },
+        });
+        expect(sent[3]).toMatchObject({
+            cmd: {
+                type: "ATTEMPT_RECOVERY",
+                payload: { target_id: "O2_MEDALLION" },
+            },
+            opts: { tickTarget: 6 },
+        });
+        expect(sent[4]).toMatchObject({
+            cmd: {
+                type: "ATTEMPT_ACCUSATION",
+                payload: {
+                    suspect_id: "samira",
+                    supporting_fact_ids: ["N3", "N4"],
+                    supporting_evidence_ids: ["E2_CAFE_RECEIPT"],
+                },
+            },
+            opts: { tickTarget: 6 },
+        });
+    });
+
+    it("maps COMMAND_REJECTED to coherent non-optimistic action statuses", async () => {
+        const store = new WorldStore();
+        store.applySnapshot(makeMbamSnapshot(6));
+
+        const liveCommandBridge: LiveCommandBridge = {
+            canSendInputCommand: () => true,
+            sendInputCommand: async (cmd) => {
+                if (cmd.type === "MINIGAME_SUBMIT") {
+                    return {
+                        accepted: false,
+                        clientCmdId: "00000000-0000-4000-8000-000000000002",
+                        reasonCode: "MINIGAME_INVALID_STATE",
+                        message: "Minigame is not open.",
+                    };
+                }
+                return {
+                    accepted: false,
+                    clientCmdId: "00000000-0000-4000-8000-000000000003",
+                    reasonCode: "INVALID_COMMAND",
+                    message: "Payload shape invalid.",
+                };
+            },
+        };
+
+        const bridge = createFrontendActionBridge({
+            store,
+            getMode: () => "live",
+            getLiveCommandBridge: () => liveCommandBridge,
+            projectionTimeoutMs: 30,
+        });
+
+        const minigame = await bridge.submitMinigameSubmit({
+            minigameId: "MG2",
+            targetId: "O6_BADGE_TERMINAL",
+            answer: { selected_entry_id: "entry_3", time_value: "17:58" },
+            tick: 6,
+        });
+        const accusation = await bridge.submitAttemptAccusation({
+            suspectId: "samira",
+            supportingFactIds: ["N3", "N4"],
+            supportingEvidenceIds: ["E2_CAFE_RECEIPT"],
+            tick: 6,
+        });
+
+        expect(minigame.status).toBe("blocked");
+        expect(minigame.code).toBe("MINIGAME_INVALID_STATE");
+        expect(minigame.summary).toContain("MINIGAME_INVALID_STATE");
+
+        expect(accusation.status).toBe("invalid");
+        expect(accusation.code).toBe("INVALID_COMMAND");
+        expect(accusation.summary).toContain("INVALID_COMMAND");
     });
 });

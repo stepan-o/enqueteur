@@ -22,6 +22,7 @@ const PHASE_NOTES: Record<ConnectingPhase, string> = {
 export type ConnectingScreenOpts = {
     caseId: EnqueteurCaseId;
     phase: ConnectingPhase;
+    warningMessage?: string;
     onBackToCases: () => void;
     onBackToMenu: () => void;
 };
@@ -61,6 +62,14 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
     note.className = "flow-screen-note";
     note.textContent = PHASE_NOTES[opts.phase];
 
+    const warning = opts.warningMessage
+        ? document.createElement("p")
+        : null;
+    if (warning) {
+        warning.className = "flow-screen-note";
+        warning.textContent = opts.warningMessage ?? "";
+    }
+
     const actions = document.createElement("div");
     actions.className = "flow-actions";
     actions.appendChild(makeActionButton("Back To Cases", opts.onBackToCases));
@@ -70,6 +79,9 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
     section.appendChild(bodyEl);
     section.appendChild(steps);
     section.appendChild(note);
+    if (warning) {
+        section.appendChild(warning);
+    }
     section.appendChild(actions);
     return section;
 }
