@@ -8,6 +8,7 @@ import type {
     KvpObject,
     KvpRoom,
 } from "../state/worldStore";
+import { buildMbamOnboardingView } from "./mbamOnboarding";
 
 export type InspectSelection =
     | { kind: "room"; id: number }
@@ -308,6 +309,7 @@ function renderObjectActionPanel(
         ["Facts known", String(state.investigation.facts.known_fact_ids.length)],
         ["Contradictions unlockable", String(state.investigation.contradictions.unlockable_edge_ids.length)],
     ]);
+    renderObjectPrompt(panel, caseObjectId, state);
 
     renderKnownState(panel, investigationObject);
     renderActionButtons(panel, obj.object_id, caseObjectId, investigationObject, state, opts);
@@ -371,10 +373,10 @@ function renderActionButtons(
         const info = document.createElement("div");
         info.className = "inspect-note";
         info.textContent = observed
-            ? "observed in replay history"
+            ? "already observed in this run"
             : blockedReason
               ? blockedReason
-              : "not yet observed in replay history";
+              : "available to try";
         actionsWrap.appendChild(info);
     }
 }
@@ -411,6 +413,21 @@ function renderRecentDialogueHint(panel: HTMLElement, state: WorldState): void {
         ["Intent", recent.intent_id],
         ["Turn status", `${recent.status}/${recent.code}`],
     ]);
+}
+
+function renderObjectPrompt(panel: HTMLElement, caseObjectId: string, state: WorldState): void {
+    const onboarding = buildMbamOnboardingView(state);
+    const promptByObject: Record<string, string> = {
+        O1_DISPLAY_CASE: "Starter lead: inspect + check lock to confirm what changed in the gallery.",
+        O3_WALL_LABEL: "Read and note title/date. It helps anchor timeline dialogue.",
+        O6_BADGE_TERMINAL: "Badge logs provide movement timing for contradiction checks.",
+        O9_RECEIPT_PRINTER: "Receipt time helps corroborate witness statements.",
+    };
+    renderSectionTitle(panel, "Field Prompt");
+    const note = document.createElement("div");
+    note.className = "inspect-note";
+    note.textContent = promptByObject[caseObjectId] ?? onboarding.currentLead;
+    panel.appendChild(note);
 }
 
 function resolveCaseObjectId(obj: KvpObject, state: WorldState): string | null {

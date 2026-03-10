@@ -1,5 +1,6 @@
 // src/ui/notebookPanel.ts
 import type { KvpInvestigationState, WorldState, WorldStore } from "../state/worldStore";
+import { buildMbamOnboardingView } from "./mbamOnboarding";
 
 export type NotebookPanelHandle = {
     root: HTMLElement;
@@ -196,6 +197,13 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
             renderInfo(panel, "Investigation projection not available in current state.");
             return;
         }
+
+        const onboarding = buildMbamOnboardingView(lastState);
+        renderSectionTitle(panel, "Case Brief");
+        renderInfo(panel, onboarding.caseSummary);
+        renderSectionTitle(panel, "Start Here");
+        renderOnboardingSteps(panel, onboarding.steps);
+        renderInfo(panel, `Current lead: ${onboarding.currentLead}`);
 
         renderLines(panel, [
             ["Case", lastState.caseState?.case_id ?? "MBAM_01"],
@@ -1157,6 +1165,22 @@ function renderSectionTitle(panel: HTMLElement, text: string): void {
     title.className = "notebook-section-title";
     title.textContent = text;
     panel.appendChild(title);
+}
+
+function renderOnboardingSteps(
+    panel: HTMLElement,
+    steps: Array<{ label: string; done: boolean }>
+): void {
+    const list = document.createElement("div");
+    list.className = "notebook-list";
+    panel.appendChild(list);
+
+    for (const step of steps) {
+        const row = document.createElement("div");
+        row.className = "notebook-row";
+        row.textContent = `${step.done ? "[x]" : "[ ]"} ${step.label}`;
+        list.appendChild(row);
+    }
 }
 
 function renderLines(panel: HTMLElement, lines: Array<[string, string]>): void {

@@ -35,6 +35,7 @@ describe("Phase 5 shell panel rendering", () => {
 
         const panel = inspect.root.querySelector(".inspect-panel");
         expect(panel?.textContent).toContain("Interaction");
+        expect(panel?.textContent).toContain("Field Prompt");
         expect(panel?.textContent).toContain("O1_DISPLAY_CASE");
 
         const buttons = inspect.root.querySelectorAll<HTMLButtonElement>(".inspect-action-btn");
@@ -125,6 +126,10 @@ describe("Phase 5 shell panel rendering", () => {
         const panel = notebook.root.querySelector(".notebook-panel");
 
         expect(panel?.textContent).toContain("Evidence Tray");
+        expect(panel?.textContent).toContain("Case Brief");
+        expect(panel?.textContent).toContain("Start Here");
+        expect(panel?.textContent).toContain("Inspect the Display Case and Wall Label in the gallery.");
+        expect(panel?.textContent).toContain("Current lead:");
         expect(panel?.textContent).toContain("E2 Cafe Receipt");
         expect(panel?.textContent).toContain("Fact Visibility");
         expect(panel?.textContent).toContain("N1");

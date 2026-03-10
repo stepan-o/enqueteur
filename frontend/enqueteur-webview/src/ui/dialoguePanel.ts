@@ -290,6 +290,12 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         if (!focusSceneId || !sceneConfig || !focusNpcId) {
             renderInfo(panel, "No active or surfaced scene available for structured turn entry.");
         } else {
+            if (dialogue.recent_turns.length === 0) {
+                renderInfo(
+                    panel,
+                    "Starter flow: ask what/when/where first, then summarize in French to lock scene progress."
+                );
+            }
             const allowedIntents = sceneConfig.allowedIntents;
 
             renderIntentButtons(panel, {

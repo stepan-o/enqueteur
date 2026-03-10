@@ -1,5 +1,6 @@
 // src/ui/hud.ts
 import type { WorldStore, WorldState, KvpEvent, KvpRoom } from "../state/worldStore";
+import { buildMbamOnboardingView } from "./mbamOnboarding";
 import type { OverlayStore, OverlayState, UIOverlayEvent } from "../state/overlayStore";
 
 export type HudProfile = "playtest" | "dev";
@@ -156,7 +157,9 @@ function renderHud(
             lines.push("kernel:    -");
         }
     } else {
+        const onboarding = buildMbamOnboardingView(state);
         lines.push(`Session:   ${connected ? "Live" : "Connecting..."}`);
+        lines.push(`Case:      ${onboarding.caseTitle}`);
         lines.push(`Day:       ${state.world?.day_index ?? 1}`);
         lines.push(`Phase:     ${state.world?.day_phase ?? "-"}`);
         lines.push(`Time:      ${formatTimeOfDay(state.world?.time_of_day)}`);
@@ -166,6 +169,7 @@ function renderHud(
             + (state.investigation?.evidence.collected_ids.length ?? 0);
         lines.push(`Evidence:  ${evidenceCount} found`);
         lines.push(`Scene:     ${state.dialogue?.active_scene_id ?? "-"}`);
+        lines.push(`Lead:      ${truncateText(onboarding.currentLead, 44)}`);
     }
 
     const world = state.world;
@@ -213,7 +217,12 @@ function renderFeed(
     }
 
     if (lines.length === 0) {
-        el.feedBody.textContent = profile === "dev" ? "No events yet" : "No activity yet";
+        if (profile === "dev") {
+            el.feedBody.textContent = "No events yet";
+        } else {
+            const onboarding = buildMbamOnboardingView(state);
+            el.feedBody.textContent = `No activity yet\nTip: ${truncateText(onboarding.currentLead, 48)}`;
+        }
         return;
     }
 
@@ -229,6 +238,12 @@ function truncateHash(h?: string): string {
     if (!h) return "-";
     if (h.length <= 16) return h;
     return `${h.slice(0, 8)}…${h.slice(-8)}`;
+}
+
+function truncateText(value: string, maxLength: number): string {
+    if (value.length <= maxLength) return value;
+    if (maxLength <= 3) return value.slice(0, maxLength);
+    return `${value.slice(0, maxLength - 3)}...`;
 }
 
 function formatTimeOfDay(value: number | undefined): string {
