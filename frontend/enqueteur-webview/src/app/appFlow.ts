@@ -106,6 +106,23 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     const liveLayer = document.createElement("div");
     liveLayer.className = "app-flow-layer app-flow-layer-live";
 
+    const liveActionBar = document.createElement("div");
+    liveActionBar.className = "flow-live-actions";
+    liveActionBar.style.display = "none";
+
+    const backToCasesBtn = document.createElement("button");
+    backToCasesBtn.type = "button";
+    backToCasesBtn.className = "flow-action-btn flow-live-action-btn";
+    backToCasesBtn.textContent = "Back To Cases";
+
+    const mainMenuBtn = document.createElement("button");
+    mainMenuBtn.type = "button";
+    mainMenuBtn.className = "flow-action-btn flow-live-action-btn";
+    mainMenuBtn.textContent = "Main Menu";
+
+    liveActionBar.append(backToCasesBtn, mainMenuBtn);
+    liveLayer.appendChild(liveActionBar);
+
     root.appendChild(preGameLayer);
     root.appendChild(liveLayer);
     opts.mountEl.appendChild(root);
@@ -220,6 +237,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         resetLaunchProgress();
         stateStore.transition({ kind: "CASE_SELECT" });
     };
+    backToCasesBtn.addEventListener("click", goToCaseSelect);
+    mainMenuBtn.addEventListener("click", goToMainMenu);
     const beginCaseLaunch = (caseId: EnqueteurCaseId): void => {
         const entry = getPreGameCaseEntry(caseId);
         if (!entry) {
@@ -344,6 +363,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         if (state.kind === "LIVE_GAME") {
             preGameLayer.style.display = "none";
             liveLayer.style.display = "block";
+            liveActionBar.style.display = "flex";
             void mountLiveGameShell(state.caseId);
             return;
         }
@@ -355,6 +375,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         mountRevision += 1;
         preGameLayer.style.display = "flex";
         liveLayer.style.display = "none";
+        liveActionBar.style.display = "none";
         viewer?.setVisible(false);
 
         switch (state.kind) {

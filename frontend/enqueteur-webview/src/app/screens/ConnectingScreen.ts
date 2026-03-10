@@ -15,8 +15,8 @@ const CONNECTING_STEPS: readonly ConnectingStep[] = [
 const PHASE_NOTES: Record<ConnectingPhase, string> = {
     CASE_LAUNCH: "Requesting deterministic run launch from backend.",
     SESSION_STARTUP: "Launch metadata received. Opening the run-specific WebSocket endpoint.",
-    HANDSHAKING: "Socket connected. Exchanging VIEWER_HELLO / KERNEL_HELLO and SUBSCRIBE.",
-    WAITING_FOR_BASELINE: "Session connected. Waiting for baseline snapshot.",
+    HANDSHAKING: "Socket connected. Confirming session compatibility and stream subscription.",
+    WAITING_FOR_BASELINE: "Session connected. Waiting for initial world baseline.",
 };
 
 export type ConnectingScreenOpts = {

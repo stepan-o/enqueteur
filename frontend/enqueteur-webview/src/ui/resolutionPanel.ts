@@ -121,7 +121,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         const bestAwarded = recap?.best_outcome.awarded ?? (outcome?.best_outcome_awarded ?? false);
 
         renderLines(panel, [
-            ["Truth epoch", String(truthEpoch)],
+            ["Case state", `v${truthEpoch}`],
             ["Outcome", finalOutcome],
             ["Resolution path", path],
             ["Status", available ? "resolved" : "in progress"],
@@ -164,7 +164,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         if (recap.best_outcome.no_public_escalation) markers.push("no_public_escalation");
         if (recap.best_outcome.strong_key_trust) markers.push("strong_key_trust");
         if (markers.length > 0) {
-            renderSection(panel, "Best Outcome Markers", markers);
+            renderSection(panel, "Best Outcome Markers", markers.map(formatBestOutcomeMarker));
         }
         if (recap.soft_fail.triggered) {
             renderSection(panel, "Soft-Fail Triggers", recap.soft_fail.trigger_conditions.map(formatSoftFailTrigger));
@@ -438,6 +438,17 @@ function formatSoftFailTrigger(trigger: string): string {
         public_escalation: "Public escalation escalated case pressure",
     };
     return known[trigger] ?? `${humanizeToken(trigger)} (${trigger})`;
+}
+
+function formatBestOutcomeMarker(marker: string): string {
+    const known: Record<string, string> = {
+        best_outcome_awarded: "Best outcome awarded",
+        quiet_recovery: "Quiet recovery preserved",
+        no_public_escalation: "No public escalation",
+        strong_key_trust: "Strong key trust maintained",
+    };
+    if (known[marker]) return `${known[marker]} (${marker})`;
+    return `${humanizeToken(marker)} (${marker})`;
 }
 
 function formatAttemptResult(

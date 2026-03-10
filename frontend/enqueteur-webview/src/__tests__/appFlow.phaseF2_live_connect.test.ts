@@ -271,6 +271,72 @@ describe("Phase F2 live connect app flow", () => {
         flow.destroy();
     });
 
+    it("lets live playtests return to case selection directly from LIVE_GAME", async () => {
+        const startCase = vi.fn(async () => makeLaunchMetadata());
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const scriptedLiveClient = new ScriptedLiveClient();
+        const createLiveClient = vi.fn(() => scriptedLiveClient);
+        const fakeViewer = makeFakeViewer();
+        const createLiveViewer: NonNullable<AppFlowOpts["createLiveViewer"]> = vi.fn(
+            async () => fakeViewer
+        );
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+            createLiveClient,
+            createLiveViewer,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CASE_SELECT" });
+        clickFirstCaseCard();
+        await flushAsyncWork();
+
+        scriptedLiveClient.emitOpen();
+        scriptedLiveClient.emitMessage("KERNEL_HELLO", {
+            engine_name: "enqueteur",
+            engine_version: "0.1.0",
+            schema_version: "enqueteur_mbam_1",
+            world_id: "world-123",
+            run_id: "run-123",
+            seed: "A",
+            tick_rate_hz: 30,
+            time_origin_ms: 0,
+            render_spec: {},
+        });
+        scriptedLiveClient.emitMessage("SUBSCRIBED", {
+            stream_id: "stream-123",
+            effective_stream: "LIVE",
+            effective_channels: ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+            effective_diff_policy: "DIFF_ONLY",
+            effective_snapshot_policy: "ON_JOIN",
+            effective_compression: "NONE",
+        });
+        scriptedLiveClient.emitMessage("FULL_SNAPSHOT", {
+            schema_version: "enqueteur_mbam_1",
+            tick: 0,
+            step_hash: "hash-0",
+            state: { world: {} },
+        });
+        await flushAsyncWork();
+
+        expect(flow.getState()).toEqual({
+            kind: "LIVE_GAME",
+            caseId: "MBAM_01",
+        });
+
+        const backToCasesBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".flow-live-action-btn"))
+            .find((btn) => btn.textContent === "Back To Cases");
+        expect(backToCasesBtn).toBeTruthy();
+        backToCasesBtn?.click();
+
+        expect(flow.getState()).toEqual({ kind: "CASE_SELECT" });
+        expect(scriptedLiveClient.disconnect).toHaveBeenCalledTimes(1);
+        expect(fakeViewer.setVisible).toHaveBeenLastCalledWith(false);
+
+        flow.destroy();
+    });
+
     it("routes protocol incompatibility failures into startup incompatibility", async () => {
         const startCase = vi.fn(async () => makeLaunchMetadata());
         const caseLaunchClient: CaseLaunchClient = { startCase };

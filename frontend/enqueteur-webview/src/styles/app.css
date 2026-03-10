@@ -61,6 +61,21 @@ body {
   display: none;
 }
 
+.flow-live-actions {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 60;
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.flow-live-action-btn {
+  background: rgba(255, 252, 246, 0.92);
+  border-color: rgba(31, 38, 41, 0.28);
+}
+
 .flow-screen {
   width: min(720px, 92vw);
   display: grid;

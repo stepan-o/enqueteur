@@ -17,7 +17,7 @@ export function renderCaseSelectScreen(opts: CaseSelectScreenOpts): HTMLElement 
 
     const bodyEl = document.createElement("p");
     bodyEl.className = "flow-screen-body";
-    bodyEl.textContent = "Select a case to launch when live startup is wired.";
+    bodyEl.textContent = "Select a case to launch a live playtest session.";
 
     const caseGrid = document.createElement("div");
     caseGrid.className = "flow-case-grid";
