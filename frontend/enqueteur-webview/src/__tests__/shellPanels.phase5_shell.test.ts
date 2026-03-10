@@ -281,6 +281,36 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("Incorrect. Retry.");
     });
 
+    it("disables local minigame scoring when live dispatch fallback is disabled", async () => {
+        const store = new WorldStore();
+        const snapshot = makeMbamSnapshot(6);
+        if (!snapshot.state.dialogue?.learning) {
+            throw new Error("fixture must include dialogue learning state");
+        }
+        snapshot.state.dialogue.learning.scaffolding_policy.confirmation_strength = "compact";
+        store.applySnapshot(snapshot);
+
+        const notebook = mountNotebookPanel(store, {
+            allowLocalEvaluation: () => false,
+        });
+        document.body.appendChild(notebook.root);
+        const panel = notebook.root.querySelector(".notebook-panel");
+        const cards = Array.from(notebook.root.querySelectorAll<HTMLElement>(".notebook-minigame"));
+        const mg1Card = cards.find((card) => card.textContent?.includes("MG1 Wall Label Reading"));
+        expect(mg1Card).toBeTruthy();
+
+        const mg1Inputs = Array.from(mg1Card!.querySelectorAll<HTMLInputElement>("input.notebook-minigame-input"));
+        mg1Inputs[0]!.value = "Le Medaillon des Voyageurs";
+        mg1Inputs[0]!.dispatchEvent(new Event("input"));
+        mg1Inputs[1]!.value = "1898";
+        mg1Inputs[1]!.dispatchEvent(new Event("input"));
+        mg1Card!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!.click();
+        await flushUi();
+
+        expect(panel?.textContent).toContain("Live minigame dispatch is unavailable.");
+        expect(panel?.textContent).not.toContain("Correct (2/2).");
+    });
+
     it("renders terminal recap details for resolved MBAM outcomes", () => {
         const store = new WorldStore();
         const snapshot = makeMbamSnapshot(7);

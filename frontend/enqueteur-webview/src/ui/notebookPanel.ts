@@ -25,6 +25,7 @@ export type MinigameSubmitDispatcher = (
 export type NotebookPanelOpts = {
     dispatchMinigameSubmit?: MinigameSubmitDispatcher;
     canDispatchMinigameSubmit?: () => boolean;
+    allowLocalEvaluation?: () => boolean;
 };
 
 type MinigameUiState = {
@@ -137,6 +138,11 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
         return true;
     };
 
+    const canUseLocalEvaluationFallback = (): boolean => {
+        if (opts.allowLocalEvaluation) return opts.allowLocalEvaluation();
+        return true;
+    };
+
     const applyLiveMinigameResult = (
         state: MinigameUiState,
         result: MinigameSubmitResult
@@ -228,6 +234,15 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
             },
             onMg1Submit: (source) => {
                 if (!canDispatchLiveMinigame()) {
+                    if (!canUseLocalEvaluationFallback()) {
+                        mg1State = applyLiveMinigameResult(mg1State, {
+                            status: "unavailable",
+                            code: "live_dispatch_unavailable",
+                            summary: "Live minigame dispatch is unavailable.",
+                        });
+                        render();
+                        return;
+                    }
                     mg1State = evaluateMg1(mg1State, source, currentConfirmationStrength(lastState));
                     render();
                     return;
@@ -272,6 +287,15 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
             },
             onMg2Submit: (source) => {
                 if (!canDispatchLiveMinigame()) {
+                    if (!canUseLocalEvaluationFallback()) {
+                        mg2State = applyLiveMinigameResult(mg2State, {
+                            status: "unavailable",
+                            code: "live_dispatch_unavailable",
+                            summary: "Live minigame dispatch is unavailable.",
+                        });
+                        render();
+                        return;
+                    }
                     mg2State = evaluateMg2(mg2State, source, currentConfirmationStrength(lastState));
                     render();
                     return;
@@ -317,6 +341,15 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
             },
             onMg3Submit: (source) => {
                 if (!canDispatchLiveMinigame()) {
+                    if (!canUseLocalEvaluationFallback()) {
+                        mg3State = applyLiveMinigameResult(mg3State, {
+                            status: "unavailable",
+                            code: "live_dispatch_unavailable",
+                            summary: "Live minigame dispatch is unavailable.",
+                        });
+                        render();
+                        return;
+                    }
                     mg3State = evaluateMg3(mg3State, source, currentConfirmationStrength(lastState));
                     render();
                     return;
@@ -365,6 +398,15 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
             },
             onMg4Submit: (source) => {
                 if (!canDispatchLiveMinigame()) {
+                    if (!canUseLocalEvaluationFallback()) {
+                        mg4State = applyLiveMinigameResult(mg4State, {
+                            status: "unavailable",
+                            code: "live_dispatch_unavailable",
+                            summary: "Live minigame dispatch is unavailable.",
+                        });
+                        render();
+                        return;
+                    }
                     mg4State = evaluateMg4(mg4State, source, currentConfirmationStrength(lastState));
                     render();
                     return;

@@ -98,6 +98,7 @@ export function boot(opts: BootOpts): ViewerHandle {
     const notebookPanel = mountNotebookPanel(store, {
         dispatchMinigameSubmit: actionBridge.submitMinigameSubmit,
         canDispatchMinigameSubmit: actionBridge.canSubmitMinigameSubmit,
+        allowLocalEvaluation: () => currentMode === "offline",
     });
     opts.mountEl.appendChild(notebookPanel.root);
 
