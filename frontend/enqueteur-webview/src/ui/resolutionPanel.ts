@@ -72,7 +72,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
 
         const title = document.createElement("div");
         title.className = "resolution-title";
-        title.textContent = "Case Resolution";
+        title.textContent = "Decision Board";
         panel.appendChild(title);
 
         const recap = lastState.caseRecap;
@@ -135,13 +135,13 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
     };
 
     const renderResolutionActions = (panelEl: HTMLElement): void => {
-        renderSectionTitle(panelEl, "Live Resolution Actions");
+        renderSectionTitle(panelEl, "Resolution Actions");
 
         const info = document.createElement("div");
         info.className = "resolution-info";
         info.textContent = canDispatch()
-            ? "Submit ATTEMPT_RECOVERY / ATTEMPT_ACCUSATION to the live runtime."
-            : "Live resolution dispatch is unavailable.";
+            ? "Use recovery or accusation when you're ready to close the case."
+            : "Resolution actions are unavailable right now.";
         panelEl.appendChild(info);
 
         if (lastActionMessage) {

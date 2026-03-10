@@ -44,7 +44,7 @@ describe("Phase 7 terminal path resolution panel smoke", () => {
             const panelHandle = mountResolutionPanel(store);
             document.body.appendChild(panelHandle.root);
             const text = panelHandle.root.textContent ?? "";
-            expect(text).toContain("Case Resolution");
+            expect(text).toContain("Decision Board");
             expect(text).toContain(scenario.outcome);
             expect(text).toContain(scenario.path);
             panelHandle.root.remove();

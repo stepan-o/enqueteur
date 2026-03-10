@@ -58,6 +58,7 @@ export type AppFlowHandle = {
 };
 
 type ViewerHandle = import("./boot").ViewerHandle;
+type BootShellMode = import("./boot").BootShellMode;
 type LiveConnectionFailureReason =
     | EnqueteurLiveProtocolErrorCode
     | "TRANSPORT_ERROR"
@@ -290,9 +291,11 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
     const createLiveViewer = opts.createLiveViewer ?? (async (mountEl: HTMLElement) => {
         const { boot } = await loadBootModule();
+        const shellMode = resolveShellModeForSession(launchSessionStore.getLatestSession());
         return boot({
             mountEl,
             mode: "live",
+            shellMode,
             autoStart: false,
         });
     });
@@ -887,8 +890,10 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
     const mountLiveGameShell = async (caseId: EnqueteurCaseId): Promise<void> => {
         const activeRevision = ++mountRevision;
+        const shellMode = resolveShellModeForSession(launchSessionStore.getLatestSession());
 
         if (viewer) {
+            viewer.setShellMode?.(shellMode);
             viewer.setVisible(true);
             syncLiveStateToViewer();
             return;
@@ -906,6 +911,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 }
 
                 viewer = nextViewer;
+                viewer.setShellMode?.(shellMode);
                 viewer.setVisible(stateStore.getState().kind === "LIVE_GAME");
                 syncLiveStateToViewer();
             } catch (err: unknown) {
@@ -975,6 +981,10 @@ function makeClientCmdId(): string {
         const nibble = ch === "x" ? rand : ((rand & 0x3) | 0x8);
         return nibble.toString(16);
     });
+}
+
+function resolveShellModeForSession(session: LaunchSessionInfo | null): BootShellMode {
+    return session?.mode === "dev" ? "dev" : "playtest";
 }
 
 function isAbortError(err: unknown): boolean {

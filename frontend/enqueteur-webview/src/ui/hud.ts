@@ -2,28 +2,30 @@
 import type { WorldStore, WorldState, KvpEvent, KvpRoom } from "../state/worldStore";
 import type { OverlayStore, OverlayState, UIOverlayEvent } from "../state/overlayStore";
 
-/**
- * HUD (WEBVIEW-0001)
- * -----------------------------------------------------------------------------
- * Minimal DOM overlay for:
- * - connection status
- * - tick + step hash
- * - kernel hello summary
- * - desync banner (read-only; recovery click lives in PixiScene)
- *
- * Non-goals:
- * - No mutation of simulation state
- * - No protocol logic
- * - No heavy UI framework
- */
+export type HudProfile = "playtest" | "dev";
 
-export function mountHud(store: WorldStore, overlayStore?: OverlayStore): HTMLElement {
+export type HudOpts = {
+    profile?: HudProfile;
+};
+
+export type HudHandle = {
+    root: HTMLElement;
+    setProfile: (profile: HudProfile) => void;
+};
+
+export function mountHud(
+    store: WorldStore,
+    overlayStore?: OverlayStore,
+    opts: HudOpts = {}
+): HudHandle {
+    let profile: HudProfile = opts.profile ?? "dev";
+
     const root = document.createElement("div");
     root.style.position = "absolute";
     root.style.top = "10px";
     root.style.right = "10px";
     root.style.zIndex = "10";
-    root.style.pointerEvents = "none"; // HUD is informational; interactive controls come later.
+    root.style.pointerEvents = "none";
     root.style.fontFamily = "Chivo Mono, JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
     root.style.fontSize = "12px";
     root.style.color = "rgba(31, 36, 43, 0.95)";
@@ -39,7 +41,6 @@ export function mountHud(store: WorldStore, overlayStore?: OverlayStore): HTMLEl
     panel.style.lineHeight = "1.35";
     root.appendChild(panel);
 
-    // Optional: a small status dot
     const dot = document.createElement("span");
     dot.style.display = "inline-block";
     dot.style.width = "8px";
@@ -54,7 +55,7 @@ export function mountHud(store: WorldStore, overlayStore?: OverlayStore): HTMLEl
     header.style.opacity = "0.95";
 
     const title = document.createElement("span");
-    title.textContent = "Enqueteur WebView";
+    title.textContent = profile === "dev" ? "Enqueteur WebView" : "Case Status";
 
     header.appendChild(dot);
     header.appendChild(title);
@@ -76,7 +77,7 @@ export function mountHud(store: WorldStore, overlayStore?: OverlayStore): HTMLEl
     feedPanel.style.lineHeight = "1.35";
 
     const feedTitle = document.createElement("div");
-    feedTitle.textContent = "Live Feed";
+    feedTitle.textContent = profile === "dev" ? "Live Feed" : "Case Feed";
     feedTitle.style.fontWeight = "600";
     feedTitle.style.marginBottom = "6px";
 
@@ -90,59 +91,85 @@ export function mountHud(store: WorldStore, overlayStore?: OverlayStore): HTMLEl
     let lastWorldState: WorldState | null = null;
     let lastOverlayState: OverlayState | null = null;
 
-    // Render loop: on store updates
-    store.subscribe((s) => {
-        lastWorldState = s;
-        renderHud({ dot, body }, s);
-        renderFeed({ feedBody }, s, lastOverlayState);
+    const rerender = (): void => {
+        if (!lastWorldState) return;
+        renderHud({ dot, body }, lastWorldState, profile);
+        renderFeed({ feedBody }, lastWorldState, lastOverlayState, profile);
+    };
+
+    store.subscribe((state) => {
+        lastWorldState = state;
+        rerender();
     });
 
     if (overlayStore) {
-        overlayStore.subscribe((o) => {
-            lastOverlayState = o;
-            if (lastWorldState) renderFeed({ feedBody }, lastWorldState, o);
+        overlayStore.subscribe((overlayState) => {
+            lastOverlayState = overlayState;
+            rerender();
         });
     }
 
-    return root;
+    const setProfile = (nextProfile: HudProfile): void => {
+        if (profile === nextProfile) return;
+        profile = nextProfile;
+        title.textContent = profile === "dev" ? "Enqueteur WebView" : "Case Status";
+        feedTitle.textContent = profile === "dev" ? "Live Feed" : "Case Feed";
+        rerender();
+    };
+
+    return {
+        root,
+        setProfile,
+    };
 }
 
 function renderHud(
     el: { dot: HTMLSpanElement; body: HTMLDivElement },
-    s: WorldState
+    state: WorldState,
+    profile: HudProfile
 ): void {
-    const kh = s.kernelHello;
+    const connected = state.connected;
+    const desynced = state.desynced;
 
-    const connected = s.connected;
-    const desynced = s.desynced;
-
-    // Dot color (small, simple signal)
     if (!connected) el.dot.style.background = "rgba(59, 75, 90, 0.35)";
     else if (desynced) el.dot.style.background = "rgba(242, 160, 129, 0.9)";
     else el.dot.style.background = "rgba(90, 169, 178, 0.95)";
 
     const lines: string[] = [];
+    if (profile === "dev") {
+        const kernelHello = state.kernelHello;
+        lines.push(`mode:      ${state.mode}`);
+        lines.push(`connected: ${connected ? "yes" : "no"}`);
+        lines.push(`tick:      ${padLeft(String(state.tick), 8)}`);
+        lines.push(`stepHash:  ${truncateHash(state.stepHash)}`);
 
-    lines.push(`mode:      ${s.mode}`);
-    lines.push(`connected: ${connected ? "yes" : "no"}`);
-    lines.push(`tick:      ${padLeft(String(s.tick), 8)}`);
-    lines.push(`stepHash:  ${truncateHash(s.stepHash)}`);
-
-    if (kh) {
-        lines.push("");
-        lines.push(`kernel:    ${kh.engine_name}@${kh.engine_version}`);
-        lines.push(`schema:    ${kh.schema_version}`);
-        lines.push(`world_id:  ${kh.world_id}`);
-        lines.push(`run_id:    ${kh.run_id}`);
-        lines.push(`seed:      ${kh.seed}`);
-        lines.push(`tick_hz:   ${kh.tick_rate_hz}`);
+        if (kernelHello) {
+            lines.push("");
+            lines.push(`kernel:    ${kernelHello.engine_name}@${kernelHello.engine_version}`);
+            lines.push(`schema:    ${kernelHello.schema_version}`);
+            lines.push(`world_id:  ${kernelHello.world_id}`);
+            lines.push(`run_id:    ${kernelHello.run_id}`);
+            lines.push(`seed:      ${kernelHello.seed}`);
+            lines.push(`tick_hz:   ${kernelHello.tick_rate_hz}`);
+        } else {
+            lines.push("");
+            lines.push("kernel:    -");
+        }
     } else {
-        lines.push("");
-        lines.push("kernel:    -");
+        lines.push(`Session:   ${connected ? "Live" : "Connecting..."}`);
+        lines.push(`Day:       ${state.world?.day_index ?? 1}`);
+        lines.push(`Phase:     ${state.world?.day_phase ?? "-"}`);
+        lines.push(`Time:      ${formatTimeOfDay(state.world?.time_of_day)}`);
+        lines.push(`Clues:     ${state.investigation?.facts.known_fact_ids.length ?? 0} facts`);
+        const evidenceCount =
+            (state.investigation?.evidence.discovered_ids.length ?? 0)
+            + (state.investigation?.evidence.collected_ids.length ?? 0);
+        lines.push(`Evidence:  ${evidenceCount} found`);
+        lines.push(`Scene:     ${state.dialogue?.active_scene_id ?? "-"}`);
     }
 
-    const world = s.world;
-    if (world && (world.time_of_day !== undefined || world.day_phase !== undefined)) {
+    const world = state.world;
+    if (world && (world.time_of_day !== undefined || world.day_phase !== undefined) && profile === "dev") {
         const timeOfDay = formatTimeOfDay(world.time_of_day);
         lines.push("");
         lines.push(`day:       ${world.day_index ?? 1}`);
@@ -150,15 +177,12 @@ function renderHud(
         lines.push(`time:      ${timeOfDay}`);
     }
 
+    lines.push("");
     if (desynced) {
-        lines.push("");
-        lines.push("DESYNC:    YES");
-        lines.push(`reason:    ${s.desyncReason ?? "-"}`);
-        lines.push("");
-        lines.push("(See Pixi banner to recover)");
+        lines.push(profile === "dev" ? "DESYNC:    YES" : "Sync:      issue detected");
+        lines.push(`reason:    ${state.desyncReason ?? "-"}`);
     } else {
-        lines.push("");
-        lines.push("DESYNC:    no");
+        lines.push(profile === "dev" ? "DESYNC:    no" : "Sync:      stable");
     }
 
     el.body.textContent = lines.join("\n");
@@ -166,28 +190,30 @@ function renderHud(
 
 function renderFeed(
     el: { feedBody: HTMLDivElement },
-    s: WorldState,
-    overlay: OverlayState | null
+    state: WorldState,
+    overlay: OverlayState | null,
+    profile: HudProfile
 ): void {
     const lines: string[] = [];
-    const roomMap = s.rooms;
+    const roomMap = state.rooms;
+    const maxRows = profile === "dev" ? 6 : 4;
 
     if (overlay && overlay.recentEvents.length > 0) {
-        const events = overlay.recentEvents.slice(-6);
+        const events = overlay.recentEvents.slice(-maxRows);
         for (const ev of events) {
-            lines.push(formatOverlayEvent(ev, roomMap));
+            lines.push(profile === "dev" ? formatOverlayEvent(ev, roomMap) : formatOverlayEventPlaytest(ev, roomMap));
         }
     } else {
-        const events = Array.from(s.events.values())
+        const events = Array.from(state.events.values())
             .sort((a, b) => b.tick - a.tick)
-            .slice(0, 6);
+            .slice(0, maxRows);
         for (const ev of events) {
-            lines.push(formatWorldEvent(ev, roomMap));
+            lines.push(profile === "dev" ? formatWorldEvent(ev, roomMap) : formatWorldEventPlaytest(ev, roomMap));
         }
     }
 
     if (lines.length === 0) {
-        el.feedBody.textContent = "No events yet";
+        el.feedBody.textContent = profile === "dev" ? "No events yet" : "No activity yet";
         return;
     }
 
@@ -225,6 +251,15 @@ function formatWorldEvent(ev: KvpEvent, rooms: Map<number, KvpRoom>): string {
     return `${padLeft(String(ev.tick), 6)} · ${kind}${detail}`;
 }
 
+function formatWorldEventPlaytest(ev: KvpEvent, rooms: Map<number, KvpRoom>): string {
+    const payload = (ev.payload ?? {}) as Record<string, unknown>;
+    const kind = String(payload.kind ?? ev.origin ?? "event");
+    const roomId = toNumber(payload.room_id ?? payload.previous_room_id);
+    const roomLabel = roomId !== null ? rooms.get(roomId)?.label : null;
+    const detail = roomLabel ? ` · ${roomLabel}` : "";
+    return `${kind}${detail}`;
+}
+
 function formatOverlayEvent(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>): string {
     const data = ev.data ?? {};
     const roomId = toNumber(data.room_id);
@@ -237,6 +272,20 @@ function formatOverlayEvent(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>): st
         detail = ` · Agent ${agentId}`;
     }
     return `${padLeft(String(ev.tick), 6)} · ${ev.kind}${detail}`;
+}
+
+function formatOverlayEventPlaytest(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>): string {
+    const data = ev.data ?? {};
+    const roomId = toNumber(data.room_id);
+    const agentId = toNumber(data.agent_id);
+    let detail = "";
+    if (roomId !== null) {
+        const label = rooms.get(roomId)?.label ?? `Room ${roomId}`;
+        detail = ` · ${label}`;
+    } else if (agentId !== null) {
+        detail = ` · Agent ${agentId}`;
+    }
+    return `${ev.kind}${detail}`;
 }
 
 function toNumber(val: unknown): number | null {

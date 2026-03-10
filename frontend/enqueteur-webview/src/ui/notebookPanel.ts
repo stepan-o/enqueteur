@@ -188,7 +188,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
 
         const title = document.createElement("div");
         title.className = "notebook-title";
-        title.textContent = "Notebook";
+        title.textContent = "Case Notes";
         panel.appendChild(title);
 
         const investigation = lastState.investigation;

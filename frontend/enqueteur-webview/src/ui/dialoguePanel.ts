@@ -245,7 +245,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
 
         const title = document.createElement("div");
         title.className = "dialogue-title";
-        title.textContent = "Dialogue D'Enquete";
+        title.textContent = "Conversations";
         panel.appendChild(title);
 
         const focusSceneId = pickFocusSceneId(dialogue);

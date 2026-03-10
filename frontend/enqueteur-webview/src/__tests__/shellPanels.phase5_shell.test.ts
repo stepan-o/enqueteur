@@ -34,7 +34,7 @@ describe("Phase 5 shell panel rendering", () => {
         inspect.setSelection({ kind: "object", id: 3002 });
 
         const panel = inspect.root.querySelector(".inspect-panel");
-        expect(panel?.textContent).toContain("MBAM Investigation");
+        expect(panel?.textContent).toContain("Interaction");
         expect(panel?.textContent).toContain("O1_DISPLAY_CASE");
 
         const buttons = inspect.root.querySelectorAll<HTMLButtonElement>(".inspect-action-btn");
@@ -361,7 +361,7 @@ describe("Phase 5 shell panel rendering", () => {
         document.body.appendChild(resolution.root);
         const panel = resolution.root.querySelector(".resolution-panel");
 
-        expect(panel?.textContent).toContain("Case Resolution");
+        expect(panel?.textContent).toContain("Decision Board");
         expect(panel?.textContent).toContain("best_outcome");
         expect(panel?.textContent).toContain("recovery");
         expect(panel?.textContent).toContain("resolved");

@@ -245,10 +245,10 @@ function renderAgent(panel: HTMLElement, agent: KvpAgent, state: WorldState): vo
     renderLines(panel, lines);
 
     if (state.npcSemantic.length > 0) {
-        renderSectionTitle(panel, "MBAM NPC Semantic State");
+        renderSectionTitle(panel, "Character Cues");
         renderLines(panel, [
-            ["Projected NPC entries", String(state.npcSemantic.length)],
-            ["Tip", "Select an MBAM object to inspect action affordances."],
+            ["Visible profiles", String(state.npcSemantic.length)],
+            ["Tip", "Select an object to view available actions."],
         ]);
     }
 }
@@ -283,7 +283,7 @@ function renderObjectActionPanel(
     ]);
 
     const caseObjectId = resolveCaseObjectId(obj, state);
-    renderSectionTitle(panel, "MBAM Investigation");
+    renderSectionTitle(panel, "Interaction");
     if (!caseObjectId) {
         renderLines(panel, [
             ["Case Object", "not mapped"],

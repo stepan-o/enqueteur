@@ -6,7 +6,7 @@ import { KvpClient } from "../kvp/client";
 import { startOfflineRun } from "../kvp/offline";
 import type { OfflineRunHandle } from "../kvp/offline";
 import { PixiScene } from "../render/pixiScene";
-import { mountHud } from "../ui/hud";
+import { mountHud, type HudProfile } from "../ui/hud";
 import { mountDevControls } from "../ui/devControls";
 import { mountInspectPanel } from "../ui/inspectPanel";
 import { mountDialoguePanel } from "../ui/dialoguePanel";
@@ -31,12 +31,14 @@ import {
 import type { LiveCommandBridge } from "./live/liveCommandBridge";
 
 export type BootMode = "live" | "offline";
+export type BootShellMode = HudProfile;
 
 export type BootOpts = {
     mountEl: HTMLElement;
     wsUrl?: string;
     offlineBaseUrl?: string;
     mode?: BootMode;
+    shellMode?: BootShellMode;
     autoStart?: boolean;
 };
 
@@ -47,6 +49,7 @@ export type ViewerHandle = {
     ingestLiveSnapshot?: (payload: EnqueteurFullSnapshotPayload) => void;
     ingestLiveFrameDiff?: (payload: EnqueteurFrameDiffPayload) => void;
     setLiveCommandBridge?: (bridge: LiveCommandBridge | null) => void;
+    setShellMode?: (mode: BootShellMode) => void;
     stop: () => void;
     setVisible: (visible: boolean) => void;
     setDevControlsVisible: (visible: boolean) => void;
@@ -60,10 +63,12 @@ export function boot(opts: BootOpts): ViewerHandle {
     const env = (import.meta as any).env ?? {};
     const mode = (opts.mode ?? env.VITE_WEBVIEW_MODE ?? "offline") as BootMode;
     const autoStart = opts.autoStart ?? true;
+    const defaultShellMode: BootShellMode = mode === "live" ? "playtest" : "dev";
     let offlineHandle: OfflineRunHandle | null = null;
     let offlineBaseUrl = opts.offlineBaseUrl ?? env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min";
     let offlineSpeed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
     let currentMode: BootMode = mode;
+    let shellMode: BootShellMode = opts.shellMode ?? defaultShellMode;
     let liveCommandBridge: LiveCommandBridge | null = null;
     let client: KvpClient | null = null;
     let activeLiveWsUrl: string | null = null;
@@ -80,8 +85,8 @@ export function boot(opts: BootOpts): ViewerHandle {
     const scene = new PixiScene(opts.mountEl);
     const timeLighting = mountTimeLighting(opts.mountEl);
 
-    const hud = mountHud(store, overlayStore);
-    opts.mountEl.appendChild(hud);
+    const hud = mountHud(store, overlayStore, { profile: shellMode });
+    opts.mountEl.appendChild(hud.root);
 
     const inspector = mountInspectPanel(store, {
         dispatchInvestigationAction: actionBridge.submitInvestigationAction,
@@ -130,8 +135,9 @@ export function boot(opts: BootOpts): ViewerHandle {
     let devControlsVisibleRequested = true;
 
     const applyViewerUiVisibility = (): void => {
-        devControls.style.display = devControlsVisibleRequested ? "block" : "none";
-        hud.style.display = hudVisibleRequested ? "block" : "none";
+        const showDevControls = shellMode === "dev" && devControlsVisibleRequested;
+        devControls.style.display = showDevControls ? "block" : "none";
+        hud.root.style.display = hudVisibleRequested ? "block" : "none";
         inspector.root.style.display = "block";
         dialoguePanel.root.style.display = hudVisibleRequested ? "block" : "none";
         notebookPanel.root.style.display = hudVisibleRequested ? "block" : "none";
@@ -301,6 +307,13 @@ export function boot(opts: BootOpts): ViewerHandle {
         liveCommandBridge = bridge;
     };
 
+    const setShellMode = (nextMode: BootShellMode): void => {
+        if (shellMode === nextMode) return;
+        shellMode = nextMode;
+        hud.setProfile(nextMode);
+        applyViewerUiVisibility();
+    };
+
     const ingestLiveKernelHello = (payload: EnqueteurKernelHelloPayload): void => {
         store.setMode("live");
         store.setConnected(true);
@@ -340,6 +353,7 @@ export function boot(opts: BootOpts): ViewerHandle {
         ingestLiveSnapshot,
         ingestLiveFrameDiff,
         setLiveCommandBridge,
+        setShellMode,
         stop,
         setVisible,
         setDevControlsVisible,
