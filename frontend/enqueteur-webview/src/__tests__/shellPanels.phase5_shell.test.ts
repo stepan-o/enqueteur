@@ -171,6 +171,100 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).not.toContain("Truth epoch");
     });
 
+    it("keeps demo shell guidance readable while preserving key action reachability", async () => {
+        const store = new WorldStore();
+        const snapshot = makeMbamSnapshot(8);
+        if (!snapshot.state.dialogue || !snapshot.state.case_outcome || !snapshot.state.case_recap) {
+            throw new Error("fixture must include dialogue/outcome/recap projections");
+        }
+
+        snapshot.state.dialogue.recent_turns = [];
+        snapshot.state.case_outcome.primary_outcome = "recovery_success";
+        snapshot.state.case_outcome.terminal = true;
+        snapshot.state.case_outcome.recovery_success = true;
+        snapshot.state.case_outcome.accusation_success = false;
+        snapshot.state.case_outcome.soft_fail = false;
+        snapshot.state.case_recap = {
+            ...snapshot.state.case_recap,
+            available: true,
+            final_outcome_type: "recovery_success",
+            resolution_path: "recovery",
+            key_fact_ids: ["N1", "N3", "N4"],
+            key_evidence_ids: ["E2_CAFE_RECEIPT"],
+            key_action_flags: ["action:recover_medallion"],
+            contradiction_action_flags: ["action:state_contradiction_N3_N4"],
+            contradiction_requirement_satisfied: true,
+        };
+        store.applySnapshot(snapshot);
+
+        const inspect = mountInspectPanel(store, {
+            presentationProfile: "demo",
+            canDispatchInvestigationAction: () => true,
+            dispatchInvestigationAction: async () => ({
+                status: "accepted",
+                code: "projection_affordance_observed",
+                summary: "Action confirmed. Review new clues and keep following leads.",
+                revealed_fact_ids: ["N7"],
+                revealed_evidence_ids: [],
+            }),
+        });
+        inspect.setSelection({ kind: "object", id: 3002 });
+
+        const dialogue = mountDialoguePanel(store, {
+            presentationProfile: "demo",
+            canDispatchDialogueTurn: () => true,
+            dispatchDialogueTurn: async () => ({
+                status: "accepted",
+                code: "ok",
+                summary: "Line accepted",
+                revealed_fact_ids: [],
+            }),
+        });
+        dialogue.setInspectSelection({ kind: "room", id: 1 });
+
+        const notebook = mountNotebookPanel(store, {
+            presentationProfile: "demo",
+        });
+        const resolution = mountResolutionPanel(store, {
+            presentationProfile: "demo",
+            canDispatchResolutionAttempt: () => true,
+        });
+
+        document.body.appendChild(inspect.root);
+        document.body.appendChild(dialogue.root);
+        document.body.appendChild(notebook.root);
+        document.body.appendChild(resolution.root);
+
+        const inspectPanel = inspect.root.querySelector(".inspect-panel");
+        expect(inspectPanel?.textContent).toContain("Field Prompt");
+        const inspectButtons = inspect.root.querySelectorAll<HTMLButtonElement>(".inspect-action-btn");
+        expect(inspectButtons.length).toBeGreaterThan(0);
+        expect(inspectButtons[0]?.disabled).toBe(false);
+        inspectButtons[0]?.click();
+        await flushUi();
+        expect(inspectPanel?.textContent).toContain("Latest Result");
+        expect(inspectPanel?.textContent).not.toContain("Code");
+
+        const dialoguePanel = dialogue.root.querySelector(".dialogue-panel");
+        expect(dialoguePanel?.textContent).toContain("Case Setup Hint");
+        expect(dialoguePanel?.textContent).toContain("Choose Your Line");
+        expect(dialoguePanel?.textContent).not.toContain("Summary Guidance");
+        const submitBtn = dialogue.root.querySelector<HTMLButtonElement>(".dialogue-submit");
+        expect(submitBtn?.disabled).toBe(false);
+
+        const notebookPanel = notebook.root.querySelector(".notebook-panel");
+        expect(notebookPanel?.textContent).toContain("Case Setup");
+        expect(notebookPanel?.textContent).toContain("Default demo route:");
+        expect(notebookPanel?.textContent).not.toContain("Internal Playtest Path");
+        expect(notebookPanel?.textContent).not.toContain("Truth epoch");
+
+        const resolutionPanel = resolution.root.querySelector(".resolution-panel");
+        expect(resolutionPanel?.textContent).toContain("Case Outcome");
+        expect(resolutionPanel?.textContent).toContain("What You Proved");
+        expect(resolutionPanel?.textContent).toContain("What Mattered Most");
+        expect(resolutionPanel?.textContent).not.toContain("Resolution path");
+    });
+
     it("evaluates MG1-MG4 notebook widgets deterministically", async () => {
         const store = new WorldStore();
         store.applySnapshot(makeMbamSnapshot(4));

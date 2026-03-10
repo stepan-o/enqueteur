@@ -47,6 +47,13 @@ function clickFirstCaseCard(): void {
     card.click();
 }
 
+function clickButtonByText(label: string): void {
+    const button = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+        .find((node) => node.textContent?.trim() === label);
+    if (!button) throw new Error(`button not found: ${label}`);
+    button.click();
+}
+
 function makeFakeViewer() {
     return {
         startOffline: vi.fn(async () => {}),
@@ -155,11 +162,108 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     document.body.innerHTML = "";
 });
 
 describe("Phase F2 live connect app flow", () => {
+    it("smokes demo-mode boot to baseline-gated LIVE_GAME through real pre-game screens", async () => {
+        vi.useFakeTimers();
+        const originalUrl = window.location.href;
+        window.history.pushState({}, "", "/?demo=1");
+
+        const startCase = vi.fn(async () => makeLaunchMetadata());
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const scriptedLiveClient = new ScriptedLiveClient();
+        const createLiveClient = vi.fn(() => scriptedLiveClient);
+        const fakeViewer = makeFakeViewer();
+        const createLiveViewer: NonNullable<AppFlowOpts["createLiveViewer"]> = vi.fn(
+            async () => fakeViewer
+        );
+
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 5,
+            caseLaunchClient,
+            createLiveClient,
+            createLiveViewer,
+        } satisfies AppFlowOpts);
+
+        expect(flow.getState()).toEqual({ kind: "LOADING" });
+        expect(document.body.textContent).toContain("Preparing Case");
+
+        await vi.advanceTimersByTimeAsync(130);
+        await flushAsyncWork();
+        expect(flow.getState()).toEqual({ kind: "MAIN_MENU" });
+        expect(document.body.textContent).toContain("Start Case");
+
+        clickButtonByText("Start Case");
+        expect(flow.getState()).toEqual({ kind: "CASE_SELECT" });
+        expect(document.body.textContent).toContain("Default demo route:");
+
+        clickFirstCaseCard();
+        await flushAsyncWork();
+        expect(flow.getState()).toEqual({
+            kind: "CONNECTING",
+            caseId: "MBAM_01",
+            phase: "SESSION_STARTUP",
+        });
+        expect(document.body.textContent).toContain("Demo route:");
+
+        scriptedLiveClient.emitOpen();
+        expect(flow.getState()).toEqual({
+            kind: "CONNECTING",
+            caseId: "MBAM_01",
+            phase: "HANDSHAKING",
+        });
+
+        scriptedLiveClient.emitMessage("KERNEL_HELLO", {
+            engine_name: "enqueteur",
+            engine_version: "0.1.0",
+            schema_version: "enqueteur_mbam_1",
+            world_id: "world-123",
+            run_id: "run-123",
+            seed: "A",
+            tick_rate_hz: 30,
+            time_origin_ms: 0,
+            render_spec: {},
+        });
+        scriptedLiveClient.emitMessage("SUBSCRIBED", {
+            stream_id: "stream-123",
+            effective_stream: "LIVE",
+            effective_channels: ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+            effective_diff_policy: "DIFF_ONLY",
+            effective_snapshot_policy: "ON_JOIN",
+            effective_compression: "NONE",
+        });
+        expect(flow.getState()).toEqual({
+            kind: "CONNECTING",
+            caseId: "MBAM_01",
+            phase: "WAITING_FOR_BASELINE",
+        });
+
+        scriptedLiveClient.emitMessage("FULL_SNAPSHOT", {
+            schema_version: "enqueteur_mbam_1",
+            tick: 0,
+            step_hash: "hash-0",
+            state: { world: {} },
+        });
+        await flushAsyncWork();
+
+        expect(flow.getState()).toEqual({
+            kind: "LIVE_GAME",
+            caseId: "MBAM_01",
+        });
+        expect(fakeViewer.setShellMode).toHaveBeenCalledWith("demo");
+        const liveActionBar = document.querySelector<HTMLElement>(".flow-live-actions");
+        expect(liveActionBar?.style.display).toBe("none");
+
+        flow.destroy();
+        window.history.pushState({}, "", originalUrl);
+        vi.useRealTimers();
+    });
+
     it("uses launch metadata to start live connect and advances explicit connecting phases", async () => {
         let resolveStartCase: (value: CaseLaunchMetadata) => void = () => {};
         const startCase = vi.fn(
