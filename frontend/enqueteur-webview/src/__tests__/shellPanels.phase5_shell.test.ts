@@ -249,6 +249,10 @@ describe("Phase 5 shell panel rendering", () => {
         expect(dialoguePanel?.textContent).toContain("Case Setup Hint");
         expect(dialoguePanel?.textContent).toContain("Choose Your Line");
         expect(dialoguePanel?.textContent).not.toContain("Summary Guidance");
+        expect(dialoguePanel?.textContent).toContain("Opening interview");
+        expect(dialoguePanel?.textContent).toContain("Who to question");
+        expect(dialoguePanel?.textContent).toContain("Elodie");
+        expect(dialoguePanel?.textContent).not.toContain("S1");
         const submitBtn = dialogue.root.querySelector<HTMLButtonElement>(".dialogue-submit");
         expect(submitBtn?.disabled).toBe(false);
 
@@ -257,6 +261,8 @@ describe("Phase 5 shell panel rendering", () => {
         expect(notebookPanel?.textContent).toContain("Default demo route:");
         expect(notebookPanel?.textContent).not.toContain("Internal Playtest Path");
         expect(notebookPanel?.textContent).not.toContain("Truth epoch");
+        expect(notebookPanel?.textContent).not.toContain("N1  ");
+        expect(notebookPanel?.textContent).not.toContain("E2 ");
 
         const resolutionPanel = resolution.root.querySelector(".resolution-panel");
         expect(resolutionPanel?.textContent).toContain("Case Outcome");

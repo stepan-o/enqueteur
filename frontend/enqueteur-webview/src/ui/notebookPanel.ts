@@ -237,23 +237,23 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
                 ["Truth epoch", String(investigation.truth_epoch)],
             ]);
         } else {
-            renderLines(panel, [["Case", lastState.caseState?.case_id ?? "MBAM_01"]]);
+            renderLines(panel, [["Case", onboarding.caseTitle]]);
         }
 
         renderSectionTitle(panel, "Key Object Leads");
         renderKeyObjectLeads(panel, investigation, isDemoProfile);
 
         renderSectionTitle(panel, "Evidence Tray");
-        renderEvidenceTray(panel, investigation);
+        renderEvidenceTray(panel, investigation, isDemoProfile);
 
         renderSectionTitle(panel, "Known Facts");
-        renderFactVisibility(panel, investigation);
+        renderFactVisibility(panel, investigation, isDemoProfile);
 
         renderSectionTitle(panel, "Contradictions");
         renderContradictions(panel, lastState, investigation, isDemoProfile);
 
         renderSectionTitle(panel, "Timeline Clues");
-        renderTimeline(panel, investigation);
+        renderTimeline(panel, investigation, isDemoProfile);
 
         renderSectionTitle(panel, "Field Exercises");
         renderMinigames(panel, {
@@ -1190,7 +1190,7 @@ function renderKeyObjectLeads(
     }
 }
 
-function renderEvidenceTray(panel: HTMLElement, investigation: KvpInvestigationState): void {
+function renderEvidenceTray(panel: HTMLElement, investigation: KvpInvestigationState, isDemoProfile: boolean): void {
     const collected = new Set(investigation.evidence.collected_ids);
     const discovered = investigation.evidence.discovered_ids;
     if (discovered.length === 0 && investigation.evidence.observed_not_collected_ids.length === 0) {
@@ -1205,7 +1205,7 @@ function renderEvidenceTray(panel: HTMLElement, investigation: KvpInvestigationS
     for (const evidenceId of discovered) {
         const row = document.createElement("div");
         row.className = "notebook-row";
-        row.textContent = `${labelForEvidence(evidenceId)}  ${collected.has(evidenceId) ? "(collected)" : "(found)"}`;
+        row.textContent = `${labelForEvidence(evidenceId, !isDemoProfile)}  ${collected.has(evidenceId) ? "(collected)" : "(found)"}`;
         list.appendChild(row);
     }
 
@@ -1214,7 +1214,7 @@ function renderEvidenceTray(panel: HTMLElement, investigation: KvpInvestigationS
         if (collected.has(evidenceId)) continue;
         const row = document.createElement("div");
         row.className = "notebook-row is-observed";
-        row.textContent = `${labelForEvidence(evidenceId)}  (seen, not collected)`;
+        row.textContent = `${labelForEvidence(evidenceId, !isDemoProfile)}  (seen, not collected)`;
         list.appendChild(row);
     }
 
@@ -1226,7 +1226,7 @@ function renderEvidenceTray(panel: HTMLElement, investigation: KvpInvestigationS
     }
 }
 
-function renderFactVisibility(panel: HTMLElement, investigation: KvpInvestigationState): void {
+function renderFactVisibility(panel: HTMLElement, investigation: KvpInvestigationState, isDemoProfile: boolean): void {
     const knownFacts = investigation.facts.known_fact_ids;
     if (knownFacts.length === 0) {
         renderInfo(panel, "No known facts yet.");
@@ -1238,7 +1238,9 @@ function renderFactVisibility(panel: HTMLElement, investigation: KvpInvestigatio
     for (const factId of knownFacts) {
         const row = document.createElement("div");
         row.className = "notebook-row";
-        row.textContent = `${factId}  ${labelForFact(factId)}`;
+        row.textContent = isDemoProfile
+            ? labelForFact(factId, false)
+            : `${factId}  ${labelForFact(factId, true)}`;
         list.appendChild(row);
     }
 }
@@ -1252,9 +1254,10 @@ function renderContradictions(
     const contradictions = investigation.contradictions;
     const surfaced = new Set(state.dialogue?.surfaced_scene_ids ?? []);
     const contradictionScenes = ["S3", "S5"].filter((sceneId) => surfaced.has(sceneId));
+    const contradictionSceneLabels = contradictionScenes.map(labelScene);
     const actionRoute = contradictionScenes.length > 0
-        ? `Conversations: present_evidence / challenge_contradiction in ${contradictionScenes.join(", ")}`
-        : "Conversations: present evidence first; contradiction scenes appear as the case advances.";
+        ? `In Conversations, present evidence or challenge contradictions in ${contradictionSceneLabels.join(", ")}.`
+        : "In Conversations, present evidence first; contradiction scenes appear as the case advances.";
 
     renderLines(panel, isDemoProfile
         ? [
@@ -1300,7 +1303,7 @@ function renderContradictions(
     }
 }
 
-function renderTimeline(panel: HTMLElement, investigation: KvpInvestigationState): void {
+function renderTimeline(panel: HTMLElement, investigation: KvpInvestigationState, isDemoProfile: boolean): void {
     const knownFactSet = new Set(investigation.facts.known_fact_ids);
     const ordered = FACT_TIMELINE_ORDER.filter((factId) => knownFactSet.has(factId));
     if (ordered.length === 0) {
@@ -1313,7 +1316,9 @@ function renderTimeline(panel: HTMLElement, investigation: KvpInvestigationState
     for (const factId of ordered) {
         const row = document.createElement("div");
         row.className = "notebook-row is-timeline";
-        row.textContent = `${factId}  ${labelForFact(factId)}`;
+        row.textContent = isDemoProfile
+            ? labelForFact(factId, false)
+            : `${factId}  ${labelForFact(factId, true)}`;
         list.appendChild(row);
     }
     renderInfo(panel, "Timeline clues help you challenge contradictions and support final decisions.");
@@ -1371,14 +1376,31 @@ function extractEvidenceIdFromObservedClue(clueId: string): string | null {
     return evidenceId.length > 0 ? evidenceId : null;
 }
 
-function labelForEvidence(evidenceId: string): string {
-    return EVIDENCE_LABELS[evidenceId] ?? evidenceId;
+function labelForEvidence(evidenceId: string, includeCode = true): string {
+    const label = EVIDENCE_LABELS[evidenceId] ?? evidenceId;
+    return includeCode ? label : stripLeadingCode(label);
 }
 
-function labelForFact(factId: string): string {
-    return FACT_LABELS[factId] ?? factId;
+function labelForFact(factId: string, includeCode = true): string {
+    const label = FACT_LABELS[factId] ?? factId;
+    return includeCode ? label : stripLeadingCode(label);
 }
 
 function labelForObject(objectId: string): string {
     return OBJECT_LABELS[objectId] ?? objectId;
+}
+
+function labelScene(sceneId: string): string {
+    const labels: Record<string, string> = {
+        S1: "Opening interview",
+        S2: "Security follow-up",
+        S3: "Timeline challenge",
+        S4: "Witness check",
+        S5: "Final confrontation",
+    };
+    return labels[sceneId] ?? sceneId;
+}
+
+function stripLeadingCode(value: string): string {
+    return value.replace(/^[A-Z]\d+\s+/, "");
 }

@@ -146,6 +146,23 @@ const INTENT_LABELS: Record<string, string> = {
     goodbye: "Close conversation",
 };
 
+const NPC_DISPLAY_LABELS: Record<string, string> = {
+    elodie: "Elodie",
+    marc: "Marc",
+    samira: "Samira",
+    jo: "Jo",
+    laurent: "Laurent",
+    outsider: "Outside Actor",
+};
+
+const SCENE_DISPLAY_LABELS: Record<string, string> = {
+    S1: "Opening interview",
+    S2: "Security follow-up",
+    S3: "Timeline challenge",
+    S4: "Witness check",
+    S5: "Final confrontation",
+};
+
 const WORLD_ROOM_ID_TO_TOKEN: Record<number, string> = {
     1: "MBAM_LOBBY",
     2: "GALLERY_AFFICHES",
@@ -286,7 +303,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         }
 
         renderSectionTitle(panel, "Character Read");
-        renderNpcStateCard(panel, npcCardState);
+        renderNpcStateCard(panel, npcCardState, detailed);
         const completedSetupSteps = onboarding.steps.filter((step) => step.done).length;
         const needsStarterGuidance = completedSetupSteps < 2 || dialogue.recent_turns.length === 0;
         if (needsStarterGuidance) {
@@ -305,8 +322,8 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
                 ["Contradiction path", dialogue.contradiction_requirement_satisfied ? "satisfied" : "pending"],
             ]
             : [
-                ["Active scene", dialogue.active_scene_id ?? "none"],
-                ["Current NPC", npcCardState?.npc_id ?? focusNpcId ?? "unknown"],
+                ["Current scene", labelScene(dialogue.active_scene_id)],
+                ["Who to question", labelNpc(npcCardState?.npc_id ?? focusNpcId)],
                 ["Dialogue facts", String(dialogue.revealed_fact_ids.length)],
             ]);
         if (detailed) {
@@ -314,7 +331,13 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         }
 
         renderSectionTitle(panel, "Scene Progress");
-        renderSceneProgress(panel, dialogue.scene_completion, dialogue.surfaced_scene_ids, focusSceneId);
+        renderSceneProgress(
+            panel,
+            dialogue.scene_completion,
+            dialogue.surfaced_scene_ids,
+            focusSceneId,
+            !detailed
+        );
 
         if (detailed) {
             renderSectionTitle(panel, "Summary Guidance");
@@ -335,7 +358,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             if (dialogue.recent_turns.length === 0) {
                 renderInfo(
                     panel,
-                    `Start simple with ${focusNpcId}: ask what/when/where, then summarize in French to move the scene forward.`
+                    `Start simple with ${labelNpc(focusNpcId)}: ask what/when/where, then summarize in French to move the scene forward.`
                 );
             }
             const allowedIntents = sceneConfig.allowedIntents;
@@ -458,7 +481,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             renderSectionTitle(panel, "Latest Attempt");
             renderDataLines(panel, [
                 ["Tick", String(submitFeedback.tick)],
-                ["Scene", submitFeedback.sceneId],
+                ["Scene", detailed ? submitFeedback.sceneId : labelScene(submitFeedback.sceneId)],
                 ["Intent", presentationProfile === "demo" ? labelIntent(submitFeedback.intentId) : submitFeedback.intentId],
                 ["Status", detailed ? `${submitFeedback.result.status}/${submitFeedback.result.code}` : submitFeedback.result.status],
                 ["Summary", submitFeedback.result.summary ?? "none"],
@@ -575,7 +598,7 @@ function roomTokenFromSelection(state: WorldState, selection: Exclude<DialogueIn
     return typeof roomId === "number" ? (WORLD_ROOM_ID_TO_TOKEN[roomId] ?? null) : null;
 }
 
-function renderNpcStateCard(panel: HTMLElement, npc: KvpNpcSemanticState | null): void {
+function renderNpcStateCard(panel: HTMLElement, npc: KvpNpcSemanticState | null, detailed: boolean): void {
     if (!npc) {
         renderInfo(panel, "No character is in focus yet.");
         return;
@@ -585,17 +608,24 @@ function renderNpcStateCard(panel: HTMLElement, npc: KvpNpcSemanticState | null)
 
     const portraitSlot = document.createElement("div");
     portraitSlot.className = "dialogue-npc-portrait";
-    portraitSlot.textContent = `${npc.npc_id}\n${npc.card_state.portrait_variant}`;
+    portraitSlot.textContent = detailed
+        ? `${npc.npc_id}\n${npc.card_state.portrait_variant}`
+        : labelNpc(npc.npc_id);
 
     const meta = document.createElement("div");
     meta.className = "dialogue-npc-meta";
     appendNpcLine(meta, "Emotion", npc.emotion);
     appendNpcLine(meta, "Stance", npc.stance);
-    appendNpcLine(meta, "Alignment", npc.soft_alignment_hint);
-    appendNpcLine(meta, "Trust trend", npc.card_state.trust_trend);
-    appendNpcLine(meta, "Tell cue", npc.card_state.tell_cue ?? "none");
-    appendNpcLine(meta, "Suggested mode", npc.card_state.suggested_interaction_mode);
-    appendNpcLine(meta, "Availability", npc.availability);
+    if (detailed) {
+        appendNpcLine(meta, "Alignment", npc.soft_alignment_hint);
+        appendNpcLine(meta, "Trust trend", npc.card_state.trust_trend);
+        appendNpcLine(meta, "Tell cue", npc.card_state.tell_cue ?? "none");
+        appendNpcLine(meta, "Suggested mode", npc.card_state.suggested_interaction_mode);
+        appendNpcLine(meta, "Availability", npc.availability);
+    } else {
+        appendNpcLine(meta, "Trust trend", npc.card_state.trust_trend);
+        appendNpcLine(meta, "Availability", npc.availability);
+    }
 
     card.append(portraitSlot, meta);
     panel.appendChild(card);
@@ -752,7 +782,9 @@ function renderContradictionRoute(
     const usableScenes = dialogue.scene_completion
         .map((row) => row.scene_id)
         .filter((sceneId) => surfaced.has(sceneId) && sceneSupportsContradictionIntent(sceneId));
-    const useScenesLabel = usableScenes.length > 0 ? usableScenes.join(", ") : "none surfaced yet";
+    const useScenesLabel = usableScenes.length > 0
+        ? usableScenes.map((sceneId) => (detailed ? sceneId : labelScene(sceneId))).join(", ")
+        : (detailed ? "none surfaced yet" : "none available yet");
     const contradictionStatus = contradictions.requirement_satisfied
         ? "ready"
         : contradictions.unlockable_edge_ids.length > 0
@@ -769,7 +801,7 @@ function renderContradictionRoute(
         ]
         : [
             ["Status", contradictionStatus],
-            ["Use in scenes", useScenesLabel],
+            ["Where to use", useScenesLabel],
         ]);
     if (detailed && contradictions.unlockable_edge_ids.length > 0) {
         renderInfo(
@@ -801,7 +833,12 @@ function renderContradictionRoute(
         );
     }
     if (focusSceneId && !sceneSupportsContradictionIntent(focusSceneId)) {
-        renderInfo(panel, `Scene ${focusSceneId} does not currently allow contradiction actions.`);
+        renderInfo(
+            panel,
+            detailed
+                ? `Scene ${focusSceneId} does not currently allow contradiction actions.`
+                : "This conversation does not allow contradiction actions yet."
+        );
     }
     if (selectedIntent === "challenge_contradiction" && !contradictions.requirement_satisfied) {
         renderInfo(panel, "This action may stay blocked until contradiction readiness improves.");
@@ -917,7 +954,8 @@ function renderSceneProgress(
     panel: HTMLElement,
     rows: Array<{ scene_id: string; completion_state: string }>,
     surfacedSceneIds: string[],
-    focusSceneId: string | null
+    focusSceneId: string | null,
+    friendlyLabels = false
 ): void {
     const wrap = document.createElement("div");
     wrap.className = "dialogue-scene-list";
@@ -928,7 +966,8 @@ function renderSceneProgress(
         const item = document.createElement("div");
         item.className = "dialogue-scene-row";
         if (row.scene_id === focusSceneId) item.classList.add("is-focus");
-        item.textContent = `${row.scene_id}  ${row.completion_state}${surfaced.has(row.scene_id) ? "  surfaced" : ""}`;
+        const sceneLabel = friendlyLabels ? labelScene(row.scene_id) : row.scene_id;
+        item.textContent = `${sceneLabel}  ${row.completion_state}${surfaced.has(row.scene_id) ? "  surfaced" : ""}`;
         wrap.appendChild(item);
     }
 }
@@ -1088,7 +1127,7 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[], detai
         line1.className = "dialogue-turn-main";
         line1.textContent = detailed
             ? `#${turn.turn_index} ${turn.scene_id} ${turn.npc_id} ${turn.intent_id}`
-            : `#${turn.turn_index} ${turn.scene_id} ${labelIntent(turn.intent_id)}`;
+            : `#${turn.turn_index} ${labelScene(turn.scene_id)} ${labelIntent(turn.intent_id)}`;
         const line2 = document.createElement("div");
         line2.className = "dialogue-turn-meta";
         line2.textContent = detailed
@@ -1166,6 +1205,16 @@ function renderInfo(panel: HTMLElement, text: string): void {
     line.className = "dialogue-info";
     line.textContent = text;
     panel.appendChild(line);
+}
+
+function labelNpc(npcId: string | null | undefined): string {
+    if (!npcId) return "Unknown";
+    return NPC_DISPLAY_LABELS[npcId] ?? humanizeToken(npcId);
+}
+
+function labelScene(sceneId: string | null | undefined): string {
+    if (!sceneId) return "Not selected";
+    return SCENE_DISPLAY_LABELS[sceneId] ?? sceneId;
 }
 
 function labelIntent(intentId: string): string {

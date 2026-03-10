@@ -209,6 +209,7 @@ describe("Phase F2 live connect app flow", () => {
             caseId: "MBAM_01",
             phase: "SESSION_STARTUP",
         });
+        expect(document.body.textContent).toContain("Preparing Le Petit Vol du Musée.");
         expect(document.body.textContent).toContain("Demo route:");
 
         scriptedLiveClient.emitOpen();

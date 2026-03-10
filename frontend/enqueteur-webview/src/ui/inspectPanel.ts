@@ -105,7 +105,7 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
         if (selection.kind === "room") {
             const room = lastState.rooms.get(selection.id);
             if (!room) return renderMissing("Room", selection.id);
-            renderRoom(panel, room);
+            renderRoom(panel, room, presentationProfile !== "demo");
             return;
         }
 
@@ -222,20 +222,26 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
     };
 }
 
-function renderRoom(panel: HTMLElement, room: KvpRoom): void {
+function renderRoom(panel: HTMLElement, room: KvpRoom, detailed: boolean): void {
     const title = document.createElement("div");
     title.className = "inspect-title";
     title.textContent = room.label ?? `Room ${room.room_id}`;
     panel.appendChild(title);
 
-    const lines: Array<[string, string]> = [
-        ["Room", String(room.room_id)],
-        ["Zone", room.zone ?? "unknown"],
-        ["Level", room.level?.toString() ?? "0"],
-        ["Kind", String(room.kind_code)],
-        ["Tension", room.tension_tier ?? "none"],
-        ["Occupants", String(room.occupants?.length ?? 0)],
-    ];
+    const lines: Array<[string, string]> = detailed
+        ? [
+            ["Room", String(room.room_id)],
+            ["Zone", room.zone ?? "unknown"],
+            ["Level", room.level?.toString() ?? "0"],
+            ["Kind", String(room.kind_code)],
+            ["Tension", room.tension_tier ?? "none"],
+            ["Occupants", String(room.occupants?.length ?? 0)],
+        ]
+        : [
+            ["Area", humanizeClassCode(room.zone ?? "gallery")],
+            ["Tension", room.tension_tier ?? "steady"],
+            ["People nearby", String(room.occupants?.length ?? 0)],
+        ];
 
     renderLines(panel, lines);
 }
@@ -248,12 +254,12 @@ function renderAgent(
 ): void {
     const title = document.createElement("div");
     title.className = "inspect-title";
-    title.textContent = `Character ${agent.agent_id}`;
+    title.textContent = detailed ? `Character ${agent.agent_id}` : "Character";
     panel.appendChild(title);
 
     const roomLabel = state.rooms.get(agent.room_id)?.label ?? `Room ${agent.room_id}`;
     const activeObject = findObjectByOccupant(state, agent.agent_id);
-    const context = activeObject ? `${activeObject.class_code} #${activeObject.object_id}` : "none";
+    const context = describeInteractionContext(activeObject, detailed);
 
     const lines: Array<[string, string]> = detailed
         ? [
@@ -293,14 +299,21 @@ function renderObjectActionPanel(
     state: WorldState,
     opts: RenderActionPanelOpts
 ): void {
+    const caseObjectId = resolveCaseObjectId(obj, state);
+    const objectGuide = caseObjectId ? getMbamObjectGuide(caseObjectId) : null;
+
     const title = document.createElement("div");
     title.className = "inspect-title";
-    title.textContent = `${obj.class_code}`;
+    title.textContent = opts.detailed
+        ? `${obj.class_code}`
+        : (objectGuide?.label ?? humanizeClassCode(obj.class_code));
     panel.appendChild(title);
 
     const roomLabel = state.rooms.get(obj.room_id)?.label ?? `Room ${obj.room_id}`;
     const occupant = obj.occupant_agent_id ? state.agents.get(obj.occupant_agent_id) : null;
-    const occupantLabel = occupant ? `Agent ${occupant.agent_id}` : "none";
+    const occupantLabel = opts.detailed
+        ? (occupant ? `Agent ${occupant.agent_id}` : "none")
+        : (occupant ? "Someone nearby" : "No one nearby");
     if (opts.detailed) {
         renderLines(panel, [
             ["Object", String(obj.object_id)],
@@ -315,21 +328,23 @@ function renderObjectActionPanel(
         ]);
     }
 
-    const caseObjectId = resolveCaseObjectId(obj, state);
     renderSectionTitle(panel, "Investigation Actions");
     if (!caseObjectId) {
-        renderLines(panel, [
-            ["Object Link", "not available"],
-            ["Reason", "This object is not interactable in this case."],
-        ]);
+        renderInfo(panel, opts.detailed
+            ? "Object link not available. This object is not interactable in this case."
+            : "No direct case action is available on this object right now.");
         return;
     }
 
     const investigationObject = state.investigation?.objects.find((row) => row.object_id === caseObjectId) ?? null;
-    const objectGuide = getMbamObjectGuide(caseObjectId);
-    renderLines(panel, [[opts.detailed ? "Case Object" : "Object", `${caseObjectId}${objectGuide ? ` (${objectGuide.label})` : ""}`]]);
+    renderLines(panel, [[
+        opts.detailed ? "Case Object" : "Object",
+        opts.detailed
+            ? `${caseObjectId}${objectGuide ? ` (${objectGuide.label})` : ""}`
+            : (objectGuide?.label ?? caseObjectId),
+    ]]);
     if (objectGuide) {
-        renderLines(panel, [["Location hint", objectGuide.location_hint]]);
+        renderLines(panel, [[opts.detailed ? "Location hint" : "Where to look", objectGuide.location_hint]]);
     }
 
     if (!investigationObject || !state.investigation) {
@@ -337,14 +352,23 @@ function renderObjectActionPanel(
         return;
     }
 
-    renderLines(panel, [
-        ["Available actions", String(investigationObject.affordances.length)],
-        ["Actions reviewed", String(investigationObject.observed_affordances.length)],
-        ["Evidence found", String(state.investigation.evidence.discovered_ids.length)],
-        ["Evidence collected", String(state.investigation.evidence.collected_ids.length)],
-        ["Facts learned", String(state.investigation.facts.known_fact_ids.length)],
-        ["Contradiction leads", String(state.investigation.contradictions.unlockable_edge_ids.length)],
-    ]);
+    renderLines(panel, opts.detailed
+        ? [
+            ["Available actions", String(investigationObject.affordances.length)],
+            ["Actions reviewed", String(investigationObject.observed_affordances.length)],
+            ["Evidence found", String(state.investigation.evidence.discovered_ids.length)],
+            ["Evidence collected", String(state.investigation.evidence.collected_ids.length)],
+            ["Facts learned", String(state.investigation.facts.known_fact_ids.length)],
+            ["Contradiction leads", String(state.investigation.contradictions.unlockable_edge_ids.length)],
+        ]
+        : [
+            ["Leads available", String(investigationObject.affordances.length)],
+            ["Leads checked", String(investigationObject.observed_affordances.length)],
+            ["Clues found", String(state.investigation.evidence.discovered_ids.length)],
+            ["Clues secured", String(state.investigation.evidence.collected_ids.length)],
+            ["Facts confirmed", String(state.investigation.facts.known_fact_ids.length)],
+            ["Timeline tensions", String(state.investigation.contradictions.unlockable_edge_ids.length)],
+        ]);
     renderObjectPrompt(panel, caseObjectId, state);
 
     renderKnownState(panel, investigationObject, opts.detailed);
@@ -407,7 +431,7 @@ function renderActionButtons(
             ? opts.canDispatchInvestigationAction()
             : Boolean(opts.dispatchInvestigationAction);
         const blockedReason = !isDispatchAvailable
-            ? "Action sending is unavailable in this mode."
+            ? "Action sending is unavailable until the live connection is ready."
             : null;
 
         btn.disabled = isPending || !isDispatchAvailable;
@@ -477,8 +501,8 @@ function renderRecentDialogueHint(panel: HTMLElement, state: WorldState, detaile
             ["Result", `${recent.status}/${recent.code}`],
         ]
         : [
-            ["Scene", recent.scene_id],
-            ["Result", recent.status],
+            ["Scene", labelSceneFromId(recent.scene_id)],
+            ["Result", formatConversationResult(recent.status)],
         ]);
 }
 
@@ -574,11 +598,46 @@ function stringifyValue(value: unknown): string {
     return String(value);
 }
 
+function describeInteractionContext(activeObject: KvpObject | null, detailed: boolean): string {
+    if (!activeObject) return "none";
+    if (detailed) return `${activeObject.class_code} #${activeObject.object_id}`;
+    return humanizeClassCode(activeObject.class_code);
+}
+
+function humanizeClassCode(value: string): string {
+    const normalized = value.replace(/_/g, " ").trim().toLowerCase();
+    if (normalized.length === 0) return value;
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function labelSceneFromId(sceneId: string): string {
+    const labels: Record<string, string> = {
+        S1: "Opening interview",
+        S2: "Security follow-up",
+        S3: "Timeline challenge",
+        S4: "Witness check",
+        S5: "Final confrontation",
+    };
+    return labels[sceneId] ?? sceneId;
+}
+
+function formatConversationResult(status: string): string {
+    if (status.length === 0) return "pending";
+    return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 function renderSectionTitle(panel: HTMLElement, text: string): void {
     const title = document.createElement("div");
     title.className = "inspect-subtitle";
     title.textContent = text;
     panel.appendChild(title);
+}
+
+function renderInfo(panel: HTMLElement, text: string): void {
+    const line = document.createElement("div");
+    line.className = "inspect-note";
+    line.textContent = text;
+    panel.appendChild(line);
 }
 
 function renderLines(panel: HTMLElement, lines: Array<[string, string]>): void {

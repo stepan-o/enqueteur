@@ -415,6 +415,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 preGameLayer.appendChild(
                     renderConnectingScreen({
                         caseId: state.caseId,
+                        caseLabel: getPreGameCaseEntry(state.caseId)?.label,
                         phase: state.phase,
                         demoPathLabel: getPreGameCaseEntry(state.caseId)?.defaultDemoPath.title,
                         blockedStateHint: getPreGameCaseEntry(state.caseId)?.defaultDemoPath.blockedStateHint,

@@ -21,6 +21,7 @@ const PHASE_NOTES: Record<ConnectingPhase, string> = {
 
 export type ConnectingScreenOpts = {
     caseId: EnqueteurCaseId;
+    caseLabel?: string;
     phase: ConnectingPhase;
     demoPathLabel?: string;
     blockedStateHint?: string;
@@ -39,7 +40,7 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
 
     const bodyEl = document.createElement("p");
     bodyEl.className = "flow-screen-body";
-    bodyEl.textContent = `Preparing ${opts.caseId}.`;
+    bodyEl.textContent = `Preparing ${opts.caseLabel ?? opts.caseId}.`;
 
     const steps = document.createElement("ol");
     steps.className = "flow-connection-steps";
