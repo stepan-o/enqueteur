@@ -1,5 +1,6 @@
 // src/ui/dialoguePanel.ts
 import type { KvpDialogueTurnLog, KvpNpcSemanticState, WorldState, WorldStore } from "../state/worldStore";
+import { labelMbamContradictionEdge } from "./mbamOnboarding";
 
 export type DialogueTurnSlotValue = {
     slot_name: string;
@@ -285,6 +286,8 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             selectedIntent,
             requiredSlots,
         });
+        renderSectionTitle(panel, "Contradiction Route");
+        renderContradictionRoute(panel, lastState, focusSceneId, selectedIntent);
 
         renderSectionTitle(panel, "Action Composer");
         if (!focusSceneId || !sceneConfig || !focusNpcId) {
@@ -330,6 +333,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
                     utteranceInput = value;
                 },
             });
+            renderReferenceInputsHint(panel, lastState);
 
             const minFacts = dialogue.summary_rules.current_scene_min_fact_count;
             const summaryRequired = dialogue.summary_rules.required_scene_ids.includes(focusSceneId);
@@ -338,6 +342,9 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
                     panel,
                     `Summary required: ${minFacts ?? 1} accepted fact(s), target language FR.`
                 );
+            }
+            if (selectedIntent === "present_evidence" || selectedIntent === "challenge_contradiction") {
+                renderContradictionIntentHint(panel, lastState, selectedIntent);
             }
 
             const dispatchAvailable = opts.canDispatchDialogueTurn
@@ -677,6 +684,81 @@ function renderHintLadder(
     }
 }
 
+function renderContradictionRoute(
+    panel: HTMLElement,
+    state: WorldState,
+    focusSceneId: string | null,
+    selectedIntent: string | null
+): void {
+    const investigation = state.investigation;
+    const dialogue = state.dialogue;
+    if (!investigation || !dialogue) {
+        renderInfo(panel, "Contradiction projection unavailable.");
+        return;
+    }
+
+    const contradictions = investigation.contradictions;
+    const surfaced = new Set(dialogue.surfaced_scene_ids);
+    const usableScenes = dialogue.scene_completion
+        .map((row) => row.scene_id)
+        .filter((sceneId) => surfaced.has(sceneId) && sceneSupportsContradictionIntent(sceneId));
+    const useScenesLabel = usableScenes.length > 0 ? usableScenes.join(", ") : "none surfaced yet";
+    const contradictionStatus = contradictions.requirement_satisfied
+        ? "ready"
+        : contradictions.unlockable_edge_ids.length > 0
+          ? "lead found"
+          : "building";
+
+    renderDataLines(panel, [
+        ["Status", contradictionStatus],
+        ["Required for accusation", contradictions.required_for_accusation ? "yes" : "no"],
+        ["Use in scenes", useScenesLabel],
+        ["Potential links", String(contradictions.unlockable_edge_ids.length)],
+        ["Known links", String(contradictions.known_edge_ids.length)],
+    ]);
+    if (contradictions.unlockable_edge_ids.length > 0) {
+        renderInfo(
+            panel,
+            `Potential: ${contradictions.unlockable_edge_ids.map(labelMbamContradictionEdge).join(", ")}`
+        );
+    }
+    if (contradictions.known_edge_ids.length > 0) {
+        renderInfo(
+            panel,
+            `Known: ${contradictions.known_edge_ids.map(labelMbamContradictionEdge).join(", ")}`
+        );
+    }
+
+    if (contradictions.requirement_satisfied) {
+        renderInfo(
+            panel,
+            "Contradiction requirement is satisfied. Use present_evidence/challenge_contradiction where surfaced."
+        );
+    } else if (contradictions.unlockable_edge_ids.length > 0) {
+        renderInfo(
+            panel,
+            "You have contradiction leads. Corroborate timeline facts/evidence and press challenge_contradiction."
+        );
+    } else {
+        renderInfo(
+            panel,
+            "No contradiction lead yet. Build timeline support from object actions and dialogue turns."
+        );
+    }
+    if (focusSceneId && !sceneSupportsContradictionIntent(focusSceneId)) {
+        renderInfo(panel, `Focus scene ${focusSceneId} does not currently support contradiction intent.`);
+    }
+    if (selectedIntent === "challenge_contradiction" && !contradictions.requirement_satisfied) {
+        renderInfo(panel, "Selected intent may remain blocked until contradiction readiness improves.");
+    }
+}
+
+function sceneSupportsContradictionIntent(sceneId: string): boolean {
+    const config = SCENE_CONFIG[sceneId];
+    if (!config) return false;
+    return config.allowedIntents.includes("challenge_contradiction");
+}
+
 function buildSummaryPrompt(
     sceneId: string,
     summaryState: LearningSceneSummaryState,
@@ -860,20 +942,56 @@ function renderAuxInputs(
         onUtteranceChange: (value: string) => void;
     }
 ): void {
-    const facts = renderAuxInput("presented_fact_ids (csv)", opts.factInput, "N1,N3", opts.onFactChange);
+    const facts = renderAuxInput("Facts to reference (csv)", opts.factInput, "N1,N3", opts.onFactChange);
     const evidence = renderAuxInput(
-        "presented_evidence_ids (csv)",
+        "Evidence to reference (csv)",
         opts.evidenceInput,
         "E2_CAFE_RECEIPT",
         opts.onEvidenceChange
     );
     const utterance = renderAuxInput(
-        "utterance_text (optional)",
+        "Optional FR line",
         opts.utteranceInput,
-        "REGISTER:WRONG ...",
+        "Je confirme le fait et l'heure...",
         opts.onUtteranceChange
     );
     panel.append(facts, evidence, utterance);
+}
+
+function renderReferenceInputsHint(panel: HTMLElement, state: WorldState): void {
+    const knownFacts = state.investigation?.facts.known_fact_ids ?? [];
+    const knownEvidence = state.investigation?.evidence.discovered_ids ?? [];
+    const factsLabel = knownFacts.length > 0 ? knownFacts.join(", ") : "none yet";
+    const evidenceLabel = knownEvidence.length > 0 ? knownEvidence.join(", ") : "none yet";
+    renderInfo(panel, `Known facts you can cite: ${factsLabel}`);
+    renderInfo(panel, `Known evidence you can cite: ${evidenceLabel}`);
+}
+
+function renderContradictionIntentHint(
+    panel: HTMLElement,
+    state: WorldState,
+    selectedIntent: string
+): void {
+    const contradictions = state.investigation?.contradictions;
+    if (!contradictions) return;
+    if (selectedIntent === "present_evidence") {
+        renderInfo(
+            panel,
+            "present_evidence works best with one timeline fact + one evidence item from Case Notes."
+        );
+        return;
+    }
+    if (contradictions.requirement_satisfied) {
+        renderInfo(
+            panel,
+            "challenge_contradiction is ready. Use your strongest corroborated timeline references."
+        );
+        return;
+    }
+    renderInfo(
+        panel,
+        "challenge_contradiction may be rejected until contradiction readiness is satisfied."
+    );
 }
 
 function renderAuxInput(

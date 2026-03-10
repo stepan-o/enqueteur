@@ -37,6 +37,8 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("Interaction");
         expect(panel?.textContent).toContain("Field Prompt");
         expect(panel?.textContent).toContain("O1_DISPLAY_CASE");
+        expect(panel?.textContent).toContain("Location hint");
+        expect(panel?.textContent).toContain("New lead:");
 
         const buttons = inspect.root.querySelectorAll<HTMLButtonElement>(".inspect-action-btn");
         expect(buttons.length).toBeGreaterThanOrEqual(3);
@@ -91,6 +93,7 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("NPC State Card");
         expect(panel?.textContent).toContain("Scaffolding");
         expect(panel?.textContent).toContain("Summary & Hint Ladder");
+        expect(panel?.textContent).toContain("Contradiction Route");
         expect(panel?.textContent).toContain("Hint ladder");
         expect(panel?.textContent).toContain("Soft Hint - current");
         expect(panel?.textContent).toContain("Sentence Stem - locked");
@@ -101,6 +104,8 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("Stance");
         expect(panel?.textContent).toContain("Trust trend");
         expect(panel?.textContent).toContain("Recent Structured Turns");
+        expect(panel?.textContent).toContain("Known facts you can cite:");
+        expect(panel?.textContent).toContain("Known evidence you can cite:");
         expect(panel?.textContent).toContain("npc: Très bien. Restons précis.");
         expect(panel?.textContent).toContain("rephrase:Essaie avec une phrase guide simple.");
         expect(panel?.textContent).toContain("summary_prompt:Fais un court résumé en français avant de continuer.");
@@ -130,11 +135,13 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("Start Here");
         expect(panel?.textContent).toContain("Inspect the Display Case and Wall Label in the gallery.");
         expect(panel?.textContent).toContain("Current lead:");
+        expect(panel?.textContent).toContain("Key Object Leads");
         expect(panel?.textContent).toContain("E2 Cafe Receipt");
         expect(panel?.textContent).toContain("Fact Visibility");
         expect(panel?.textContent).toContain("N1");
         expect(panel?.textContent).toContain("Contradictions");
         expect(panel?.textContent).toContain("Unlockable edges");
+        expect(panel?.textContent).toContain("Action route");
         expect(panel?.textContent).toContain("Timeline Clues");
         expect(panel?.textContent).toContain("Mini-Exercises");
         expect(panel?.textContent).toContain("MG1 Wall Label Reading");

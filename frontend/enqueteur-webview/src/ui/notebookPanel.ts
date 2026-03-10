@@ -1,6 +1,13 @@
 // src/ui/notebookPanel.ts
 import type { KvpInvestigationState, WorldState, WorldStore } from "../state/worldStore";
-import { buildMbamOnboardingView } from "./mbamOnboarding";
+import {
+    buildMbamOnboardingView,
+    getMbamObjectGuide,
+    hintMbamAction,
+    labelMbamAction,
+    labelMbamContradictionEdge,
+    listMbamObjectGuides,
+} from "./mbamOnboarding";
 
 export type NotebookPanelHandle = {
     root: HTMLElement;
@@ -211,6 +218,9 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
             ["Truth epoch", String(investigation.truth_epoch)],
         ]);
 
+        renderSectionTitle(panel, "Key Object Leads");
+        renderKeyObjectLeads(panel, investigation);
+
         renderSectionTitle(panel, "Evidence Tray");
         renderEvidenceTray(panel, investigation);
 
@@ -218,7 +228,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
         renderFactVisibility(panel, investigation);
 
         renderSectionTitle(panel, "Contradictions");
-        renderContradictions(panel, investigation);
+        renderContradictions(panel, lastState, investigation);
 
         renderSectionTitle(panel, "Timeline Clues");
         renderTimeline(panel, investigation);
@@ -1066,6 +1076,59 @@ function normalizeAnswer(value: string): string {
     return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function renderKeyObjectLeads(panel: HTMLElement, investigation: KvpInvestigationState): void {
+    const guideById = new Map(listMbamObjectGuides().map((row) => [row.object_id, row]));
+    const leadRows = [...investigation.objects]
+        .filter((row) => row.affordances.length > 0)
+        .sort((a, b) => {
+            const guideA = guideById.get(a.object_id);
+            const guideB = guideById.get(b.object_id);
+            const priorityA = guideA?.starter_priority ?? 99;
+            const priorityB = guideB?.starter_priority ?? 99;
+            if (priorityA !== priorityB) return priorityA - priorityB;
+
+            const aUnseen = a.affordances.length - a.observed_affordances.length;
+            const bUnseen = b.affordances.length - b.observed_affordances.length;
+            if (aUnseen !== bUnseen) return bUnseen - aUnseen;
+            return a.object_id.localeCompare(b.object_id);
+        });
+
+    if (leadRows.length === 0) {
+        renderInfo(panel, "No object leads surfaced yet.");
+        return;
+    }
+
+    const list = document.createElement("div");
+    list.className = "notebook-list";
+    panel.appendChild(list);
+
+    for (const row of leadRows) {
+        const guide = guideById.get(row.object_id) ?? getMbamObjectGuide(row.object_id);
+        const title = guide?.label ?? labelForObject(row.object_id);
+        const observedCount = row.observed_affordances.length;
+        const totalCount = row.affordances.length;
+        const nextAction = row.affordances.find((actionId) => !row.observed_affordances.includes(actionId)) ?? null;
+
+        const line = document.createElement("div");
+        line.className = "notebook-row";
+        if (nextAction) line.classList.add("is-lead");
+        line.textContent = `${title} (${row.object_id})  ${observedCount}/${totalCount} actions reviewed`;
+        list.appendChild(line);
+
+        const detail = document.createElement("div");
+        detail.className = "notebook-mini";
+        const locationHint = guide?.location_hint ?? "Location hint unavailable.";
+        const nextHint = nextAction
+            ? `Next: ${labelMbamAction(nextAction)}. ${hintMbamAction(nextAction)}`
+            : "All listed actions reviewed.";
+        const contradictionHint = guide?.contradiction_relevant
+            ? "Useful for contradiction timeline checks."
+            : "";
+        detail.textContent = `${locationHint} | ${nextHint}${contradictionHint ? ` | ${contradictionHint}` : ""}`;
+        panel.appendChild(detail);
+    }
+}
+
 function renderEvidenceTray(panel: HTMLElement, investigation: KvpInvestigationState): void {
     const collected = new Set(investigation.evidence.collected_ids);
     const discovered = investigation.evidence.discovered_ids;
@@ -1119,26 +1182,49 @@ function renderFactVisibility(panel: HTMLElement, investigation: KvpInvestigatio
     }
 }
 
-function renderContradictions(panel: HTMLElement, investigation: KvpInvestigationState): void {
+function renderContradictions(panel: HTMLElement, state: WorldState, investigation: KvpInvestigationState): void {
     const contradictions = investigation.contradictions;
+    const surfaced = new Set(state.dialogue?.surfaced_scene_ids ?? []);
+    const contradictionScenes = ["S3", "S5"].filter((sceneId) => surfaced.has(sceneId));
+    const actionRoute = contradictionScenes.length > 0
+        ? `Conversations: present_evidence / challenge_contradiction in ${contradictionScenes.join(", ")}`
+        : "Conversations: present_evidence first; contradiction scenes surface as case progresses.";
+
     renderLines(panel, [
         ["Required for accusation", contradictions.required_for_accusation ? "yes" : "no"],
         ["Requirement satisfied", contradictions.requirement_satisfied ? "yes" : "no"],
         ["Unlockable edges", String(contradictions.unlockable_edge_ids.length)],
         ["Known edges", String(contradictions.known_edge_ids.length)],
+        ["Action route", actionRoute],
     ]);
 
     if (contradictions.unlockable_edge_ids.length > 0) {
         const unlockable = document.createElement("div");
         unlockable.className = "notebook-mini";
-        unlockable.textContent = `Unlockable: ${contradictions.unlockable_edge_ids.join(", ")}`;
+        unlockable.textContent = `Unlockable: ${contradictions.unlockable_edge_ids.map(labelMbamContradictionEdge).join(", ")}`;
         panel.appendChild(unlockable);
     }
     if (contradictions.known_edge_ids.length > 0) {
         const known = document.createElement("div");
         known.className = "notebook-mini";
-        known.textContent = `Known: ${contradictions.known_edge_ids.join(", ")}`;
+        known.textContent = `Known: ${contradictions.known_edge_ids.map(labelMbamContradictionEdge).join(", ")}`;
         panel.appendChild(known);
+    }
+    if (!contradictions.requirement_satisfied && contradictions.unlockable_edge_ids.length > 0) {
+        renderInfo(
+            panel,
+            "Potential contradiction leads found. Corroborate timeline clues, then use challenge_contradiction in Conversations."
+        );
+    } else if (!contradictions.requirement_satisfied) {
+        renderInfo(
+            panel,
+            "No contradiction link confirmed yet. Keep gathering object + dialogue timeline clues."
+        );
+    } else {
+        renderInfo(
+            panel,
+            "Contradiction requirement is ready. You can press accusation/recovery decisions with stronger support."
+        );
     }
 }
 
@@ -1158,6 +1244,7 @@ function renderTimeline(panel: HTMLElement, investigation: KvpInvestigationState
         row.textContent = `${factId}  ${labelForFact(factId)}`;
         list.appendChild(row);
     }
+    renderInfo(panel, "Timeline clues feed contradiction checks and accusation readiness.");
 }
 
 function renderSectionTitle(panel: HTMLElement, text: string): void {

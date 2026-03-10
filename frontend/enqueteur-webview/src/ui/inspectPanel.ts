@@ -8,7 +8,12 @@ import type {
     KvpObject,
     KvpRoom,
 } from "../state/worldStore";
-import { buildMbamOnboardingView } from "./mbamOnboarding";
+import {
+    buildMbamOnboardingView,
+    getMbamObjectGuide,
+    hintMbamAction,
+    labelMbamAction,
+} from "./mbamOnboarding";
 
 export type InspectSelection =
     | { kind: "room"; id: number }
@@ -294,7 +299,11 @@ function renderObjectActionPanel(
     }
 
     const investigationObject = state.investigation?.objects.find((row) => row.object_id === caseObjectId) ?? null;
-    renderLines(panel, [["Case Object", caseObjectId]]);
+    const objectGuide = getMbamObjectGuide(caseObjectId);
+    renderLines(panel, [["Case Object", `${caseObjectId}${objectGuide ? ` (${objectGuide.label})` : ""}`]]);
+    if (objectGuide) {
+        renderLines(panel, [["Location hint", objectGuide.location_hint]]);
+    }
 
     if (!investigationObject || !state.investigation) {
         renderLines(panel, [["Investigation State", "not available in current snapshot"]]);
@@ -343,7 +352,14 @@ function renderActionButtons(
     actionsWrap.className = "inspect-actions";
     panel.appendChild(actionsWrap);
 
-    for (const affordanceId of objectState.affordances) {
+    const orderedAffordances = [...objectState.affordances].sort((a, b) => {
+        const aObserved = objectState.observed_affordances.includes(a);
+        const bObserved = objectState.observed_affordances.includes(b);
+        if (aObserved === bObserved) return a.localeCompare(b);
+        return aObserved ? 1 : -1;
+    });
+
+    for (const affordanceId of orderedAffordances) {
         const actionKey = `${selectionKeyForObject(worldObjectId, caseObjectId)}:${affordanceId}`;
         const btn = document.createElement("button");
         btn.type = "button";
@@ -354,11 +370,12 @@ function renderActionButtons(
             ? opts.canDispatchInvestigationAction()
             : Boolean(opts.dispatchInvestigationAction);
         const blockedReason = !isDispatchAvailable
-            ? "dispatch unavailable in replay/offline mode"
+            ? "Live action dispatch unavailable in replay/offline mode."
             : null;
 
         btn.disabled = isPending || !isDispatchAvailable;
-        btn.textContent = isPending ? `${affordanceId}...` : affordanceId;
+        const actionLabel = labelMbamAction(affordanceId);
+        btn.textContent = isPending ? `${actionLabel}...` : actionLabel;
         btn.addEventListener("click", () => {
             void opts.onAction({
                 worldObjectId,
@@ -373,10 +390,10 @@ function renderActionButtons(
         const info = document.createElement("div");
         info.className = "inspect-note";
         info.textContent = observed
-            ? "already observed in this run"
+            ? `Reviewed in this run (${affordanceId}).`
             : blockedReason
               ? blockedReason
-              : "available to try";
+              : `New lead: ${hintMbamAction(affordanceId)}`;
         actionsWrap.appendChild(info);
     }
 }
@@ -393,11 +410,12 @@ function renderLastActionFeedback(
 
     renderSectionTitle(panel, "Last Action Result");
     renderLines(panel, [
-        ["Affordance", feedback.affordanceId],
+        ["Affordance", `${labelMbamAction(feedback.affordanceId)} (${feedback.affordanceId})`],
         ["Status", feedback.result.status],
         ["Code", feedback.result.code],
         ["Tick", String(feedback.tick)],
         ["Summary", feedback.result.summary ?? "none"],
+        ["Guidance", describeInvestigationFeedback(feedback.result)],
         ["Facts", String(feedback.result.revealed_fact_ids?.length ?? 0)],
         ["Evidence", String(feedback.result.revealed_evidence_ids?.length ?? 0)],
     ]);
@@ -428,6 +446,44 @@ function renderObjectPrompt(panel: HTMLElement, caseObjectId: string, state: Wor
     note.className = "inspect-note";
     note.textContent = promptByObject[caseObjectId] ?? onboarding.currentLead;
     panel.appendChild(note);
+    if (state.investigation?.contradictions.required_for_accusation && !state.investigation.contradictions.requirement_satisfied) {
+        const contradictionNote = document.createElement("div");
+        contradictionNote.className = "inspect-note";
+        contradictionNote.textContent =
+            "Contradiction path active: timeline-friendly object actions are especially valuable before accusation.";
+        panel.appendChild(contradictionNote);
+    }
+}
+
+function describeInvestigationFeedback(result: InvestigationActionResult): string {
+    if (result.status === "accepted") {
+        if (result.code === "projection_affordance_observed") {
+            return "Action registered. Review newly observed clues and continue with other new leads.";
+        }
+        if (result.code === "projection_state_changed") {
+            return "State changed. Cross-check Case Notes and timeline clues.";
+        }
+        return "Command accepted. Wait for live projection updates.";
+    }
+    if (result.status === "submitted") {
+        return "Command accepted; waiting for authoritative diff.";
+    }
+    if (result.status === "unavailable") {
+        return "Live runtime is unavailable. Reconnect and retry.";
+    }
+    if (result.status === "invalid") {
+        return "Invalid action payload for current object. Use listed actions only.";
+    }
+    if (result.code === "SCENE_GATE_BLOCKED") {
+        return "Blocked by scene gate. Advance dialogue or gather more clues first.";
+    }
+    if (result.code === "OBJECT_ACTION_UNAVAILABLE") {
+        return "This action is currently blocked for this object state. Try another lead.";
+    }
+    if (result.code === "RUNTIME_NOT_READY") {
+        return "Runtime not ready. Wait for sync and retry.";
+    }
+    return result.summary ?? "Action blocked by live runtime.";
 }
 
 function resolveCaseObjectId(obj: KvpObject, state: WorldState): string | null {

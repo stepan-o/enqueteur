@@ -821,6 +821,11 @@ button:hover {
   border-color: rgba(31, 127, 136, 0.35);
 }
 
+.notebook-row.is-lead {
+  border-color: rgba(31, 127, 136, 0.5);
+  background: rgba(235, 245, 244, 0.86);
+}
+
 .notebook-mini {
   font-size: 11px;
   margin: 3px 0;

@@ -13,8 +13,99 @@ export type MbamOnboardingView = {
     steps: MbamOnboardingStep[];
 };
 
+export type MbamObjectGuide = {
+    object_id: string;
+    label: string;
+    location_hint: string;
+    starter_priority: number;
+    contradiction_relevant?: boolean;
+};
+
 const CASE_TITLE = "MBAM / Le Petit Vol du Musee";
 const CASE_SUMMARY = "Recover the missing medallion by building a corroborated timeline.";
+const MBAM_OBJECT_GUIDES: MbamObjectGuide[] = [
+    {
+        object_id: "O1_DISPLAY_CASE",
+        label: "Display Case",
+        location_hint: "Gallery floor",
+        starter_priority: 1,
+    },
+    {
+        object_id: "O3_WALL_LABEL",
+        label: "Wall Label",
+        location_hint: "Near the display case",
+        starter_priority: 2,
+    },
+    {
+        object_id: "O6_BADGE_TERMINAL",
+        label: "Badge Terminal",
+        location_hint: "Security office",
+        starter_priority: 3,
+        contradiction_relevant: true,
+    },
+    {
+        object_id: "O9_RECEIPT_PRINTER",
+        label: "Receipt Printer",
+        location_hint: "Cafe counter",
+        starter_priority: 4,
+        contradiction_relevant: true,
+    },
+    {
+        object_id: "O4_BENCH",
+        label: "Bench",
+        location_hint: "Public gallery seating",
+        starter_priority: 5,
+    },
+    {
+        object_id: "O10_BULLETIN_BOARD",
+        label: "Bulletin Board",
+        location_hint: "Public staff notice area",
+        starter_priority: 6,
+    },
+];
+const ACTION_LABELS: Record<string, string> = {
+    inspect: "Inspect",
+    check_lock: "Check lock",
+    examine_surface: "Examine surface",
+    read: "Read",
+    request_access: "Request access",
+    view_logs: "View logs",
+    ask_for_receipt: "Ask for receipt",
+    read_receipt: "Read receipt",
+};
+const ACTION_HINTS: Record<string, string> = {
+    inspect: "Use this to gather baseline scene clues.",
+    check_lock: "Useful for confirming tamper/timing details.",
+    examine_surface: "Look for traces that support timeline reasoning.",
+    read: "Extract concrete anchors (names, times, labels).",
+    request_access: "Opens procedural paths when logs are gated.",
+    view_logs: "Strong source for contradiction timeline checks.",
+    ask_for_receipt: "Can surface corroborating purchase records.",
+    read_receipt: "Use receipt time/item to support dialogue claims.",
+};
+const CONTRADICTION_EDGE_LABELS: Record<string, string> = {
+    E3: "Potential timeline mismatch",
+};
+
+export function listMbamObjectGuides(): MbamObjectGuide[] {
+    return [...MBAM_OBJECT_GUIDES];
+}
+
+export function getMbamObjectGuide(objectId: string): MbamObjectGuide | null {
+    return MBAM_OBJECT_GUIDES.find((row) => row.object_id === objectId) ?? null;
+}
+
+export function labelMbamAction(actionId: string): string {
+    return ACTION_LABELS[actionId] ?? actionId;
+}
+
+export function hintMbamAction(actionId: string): string {
+    return ACTION_HINTS[actionId] ?? "Run this action to progress investigation context.";
+}
+
+export function labelMbamContradictionEdge(edgeId: string): string {
+    return CONTRADICTION_EDGE_LABELS[edgeId] ?? edgeId;
+}
 
 export function buildMbamOnboardingView(state: WorldState): MbamOnboardingView {
     const investigation = state.investigation;
