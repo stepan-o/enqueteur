@@ -2,6 +2,7 @@
 import type { KvpInvestigationState, WorldState, WorldStore } from "../state/worldStore";
 import {
     buildMbamOnboardingView,
+    buildMbamPlaytestPathView,
     getMbamObjectGuide,
     hintMbamAction,
     labelMbamAction,
@@ -206,11 +207,15 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
         }
 
         const onboarding = buildMbamOnboardingView(lastState);
+        const playtestPath = buildMbamPlaytestPathView(lastState);
         renderSectionTitle(panel, "Case Brief");
         renderInfo(panel, onboarding.caseSummary);
         renderSectionTitle(panel, "Start Here");
         renderOnboardingSteps(panel, onboarding.steps);
         renderInfo(panel, `Current lead: ${onboarding.currentLead}`);
+        renderSectionTitle(panel, playtestPath.title);
+        renderOnboardingSteps(panel, playtestPath.steps);
+        renderInfo(panel, playtestPath.currentMilestone);
 
         renderLines(panel, [
             ["Case", lastState.caseState?.case_id ?? "MBAM_01"],

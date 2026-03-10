@@ -135,6 +135,9 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("Start Here");
         expect(panel?.textContent).toContain("Inspect the Display Case and Wall Label in the gallery.");
         expect(panel?.textContent).toContain("Current lead:");
+        expect(panel?.textContent).toContain("Internal Playtest Path");
+        expect(panel?.textContent).toContain("Inspect starter objects (Display Case + Wall Label).");
+        expect(panel?.textContent).toContain("Next:");
         expect(panel?.textContent).toContain("Key Object Leads");
         expect(panel?.textContent).toContain("E2 Cafe Receipt");
         expect(panel?.textContent).toContain("Fact Visibility");
@@ -206,6 +209,83 @@ describe("Phase 5 shell panel rendering", () => {
 
         expect(panel?.textContent).toContain("Correct (2/2).");
         expect(panel?.textContent).toContain("Correct (3/3).");
+    });
+
+    it("updates internal playtest path milestones as live state progresses", () => {
+        const store = new WorldStore();
+        const initial = makeMbamSnapshot(40);
+        if (!initial.state.investigation || !initial.state.dialogue || !initial.state.case_outcome || !initial.state.case_recap) {
+            throw new Error("fixture must include required projections");
+        }
+        initial.state.investigation.objects = initial.state.investigation.objects.map((row) =>
+            row.object_id === "O1_DISPLAY_CASE" ? { ...row, observed_affordances: [] } : row
+        );
+        initial.state.dialogue.recent_turns = [];
+        initial.state.dialogue.learning = {
+            ...initial.state.dialogue.learning!,
+            minigames: initial.state.dialogue.learning!.minigames.map((row) => ({
+                ...row,
+                completed: false,
+            })),
+        };
+        initial.state.investigation.contradictions.requirement_satisfied = false;
+        initial.state.case_outcome.primary_outcome = "in_progress";
+        initial.state.case_outcome.terminal = false;
+        initial.state.case_recap.available = false;
+        initial.state.case_recap.resolution_path = "in_progress";
+        store.applySnapshot(initial);
+
+        const notebook = mountNotebookPanel(store);
+        document.body.appendChild(notebook.root);
+        const panel = notebook.root.querySelector(".notebook-panel");
+        expect(panel?.textContent).toContain("Internal Playtest Path");
+        expect(panel?.textContent).toContain("Next: Inspect starter objects");
+
+        const progressed = makeMbamSnapshot(41);
+        if (!progressed.state.investigation || !progressed.state.dialogue || !progressed.state.case_outcome || !progressed.state.case_recap) {
+            throw new Error("fixture must include required projections");
+        }
+        progressed.state.investigation.objects = progressed.state.investigation.objects.map((row) => {
+            if (row.object_id === "O1_DISPLAY_CASE") {
+                return { ...row, observed_affordances: ["inspect"] };
+            }
+            if (row.object_id === "O3_WALL_LABEL") {
+                return { ...row, observed_affordances: ["read"] };
+            }
+            return row;
+        });
+        progressed.state.dialogue.recent_turns = [
+            {
+                turn_index: 3,
+                scene_id: "S3",
+                npc_id: "samira",
+                intent_id: "challenge_contradiction",
+                status: "accepted",
+                code: "ok",
+                outcome: "progressed",
+                response_mode: "direct",
+                revealed_fact_ids: ["N8"],
+                trust_delta: 0,
+                stress_delta: 0,
+                repair_response_mode: null,
+                summary_check_code: null,
+            },
+        ];
+        progressed.state.dialogue.learning = {
+            ...progressed.state.dialogue.learning!,
+            minigames: progressed.state.dialogue.learning!.minigames.map((row, index) => ({
+                ...row,
+                completed: index === 0,
+            })),
+        };
+        progressed.state.investigation.contradictions.requirement_satisfied = true;
+        progressed.state.case_outcome.primary_outcome = "recovery_success";
+        progressed.state.case_outcome.terminal = true;
+        progressed.state.case_recap.available = true;
+        progressed.state.case_recap.resolution_path = "recovery";
+
+        store.applySnapshot(progressed);
+        expect(panel?.textContent).toContain("Path complete: recap reviewed and ready for next internal run.");
     });
 
     it("renders deterministic D1 hint-ladder constraints without English bypass", () => {

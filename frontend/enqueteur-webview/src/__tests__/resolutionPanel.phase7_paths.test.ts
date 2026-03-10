@@ -45,9 +45,37 @@ describe("Phase 7 terminal path resolution panel smoke", () => {
             document.body.appendChild(panelHandle.root);
             const text = panelHandle.root.textContent ?? "";
             expect(text).toContain("Decision Board");
+            expect(text).toContain("Attempt Readiness");
+            expect(text).toContain("Why This Outcome");
             expect(text).toContain(scenario.outcome);
             expect(text).toContain(scenario.path);
             panelHandle.root.remove();
         }
+    });
+
+    it("surfaces accusation prereq blocking before terminal recap", () => {
+        const store = new WorldStore();
+        const snapshot = makeMbamSnapshot(21);
+        store.applySnapshot(snapshot);
+
+        const panelHandle = mountResolutionPanel(store, {
+            canDispatchResolutionAttempt: () => true,
+            dispatchAttemptRecovery: async () => ({
+                status: "submitted",
+                code: "command_accepted_waiting_projection",
+                summary: "Recovery accepted",
+            }),
+            dispatchAttemptAccusation: async () => ({
+                status: "blocked",
+                code: "ACCUSATION_PREREQS_MISSING",
+                summary: "Missing prerequisites",
+            }),
+        });
+        document.body.appendChild(panelHandle.root);
+        const text = panelHandle.root.textContent ?? "";
+        expect(text).toContain("Attempt Readiness");
+        expect(text).toContain("Recovery: available");
+        expect(text).toContain("Accusation: blocked (contradiction prerequisite not yet satisfied)");
+        panelHandle.root.remove();
     });
 });

@@ -13,6 +13,24 @@ export type MbamOnboardingView = {
     steps: MbamOnboardingStep[];
 };
 
+export type MbamPlaytestPathStep = {
+    id:
+        | "starter_investigation"
+        | "first_dialogue"
+        | "first_minigame"
+        | "contradiction_ready"
+        | "resolution_attempted"
+        | "recap_available";
+    label: string;
+    done: boolean;
+};
+
+export type MbamPlaytestPathView = {
+    title: string;
+    currentMilestone: string;
+    steps: MbamPlaytestPathStep[];
+};
+
 export type MbamObjectGuide = {
     object_id: string;
     label: string;
@@ -105,6 +123,68 @@ export function hintMbamAction(actionId: string): string {
 
 export function labelMbamContradictionEdge(edgeId: string): string {
     return CONTRADICTION_EDGE_LABELS[edgeId] ?? edgeId;
+}
+
+export function buildMbamPlaytestPathView(state: WorldState): MbamPlaytestPathView {
+    const investigation = state.investigation;
+    const dialogue = state.dialogue;
+    const caseOutcome = state.caseOutcome;
+    const caseRecap = state.caseRecap;
+
+    const starterInvestigation =
+        isAffordanceObserved(state, "O1_DISPLAY_CASE")
+        && isAffordanceObserved(state, "O3_WALL_LABEL");
+    const firstDialogue = (dialogue?.recent_turns.length ?? 0) > 0;
+    const firstMinigame = Boolean(dialogue?.learning?.minigames.some((row) => row.completed));
+    const contradictionReady = investigation?.contradictions.requirement_satisfied ?? false;
+    const resolutionAttempted =
+        (caseOutcome?.primary_outcome ?? "in_progress") !== "in_progress"
+        || (caseRecap?.resolution_path ?? "in_progress") !== "in_progress";
+    const recapAvailable = caseRecap?.available ?? Boolean(caseOutcome?.terminal);
+
+    const steps: MbamPlaytestPathStep[] = [
+        {
+            id: "starter_investigation",
+            label: "Inspect starter objects (Display Case + Wall Label).",
+            done: starterInvestigation,
+        },
+        {
+            id: "first_dialogue",
+            label: "Submit your first structured dialogue turn.",
+            done: firstDialogue,
+        },
+        {
+            id: "first_minigame",
+            label: "Complete at least one minigame from Case Notes.",
+            done: firstMinigame,
+        },
+        {
+            id: "contradiction_ready",
+            label: "Reach contradiction-ready state for accusation path.",
+            done: contradictionReady,
+        },
+        {
+            id: "resolution_attempted",
+            label: "Attempt Recovery or Attempt Accusation.",
+            done: resolutionAttempted,
+        },
+        {
+            id: "recap_available",
+            label: "Review final recap and outcome rationale.",
+            done: recapAvailable,
+        },
+    ];
+
+    const nextStep = steps.find((row) => !row.done);
+    const currentMilestone = nextStep
+        ? `Next: ${nextStep.label}`
+        : "Path complete: recap reviewed and ready for next internal run.";
+
+    return {
+        title: "Internal Playtest Path",
+        currentMilestone,
+        steps,
+    };
 }
 
 export function buildMbamOnboardingView(state: WorldState): MbamOnboardingView {
