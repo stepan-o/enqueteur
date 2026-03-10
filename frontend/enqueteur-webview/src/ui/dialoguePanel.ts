@@ -32,6 +32,7 @@ export type DialogueTurnDispatcher = (
 export type DialoguePanelOpts = {
     dispatchDialogueTurn?: DialogueTurnDispatcher;
     canDispatchDialogueTurn?: () => boolean;
+    presentationProfile?: "demo" | "playtest" | "dev";
 };
 
 export type DialogueInspectSelection =
@@ -43,6 +44,7 @@ export type DialogueInspectSelection =
 export type DialoguePanelHandle = {
     root: HTMLElement;
     setInspectSelection: (selection: DialogueInspectSelection) => void;
+    setPresentationProfile?: (profile: "demo" | "playtest" | "dev") => void;
 };
 
 type SceneConfig = {
@@ -127,6 +129,21 @@ const SCENE_CONFIG: Record<string, SceneConfig> = {
 const INTENT_REQUIRED_SLOTS: Record<string, string[]> = {
     present_evidence: ["item"],
     accuse: ["person", "reason"],
+};
+const INTENT_LABELS: Record<string, string> = {
+    ask_what_happened: "Ask what happened",
+    ask_when: "Ask when",
+    ask_where: "Ask where",
+    ask_who: "Ask who",
+    ask_what_seen: "Ask what was seen",
+    request_permission: "Request permission",
+    request_access: "Request access",
+    present_evidence: "Present evidence",
+    challenge_contradiction: "Challenge contradiction",
+    summarize_understanding: "Summarize understanding",
+    reassure: "Reassure",
+    accuse: "Accuse",
+    goodbye: "Close conversation",
 };
 
 const WORLD_ROOM_ID_TO_TOKEN: Record<number, string> = {
@@ -234,6 +251,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
     let pending = false;
     let submitFeedback: SubmitFeedback | null = null;
     let inspectSelection: DialogueInspectSelection = null;
+    let presentationProfile: "demo" | "playtest" | "dev" = opts.presentationProfile ?? "playtest";
 
     const render = (): void => {
         panel.innerHTML = "";
@@ -243,6 +261,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         }
         panel.style.display = "block";
         const dialogue = lastState.dialogue;
+        const detailed = presentationProfile !== "demo";
 
         const title = document.createElement("div");
         title.className = "dialogue-title";
@@ -267,27 +286,37 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         renderSectionTitle(panel, "NPC State Card");
         renderNpcStateCard(panel, npcCardState);
 
-        renderDataLines(panel, [
-            ["Active scene", dialogue.active_scene_id ?? "none"],
-            ["Focus scene", focusSceneId ?? "none"],
-            ["Current NPC", npcCardState?.npc_id ?? focusNpcId ?? "unknown"],
-            ["Known dialogue facts", String(dialogue.revealed_fact_ids.length)],
-            ["Contradiction path", dialogue.contradiction_requirement_satisfied ? "satisfied" : "pending"],
-        ]);
-        renderLearningSlice(panel, dialogue);
+        renderDataLines(panel, detailed
+            ? [
+                ["Active scene", dialogue.active_scene_id ?? "none"],
+                ["Focus scene", focusSceneId ?? "none"],
+                ["Current NPC", npcCardState?.npc_id ?? focusNpcId ?? "unknown"],
+                ["Known dialogue facts", String(dialogue.revealed_fact_ids.length)],
+                ["Contradiction path", dialogue.contradiction_requirement_satisfied ? "satisfied" : "pending"],
+            ]
+            : [
+                ["Active scene", dialogue.active_scene_id ?? "none"],
+                ["Current NPC", npcCardState?.npc_id ?? focusNpcId ?? "unknown"],
+                ["Dialogue facts", String(dialogue.revealed_fact_ids.length)],
+            ]);
+        if (detailed) {
+            renderLearningSlice(panel, dialogue);
+        }
 
         renderSectionTitle(panel, "Scene Progress");
         renderSceneProgress(panel, dialogue.scene_completion, dialogue.surfaced_scene_ids, focusSceneId);
 
-        renderSectionTitle(panel, "Summary & Hint Ladder");
-        renderSummaryHintSection(panel, {
-            dialogue,
-            focusSceneId,
-            selectedIntent,
-            requiredSlots,
-        });
+        if (detailed) {
+            renderSectionTitle(panel, "Summary & Hint Ladder");
+            renderSummaryHintSection(panel, {
+                dialogue,
+                focusSceneId,
+                selectedIntent,
+                requiredSlots,
+            });
+        }
         renderSectionTitle(panel, "Contradiction Route");
-        renderContradictionRoute(panel, lastState, focusSceneId, selectedIntent);
+        renderContradictionRoute(panel, lastState, focusSceneId, selectedIntent, detailed);
 
         renderSectionTitle(panel, "Action Composer");
         if (!focusSceneId || !sceneConfig || !focusNpcId) {
@@ -304,6 +333,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             renderIntentButtons(panel, {
                 intents: allowedIntents,
                 selectedIntent,
+                friendlyLabels: presentationProfile === "demo",
                 onSelect: (intentId) => {
                     selectedIntent = intentId;
                     slotValues = syncSlotValues(slotValues, collectRequiredSlots(sceneConfig, selectedIntent));
@@ -314,26 +344,31 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             renderSlotInputs(panel, {
                 requiredSlots,
                 values: slotValues,
+                friendlyLabels: presentationProfile === "demo",
                 onChange: (slotName, value) => {
                     slotValues[slotName] = value;
                 },
             });
 
-            renderAuxInputs(panel, {
-                factInput,
-                evidenceInput,
-                utteranceInput,
-                onFactChange: (value) => {
-                    factInput = value;
-                },
-                onEvidenceChange: (value) => {
-                    evidenceInput = value;
-                },
-                onUtteranceChange: (value) => {
-                    utteranceInput = value;
-                },
-            });
-            renderReferenceInputsHint(panel, lastState);
+            if (detailed) {
+                renderAuxInputs(panel, {
+                    factInput,
+                    evidenceInput,
+                    utteranceInput,
+                    onFactChange: (value) => {
+                        factInput = value;
+                    },
+                    onEvidenceChange: (value) => {
+                        evidenceInput = value;
+                    },
+                    onUtteranceChange: (value) => {
+                        utteranceInput = value;
+                    },
+                });
+                renderReferenceInputsHint(panel, lastState);
+            } else {
+                renderInfo(panel, "Use intent + slots, then submit. Corroborate with Case Notes before contradiction moves.");
+            }
 
             const minFacts = dialogue.summary_rules.current_scene_min_fact_count;
             const summaryRequired = dialogue.summary_rules.required_scene_ids.includes(focusSceneId);
@@ -343,7 +378,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
                     `Summary required: ${minFacts ?? 1} accepted fact(s), target language FR.`
                 );
             }
-            if (selectedIntent === "present_evidence" || selectedIntent === "challenge_contradiction") {
+            if (detailed && (selectedIntent === "present_evidence" || selectedIntent === "challenge_contradiction")) {
                 renderContradictionIntentHint(panel, lastState, selectedIntent);
             }
 
@@ -414,14 +449,14 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             renderDataLines(panel, [
                 ["Tick", String(submitFeedback.tick)],
                 ["Scene", submitFeedback.sceneId],
-                ["Intent", submitFeedback.intentId],
-                ["Status", `${submitFeedback.result.status}/${submitFeedback.result.code}`],
+                ["Intent", presentationProfile === "demo" ? labelIntent(submitFeedback.intentId) : submitFeedback.intentId],
+                ["Status", detailed ? `${submitFeedback.result.status}/${submitFeedback.result.code}` : submitFeedback.result.status],
                 ["Summary", submitFeedback.result.summary ?? "none"],
             ]);
         }
 
         renderSectionTitle(panel, "Recent Structured Turns");
-        renderTranscript(panel, dialogue.recent_turns);
+        renderTranscript(panel, dialogue.recent_turns, detailed);
     };
 
     store.subscribe((state) => {
@@ -433,6 +468,10 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         root,
         setInspectSelection: (selection) => {
             inspectSelection = selection;
+            render();
+        },
+        setPresentationProfile: (profile) => {
+            presentationProfile = profile;
             render();
         },
     };
@@ -688,7 +727,8 @@ function renderContradictionRoute(
     panel: HTMLElement,
     state: WorldState,
     focusSceneId: string | null,
-    selectedIntent: string | null
+    selectedIntent: string | null,
+    detailed: boolean
 ): void {
     const investigation = state.investigation;
     const dialogue = state.dialogue;
@@ -709,20 +749,25 @@ function renderContradictionRoute(
           ? "lead found"
           : "building";
 
-    renderDataLines(panel, [
-        ["Status", contradictionStatus],
-        ["Required for accusation", contradictions.required_for_accusation ? "yes" : "no"],
-        ["Use in scenes", useScenesLabel],
-        ["Potential links", String(contradictions.unlockable_edge_ids.length)],
-        ["Known links", String(contradictions.known_edge_ids.length)],
-    ]);
-    if (contradictions.unlockable_edge_ids.length > 0) {
+    renderDataLines(panel, detailed
+        ? [
+            ["Status", contradictionStatus],
+            ["Required for accusation", contradictions.required_for_accusation ? "yes" : "no"],
+            ["Use in scenes", useScenesLabel],
+            ["Potential links", String(contradictions.unlockable_edge_ids.length)],
+            ["Known links", String(contradictions.known_edge_ids.length)],
+        ]
+        : [
+            ["Status", contradictionStatus],
+            ["Use in scenes", useScenesLabel],
+        ]);
+    if (detailed && contradictions.unlockable_edge_ids.length > 0) {
         renderInfo(
             panel,
             `Potential: ${contradictions.unlockable_edge_ids.map(labelMbamContradictionEdge).join(", ")}`
         );
     }
-    if (contradictions.known_edge_ids.length > 0) {
+    if (detailed && contradictions.known_edge_ids.length > 0) {
         renderInfo(
             panel,
             `Known: ${contradictions.known_edge_ids.map(labelMbamContradictionEdge).join(", ")}`
@@ -883,6 +928,7 @@ function renderIntentButtons(
     opts: {
         intents: string[];
         selectedIntent: string | null;
+        friendlyLabels?: boolean;
         onSelect: (intentId: string) => void;
     }
 ): void {
@@ -894,7 +940,7 @@ function renderIntentButtons(
         btn.type = "button";
         btn.className = "dialogue-intent-btn";
         if (opts.selectedIntent === intentId) btn.classList.add("is-active");
-        btn.textContent = intentId;
+        btn.textContent = opts.friendlyLabels ? labelIntent(intentId) : intentId;
         btn.addEventListener("click", () => opts.onSelect(intentId));
         wrap.appendChild(btn);
     }
@@ -905,6 +951,7 @@ function renderSlotInputs(
     opts: {
         requiredSlots: string[];
         values: Record<string, string>;
+        friendlyLabels?: boolean;
         onChange: (slotName: string, value: string) => void;
     }
 ): void {
@@ -917,7 +964,7 @@ function renderSlotInputs(
         row.className = "dialogue-input-row";
         const label = document.createElement("span");
         label.className = "dialogue-input-label";
-        label.textContent = `slot:${slotName}`;
+        label.textContent = opts.friendlyLabels ? `Required: ${humanizeToken(slotName)}` : `slot:${slotName}`;
         const input = document.createElement("input");
         input.className = "dialogue-input";
         input.type = "text";
@@ -1015,7 +1062,7 @@ function renderAuxInput(
     return row;
 }
 
-function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[]): void {
+function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[], detailed: boolean): void {
     if (turns.length === 0) {
         renderInfo(panel, "No dialogue turns recorded in current projection.");
         return;
@@ -1029,10 +1076,14 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[]): void
         row.className = `dialogue-turn dialogue-status-${turn.status}`;
         const line1 = document.createElement("div");
         line1.className = "dialogue-turn-main";
-        line1.textContent = `#${turn.turn_index} ${turn.scene_id} ${turn.npc_id} ${turn.intent_id}`;
+        line1.textContent = detailed
+            ? `#${turn.turn_index} ${turn.scene_id} ${turn.npc_id} ${turn.intent_id}`
+            : `#${turn.turn_index} ${turn.scene_id} ${labelIntent(turn.intent_id)}`;
         const line2 = document.createElement("div");
         line2.className = "dialogue-turn-meta";
-        line2.textContent = `${turn.status}/${turn.code}  mode:${turn.response_mode}`;
+        line2.textContent = detailed
+            ? `${turn.status}/${turn.code}  mode:${turn.response_mode}`
+            : `${turn.status}`;
         row.append(line1, line2);
 
         if (turn.npc_utterance_text) {
@@ -1042,7 +1093,7 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[]): void
             row.appendChild(speech);
         }
 
-        if (turn.revealed_fact_ids.length > 0 || turn.summary_check_code || turn.repair_response_mode) {
+        if (detailed && (turn.revealed_fact_ids.length > 0 || turn.summary_check_code || turn.repair_response_mode)) {
             const detail = document.createElement("div");
             detail.className = "dialogue-turn-detail";
             detail.textContent =
@@ -1051,7 +1102,7 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[]): void
                 (turn.repair_response_mode ? ` repair:${turn.repair_response_mode}` : "");
             row.appendChild(detail);
         }
-        if (turn.short_rephrase_line || turn.summary_prompt_line || turn.hint_line) {
+        if (detailed && (turn.short_rephrase_line || turn.summary_prompt_line || turn.hint_line)) {
             const guidance = document.createElement("div");
             guidance.className = "dialogue-turn-detail";
             guidance.textContent =
@@ -1060,7 +1111,7 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[]): void
                 (turn.hint_line ? ` hint:${turn.hint_line}` : "");
             row.appendChild(guidance);
         }
-        if (turn.presentation_source || turn.presentation_reason_code) {
+        if (detailed && (turn.presentation_source || turn.presentation_reason_code)) {
             const source = document.createElement("div");
             source.className = "dialogue-turn-detail";
             source.textContent =
@@ -1068,7 +1119,7 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[]): void
                 (turn.presentation_reason_code ? ` reason:${turn.presentation_reason_code}` : "");
             row.appendChild(source);
         }
-        if (turn.presentation_metadata && turn.presentation_metadata.length > 0) {
+        if (detailed && turn.presentation_metadata && turn.presentation_metadata.length > 0) {
             const meta = document.createElement("div");
             meta.className = "dialogue-turn-detail";
             meta.textContent = `presentation_meta:[${turn.presentation_metadata.join(", ")}]`;
@@ -1105,4 +1156,14 @@ function renderInfo(panel: HTMLElement, text: string): void {
     line.className = "dialogue-info";
     line.textContent = text;
     panel.appendChild(line);
+}
+
+function labelIntent(intentId: string): string {
+    return INTENT_LABELS[intentId] ?? intentId;
+}
+
+function humanizeToken(value: string): string {
+    const normalized = value.replace(/_/g, " ").trim();
+    if (!normalized) return value;
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }

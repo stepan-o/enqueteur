@@ -55,6 +55,7 @@ function makeFakeViewer() {
         ingestLiveSnapshot: vi.fn((_payload: unknown) => {}),
         ingestLiveFrameDiff: vi.fn((_payload: unknown) => {}),
         setLiveCommandBridge: vi.fn((_bridge: unknown) => {}),
+        setShellMode: vi.fn((_mode: "demo" | "playtest" | "dev") => {}),
         stop: vi.fn(() => {}),
         setVisible: vi.fn((_visible: boolean) => {}),
         setDevControlsVisible: vi.fn((_visible: boolean) => {}),
@@ -335,6 +336,64 @@ describe("Phase F2 live connect app flow", () => {
         expect(fakeViewer.setVisible).toHaveBeenLastCalledWith(false);
 
         flow.destroy();
+    });
+
+    it("supports demo presentation override and hides internal live action bar", async () => {
+        const originalUrl = window.location.href;
+        window.history.pushState({}, "", "/?demo=1");
+        const startCase = vi.fn(async () => makeLaunchMetadata());
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const scriptedLiveClient = new ScriptedLiveClient();
+        const createLiveClient = vi.fn(() => scriptedLiveClient);
+        const fakeViewer = makeFakeViewer();
+        const createLiveViewer: NonNullable<AppFlowOpts["createLiveViewer"]> = vi.fn(
+            async () => fakeViewer
+        );
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+            createLiveClient,
+            createLiveViewer,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CASE_SELECT" });
+        clickFirstCaseCard();
+        await flushAsyncWork();
+        scriptedLiveClient.emitOpen();
+        scriptedLiveClient.emitMessage("KERNEL_HELLO", {
+            engine_name: "enqueteur",
+            engine_version: "0.1.0",
+            schema_version: "enqueteur_mbam_1",
+            world_id: "world-123",
+            run_id: "run-123",
+            seed: "A",
+            tick_rate_hz: 30,
+            time_origin_ms: 0,
+            render_spec: {},
+        });
+        scriptedLiveClient.emitMessage("SUBSCRIBED", {
+            stream_id: "stream-123",
+            effective_stream: "LIVE",
+            effective_channels: ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+            effective_diff_policy: "DIFF_ONLY",
+            effective_snapshot_policy: "ON_JOIN",
+            effective_compression: "NONE",
+        });
+        scriptedLiveClient.emitMessage("FULL_SNAPSHOT", {
+            schema_version: "enqueteur_mbam_1",
+            tick: 0,
+            step_hash: "hash-0",
+            state: { world: {} },
+        });
+        await flushAsyncWork();
+
+        expect(fakeViewer.setShellMode).toHaveBeenCalledWith("demo");
+        const liveActionBar = document.querySelector<HTMLElement>(".flow-live-actions");
+        expect(liveActionBar?.style.display).toBe("none");
+
+        flow.destroy();
+        window.history.pushState({}, "", originalUrl);
     });
 
     it("routes protocol incompatibility failures into startup incompatibility", async () => {

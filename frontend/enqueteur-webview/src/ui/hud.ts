@@ -3,7 +3,7 @@ import type { WorldStore, WorldState, KvpEvent, KvpRoom } from "../state/worldSt
 import { buildMbamOnboardingView } from "./mbamOnboarding";
 import type { OverlayStore, OverlayState, UIOverlayEvent } from "../state/overlayStore";
 
-export type HudProfile = "playtest" | "dev";
+export type HudProfile = "demo" | "playtest" | "dev";
 
 export type HudOpts = {
     profile?: HudProfile;
@@ -78,7 +78,7 @@ export function mountHud(
     feedPanel.style.lineHeight = "1.35";
 
     const feedTitle = document.createElement("div");
-    feedTitle.textContent = profile === "dev" ? "Live Feed" : "Case Feed";
+    feedTitle.textContent = profile === "dev" ? "Live Feed" : profile === "demo" ? "Recent Activity" : "Case Feed";
     feedTitle.style.fontWeight = "600";
     feedTitle.style.marginBottom = "6px";
 
@@ -114,7 +114,7 @@ export function mountHud(
         if (profile === nextProfile) return;
         profile = nextProfile;
         title.textContent = profile === "dev" ? "Enqueteur WebView" : "Case Status";
-        feedTitle.textContent = profile === "dev" ? "Live Feed" : "Case Feed";
+        feedTitle.textContent = profile === "dev" ? "Live Feed" : profile === "demo" ? "Recent Activity" : "Case Feed";
         rerender();
     };
 
@@ -156,7 +156,7 @@ function renderHud(
             lines.push("");
             lines.push("kernel:    -");
         }
-    } else {
+    } else if (profile === "playtest") {
         const onboarding = buildMbamOnboardingView(state);
         lines.push(`Session:   ${connected ? "Live" : "Connecting..."}`);
         lines.push(`Case:      ${onboarding.caseTitle}`);
@@ -170,6 +170,12 @@ function renderHud(
         lines.push(`Evidence:  ${evidenceCount} found`);
         lines.push(`Scene:     ${state.dialogue?.active_scene_id ?? "-"}`);
         lines.push(`Lead:      ${truncateText(onboarding.currentLead, 44)}`);
+    } else {
+        const onboarding = buildMbamOnboardingView(state);
+        lines.push(`Session:   ${connected ? "Live" : "Connecting..."}`);
+        lines.push(`Objective: Recover the missing medallion.`);
+        lines.push(`Scene:     ${state.dialogue?.active_scene_id ?? "-"}`);
+        lines.push(`Lead:      ${truncateText(onboarding.currentLead, 52)}`);
     }
 
     const world = state.world;
@@ -200,7 +206,7 @@ function renderFeed(
 ): void {
     const lines: string[] = [];
     const roomMap = state.rooms;
-    const maxRows = profile === "dev" ? 6 : 4;
+    const maxRows = profile === "dev" ? 6 : profile === "demo" ? 3 : 4;
 
     if (overlay && overlay.recentEvents.length > 0) {
         const events = overlay.recentEvents.slice(-maxRows);

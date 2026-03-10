@@ -63,7 +63,8 @@ export function boot(opts: BootOpts): ViewerHandle {
     const env = (import.meta as any).env ?? {};
     const mode = (opts.mode ?? env.VITE_WEBVIEW_MODE ?? "offline") as BootMode;
     const autoStart = opts.autoStart ?? true;
-    const defaultShellMode: BootShellMode = mode === "live" ? "playtest" : "dev";
+    const configuredShellMode = parseShellMode(env.VITE_ENQUETEUR_PRESENTATION_PROFILE);
+    const defaultShellMode: BootShellMode = mode === "live" ? (configuredShellMode ?? "playtest") : "dev";
     let offlineHandle: OfflineRunHandle | null = null;
     let offlineBaseUrl = opts.offlineBaseUrl ?? env.VITE_WEBVIEW_RUN_BASE ?? "/demo/kvp_demo_1min";
     let offlineSpeed = parseFloat(env.VITE_WEBVIEW_SPEED ?? "1");
@@ -91,12 +92,14 @@ export function boot(opts: BootOpts): ViewerHandle {
     const inspector = mountInspectPanel(store, {
         dispatchInvestigationAction: actionBridge.submitInvestigationAction,
         canDispatchInvestigationAction: actionBridge.canSubmitInvestigationAction,
+        presentationProfile: shellMode,
     });
     opts.mountEl.appendChild(inspector.root);
 
     const dialoguePanel = mountDialoguePanel(store, {
         dispatchDialogueTurn: actionBridge.submitDialogueTurn,
         canDispatchDialogueTurn: actionBridge.canSubmitDialogueTurn,
+        presentationProfile: shellMode,
     });
     opts.mountEl.appendChild(dialoguePanel.root);
 
@@ -104,6 +107,7 @@ export function boot(opts: BootOpts): ViewerHandle {
         dispatchMinigameSubmit: actionBridge.submitMinigameSubmit,
         canDispatchMinigameSubmit: actionBridge.canSubmitMinigameSubmit,
         allowLocalEvaluation: () => currentMode === "offline",
+        presentationProfile: shellMode,
     });
     opts.mountEl.appendChild(notebookPanel.root);
 
@@ -111,6 +115,7 @@ export function boot(opts: BootOpts): ViewerHandle {
         dispatchAttemptRecovery: actionBridge.submitAttemptRecovery,
         dispatchAttemptAccusation: actionBridge.submitAttemptAccusation,
         canDispatchResolutionAttempt: actionBridge.canSubmitResolutionAttempt,
+        presentationProfile: shellMode,
     });
     opts.mountEl.appendChild(resolutionPanel.root);
 
@@ -311,6 +316,10 @@ export function boot(opts: BootOpts): ViewerHandle {
         if (shellMode === nextMode) return;
         shellMode = nextMode;
         hud.setProfile(nextMode);
+        inspector.setPresentationProfile?.(nextMode);
+        dialoguePanel.setPresentationProfile?.(nextMode);
+        notebookPanel.setPresentationProfile?.(nextMode);
+        resolutionPanel.setPresentationProfile?.(nextMode);
         applyViewerUiVisibility();
     };
 
@@ -359,4 +368,9 @@ export function boot(opts: BootOpts): ViewerHandle {
         setDevControlsVisible,
         setHudVisible,
     };
+}
+
+function parseShellMode(value: unknown): BootShellMode | null {
+    if (value === "demo" || value === "playtest" || value === "dev") return value;
+    return null;
 }

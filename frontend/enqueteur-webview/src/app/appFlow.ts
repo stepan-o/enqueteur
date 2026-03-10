@@ -363,7 +363,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         if (state.kind === "LIVE_GAME") {
             preGameLayer.style.display = "none";
             liveLayer.style.display = "block";
-            liveActionBar.style.display = "flex";
+            const shellMode = resolveShellModeForSession(launchSessionStore.getLatestSession());
+            liveActionBar.style.display = shellMode === "demo" ? "none" : "flex";
             void mountLiveGameShell(state.caseId);
             return;
         }
@@ -1005,7 +1006,30 @@ function makeClientCmdId(): string {
 }
 
 function resolveShellModeForSession(session: LaunchSessionInfo | null): BootShellMode {
-    return session?.mode === "dev" ? "dev" : "playtest";
+    if (session?.mode === "dev") return "dev";
+    const override = resolvePresentationOverride();
+    if (override === "demo") return "demo";
+    if (override === "playtest") return "playtest";
+    return "playtest";
+}
+
+function resolvePresentationOverride(): "demo" | "playtest" | null {
+    const env = (import.meta as { env?: { VITE_ENQUETEUR_PRESENTATION_PROFILE?: string } }).env;
+    const envPref = normalizePresentationProfile(env?.VITE_ENQUETEUR_PRESENTATION_PROFILE);
+    if (envPref) return envPref;
+
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const explicit = normalizePresentationProfile(params.get("presentation"));
+    if (explicit) return explicit;
+    const demoFlag = params.get("demo");
+    if (demoFlag === "1" || demoFlag === "true") return "demo";
+    return null;
+}
+
+function normalizePresentationProfile(value: unknown): "demo" | "playtest" | null {
+    if (value === "demo" || value === "playtest") return value;
+    return null;
 }
 
 function isAbortError(err: unknown): boolean {

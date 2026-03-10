@@ -2,6 +2,7 @@ import type { WorldState, WorldStore } from "../state/worldStore";
 
 export type ResolutionPanelHandle = {
     root: HTMLElement;
+    setPresentationProfile?: (profile: "demo" | "playtest" | "dev") => void;
 };
 
 export type AttemptRecoveryRequest = {
@@ -30,6 +31,7 @@ export type ResolutionPanelOpts = {
         request: AttemptAccusationRequest
     ) => Promise<ResolutionAttemptResult> | ResolutionAttemptResult;
     canDispatchResolutionAttempt?: () => boolean;
+    presentationProfile?: "demo" | "playtest" | "dev";
 };
 
 const FACT_LABELS: Record<string, string> = {
@@ -84,6 +86,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
     let selectedSuspectId = "laurent";
     let lastActionMessage: string | null = null;
     let pendingAction = false;
+    let presentationProfile: "demo" | "playtest" | "dev" = opts.presentationProfile ?? "playtest";
 
     const render = (): void => {
         panel.innerHTML = "";
@@ -100,6 +103,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
 
         const recap = lastState.caseRecap;
         const outcome = lastState.caseOutcome;
+        const detailed = presentationProfile !== "demo";
         const dispatchAllowed = canDispatch();
         const readiness = buildResolutionReadiness(lastState, recap, outcome, {
             canDispatch: dispatchAllowed,
@@ -108,7 +112,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         });
         if (!recap && !outcome) {
             renderInfo(panel, "Resolution summary is not available in this projection.");
-            renderResolutionActions(panel, readiness);
+            renderResolutionActions(panel, readiness, detailed);
             return;
         }
 
@@ -120,14 +124,20 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         const contradictionSatisfied = recap?.contradiction_requirement_satisfied ?? (outcome?.contradiction_requirement_satisfied ?? false);
         const bestAwarded = recap?.best_outcome.awarded ?? (outcome?.best_outcome_awarded ?? false);
 
-        renderLines(panel, [
-            ["Case state", `v${truthEpoch}`],
-            ["Outcome", finalOutcome],
-            ["Resolution path", path],
-            ["Status", available ? "resolved" : "in progress"],
-            ["Contradiction", contradictionUsed ? "used" : (contradictionSatisfied ? "satisfied" : "pending")],
-            ["Best outcome", bestAwarded ? "awarded" : "not awarded"],
-        ]);
+        renderLines(panel, detailed
+            ? [
+                ["Case state", `v${truthEpoch}`],
+                ["Outcome", finalOutcome],
+                ["Resolution path", path],
+                ["Status", available ? "resolved" : "in progress"],
+                ["Contradiction", contradictionUsed ? "used" : (contradictionSatisfied ? "satisfied" : "pending")],
+                ["Best outcome", bestAwarded ? "awarded" : "not awarded"],
+            ]
+            : [
+                ["Outcome", finalOutcome],
+                ["Path", path],
+                ["Status", available ? "resolved" : "in progress"],
+            ]);
         renderInfo(panel, summarizeOutcome(finalOutcome, path, recap?.soft_fail.triggered ?? false, bestAwarded));
         renderSectionTitle(panel, "Attempt Readiness");
         renderLines(panel, [
@@ -136,7 +146,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
             ["Support packet", `${readiness.supportFactCount} facts / ${readiness.supportEvidenceCount} evidence`],
             ["Contradiction requirement", readiness.contradictionRequired ? (readiness.contradictionSatisfied ? "ready" : "pending") : "not required"],
         ]);
-        renderResolutionActions(panel, readiness);
+        renderResolutionActions(panel, readiness, detailed);
 
         if (!recap) {
             return;
@@ -150,12 +160,12 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         renderSection(panel, "Key Facts", recap.key_fact_ids.map((factId) => FACT_LABELS[factId] ?? factId));
         renderSection(panel, "Key Evidence", recap.key_evidence_ids.map((evidenceId) => EVIDENCE_LABELS[evidenceId] ?? evidenceId));
         renderSection(panel, "Path Highlights", [
-            ...recap.key_action_flags.map(formatActionFlag),
-            ...recap.contradiction_action_flags.map(formatActionFlag),
+            ...recap.key_action_flags.map((flag) => formatActionFlag(flag, detailed)),
+            ...recap.contradiction_action_flags.map((flag) => formatActionFlag(flag, detailed)),
         ]);
         renderSection(panel, "Aftermath", [
-            ...recap.relationship_result_flags.map(formatOutcomeFlag),
-            ...recap.continuity_flags.map(formatOutcomeFlag),
+            ...recap.relationship_result_flags.map((flag) => formatOutcomeFlag(flag, detailed)),
+            ...recap.continuity_flags.map((flag) => formatOutcomeFlag(flag, detailed)),
         ]);
 
         const markers: string[] = [];
@@ -164,10 +174,10 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         if (recap.best_outcome.no_public_escalation) markers.push("no_public_escalation");
         if (recap.best_outcome.strong_key_trust) markers.push("strong_key_trust");
         if (markers.length > 0) {
-            renderSection(panel, "Best Outcome Markers", markers.map(formatBestOutcomeMarker));
+            renderSection(panel, "Best Outcome Markers", markers.map((marker) => formatBestOutcomeMarker(marker, detailed)));
         }
         if (recap.soft_fail.triggered) {
-            renderSection(panel, "Soft-Fail Triggers", recap.soft_fail.trigger_conditions.map(formatSoftFailTrigger));
+            renderSection(panel, "Soft-Fail Triggers", recap.soft_fail.trigger_conditions.map((trigger) => formatSoftFailTrigger(trigger, detailed)));
         }
     };
 
@@ -178,7 +188,11 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         return opts.canDispatchResolutionAttempt();
     };
 
-    const renderResolutionActions = (panelEl: HTMLElement, readiness: ResolutionReadiness): void => {
+    const renderResolutionActions = (
+        panelEl: HTMLElement,
+        readiness: ResolutionReadiness,
+        detailed: boolean
+    ): void => {
         renderSectionTitle(panelEl, "Resolution Actions");
 
         const info = document.createElement("div");
@@ -215,7 +229,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
                 })
             ).then((result) => {
                 pendingAction = false;
-                lastActionMessage = formatAttemptResult("recovery", result);
+                lastActionMessage = formatAttemptResult("recovery", result, detailed);
                 render();
             }).catch((err: unknown) => {
                 pendingAction = false;
@@ -265,7 +279,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
                 })
             ).then((result) => {
                 pendingAction = false;
-                lastActionMessage = formatAttemptResult("accusation", result);
+                lastActionMessage = formatAttemptResult("accusation", result, detailed);
                 render();
             }).catch((err: unknown) => {
                 pendingAction = false;
@@ -287,7 +301,13 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
     });
     root.addEventListener("DOMNodeRemoved", () => unsub(), { once: true });
 
-    return { root };
+    return {
+        root,
+        setPresentationProfile: (profile) => {
+            presentationProfile = profile;
+            render();
+        },
+    };
 }
 
 function fallbackPathFromOutcome(outcome: string | undefined): string {
@@ -413,65 +433,81 @@ function buildOutcomeWhyRows(
     return rows;
 }
 
-function formatActionFlag(flag: string): string {
+function formatActionFlag(flag: string, detailed: boolean): string {
     const known: Record<string, string> = {
         "action:recover_medallion": "Recovered medallion action path",
         "action:accuse_samira": "Accusation centered on Samira",
         "action:state_contradiction_N3_N4": "Contradiction between badge log and receipt timing",
     };
-    return known[flag] ?? `${humanizeToken(flag)} (${flag})`;
+    if (known[flag]) return detailed ? `${known[flag]} (${flag})` : known[flag];
+    return detailed ? `${humanizeToken(flag)} (${flag})` : humanizeToken(flag);
 }
 
-function formatOutcomeFlag(flag: string): string {
+function formatOutcomeFlag(flag: string, detailed: boolean): string {
     const known: Record<string, string> = {
         "continuity:quiet_recovery": "Quiet recovery maintained",
         "continuity:strong_key_trust": "Key trust remained strong",
         rel_elodie_positive: "Elodie relationship ended positive",
         rel_marc_positive: "Marc relationship ended positive",
     };
-    return known[flag] ?? `${humanizeToken(flag)} (${flag})`;
+    if (known[flag]) return detailed ? `${known[flag]} (${flag})` : known[flag];
+    return detailed ? `${humanizeToken(flag)} (${flag})` : humanizeToken(flag);
 }
 
-function formatSoftFailTrigger(trigger: string): string {
+function formatSoftFailTrigger(trigger: string, detailed: boolean): string {
     const known: Record<string, string> = {
         item_left_building: "Item left the building before secure recovery",
         public_escalation: "Public escalation escalated case pressure",
     };
-    return known[trigger] ?? `${humanizeToken(trigger)} (${trigger})`;
+    if (known[trigger]) return detailed ? `${known[trigger]} (${trigger})` : known[trigger];
+    return detailed ? `${humanizeToken(trigger)} (${trigger})` : humanizeToken(trigger);
 }
 
-function formatBestOutcomeMarker(marker: string): string {
+function formatBestOutcomeMarker(marker: string, detailed: boolean): string {
     const known: Record<string, string> = {
         best_outcome_awarded: "Best outcome awarded",
         quiet_recovery: "Quiet recovery preserved",
         no_public_escalation: "No public escalation",
         strong_key_trust: "Strong key trust maintained",
     };
-    if (known[marker]) return `${known[marker]} (${marker})`;
-    return `${humanizeToken(marker)} (${marker})`;
+    if (known[marker]) return detailed ? `${known[marker]} (${marker})` : known[marker];
+    return detailed ? `${humanizeToken(marker)} (${marker})` : humanizeToken(marker);
 }
 
 function formatAttemptResult(
     kind: "recovery" | "accusation",
-    result: ResolutionAttemptResult
+    result: ResolutionAttemptResult,
+    detailed: boolean
 ): string {
     const title = kind === "recovery" ? "Recovery" : "Accusation";
     if (result.status === "accepted" || result.status === "submitted") {
-        return `${title} sent. Waiting for authoritative outcome update. [${result.code}]`;
+        return detailed
+            ? `${title} sent. Waiting for authoritative outcome update. [${result.code}]`
+            : `${title} sent. Waiting for outcome update.`;
     }
     if (result.status === "blocked") {
-        return `${title} blocked: ${mapAttemptReasonCode(result.code)} [${result.code}]`;
+        return detailed
+            ? `${title} blocked: ${mapAttemptReasonCode(result.code)} [${result.code}]`
+            : `${title} blocked: ${mapAttemptReasonCode(result.code)}.`;
     }
     if (result.status === "invalid") {
-        return `${title} invalid: command payload/prereq mismatch. [${result.code}]`;
+        return detailed
+            ? `${title} invalid: command payload/prereq mismatch. [${result.code}]`
+            : `${title} invalid: payload/prereq mismatch.`;
     }
     if (result.status === "unavailable") {
-        return `${title} unavailable: live session not ready. [${result.code}]`;
+        return detailed
+            ? `${title} unavailable: live session not ready. [${result.code}]`
+            : `${title} unavailable: live session not ready.`;
     }
     if (result.status === "error") {
-        return `${title} dispatch error: ${result.summary ?? "unknown error"} [${result.code}]`;
+        return detailed
+            ? `${title} dispatch error: ${result.summary ?? "unknown error"} [${result.code}]`
+            : `${title} dispatch error: ${result.summary ?? "unknown error"}`;
     }
-    return `${title}: ${result.summary ?? "Command processed."} [${result.code}]`;
+    return detailed
+        ? `${title}: ${result.summary ?? "Command processed."} [${result.code}]`
+        : `${title}: ${result.summary ?? "Command processed."}`;
 }
 
 function mapAttemptReasonCode(code: string): string {

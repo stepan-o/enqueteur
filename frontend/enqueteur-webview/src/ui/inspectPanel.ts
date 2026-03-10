@@ -43,11 +43,13 @@ export type InvestigationActionDispatcher = (
 export type InspectPanelOpts = {
     dispatchInvestigationAction?: InvestigationActionDispatcher;
     canDispatchInvestigationAction?: () => boolean;
+    presentationProfile?: "demo" | "playtest" | "dev";
 };
 
 export type InspectHandle = {
     root: HTMLElement;
     setSelection: (sel: InspectSelection) => void;
+    setPresentationProfile?: (profile: "demo" | "playtest" | "dev") => void;
     clear: () => void;
     getSelection: () => InspectSelection;
 };
@@ -88,6 +90,7 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
     let lastState: WorldState | null = null;
     let lastActionFeedback: LastActionFeedback | null = null;
     let pendingActionKey: string | null = null;
+    let presentationProfile: "demo" | "playtest" | "dev" = opts.presentationProfile ?? "playtest";
 
     const render = (): void => {
         if (!selection || !lastState) {
@@ -108,7 +111,7 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
         if (selection.kind === "agent") {
             const agent = lastState.agents.get(selection.id);
             if (!agent) return renderMissing("Agent", selection.id);
-            renderAgent(panel, agent, lastState);
+            renderAgent(panel, agent, lastState, presentationProfile !== "demo");
             return;
         }
 
@@ -120,6 +123,7 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
                 canDispatchInvestigationAction: opts.canDispatchInvestigationAction,
                 pendingActionKey,
                 lastActionFeedback,
+                detailed: presentationProfile !== "demo",
                 onAction: async (request) => {
                     const actionKey = `${selectionKeyForObject(request.worldObjectId, request.caseObjectId)}:${request.affordanceId}`;
                     pendingActionKey = actionKey;
@@ -208,6 +212,10 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
     return {
         root,
         setSelection,
+        setPresentationProfile: (profile) => {
+            presentationProfile = profile;
+            render();
+        },
         clear,
         getSelection: () => selection,
     };
@@ -231,7 +239,12 @@ function renderRoom(panel: HTMLElement, room: KvpRoom): void {
     renderLines(panel, lines);
 }
 
-function renderAgent(panel: HTMLElement, agent: KvpAgent, state: WorldState): void {
+function renderAgent(
+    panel: HTMLElement,
+    agent: KvpAgent,
+    state: WorldState,
+    detailed: boolean
+): void {
     const title = document.createElement("div");
     title.className = "inspect-title";
     title.textContent = `Agent ${agent.agent_id}`;
@@ -241,13 +254,18 @@ function renderAgent(panel: HTMLElement, agent: KvpAgent, state: WorldState): vo
     const activeObject = findObjectByOccupant(state, agent.agent_id);
     const context = activeObject ? `${activeObject.class_code} #${activeObject.object_id}` : "none";
 
-    const lines: Array<[string, string]> = [
-        ["Room", roomLabel],
-        ["Role", String(agent.role_code)],
-        ["Action", String(agent.action_state_code)],
-        ["Generation", String(agent.generation)],
-        ["Interacting", context],
-    ];
+    const lines: Array<[string, string]> = detailed
+        ? [
+            ["Room", roomLabel],
+            ["Role", String(agent.role_code)],
+            ["Action", String(agent.action_state_code)],
+            ["Generation", String(agent.generation)],
+            ["Interacting", context],
+        ]
+        : [
+            ["Room", roomLabel],
+            ["Interacting", context],
+        ];
     renderLines(panel, lines);
 
     if (state.npcSemantic.length > 0) {
@@ -264,6 +282,7 @@ type RenderActionPanelOpts = {
     canDispatchInvestigationAction?: () => boolean;
     pendingActionKey: string | null;
     lastActionFeedback: LastActionFeedback | null;
+    detailed: boolean;
     onAction: (request: InvestigationActionRequest) => Promise<void>;
 };
 
@@ -281,12 +300,19 @@ function renderObjectActionPanel(
     const roomLabel = state.rooms.get(obj.room_id)?.label ?? `Room ${obj.room_id}`;
     const occupant = obj.occupant_agent_id ? state.agents.get(obj.occupant_agent_id) : null;
     const occupantLabel = occupant ? `Agent ${occupant.agent_id}` : "none";
-    renderLines(panel, [
-        ["Object", String(obj.object_id)],
-        ["Room", roomLabel],
-        ["Status", String(obj.status_code)],
-        ["Occupant", occupantLabel],
-    ]);
+    if (opts.detailed) {
+        renderLines(panel, [
+            ["Object", String(obj.object_id)],
+            ["Room", roomLabel],
+            ["Status", String(obj.status_code)],
+            ["Occupant", occupantLabel],
+        ]);
+    } else {
+        renderLines(panel, [
+            ["Room", roomLabel],
+            ["Occupant", occupantLabel],
+        ]);
+    }
 
     const caseObjectId = resolveCaseObjectId(obj, state);
     renderSectionTitle(panel, "Interaction");
@@ -300,7 +326,7 @@ function renderObjectActionPanel(
 
     const investigationObject = state.investigation?.objects.find((row) => row.object_id === caseObjectId) ?? null;
     const objectGuide = getMbamObjectGuide(caseObjectId);
-    renderLines(panel, [["Case Object", `${caseObjectId}${objectGuide ? ` (${objectGuide.label})` : ""}`]]);
+    renderLines(panel, [[opts.detailed ? "Case Object" : "Object", `${caseObjectId}${objectGuide ? ` (${objectGuide.label})` : ""}`]]);
     if (objectGuide) {
         renderLines(panel, [["Location hint", objectGuide.location_hint]]);
     }
@@ -320,13 +346,23 @@ function renderObjectActionPanel(
     ]);
     renderObjectPrompt(panel, caseObjectId, state);
 
-    renderKnownState(panel, investigationObject);
+    renderKnownState(panel, investigationObject, opts.detailed);
     renderActionButtons(panel, obj.object_id, caseObjectId, investigationObject, state, opts);
-    renderLastActionFeedback(panel, obj.object_id, caseObjectId, opts.lastActionFeedback);
-    renderRecentDialogueHint(panel, state);
+    renderLastActionFeedback(panel, obj.object_id, caseObjectId, opts.lastActionFeedback, opts.detailed);
+    renderRecentDialogueHint(panel, state, opts.detailed);
 }
 
-function renderKnownState(panel: HTMLElement, objectState: KvpInvestigationObjectState): void {
+function renderKnownState(
+    panel: HTMLElement,
+    objectState: KvpInvestigationObjectState,
+    detailed: boolean
+): void {
+    if (!detailed) {
+        renderSectionTitle(panel, "Known Object State");
+        const keyCount = Object.keys(objectState.known_state ?? {}).length;
+        renderLines(panel, [["Visible clues", keyCount > 0 ? String(keyCount) : "none yet"]]);
+        return;
+    }
     const entries = Object.entries(objectState.known_state ?? {}).sort(([a], [b]) => a.localeCompare(b));
     renderSectionTitle(panel, "Known Object State");
     if (entries.length === 0) {
@@ -402,35 +438,47 @@ function renderLastActionFeedback(
     panel: HTMLElement,
     worldObjectId: number,
     caseObjectId: string,
-    feedback: LastActionFeedback | null
+    feedback: LastActionFeedback | null,
+    detailed: boolean
 ): void {
     if (!feedback) return;
     const expectedSelectionKey = selectionKeyForObject(worldObjectId, caseObjectId);
     if (feedback.selectionKey !== expectedSelectionKey) return;
 
     renderSectionTitle(panel, "Last Action Result");
-    renderLines(panel, [
-        ["Affordance", `${labelMbamAction(feedback.affordanceId)} (${feedback.affordanceId})`],
-        ["Status", feedback.result.status],
-        ["Code", feedback.result.code],
-        ["Tick", String(feedback.tick)],
-        ["Summary", feedback.result.summary ?? "none"],
-        ["Guidance", describeInvestigationFeedback(feedback.result)],
-        ["Facts", String(feedback.result.revealed_fact_ids?.length ?? 0)],
-        ["Evidence", String(feedback.result.revealed_evidence_ids?.length ?? 0)],
-    ]);
+    renderLines(panel, detailed
+        ? [
+            ["Affordance", `${labelMbamAction(feedback.affordanceId)} (${feedback.affordanceId})`],
+            ["Status", feedback.result.status],
+            ["Code", feedback.result.code],
+            ["Tick", String(feedback.tick)],
+            ["Summary", feedback.result.summary ?? "none"],
+            ["Guidance", describeInvestigationFeedback(feedback.result)],
+            ["Facts", String(feedback.result.revealed_fact_ids?.length ?? 0)],
+            ["Evidence", String(feedback.result.revealed_evidence_ids?.length ?? 0)],
+        ]
+        : [
+            ["Action", labelMbamAction(feedback.affordanceId)],
+            ["Result", feedback.result.status],
+            ["Summary", feedback.result.summary ?? describeInvestigationFeedback(feedback.result)],
+        ]);
 }
 
-function renderRecentDialogueHint(panel: HTMLElement, state: WorldState): void {
+function renderRecentDialogueHint(panel: HTMLElement, state: WorldState, detailed: boolean): void {
     const dialogue = state.dialogue;
     if (!dialogue || dialogue.recent_turns.length === 0) return;
     const recent = dialogue.recent_turns[dialogue.recent_turns.length - 1] as KvpDialogueTurnLog;
     renderSectionTitle(panel, "Recent Dialogue Context");
-    renderLines(panel, [
-        ["Scene", recent.scene_id],
-        ["Intent", recent.intent_id],
-        ["Turn status", `${recent.status}/${recent.code}`],
-    ]);
+    renderLines(panel, detailed
+        ? [
+            ["Scene", recent.scene_id],
+            ["Intent", recent.intent_id],
+            ["Turn status", `${recent.status}/${recent.code}`],
+        ]
+        : [
+            ["Scene", recent.scene_id],
+            ["Status", recent.status],
+        ]);
 }
 
 function renderObjectPrompt(panel: HTMLElement, caseObjectId: string, state: WorldState): void {

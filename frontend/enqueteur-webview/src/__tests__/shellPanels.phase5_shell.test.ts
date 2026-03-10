@@ -153,6 +153,22 @@ describe("Phase 5 shell panel rendering", () => {
         expect(panel?.textContent).toContain("MG4 Torn Note Reconstruction");
     });
 
+    it("demotes internal-only notebook guidance in demo presentation profile", () => {
+        const store = new WorldStore();
+        store.applySnapshot(makeMbamSnapshot(3));
+
+        const notebook = mountNotebookPanel(store, {
+            presentationProfile: "demo",
+        });
+        document.body.appendChild(notebook.root);
+        const panel = notebook.root.querySelector(".notebook-panel");
+
+        expect(panel?.textContent).toContain("Case Brief");
+        expect(panel?.textContent).toContain("Key Object Leads");
+        expect(panel?.textContent).not.toContain("Internal Playtest Path");
+        expect(panel?.textContent).not.toContain("Truth epoch");
+    });
+
     it("evaluates MG1-MG4 notebook widgets deterministically", async () => {
         const store = new WorldStore();
         store.applySnapshot(makeMbamSnapshot(4));

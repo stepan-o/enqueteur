@@ -12,6 +12,7 @@ import {
 
 export type NotebookPanelHandle = {
     root: HTMLElement;
+    setPresentationProfile?: (profile: "demo" | "playtest" | "dev") => void;
 };
 
 export type MinigameSubmitRequest = {
@@ -35,6 +36,7 @@ export type NotebookPanelOpts = {
     dispatchMinigameSubmit?: MinigameSubmitDispatcher;
     canDispatchMinigameSubmit?: () => boolean;
     allowLocalEvaluation?: () => boolean;
+    presentationProfile?: "demo" | "playtest" | "dev";
 };
 
 type MinigameUiState = {
@@ -140,6 +142,7 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
         feedback: null,
         passed: null,
     };
+    let presentationProfile: "demo" | "playtest" | "dev" = opts.presentationProfile ?? "playtest";
 
     const canDispatchLiveMinigame = (): boolean => {
         if (!opts.dispatchMinigameSubmit) return false;
@@ -208,23 +211,27 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
 
         const onboarding = buildMbamOnboardingView(lastState);
         const playtestPath = buildMbamPlaytestPathView(lastState);
+        const isDemoProfile = presentationProfile === "demo";
         renderSectionTitle(panel, "Case Brief");
         renderInfo(panel, onboarding.caseSummary);
         renderSectionTitle(panel, "Start Here");
         renderOnboardingSteps(panel, onboarding.steps);
         renderInfo(panel, `Current lead: ${onboarding.currentLead}`);
-        renderSectionTitle(panel, playtestPath.title);
-        renderOnboardingSteps(panel, playtestPath.steps);
-        renderInfo(panel, playtestPath.currentMilestone);
-
-        renderLines(panel, [
-            ["Case", lastState.caseState?.case_id ?? "MBAM_01"],
-            ["Seed", lastState.caseState?.seed ?? "-"],
-            ["Truth epoch", String(investigation.truth_epoch)],
-        ]);
+        if (!isDemoProfile) {
+            renderSectionTitle(panel, playtestPath.title);
+            renderOnboardingSteps(panel, playtestPath.steps);
+            renderInfo(panel, playtestPath.currentMilestone);
+            renderLines(panel, [
+                ["Case", lastState.caseState?.case_id ?? "MBAM_01"],
+                ["Seed", lastState.caseState?.seed ?? "-"],
+                ["Truth epoch", String(investigation.truth_epoch)],
+            ]);
+        } else {
+            renderLines(panel, [["Case", lastState.caseState?.case_id ?? "MBAM_01"]]);
+        }
 
         renderSectionTitle(panel, "Key Object Leads");
-        renderKeyObjectLeads(panel, investigation);
+        renderKeyObjectLeads(panel, investigation, isDemoProfile);
 
         renderSectionTitle(panel, "Evidence Tray");
         renderEvidenceTray(panel, investigation);
@@ -233,13 +240,14 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
         renderFactVisibility(panel, investigation);
 
         renderSectionTitle(panel, "Contradictions");
-        renderContradictions(panel, lastState, investigation);
+        renderContradictions(panel, lastState, investigation, isDemoProfile);
 
         renderSectionTitle(panel, "Timeline Clues");
         renderTimeline(panel, investigation);
 
         renderSectionTitle(panel, "Mini-Exercises");
         renderMinigames(panel, {
+            isDemoProfile,
             state: lastState,
             investigation,
             mg1State,
@@ -473,7 +481,13 @@ export function mountNotebookPanel(store: WorldStore, opts: NotebookPanelOpts = 
         render();
     });
 
-    return { root };
+    return {
+        root,
+        setPresentationProfile: (profile) => {
+            presentationProfile = profile;
+            render();
+        },
+    };
 }
 
 function currentConfirmationStrength(state: WorldState | null): ConfirmationStrengthMode {
@@ -482,6 +496,7 @@ function currentConfirmationStrength(state: WorldState | null): ConfirmationStre
 }
 
 type MinigameRenderOpts = {
+    isDemoProfile: boolean;
     state: WorldState;
     investigation: KvpInvestigationState;
     mg1State: MinigameUiState;
@@ -515,6 +530,7 @@ function renderMinigames(panel: HTMLElement, opts: MinigameRenderOpts): void {
     const mg4Source = parseMg4Source(benchKnownState);
 
     renderMg1Widget(panel, {
+        isDemoProfile: opts.isDemoProfile,
         source:
             typeof labelKnownState.title === "string" && typeof labelKnownState.date === "string"
                 ? { title: labelKnownState.title, date: labelKnownState.date }
@@ -528,6 +544,7 @@ function renderMinigames(panel: HTMLElement, opts: MinigameRenderOpts): void {
     });
 
     renderMg2Widget(panel, {
+        isDemoProfile: opts.isDemoProfile,
         source: mg2Source,
         state: opts.mg2State,
         projected: mgRows.get("MG2_BADGE_LOG"),
@@ -538,6 +555,7 @@ function renderMinigames(panel: HTMLElement, opts: MinigameRenderOpts): void {
     });
 
     renderMg3Widget(panel, {
+        isDemoProfile: opts.isDemoProfile,
         source: resolveMg3Source(receiptKnownState),
         state: opts.mg3State,
         projected: mgRows.get("MG3_RECEIPT_READING"),
@@ -548,6 +566,7 @@ function renderMinigames(panel: HTMLElement, opts: MinigameRenderOpts): void {
     });
 
     renderMg4Widget(panel, {
+        isDemoProfile: opts.isDemoProfile,
         source: mg4Source,
         state: opts.mg4State,
         projected: mgRows.get("MG4_TORN_NOTE_RECONSTRUCTION"),
@@ -611,6 +630,7 @@ function resolveMg3Source(knownState: Record<string, unknown>): {
 function renderMg1Widget(
     panel: HTMLElement,
     opts: {
+        isDemoProfile: boolean;
         source: { title: string; date: string } | null;
         state: MinigameUiState;
         projected: ProjectedMinigameState | undefined;
@@ -635,8 +655,8 @@ function renderMg1Widget(
     }
 
     renderMiniSource(wrap, `Cartel\nTitre: ${opts.source.title}\nDate: ${opts.source.date}`);
-    renderProjectedStatus(wrap, opts.projected, opts.state);
-    renderScaffoldingHints(wrap, opts.learning, "MG1_LABEL_READING");
+    renderProjectedStatus(wrap, opts.projected, opts.state, opts.isDemoProfile);
+    renderScaffoldingHints(wrap, opts.learning, "MG1_LABEL_READING", opts.isDemoProfile);
     renderMiniInput(wrap, {
         label: "Title",
         value: opts.state.answers.title ?? "",
@@ -660,6 +680,7 @@ function renderMg1Widget(
 function renderMg2Widget(
     panel: HTMLElement,
     opts: {
+        isDemoProfile: boolean;
         source: Mg2Source | null;
         state: MinigameUiState;
         projected: ProjectedMinigameState | undefined;
@@ -688,8 +709,8 @@ function renderMg2Widget(
         wrap,
         `Journal des badges\n${source.entries.map((row) => `${row.badge_id} | ${row.time} | ${row.door}`).join("\n")}`
     );
-    renderProjectedStatus(wrap, opts.projected, opts.state);
-    renderScaffoldingHints(wrap, opts.learning, "MG2_BADGE_LOG");
+    renderProjectedStatus(wrap, opts.projected, opts.state, opts.isDemoProfile);
+    renderScaffoldingHints(wrap, opts.learning, "MG2_BADGE_LOG", opts.isDemoProfile);
     renderMiniSelect(wrap, {
         label: "Important entry",
         value: opts.state.answers.badge_id ?? "",
@@ -717,6 +738,7 @@ function renderMg2Widget(
 function renderMg3Widget(
     panel: HTMLElement,
     opts: {
+        isDemoProfile: boolean;
         source: { time: string; item: string; receiptId?: string } | null;
         state: MinigameUiState;
         projected: ProjectedMinigameState | undefined;
@@ -741,8 +763,8 @@ function renderMg3Widget(
     }
 
     renderMiniSource(wrap, `Recu\nHeure: ${opts.source.time}\nArticle: ${opts.source.item}`);
-    renderProjectedStatus(wrap, opts.projected, opts.state);
-    renderScaffoldingHints(wrap, opts.learning, "MG3_RECEIPT_READING");
+    renderProjectedStatus(wrap, opts.projected, opts.state, opts.isDemoProfile);
+    renderScaffoldingHints(wrap, opts.learning, "MG3_RECEIPT_READING", opts.isDemoProfile);
     renderMiniInput(wrap, {
         label: "Time",
         value: opts.state.answers.time ?? "",
@@ -766,6 +788,7 @@ function renderMg3Widget(
 function renderMg4Widget(
     panel: HTMLElement,
     opts: {
+        isDemoProfile: boolean;
         source: Mg4Source | null;
         state: MinigameUiState;
         projected: ProjectedMinigameState | undefined;
@@ -791,8 +814,8 @@ function renderMg4Widget(
     const source = opts.source;
 
     renderMiniSource(wrap, `Note dechiree\n${source.prompt}\nOptions: ${source.options.join(", ")}`);
-    renderProjectedStatus(wrap, opts.projected, opts.state);
-    renderScaffoldingHints(wrap, opts.learning, "MG4_TORN_NOTE_RECONSTRUCTION");
+    renderProjectedStatus(wrap, opts.projected, opts.state, opts.isDemoProfile);
+    renderScaffoldingHints(wrap, opts.learning, "MG4_TORN_NOTE_RECONSTRUCTION", opts.isDemoProfile);
     renderMiniSelect(wrap, {
         label: "Word 1",
         value: opts.state.answers.slot1 ?? "",
@@ -929,11 +952,19 @@ function renderMiniFeedback(container: HTMLElement, state: MinigameUiState): voi
 function renderProjectedStatus(
     container: HTMLElement,
     projected: ProjectedMinigameState | undefined,
-    local: MinigameUiState
+    local: MinigameUiState,
+    isDemoProfile: boolean
 ): void {
     const line = document.createElement("div");
     line.className = "notebook-minigame-status";
-    if (!projected) {
+    if (isDemoProfile) {
+        if (!projected) {
+            line.textContent = "Status: pending";
+        } else {
+            const gateState = projected.gate_open === false ? "blocked" : "ready";
+            line.textContent = `Status: ${projected.status} (${gateState})`;
+        }
+    } else if (!projected) {
         line.textContent = `Local attempts: ${local.attempts}`;
     } else {
         const passRequired = projected.pass_score_required ?? projected.max_score;
@@ -949,8 +980,10 @@ function renderProjectedStatus(
 function renderScaffoldingHints(
     container: HTMLElement,
     learning: NonNullable<WorldState["dialogue"]>["learning"] | null | undefined,
-    targetMinigameId: string
+    targetMinigameId: string,
+    isDemoProfile: boolean
 ): void {
+    if (isDemoProfile) return;
     if (!learning) return;
     const policy = learning.scaffolding_policy;
     if (policy.target_minigame_id && policy.target_minigame_id !== targetMinigameId) return;
@@ -1081,7 +1114,11 @@ function normalizeAnswer(value: string): string {
     return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function renderKeyObjectLeads(panel: HTMLElement, investigation: KvpInvestigationState): void {
+function renderKeyObjectLeads(
+    panel: HTMLElement,
+    investigation: KvpInvestigationState,
+    isDemoProfile: boolean
+): void {
     const guideById = new Map(listMbamObjectGuides().map((row) => [row.object_id, row]));
     const leadRows = [...investigation.objects]
         .filter((row) => row.affordances.length > 0)
@@ -1117,7 +1154,9 @@ function renderKeyObjectLeads(panel: HTMLElement, investigation: KvpInvestigatio
         const line = document.createElement("div");
         line.className = "notebook-row";
         if (nextAction) line.classList.add("is-lead");
-        line.textContent = `${title} (${row.object_id})  ${observedCount}/${totalCount} actions reviewed`;
+        line.textContent = isDemoProfile
+            ? `${title}  ${observedCount}/${totalCount} actions reviewed`
+            : `${title} (${row.object_id})  ${observedCount}/${totalCount} actions reviewed`;
         list.appendChild(line);
 
         const detail = document.createElement("div");
@@ -1187,7 +1226,12 @@ function renderFactVisibility(panel: HTMLElement, investigation: KvpInvestigatio
     }
 }
 
-function renderContradictions(panel: HTMLElement, state: WorldState, investigation: KvpInvestigationState): void {
+function renderContradictions(
+    panel: HTMLElement,
+    state: WorldState,
+    investigation: KvpInvestigationState,
+    isDemoProfile: boolean
+): void {
     const contradictions = investigation.contradictions;
     const surfaced = new Set(state.dialogue?.surfaced_scene_ids ?? []);
     const contradictionScenes = ["S3", "S5"].filter((sceneId) => surfaced.has(sceneId));
@@ -1195,21 +1239,27 @@ function renderContradictions(panel: HTMLElement, state: WorldState, investigati
         ? `Conversations: present_evidence / challenge_contradiction in ${contradictionScenes.join(", ")}`
         : "Conversations: present_evidence first; contradiction scenes surface as case progresses.";
 
-    renderLines(panel, [
-        ["Required for accusation", contradictions.required_for_accusation ? "yes" : "no"],
-        ["Requirement satisfied", contradictions.requirement_satisfied ? "yes" : "no"],
-        ["Unlockable edges", String(contradictions.unlockable_edge_ids.length)],
-        ["Known edges", String(contradictions.known_edge_ids.length)],
-        ["Action route", actionRoute],
-    ]);
+    renderLines(panel, isDemoProfile
+        ? [
+            ["Accusation requirement", contradictions.required_for_accusation ? "required" : "not required"],
+            ["Contradiction status", contradictions.requirement_satisfied ? "ready" : "building"],
+            ["Where to use", actionRoute],
+        ]
+        : [
+            ["Required for accusation", contradictions.required_for_accusation ? "yes" : "no"],
+            ["Requirement satisfied", contradictions.requirement_satisfied ? "yes" : "no"],
+            ["Unlockable edges", String(contradictions.unlockable_edge_ids.length)],
+            ["Known edges", String(contradictions.known_edge_ids.length)],
+            ["Action route", actionRoute],
+        ]);
 
-    if (contradictions.unlockable_edge_ids.length > 0) {
+    if (!isDemoProfile && contradictions.unlockable_edge_ids.length > 0) {
         const unlockable = document.createElement("div");
         unlockable.className = "notebook-mini";
         unlockable.textContent = `Unlockable: ${contradictions.unlockable_edge_ids.map(labelMbamContradictionEdge).join(", ")}`;
         panel.appendChild(unlockable);
     }
-    if (contradictions.known_edge_ids.length > 0) {
+    if (!isDemoProfile && contradictions.known_edge_ids.length > 0) {
         const known = document.createElement("div");
         known.className = "notebook-mini";
         known.textContent = `Known: ${contradictions.known_edge_ids.map(labelMbamContradictionEdge).join(", ")}`;
