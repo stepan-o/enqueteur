@@ -19,7 +19,7 @@ async def server_lifespan(app: Any):
 
     config: ServerConfig = app.state.server_config
     run_registry = RunRegistry()
-    session_controller = SessionController(run_registry=run_registry)
+    session_controller = SessionController()
     case_start_service = CaseStartService(
         ws_base_url=build_ws_base_url(config),
         registry=CaseRunRegistry(),
@@ -35,7 +35,7 @@ async def server_lifespan(app: Any):
     try:
         yield
     finally:
-        # S1/S2: minimal safe teardown scaffolding only.
+        # S3: minimal safe teardown scaffolding only.
         app.state.started = False
         session_controller.clear()
         run_registry.clear()

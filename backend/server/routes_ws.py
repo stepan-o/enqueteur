@@ -38,7 +38,7 @@ def register_ws_routes(app: Any) -> None:
         payload = ErrorBody(
             code="NOT_IMPLEMENTED",
             message=(
-                "Transport route exists, but live session protocol handling is not implemented in Phase S1. "
+                "Transport route exists, but live session protocol handling is not implemented in Phase S3. "
                 "Phase S4 will attach real websocket lifecycle + protocol sequencing."
             ),
             details={"run_id": run_id, "phase_gate": LIVE_WS_PHASE_GATE},

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from threading import RLock
 from typing import Any, Iterable, Mapping
+from urllib.parse import parse_qs, urlparse
 
 from .errors import RunNotFoundError
 from .models import RunLaunchMetadata, RunRegistryEntry
@@ -27,7 +28,6 @@ class RunRegistry:
         entry = RunRegistryEntry.from_launch(
             launch=launch,
             started_run=started_run,
-            metadata=dict(prior.metadata) if prior is not None else {},
         )
         if prior is not None:
             entry.host.registered_at = prior.host.registered_at
@@ -100,9 +100,17 @@ class RunRegistry:
     @staticmethod
     def extract_run_id(connection_target: str) -> str | None:
         """Resolve canonical run_id from a connection target or raw id string."""
-        from backend.api.cases_start import extract_run_id_from_connection_target
+        text = connection_target.strip()
+        if not text:
+            return None
+        if "://" not in text and "?" not in text and "/" not in text:
+            return text
 
-        run_id = extract_run_id_from_connection_target(connection_target)
+        parsed = urlparse(text)
+        run_ids = parse_qs(parsed.query).get("run_id", [])
+        if not run_ids:
+            return None
+        run_id = run_ids[0].strip()
         return run_id if isinstance(run_id, str) and run_id else None
 
     @staticmethod
@@ -142,7 +150,6 @@ class RunRegistry:
             schema_version=schema_version if isinstance(schema_version, str) else None,
             ws_url=ws_url if isinstance(ws_url, str) else None,
             started_at=started_at if isinstance(started_at, str) else None,
-            launch_payload=dict(launch_payload),
         )
 
 

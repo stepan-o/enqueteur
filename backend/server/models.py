@@ -111,7 +111,6 @@ class RunLaunchMetadata:
     schema_version: str | None = None
     ws_url: str | None = None
     started_at: str | None = None
-    launch_payload: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -137,7 +136,6 @@ class RunRegistryEntry:
     launch: RunLaunchMetadata
     runtime: RunRuntimeBinding = field(default_factory=RunRuntimeBinding)
     host: RunHostMetadata = field(default_factory=RunHostMetadata)
-    metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_launch(
@@ -145,12 +143,10 @@ class RunRegistryEntry:
         *,
         launch: RunLaunchMetadata,
         started_run: Any | None,
-        metadata: Mapping[str, Any] | None = None,
     ) -> "RunRegistryEntry":
         return cls(
             launch=launch,
             runtime=RunRuntimeBinding(started_run=started_run),
-            metadata=dict(metadata or {}),
         )
 
     @property

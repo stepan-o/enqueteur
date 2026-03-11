@@ -7,19 +7,17 @@ from typing import Any
 
 from .errors import SessionNotFoundError
 from .models import SessionRecord, SessionState, new_id
-from .run_registry import RunRegistry
 
 
 class SessionController:
     """Tracks ws session records; protocol sequencing is deferred to later phases."""
 
-    def __init__(self, *, run_registry: RunRegistry) -> None:
-        self._run_registry = run_registry
+    def __init__(self) -> None:
         self._sessions: dict[str, SessionRecord] = {}
         self._lock = RLock()
 
     def open_session(self, *, run_id: str | None) -> SessionRecord:
-        # We keep run binding permissive in S1; validation/wiring happens in S2+.
+        # Keep run binding permissive until S4 attaches protocol-level validation.
         record = SessionRecord(
             connection_id=new_id(),
             run_id=run_id,
@@ -68,7 +66,7 @@ class SessionController:
         _ = message
         return {
             "status": "not_implemented",
-            "message": "Live protocol handling is not wired in Phase S1.",
+            "message": "Live protocol handling is not wired in Phase S3.",
         }
 
     def clear(self) -> None:
@@ -77,4 +75,3 @@ class SessionController:
 
 
 __all__ = ["SessionController"]
-
