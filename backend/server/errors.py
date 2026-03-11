@@ -7,10 +7,6 @@ class ServerShellError(RuntimeError):
     """Base exception for server-shell orchestration errors."""
 
 
-class NotReadyError(ServerShellError):
-    """Raised when a requested server action is not yet implemented/wired."""
-
-
 class TransportRouteError(ServerShellError):
     """Base transport-facing route error with HTTP mapping metadata."""
 

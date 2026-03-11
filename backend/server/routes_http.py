@@ -130,6 +130,11 @@ def register_http_routes(app: Any) -> None:
     async def post_cases_start(request: Request) -> JSONResponse:
         try:
             raw_payload = await request.json()
+        except ValueError:
+            error = TransportRequestError("Request body must be valid JSON.")
+            return JSONResponse(status_code=error.status_code, content=build_transport_error_payload(error))
+
+        try:
             transport_request = parse_case_start_transport_request(raw_payload)
             case_start_service, run_registry = resolve_launch_dependencies(request.app)
             status, payload = launch_case_from_transport(
@@ -137,9 +142,6 @@ def register_http_routes(app: Any) -> None:
                 case_start_service=case_start_service,
                 run_registry=run_registry,
             )
-        except ValueError:
-            error = TransportRequestError("Request body must be valid JSON.")
-            return JSONResponse(status_code=error.status_code, content=build_transport_error_payload(error))
         except TransportRouteError as error:
             return JSONResponse(status_code=error.status_code, content=build_transport_error_payload(error))
 
