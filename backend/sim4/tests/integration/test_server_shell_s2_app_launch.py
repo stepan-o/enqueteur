@@ -140,6 +140,9 @@ def test_s2_launch_route_success_via_asgi_app_registers_run() -> None:
             assert run_record.launch.engine_name == payload["engine_name"]
             assert run_record.launch.schema_version == payload["schema_version"]
             assert run_record.runtime.started_run is not None
+            assert run_registry.get_launch_metadata(payload["run_id"]) is not None
+            assert run_registry.get_runtime_reference(payload["run_id"]) is run_record.runtime.started_run
+            assert run_registry.get_by_connection_target(payload["ws_url"]) is not None
 
     asyncio.run(_scenario())
 
@@ -184,5 +187,34 @@ def test_s2_launch_route_maps_core_validation_failure_via_asgi_app() -> None:
             assert payload["error"]["code"] == "UNSUPPORTED_CASE"
             assert payload["error"]["field"] == "case_id"
             assert app.state.run_registry.count() == 0
+
+    asyncio.run(_scenario())
+
+
+def test_s2_launch_route_registry_remove_after_launch_is_consistent() -> None:
+    app = create_app()
+
+    async def _scenario() -> None:
+        async with app.router.lifespan_context(app):
+            response = await _post_json(
+                app,
+                path=CASE_START_PATH,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "A",
+                    "difficulty_profile": "D0",
+                    "mode": "playtest",
+                },
+            )
+            payload = response.json()
+            assert response.status_code == 200
+
+            run_registry = app.state.run_registry
+            removed = run_registry.remove(payload["run_id"])
+            assert removed is not None
+            assert removed.run_id == payload["run_id"]
+            assert run_registry.get(payload["run_id"]) is None
+            assert run_registry.get_by_connection_target(payload["ws_url"]) is None
+            assert run_registry.count() == 0
 
     asyncio.run(_scenario())

@@ -91,3 +91,17 @@ def test_run_registry_extract_run_id_supports_raw_id_and_ws_target() -> None:
     assert RunRegistry.extract_run_id("ws://localhost:7777/live?run_id=run-123") == "run-123"
     assert RunRegistry.extract_run_id("/live?run_id=run-456") == "run-456"
     assert RunRegistry.extract_run_id("ws://localhost:7777/live") is None
+
+
+def test_run_registry_repeated_registration_tracks_multiple_runs() -> None:
+    registry = RunRegistry()
+    payload_a = _launch_payload(run_id="run-A")
+    payload_b = _launch_payload(run_id="run-B")
+
+    registry.register_launched_run(launch_payload=payload_a, started_run=object())
+    registry.register_launched_run(launch_payload=payload_b, started_run=object())
+
+    assert registry.count() == 2
+    assert set(registry.iter_run_ids()) == {"run-A", "run-B"}
+    assert registry.get("run-A") is not None
+    assert registry.get("run-B") is not None
