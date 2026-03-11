@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Mapping
 import uuid
 
 
@@ -45,20 +45,32 @@ class ServerHealthResponse:
 
 
 @dataclass(frozen=True)
-class PlaceholderCaseStartRequest:
-    case_id: str | None = None
-    seed: str | int | None = None
-    difficulty_profile: str | None = None
-    mode: str | None = None
+class CaseStartTransportRequest:
+    """Transport-facing launch request envelope (core validation stays in backend.api.cases_start)."""
 
+    case_id: Any = None
+    seed: Any = None
+    difficulty_profile: Any = None
+    mode: Any = None
 
-@dataclass(frozen=True)
-class PlaceholderCaseStartResponse:
-    status: str = "not_implemented"
-    message: str = "Case launch wiring is not implemented in Phase S1."
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "CaseStartTransportRequest":
+        return cls(
+            case_id=payload.get("case_id"),
+            seed=payload.get("seed"),
+            difficulty_profile=payload.get("difficulty_profile"),
+            mode=payload.get("mode"),
+        )
 
-    def to_dict(self) -> dict[str, str]:
-        return {"status": self.status, "message": self.message}
+    def to_core_payload(self) -> dict[str, Any]:
+        payload = {
+            "case_id": self.case_id,
+            "seed": self.seed,
+            "difficulty_profile": self.difficulty_profile,
+        }
+        if self.mode is not None:
+            payload["mode"] = self.mode
+        return payload
 
 
 class SessionState(StrEnum):
@@ -90,17 +102,24 @@ class SessionRecord:
 class RunRecord:
     run_id: str
     created_at: str = field(default_factory=utc_now_iso)
+    world_id: str | None = None
     case_id: str | None = None
     seed: str | int | None = None
+    resolved_seed_id: str | None = None
     difficulty_profile: str | None = None
     mode: str | None = None
+    engine_name: str | None = None
+    schema_version: str | None = None
+    ws_url: str | None = None
+    started_at: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    launch_payload: dict[str, Any] = field(default_factory=dict)
+    started_run: Any | None = None
 
 
 __all__ = [
+    "CaseStartTransportRequest",
     "ErrorBody",
-    "PlaceholderCaseStartRequest",
-    "PlaceholderCaseStartResponse",
     "RunRecord",
     "ServerHealthResponse",
     "SessionRecord",
@@ -108,4 +127,3 @@ __all__ = [
     "new_id",
     "utc_now_iso",
 ]
-
