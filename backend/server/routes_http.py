@@ -42,10 +42,14 @@ def register_http_routes(app: Any) -> None:
     async def post_cases_start() -> JSONResponse:
         body = ErrorBody(
             code="NOT_IMPLEMENTED",
-            message="POST /api/cases/start is scaffold-only in Phase S1.",
+            message=(
+                "Transport route exists, but case launch wiring is not implemented in Phase S1. "
+                "Phase S2 will connect this endpoint to launch orchestration."
+            ),
         )
         payload = {
             "error": body.to_dict(),
+            "phase_gate": "S2",
             "placeholder": PlaceholderCaseStartResponse().to_dict(),
         }
         return JSONResponse(status_code=501, content=payload)
@@ -54,4 +58,3 @@ def register_http_routes(app: Any) -> None:
 
 
 __all__ = ["register_http_routes"]
-

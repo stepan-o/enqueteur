@@ -47,8 +47,3 @@ def run_dev(config: ServerConfig | None = None) -> None:
     import uvicorn
 
     uvicorn.run(**resolved_config.uvicorn_kwargs())
-
-
-if __name__ == "__main__":
-    run_dev()
-

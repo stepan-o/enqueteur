@@ -7,6 +7,7 @@ import os
 
 
 DEFAULT_ALLOWED_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+DEFAULT_UVICORN_APP_PATH = "backend.server.asgi:app"
 
 
 def _parse_bool(value: str | None, *, default: bool) -> bool:
@@ -50,10 +51,10 @@ class ServerConfig:
     run_ttl_seconds: int = 60 * 30
     verbose_protocol_logging: bool = False
 
-    def uvicorn_kwargs(self, *, app_path: str = "backend.server.app:create_app") -> dict[str, object]:
+    def uvicorn_kwargs(self, *, app_path: str = DEFAULT_UVICORN_APP_PATH) -> dict[str, object]:
         return {
             "app": app_path,
-            "factory": True,
+            "factory": False,
             "host": self.host,
             "port": self.port,
             "log_level": self.log_level,
@@ -83,5 +84,9 @@ def load_server_config(prefix: str = "ENQ_SERVER_") -> ServerConfig:
     )
 
 
-__all__ = ["ServerConfig", "load_server_config", "DEFAULT_ALLOWED_ORIGINS"]
-
+__all__ = [
+    "ServerConfig",
+    "load_server_config",
+    "DEFAULT_ALLOWED_ORIGINS",
+    "DEFAULT_UVICORN_APP_PATH",
+]
