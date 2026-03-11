@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """HTTP route shell for transport lifecycle endpoints."""
 
 from collections.abc import Mapping
