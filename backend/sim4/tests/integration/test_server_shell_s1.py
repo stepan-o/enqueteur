@@ -21,7 +21,12 @@ from starlette.routing import WebSocketRoute
 from backend.server.app import create_app
 from backend.server.config import DEFAULT_UVICORN_APP_PATH
 from backend.server.models import CaseStartTransportRequest
-from backend.server.routes_http import CASE_START_PATH, launch_case_from_transport
+from backend.server.routes_http import (
+    CASE_START_PATH,
+    CASE_START_PHASE_GATE,
+    HOST_NOT_READY_CODE,
+    launch_case_from_transport,
+)
 from backend.server.run_registry import RunRegistry
 from backend.server.routes_ws import (
     LIVE_WS_PATH,
@@ -154,6 +159,63 @@ def test_post_cases_start_route_handler_uses_app_state_services() -> None:
     assert app.state.run_registry.get(body["run_id"]) is not None
 
 
+def test_post_cases_start_route_maps_invalid_json_payload() -> None:
+    app = create_app()
+    endpoint = _find_http_route_endpoint(app=app, path=CASE_START_PATH, method="POST")
+
+    response = asyncio.run(
+        endpoint(
+            FakeRequest(
+                app=app,
+                payload=None,
+                raise_json_error=True,
+            )
+        )
+    )
+    body = json.loads(response.body.decode("utf-8"))
+
+    assert response.status_code == 400
+    assert body["error"]["code"] == "INVALID_REQUEST"
+    assert body["error"]["field"] == "payload"
+
+
+def test_post_cases_start_route_maps_non_object_payload() -> None:
+    app = create_app()
+    endpoint = _find_http_route_endpoint(app=app, path=CASE_START_PATH, method="POST")
+
+    response = asyncio.run(endpoint(FakeRequest(app=app, payload=["not", "an", "object"])))
+    body = json.loads(response.body.decode("utf-8"))
+
+    assert response.status_code == 400
+    assert body["error"]["code"] == "INVALID_REQUEST"
+    assert body["error"]["field"] == "payload"
+
+
+def test_post_cases_start_route_maps_host_not_ready() -> None:
+    app = create_app()
+    endpoint = _find_http_route_endpoint(app=app, path=CASE_START_PATH, method="POST")
+    app.state.case_start_service = object()
+    app.state.run_registry = RunRegistry()
+
+    response = asyncio.run(
+        endpoint(
+            FakeRequest(
+                app=app,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "A",
+                    "difficulty_profile": "D0",
+                },
+            )
+        )
+    )
+    body = json.loads(response.body.decode("utf-8"))
+
+    assert response.status_code == 503
+    assert body["error"]["code"] == HOST_NOT_READY_CODE
+    assert body["phase_gate"] == CASE_START_PHASE_GATE
+
+
 def test_post_cases_start_preserves_core_validation_errors() -> None:
     core_registry = CaseRunRegistry()
     case_start_service = CaseStartService(ws_base_url="ws://localhost:7777/live", registry=core_registry)
@@ -175,6 +237,72 @@ def test_post_cases_start_preserves_core_validation_errors() -> None:
     assert body["error"]["code"] == "UNSUPPORTED_CASE"
     assert body["error"]["field"] == "case_id"
     assert run_registry.count() == 0
+
+
+def test_post_cases_start_route_maps_core_launch_exception_without_leaking_details(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app()
+    endpoint = _find_http_route_endpoint(app=app, path=CASE_START_PATH, method="POST")
+    app.state.case_start_service = CaseStartService(
+        ws_base_url="ws://localhost:7777/live",
+        registry=CaseRunRegistry(),
+    )
+    app.state.run_registry = RunRegistry()
+
+    def _raise_launch_failure(*args, **kwargs):
+        raise RuntimeError("internal stack trace detail")
+
+    monkeypatch.setattr("backend.server.routes_http.handle_post_cases_start", _raise_launch_failure)
+
+    response = asyncio.run(
+        endpoint(
+            FakeRequest(
+                app=app,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "A",
+                    "difficulty_profile": "D0",
+                },
+            )
+        )
+    )
+    body = json.loads(response.body.decode("utf-8"))
+
+    assert response.status_code == 502
+    assert body["error"]["code"] == "LAUNCH_FAILED"
+    assert "internal stack trace detail" not in body["error"]["message"]
+
+
+def test_post_cases_start_route_maps_invalid_success_contract_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app()
+    endpoint = _find_http_route_endpoint(app=app, path=CASE_START_PATH, method="POST")
+    app.state.case_start_service = CaseStartService(
+        ws_base_url="ws://localhost:7777/live",
+        registry=CaseRunRegistry(),
+    )
+    app.state.run_registry = RunRegistry()
+
+    monkeypatch.setattr("backend.server.routes_http.handle_post_cases_start", lambda *_args, **_kwargs: (200, {}))
+
+    response = asyncio.run(
+        endpoint(
+            FakeRequest(
+                app=app,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "A",
+                    "difficulty_profile": "D0",
+                },
+            )
+        )
+    )
+    body = json.loads(response.body.decode("utf-8"))
+
+    assert response.status_code == 502
+    assert body["error"]["code"] == "INVALID_LAUNCH_RESPONSE"
 
 
 def test_live_ws_rejects_missing_run_id_with_explicit_close() -> None:

@@ -9,6 +9,13 @@ from typing import Any
 from backend.api.cases_start import CaseStartService, handle_post_cases_start
 
 from .config import ServerConfig
+from .errors import (
+    HostNotReadyError,
+    LaunchContractError,
+    LaunchExecutionError,
+    TransportRequestError,
+    TransportRouteError,
+)
 from .models import CaseStartTransportRequest, ServerHealthResponse
 from .run_registry import RunRegistry
 from .routes_ws import LIVE_WS_PATH
@@ -33,31 +40,62 @@ def launch_case_from_transport(
     case_start_service: CaseStartService,
     run_registry: RunRegistry,
 ) -> tuple[int, dict[str, Any]]:
-    status, response_payload = handle_post_cases_start(payload.to_core_payload(), service=case_start_service)
+    try:
+        status, response_payload = handle_post_cases_start(payload.to_core_payload(), service=case_start_service)
+    except Exception as exc:  # pragma: no cover - safety boundary for unexpected core errors.
+        raise LaunchExecutionError() from exc
+
+    if not isinstance(status, int):
+        raise LaunchContractError("Case launch backend returned an invalid HTTP status value.")
+    if not isinstance(response_payload, dict):
+        raise LaunchContractError("Case launch backend returned a non-object response payload.")
 
     if status == 200:
         run_id = response_payload.get("run_id")
-        started_run = (
-            case_start_service.registry.get(run_id)
-            if isinstance(run_id, str) and run_id
-            else None
-        )
-        run_registry.register_launched_run(
-            launch_payload=response_payload,
-            started_run=started_run,
-        )
+        if not isinstance(run_id, str) or not run_id:
+            raise LaunchContractError("Case launch backend response is missing a valid run_id.")
+        started_run = case_start_service.registry.get(run_id)
+        try:
+            run_registry.register_launched_run(
+                launch_payload=response_payload,
+                started_run=started_run,
+            )
+        except Exception as exc:  # pragma: no cover - defensive mapping boundary.
+            raise LaunchContractError(
+                "Case launch metadata could not be registered for future live attachment."
+            ) from exc
 
     return status, response_payload
 
 
-def _host_not_ready_response(message: str) -> dict[str, Any]:
-    return {
+def parse_case_start_transport_request(raw_payload: object) -> CaseStartTransportRequest:
+    if not isinstance(raw_payload, Mapping):
+        raise TransportRequestError("Request body must be a JSON object.")
+    return CaseStartTransportRequest.from_payload(raw_payload)
+
+
+def resolve_launch_dependencies(app: Any) -> tuple[CaseStartService, RunRegistry]:
+    case_start_service = getattr(app.state, "case_start_service", None)
+    run_registry = getattr(app.state, "run_registry", None)
+    if not isinstance(case_start_service, CaseStartService):
+        raise HostNotReadyError("Case start service is not initialized.", phase_gate=CASE_START_PHASE_GATE)
+    if not isinstance(run_registry, RunRegistry):
+        raise HostNotReadyError("Run registry is not initialized.", phase_gate=CASE_START_PHASE_GATE)
+    return case_start_service, run_registry
+
+
+def build_transport_error_payload(error: TransportRouteError) -> dict[str, Any]:
+    content: dict[str, Any] = {
         "error": {
-            "code": HOST_NOT_READY_CODE,
-            "message": message,
-        },
-        "phase_gate": CASE_START_PHASE_GATE,
+            "code": error.code,
+            "message": str(error),
+        }
     }
+    if error.field is not None:
+        content["error"]["field"] = error.field
+    if error.phase_gate is not None:
+        content["phase_gate"] = error.phase_gate
+    return content
 
 
 def register_http_routes(app: Any) -> None:
@@ -94,46 +132,18 @@ def register_http_routes(app: Any) -> None:
     async def post_cases_start(request: Request) -> JSONResponse:
         try:
             raw_payload = await request.json()
+            transport_request = parse_case_start_transport_request(raw_payload)
+            case_start_service, run_registry = resolve_launch_dependencies(request.app)
+            status, payload = launch_case_from_transport(
+                transport_request,
+                case_start_service=case_start_service,
+                run_registry=run_registry,
+            )
         except ValueError:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": {
-                        "code": "INVALID_REQUEST",
-                        "field": "payload",
-                        "message": "Request body must be valid JSON.",
-                    }
-                },
-            )
-
-        if not isinstance(raw_payload, Mapping):
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": {
-                        "code": "INVALID_REQUEST",
-                        "field": "payload",
-                        "message": "Request body must be a JSON object.",
-                    }
-                },
-            )
-
-        transport_request = CaseStartTransportRequest.from_payload(raw_payload)
-
-        case_start_service = getattr(request.app.state, "case_start_service", None)
-        run_registry = getattr(request.app.state, "run_registry", None)
-        if not isinstance(case_start_service, CaseStartService):
-            payload = _host_not_ready_response("Case start service is not initialized.")
-            return JSONResponse(status_code=503, content=payload)
-        if not isinstance(run_registry, RunRegistry):
-            payload = _host_not_ready_response("Run registry is not initialized.")
-            return JSONResponse(status_code=503, content=payload)
-
-        status, payload = launch_case_from_transport(
-            transport_request,
-            case_start_service=case_start_service,
-            run_registry=run_registry,
-        )
+            error = TransportRequestError("Request body must be valid JSON.")
+            return JSONResponse(status_code=error.status_code, content=build_transport_error_payload(error))
+        except TransportRouteError as error:
+            return JSONResponse(status_code=error.status_code, content=build_transport_error_payload(error))
 
         return JSONResponse(status_code=status, content=payload)
 
@@ -148,5 +158,8 @@ __all__ = [
     "CASE_START_PHASE_GATE",
     "HOST_NOT_READY_CODE",
     "build_ws_base_url",
+    "build_transport_error_payload",
     "launch_case_from_transport",
+    "parse_case_start_transport_request",
+    "resolve_launch_dependencies",
 ]
