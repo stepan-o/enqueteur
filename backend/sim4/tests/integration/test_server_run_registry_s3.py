@@ -41,6 +41,7 @@ def test_run_registry_registers_structured_launch_entry() -> None:
     assert registry.exists("run-123")
     assert registry.get_launch_metadata("run-123") is not None
     assert registry.get_runtime_reference("run-123") is runtime_ref
+    assert registry.get_by_connection_target("ws://localhost:7777/live?run_id=run-123") is not None
     assert registry.resolve_connection_target("ws://localhost:7777/live?run_id=run-123") is not None
 
 
@@ -74,3 +75,19 @@ def test_run_registry_rejects_missing_run_id() -> None:
 
     with pytest.raises(ValueError):
         registry.register_launched_run(launch_payload={"case_id": "MBAM_01"}, started_run=object())
+
+
+def test_run_registry_rejects_ws_url_run_id_mismatch() -> None:
+    registry = RunRegistry()
+    payload = _launch_payload(run_id="run-123")
+    payload["ws_url"] = "ws://localhost:7777/live?run_id=run-999"
+
+    with pytest.raises(ValueError):
+        registry.register_launched_run(launch_payload=payload, started_run=object())
+
+
+def test_run_registry_extract_run_id_supports_raw_id_and_ws_target() -> None:
+    assert RunRegistry.extract_run_id("run-raw") == "run-raw"
+    assert RunRegistry.extract_run_id("ws://localhost:7777/live?run_id=run-123") == "run-123"
+    assert RunRegistry.extract_run_id("/live?run_id=run-456") == "run-456"
+    assert RunRegistry.extract_run_id("ws://localhost:7777/live") is None

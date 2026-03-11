@@ -49,10 +49,10 @@ def launch_case_from_transport(
         raise LaunchContractError("Case launch backend returned a non-object response payload.")
 
     if status == 200:
-        run_id = response_payload.get("run_id")
-        if not isinstance(run_id, str) or not run_id:
-            raise LaunchContractError("Case launch backend response is missing a valid run_id.")
-        started_run = case_start_service.registry.get(run_id)
+        started_run = None
+        run_id_candidate = response_payload.get("run_id")
+        if isinstance(run_id_candidate, str) and run_id_candidate:
+            started_run = case_start_service.registry.get(run_id_candidate)
         try:
             run_registry.register_launched_run(
                 launch_payload=response_payload,

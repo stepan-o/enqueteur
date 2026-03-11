@@ -44,6 +44,12 @@ class RunRegistry:
         with self._lock:
             return self._runs.get(run_id)
 
+    def get_by_connection_target(self, connection_target: str) -> RunRegistryEntry | None:
+        run_id = self.extract_run_id(connection_target)
+        if run_id is None:
+            return None
+        return self.get(run_id)
+
     def require(self, run_id: str) -> RunRegistryEntry:
         entry = self.get(run_id)
         if entry is None:
@@ -74,12 +80,8 @@ class RunRegistry:
             return tuple(self._runs.keys())
 
     def resolve_connection_target(self, connection_target: str) -> RunRegistryEntry | None:
-        from backend.api.cases_start import extract_run_id_from_connection_target
-
-        run_id = extract_run_id_from_connection_target(connection_target)
-        if run_id is None:
-            return None
-        return self.get(run_id)
+        # Backward-compatible alias. Prefer get_by_connection_target for new code.
+        return self.get_by_connection_target(connection_target)
 
     def get_launch_metadata(self, run_id: str) -> RunLaunchMetadata | None:
         entry = self.get(run_id)
@@ -96,10 +98,19 @@ class RunRegistry:
         return entry
 
     @staticmethod
+    def extract_run_id(connection_target: str) -> str | None:
+        """Resolve canonical run_id from a connection target or raw id string."""
+        from backend.api.cases_start import extract_run_id_from_connection_target
+
+        run_id = extract_run_id_from_connection_target(connection_target)
+        return run_id if isinstance(run_id, str) and run_id else None
+
+    @staticmethod
     def _coerce_launch_metadata(launch_payload: Mapping[str, Any]) -> RunLaunchMetadata:
         run_id = launch_payload.get("run_id")
         if not isinstance(run_id, str) or not run_id.strip():
             raise ValueError("launch_payload must include a non-empty string run_id.")
+        normalized_run_id = run_id.strip()
 
         world_id = launch_payload.get("world_id")
         case_id = launch_payload.get("case_id")
@@ -111,8 +122,16 @@ class RunRegistry:
         schema_version = launch_payload.get("schema_version")
         ws_url = launch_payload.get("ws_url")
         started_at = launch_payload.get("started_at")
+        parsed_ws_run_id = (
+            RunRegistry.extract_run_id(ws_url)
+            if isinstance(ws_url, str) and ws_url
+            else None
+        )
+        if parsed_ws_run_id is not None and parsed_ws_run_id != normalized_run_id:
+            raise ValueError("launch_payload ws_url run_id must match launch_payload run_id.")
+
         return RunLaunchMetadata(
-            run_id=run_id,
+            run_id=normalized_run_id,
             world_id=world_id if isinstance(world_id, str) else None,
             case_id=case_id if isinstance(case_id, str) else None,
             seed=seed if isinstance(seed, (str, int)) else None,

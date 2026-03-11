@@ -305,6 +305,55 @@ def test_post_cases_start_route_maps_invalid_success_contract_response(
     assert body["error"]["code"] == "INVALID_LAUNCH_RESPONSE"
 
 
+def test_post_cases_start_route_maps_run_id_and_ws_url_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app()
+    endpoint = _find_http_route_endpoint(app=app, path=CASE_START_PATH, method="POST")
+    app.state.case_start_service = CaseStartService(
+        ws_base_url="ws://localhost:7777/live",
+        registry=CaseRunRegistry(),
+    )
+    app.state.run_registry = RunRegistry()
+
+    monkeypatch.setattr(
+        "backend.server.routes_http.handle_post_cases_start",
+        lambda *_args, **_kwargs: (
+            200,
+            {
+                "run_id": "run-123",
+                "world_id": "world-123",
+                "case_id": "MBAM_01",
+                "seed": "A",
+                "resolved_seed_id": "A",
+                "difficulty_profile": "D0",
+                "mode": "playtest",
+                "engine_name": "enqueteur",
+                "schema_version": "enqueteur_mbam_1",
+                "ws_url": "ws://localhost:7777/live?run_id=run-999",
+                "started_at": "2026-03-11T12:00:00Z",
+            },
+        ),
+    )
+
+    response = asyncio.run(
+        endpoint(
+            FakeRequest(
+                app=app,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "A",
+                    "difficulty_profile": "D0",
+                },
+            )
+        )
+    )
+    body = json.loads(response.body.decode("utf-8"))
+
+    assert response.status_code == 502
+    assert body["error"]["code"] == "INVALID_LAUNCH_RESPONSE"
+
+
 def test_live_ws_rejects_missing_run_id_with_explicit_close() -> None:
     app = create_app()
     endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
