@@ -8,11 +8,19 @@ import pytest
 
 pytest.importorskip("fastapi")
 
+from fastapi.routing import APIRoute
 from fastapi import FastAPI
+from starlette.routing import WebSocketRoute
 
 from backend.server.app import create_app
 from backend.server.config import DEFAULT_UVICORN_APP_PATH
-from backend.server.routes_ws import WS_POLICY_VIOLATION, WS_TRY_AGAIN_LATER
+from backend.server.routes_http import CASE_START_PATH, CASE_START_PHASE_GATE
+from backend.server.routes_ws import (
+    LIVE_WS_PATH,
+    LIVE_WS_PHASE_GATE,
+    WS_POLICY_VIOLATION,
+    WS_TRY_AGAIN_LATER,
+)
 
 
 class FakeWebSocket:
@@ -34,17 +42,14 @@ class FakeWebSocket:
 
 def _find_http_route_endpoint(*, app: FastAPI, path: str, method: str):
     for route in app.routes:
-        if getattr(route, "path", None) != path:
-            continue
-        methods = getattr(route, "methods", None)
-        if methods and method in methods:
+        if isinstance(route, APIRoute) and route.path == path and method in route.methods:
             return route.endpoint
     raise AssertionError(f"HTTP route not found: {method} {path}")
 
 
 def _find_ws_route_endpoint(*, app: FastAPI, path: str):
     for route in app.routes:
-        if getattr(route, "path", None) == path and hasattr(route, "endpoint") and not hasattr(route, "methods"):
+        if isinstance(route, WebSocketRoute) and route.path == path:
             return route.endpoint
     raise AssertionError(f"WebSocket route not found: {path}")
 
@@ -61,25 +66,25 @@ def test_server_shell_registers_s1_route_surface() -> None:
     app = create_app()
     route_paths = {route.path for route in app.routes}
 
-    assert "/api/cases/start" in route_paths
-    assert "/live" in route_paths
+    assert CASE_START_PATH in route_paths
+    assert LIVE_WS_PATH in route_paths
 
 
 def test_post_cases_start_returns_explicit_s1_not_implemented() -> None:
     app = create_app()
-    endpoint = _find_http_route_endpoint(app=app, path="/api/cases/start", method="POST")
+    endpoint = _find_http_route_endpoint(app=app, path=CASE_START_PATH, method="POST")
     response = asyncio.run(endpoint())
     body = json.loads(response.body.decode("utf-8"))
 
     assert response.status_code == 501
     assert body["error"]["code"] == "NOT_IMPLEMENTED"
-    assert body["phase_gate"] == "S2"
+    assert body["phase_gate"] == CASE_START_PHASE_GATE
     assert body["placeholder"]["status"] == "not_implemented"
 
 
 def test_live_ws_rejects_missing_run_id_with_explicit_close() -> None:
     app = create_app()
-    endpoint = _find_ws_route_endpoint(app=app, path="/live")
+    endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
     websocket = FakeWebSocket()
     asyncio.run(endpoint(websocket))
 
@@ -90,12 +95,12 @@ def test_live_ws_rejects_missing_run_id_with_explicit_close() -> None:
 
 def test_live_ws_rejects_unimplemented_session_flow() -> None:
     app = create_app()
-    endpoint = _find_ws_route_endpoint(app=app, path="/live")
+    endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
     websocket = FakeWebSocket(run_id="s1-placeholder")
     asyncio.run(endpoint(websocket))
 
     payload = websocket.sent_payloads[0]
     assert payload["error"]["code"] == "NOT_IMPLEMENTED"
     assert payload["error"]["details"]["run_id"] == "s1-placeholder"
-    assert payload["error"]["details"]["phase_gate"] == "S4"
+    assert payload["error"]["details"]["phase_gate"] == LIVE_WS_PHASE_GATE
     assert websocket.close_calls == [(WS_TRY_AGAIN_LATER, "NOT_IMPLEMENTED")]

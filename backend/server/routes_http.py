@@ -7,6 +7,11 @@ from typing import Any
 
 from .models import ErrorBody, PlaceholderCaseStartResponse, ServerHealthResponse
 
+HEALTH_PATH = "/healthz"
+READINESS_PATH = "/readyz"
+CASE_START_PATH = "/api/cases/start"
+CASE_START_PHASE_GATE = "S2"
+
 
 def register_http_routes(app: Any) -> None:
     """Attach HTTP routes to the ASGI app."""
@@ -18,7 +23,7 @@ def register_http_routes(app: Any) -> None:
     router = APIRouter()
     started_at = datetime.now(UTC).isoformat()
 
-    @router.get("/healthz")
+    @router.get(HEALTH_PATH)
     async def healthz() -> dict[str, str]:
         payload = ServerHealthResponse(
             status="ok",
@@ -27,7 +32,7 @@ def register_http_routes(app: Any) -> None:
         )
         return payload.to_dict()
 
-    @router.get("/readyz")
+    @router.get(READINESS_PATH)
     async def readyz(request: Request) -> dict[str, str]:
         started = bool(getattr(request.app.state, "started", False))
         status = "ready" if started else "starting"
@@ -38,7 +43,7 @@ def register_http_routes(app: Any) -> None:
         )
         return payload.to_dict()
 
-    @router.post("/api/cases/start")
+    @router.post(CASE_START_PATH)
     async def post_cases_start() -> JSONResponse:
         body = ErrorBody(
             code="NOT_IMPLEMENTED",
@@ -49,7 +54,7 @@ def register_http_routes(app: Any) -> None:
         )
         payload = {
             "error": body.to_dict(),
-            "phase_gate": "S2",
+            "phase_gate": CASE_START_PHASE_GATE,
             "placeholder": PlaceholderCaseStartResponse().to_dict(),
         }
         return JSONResponse(status_code=501, content=payload)
@@ -57,4 +62,10 @@ def register_http_routes(app: Any) -> None:
     app.include_router(router)
 
 
-__all__ = ["register_http_routes"]
+__all__ = [
+    "register_http_routes",
+    "HEALTH_PATH",
+    "READINESS_PATH",
+    "CASE_START_PATH",
+    "CASE_START_PHASE_GATE",
+]

@@ -7,8 +7,10 @@ from typing import Any
 from .models import ErrorBody
 
 
+LIVE_WS_PATH = "/live"
 WS_POLICY_VIOLATION = 1008
 WS_TRY_AGAIN_LATER = 1013
+LIVE_WS_PHASE_GATE = "S4"
 
 
 def register_ws_routes(app: Any) -> None:
@@ -19,7 +21,7 @@ def register_ws_routes(app: Any) -> None:
 
     router = APIRouter()
 
-    @router.websocket("/live")
+    @router.websocket(LIVE_WS_PATH)
     async def ws_live(websocket: WebSocket) -> None:
         run_id = websocket.query_params.get("run_id")
         await websocket.accept()
@@ -39,7 +41,7 @@ def register_ws_routes(app: Any) -> None:
                 "Transport route exists, but live session protocol handling is not implemented in Phase S1. "
                 "Phase S4 will attach real websocket lifecycle + protocol sequencing."
             ),
-            details={"run_id": run_id, "phase_gate": "S4"},
+            details={"run_id": run_id, "phase_gate": LIVE_WS_PHASE_GATE},
         )
         await websocket.send_json({"error": payload.to_dict()})
         await websocket.close(code=WS_TRY_AGAIN_LATER, reason="NOT_IMPLEMENTED")
@@ -47,4 +49,10 @@ def register_ws_routes(app: Any) -> None:
     app.include_router(router)
 
 
-__all__ = ["register_ws_routes", "WS_POLICY_VIOLATION", "WS_TRY_AGAIN_LATER"]
+__all__ = [
+    "register_ws_routes",
+    "LIVE_WS_PATH",
+    "LIVE_WS_PHASE_GATE",
+    "WS_POLICY_VIOLATION",
+    "WS_TRY_AGAIN_LATER",
+]
