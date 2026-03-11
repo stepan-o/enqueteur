@@ -135,11 +135,11 @@ def test_s2_launch_route_success_via_asgi_app_registers_run() -> None:
             run_record = run_registry.get(payload["run_id"])
             assert run_record is not None
             assert run_record.run_id == payload["run_id"]
-            assert run_record.world_id == payload["world_id"]
-            assert run_record.case_id == payload["case_id"]
-            assert run_record.engine_name == payload["engine_name"]
-            assert run_record.schema_version == payload["schema_version"]
-            assert run_record.started_run is not None
+            assert run_record.launch.world_id == payload["world_id"]
+            assert run_record.launch.case_id == payload["case_id"]
+            assert run_record.launch.engine_name == payload["engine_name"]
+            assert run_record.launch.schema_version == payload["schema_version"]
+            assert run_record.runtime.started_run is not None
 
     asyncio.run(_scenario())
 

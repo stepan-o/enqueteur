@@ -122,10 +122,10 @@ def test_post_cases_start_launches_case_and_registers_run_in_server_registry() -
 
     stored = run_registry.require(body["run_id"])
     assert stored.run_id == body["run_id"]
-    assert stored.world_id == body["world_id"]
-    assert stored.case_id == body["case_id"]
-    assert stored.ws_url == body["ws_url"]
-    assert stored.started_run is not None
+    assert stored.launch.world_id == body["world_id"]
+    assert stored.launch.case_id == body["case_id"]
+    assert stored.launch.ws_url == body["ws_url"]
+    assert stored.runtime.started_run is not None
     assert run_registry.resolve_connection_target(body["ws_url"]) is not None
 
 

@@ -99,9 +99,8 @@ class SessionRecord:
 
 
 @dataclass
-class RunRecord:
+class RunLaunchMetadata:
     run_id: str
-    created_at: str = field(default_factory=utc_now_iso)
     world_id: str | None = None
     case_id: str | None = None
     seed: str | int | None = None
@@ -112,15 +111,60 @@ class RunRecord:
     schema_version: str | None = None
     ws_url: str | None = None
     started_at: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
     launch_payload: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class RunRuntimeBinding:
     started_run: Any | None = None
+
+
+@dataclass
+class RunHostMetadata:
+    registered_at: str = field(default_factory=utc_now_iso)
+    last_activity_at: str = field(default_factory=utc_now_iso)
+    last_session_id: str | None = None
+
+    def touch(self, *, session_id: str | None = None) -> "RunHostMetadata":
+        self.last_activity_at = utc_now_iso()
+        if session_id is not None:
+            self.last_session_id = session_id
+        return self
+
+
+@dataclass
+class RunRegistryEntry:
+    launch: RunLaunchMetadata
+    runtime: RunRuntimeBinding = field(default_factory=RunRuntimeBinding)
+    host: RunHostMetadata = field(default_factory=RunHostMetadata)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_launch(
+        cls,
+        *,
+        launch: RunLaunchMetadata,
+        started_run: Any | None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> "RunRegistryEntry":
+        return cls(
+            launch=launch,
+            runtime=RunRuntimeBinding(started_run=started_run),
+            metadata=dict(metadata or {}),
+        )
+
+    @property
+    def run_id(self) -> str:
+        return self.launch.run_id
 
 
 __all__ = [
     "CaseStartTransportRequest",
     "ErrorBody",
-    "RunRecord",
+    "RunHostMetadata",
+    "RunLaunchMetadata",
+    "RunRegistryEntry",
+    "RunRuntimeBinding",
     "ServerHealthResponse",
     "SessionRecord",
     "SessionState",
