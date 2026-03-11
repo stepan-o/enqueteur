@@ -19,7 +19,7 @@ async def server_lifespan(app: Any):
 
     config: ServerConfig = app.state.server_config
     run_registry = RunRegistry()
-    session_controller = SessionController()
+    session_controller = SessionController(run_registry=run_registry)
     case_start_service = CaseStartService(
         ws_base_url=build_ws_base_url(config),
         registry=CaseRunRegistry(),

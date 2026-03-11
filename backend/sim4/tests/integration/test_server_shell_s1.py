@@ -15,9 +15,16 @@ from backend.api.cases_start import (
     CaseStartService,
 )
 from fastapi import FastAPI
+from starlette.websockets import WebSocketDisconnect
 from fastapi.routing import APIRoute
 from starlette.routing import WebSocketRoute
 
+from backend.api.live_ws import (
+    PROTOCOL_VIOLATION_WS_CLOSE_CODE,
+    PROTOCOL_VIOLATION_WS_CLOSE_REASON,
+    RUN_NOT_FOUND_WS_CLOSE_CODE,
+    RUN_NOT_FOUND_WS_CLOSE_REASON,
+)
 from backend.server.app import create_app
 from backend.server.config import DEFAULT_UVICORN_APP_PATH
 from backend.server.models import CaseStartTransportRequest
@@ -28,19 +35,31 @@ from backend.server.routes_http import (
     launch_case_from_transport,
 )
 from backend.server.run_registry import RunRegistry
+from backend.server.session_controller import SessionController
 from backend.server.routes_ws import (
     LIVE_WS_PATH,
-    LIVE_WS_PHASE_GATE,
     WS_POLICY_VIOLATION,
     WS_TRY_AGAIN_LATER,
 )
+from backend.sim4.integration.live_envelope import make_live_envelope
 
 
 class FakeWebSocket:
-    def __init__(self, *, run_id: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        app: FastAPI,
+        run_id: str | None = None,
+        incoming_texts: tuple[str, ...] = (),
+    ) -> None:
+        self.app = app
         self.query_params = {} if run_id is None else {"run_id": run_id}
+        path = LIVE_WS_PATH if run_id is None else f"{LIVE_WS_PATH}?run_id={run_id}"
+        self.url = f"ws://localhost:7777{path}"
+        self._incoming_texts = list(incoming_texts)
         self.accept_calls = 0
         self.sent_payloads: list[dict[str, object]] = []
+        self.sent_texts: list[str] = []
         self.close_calls: list[tuple[int, str]] = []
 
     async def accept(self) -> None:
@@ -48,6 +67,14 @@ class FakeWebSocket:
 
     async def send_json(self, payload: dict[str, object]) -> None:
         self.sent_payloads.append(payload)
+
+    async def send_text(self, data: str) -> None:
+        self.sent_texts.append(data)
+
+    async def receive_text(self) -> str:
+        if self._incoming_texts:
+            return self._incoming_texts.pop(0)
+        raise WebSocketDisconnect(code=1001)
 
     async def close(self, *, code: int = 1000, reason: str = "") -> None:
         self.close_calls.append((code, reason))
@@ -77,6 +104,22 @@ def _find_ws_route_endpoint(*, app: FastAPI, path: str):
         if isinstance(route, WebSocketRoute) and route.path == path:
             return route.endpoint
     raise AssertionError(f"WebSocket route not found: {path}")
+
+
+def _envelope(msg_type: str, payload: dict[str, object]) -> str:
+    envelope = make_live_envelope(
+        msg_type,
+        payload,
+        msg_id="00000000-0000-4000-8000-000000000001",
+        sent_at_ms=0,
+    )
+    return json.dumps(envelope)
+
+
+def _decode_sent_envelope(websocket: FakeWebSocket, idx: int) -> dict[str, object]:
+    decoded = json.loads(websocket.sent_texts[idx])
+    assert isinstance(decoded, dict)
+    return decoded
 
 
 def test_canonical_asgi_target_imports_app_object() -> None:
@@ -357,25 +400,396 @@ def test_post_cases_start_route_maps_run_id_and_ws_url_mismatch(
 def test_live_ws_rejects_missing_run_id_with_explicit_close() -> None:
     app = create_app()
     endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
-    websocket = FakeWebSocket()
+    run_registry = RunRegistry()
+    app.state.run_registry = run_registry
+    app.state.session_controller = SessionController(run_registry=run_registry)
+    websocket = FakeWebSocket(app=app)
     asyncio.run(endpoint(websocket))
 
     assert websocket.accept_calls == 1
-    assert websocket.sent_payloads[0]["error"]["code"] == "MISSING_RUN_ID"
+    error = _decode_sent_envelope(websocket, 0)
+    assert error["msg_type"] == "ERROR"
+    assert error["payload"]["code"] == "MISSING_RUN_ID"
     assert websocket.close_calls == [(WS_POLICY_VIOLATION, "MISSING_RUN_ID")]
 
 
-def test_live_ws_rejects_unimplemented_session_flow() -> None:
+def test_live_ws_rejects_unknown_run_id() -> None:
     app = create_app()
     endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
-    websocket = FakeWebSocket(run_id="s1-placeholder")
+    run_registry = RunRegistry()
+    app.state.run_registry = run_registry
+    app.state.session_controller = SessionController(run_registry=run_registry)
+    websocket = FakeWebSocket(app=app, run_id="s4-missing")
     asyncio.run(endpoint(websocket))
 
-    payload = websocket.sent_payloads[0]
-    assert payload["error"]["code"] == "NOT_IMPLEMENTED"
-    assert payload["error"]["details"]["run_id"] == "s1-placeholder"
-    assert payload["error"]["details"]["phase_gate"] == LIVE_WS_PHASE_GATE
+    error = _decode_sent_envelope(websocket, 0)
+    assert error["msg_type"] == "ERROR"
+    assert error["payload"]["code"] == "RUN_NOT_FOUND"
+    assert websocket.close_calls == [(RUN_NOT_FOUND_WS_CLOSE_CODE, RUN_NOT_FOUND_WS_CLOSE_REASON)]
+
+
+def test_live_ws_runs_handshake_then_baseline_from_canonical_run_registry() -> None:
+    app = create_app()
+    endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
+    core_registry = CaseRunRegistry()
+    case_start_service = CaseStartService(ws_base_url="ws://localhost:7777/live", registry=core_registry)
+    run_registry = RunRegistry()
+    app.state.case_start_service = case_start_service
+    app.state.run_registry = run_registry
+    app.state.session_controller = SessionController(run_registry=run_registry)
+
+    status, body = launch_case_from_transport(
+        CaseStartTransportRequest.from_payload(
+            {
+                "case_id": "MBAM_01",
+                "seed": "A",
+                "difficulty_profile": "D0",
+                "mode": "playtest",
+            }
+        ),
+        case_start_service=case_start_service,
+        run_registry=run_registry,
+    )
+    assert status == 200
+    run_id = str(body["run_id"])
+    world_id = str(body["world_id"])
+
+    # Ensure /live attachment is driven by canonical server run_registry, not core launch registry lookups.
+    core_registry._runs.clear()  # type: ignore[attr-defined]
+
+    websocket = FakeWebSocket(
+        app=app,
+        run_id=run_id,
+        incoming_texts=(
+            _envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            _envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "NPCS", "INVESTIGATION", "DIALOGUE", "LEARNING", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+        ),
+    )
+
+    asyncio.run(endpoint(websocket))
+
+    msg_types = [_decode_sent_envelope(websocket, i)["msg_type"] for i in range(len(websocket.sent_texts))]
+    assert msg_types == ["KERNEL_HELLO", "SUBSCRIBED", "FULL_SNAPSHOT"]
+    kernel_hello = _decode_sent_envelope(websocket, 0)["payload"]
+    assert kernel_hello["run_id"] == run_id
+    assert kernel_hello["world_id"] == world_id
+    assert kernel_hello["engine_name"] == ENQUETEUR_ENGINE_NAME
+    assert kernel_hello["schema_version"] == ENQUETEUR_SCHEMA_VERSION
+    assert run_registry.get(run_id) is not None
+    assert app.state.session_controller.list_sessions() == ()
+
+
+def test_live_ws_rejects_subscribe_before_viewer_hello() -> None:
+    app = create_app()
+    endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
+    core_registry = CaseRunRegistry()
+    case_start_service = CaseStartService(ws_base_url="ws://localhost:7777/live", registry=core_registry)
+    run_registry = RunRegistry()
+    app.state.case_start_service = case_start_service
+    app.state.run_registry = run_registry
+    app.state.session_controller = SessionController(run_registry=run_registry)
+
+    status, body = launch_case_from_transport(
+        CaseStartTransportRequest.from_payload(
+            {
+                "case_id": "MBAM_01",
+                "seed": "A",
+                "difficulty_profile": "D0",
+                "mode": "playtest",
+            }
+        ),
+        case_start_service=case_start_service,
+        run_registry=run_registry,
+    )
+    assert status == 200
+    run_id = str(body["run_id"])
+
+    websocket = FakeWebSocket(
+        app=app,
+        run_id=run_id,
+        incoming_texts=(
+            _envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+        ),
+    )
+    asyncio.run(endpoint(websocket))
+
+    error = _decode_sent_envelope(websocket, 0)
+    assert error["msg_type"] == "ERROR"
+    assert error["payload"]["code"] == "BAD_SEQUENCE"
+    assert websocket.close_calls == [(PROTOCOL_VIOLATION_WS_CLOSE_CODE, PROTOCOL_VIOLATION_WS_CLOSE_REASON)]
+
+
+def test_live_ws_rejects_ping_before_viewer_hello() -> None:
+    app = create_app()
+    endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
+    core_registry = CaseRunRegistry()
+    case_start_service = CaseStartService(ws_base_url="ws://localhost:7777/live", registry=core_registry)
+    run_registry = RunRegistry()
+    app.state.case_start_service = case_start_service
+    app.state.run_registry = run_registry
+    app.state.session_controller = SessionController(run_registry=run_registry)
+
+    status, body = launch_case_from_transport(
+        CaseStartTransportRequest.from_payload(
+            {
+                "case_id": "MBAM_01",
+                "seed": "A",
+                "difficulty_profile": "D0",
+                "mode": "playtest",
+            }
+        ),
+        case_start_service=case_start_service,
+        run_registry=run_registry,
+    )
+    assert status == 200
+    run_id = str(body["run_id"])
+
+    websocket = FakeWebSocket(
+        app=app,
+        run_id=run_id,
+        incoming_texts=(
+            _envelope("PING", {"nonce": 1}),
+        ),
+    )
+    asyncio.run(endpoint(websocket))
+
+    error = _decode_sent_envelope(websocket, 0)
+    assert error["msg_type"] == "ERROR"
+    assert error["payload"]["code"] == "BAD_SEQUENCE"
+    assert websocket.close_calls == [(PROTOCOL_VIOLATION_WS_CLOSE_CODE, PROTOCOL_VIOLATION_WS_CLOSE_REASON)]
+
+
+def test_live_ws_rejects_non_subscribe_second_message() -> None:
+    app = create_app()
+    endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
+    core_registry = CaseRunRegistry()
+    case_start_service = CaseStartService(ws_base_url="ws://localhost:7777/live", registry=core_registry)
+    run_registry = RunRegistry()
+    app.state.case_start_service = case_start_service
+    app.state.run_registry = run_registry
+    app.state.session_controller = SessionController(run_registry=run_registry)
+
+    status, body = launch_case_from_transport(
+        CaseStartTransportRequest.from_payload(
+            {
+                "case_id": "MBAM_01",
+                "seed": "A",
+                "difficulty_profile": "D0",
+                "mode": "playtest",
+            }
+        ),
+        case_start_service=case_start_service,
+        run_registry=run_registry,
+    )
+    assert status == 200
+    run_id = str(body["run_id"])
+
+    websocket = FakeWebSocket(
+        app=app,
+        run_id=run_id,
+        incoming_texts=(
+            _envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            _envelope("PING", {"nonce": "x"}),
+        ),
+    )
+    asyncio.run(endpoint(websocket))
+
+    msg_types = [_decode_sent_envelope(websocket, i)["msg_type"] for i in range(len(websocket.sent_texts))]
+    assert msg_types == ["KERNEL_HELLO", "ERROR"]
+    assert _decode_sent_envelope(websocket, 1)["payload"]["code"] == "BAD_SEQUENCE"
+    assert websocket.close_calls == [(PROTOCOL_VIOLATION_WS_CLOSE_CODE, PROTOCOL_VIOLATION_WS_CLOSE_REASON)]
+
+
+def test_live_ws_requires_on_join_baseline_in_s4() -> None:
+    app = create_app()
+    endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
+    core_registry = CaseRunRegistry()
+    case_start_service = CaseStartService(ws_base_url="ws://localhost:7777/live", registry=core_registry)
+    run_registry = RunRegistry()
+    app.state.case_start_service = case_start_service
+    app.state.run_registry = run_registry
+    app.state.session_controller = SessionController(run_registry=run_registry)
+
+    status, body = launch_case_from_transport(
+        CaseStartTransportRequest.from_payload(
+            {
+                "case_id": "MBAM_01",
+                "seed": "A",
+                "difficulty_profile": "D0",
+                "mode": "playtest",
+            }
+        ),
+        case_start_service=case_start_service,
+        run_registry=run_registry,
+    )
+    assert status == 200
+    run_id = str(body["run_id"])
+
+    websocket = FakeWebSocket(
+        app=app,
+        run_id=run_id,
+        incoming_texts=(
+            _envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            _envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "NEVER",
+                    "compression": "NONE",
+                },
+            ),
+        ),
+    )
+    asyncio.run(endpoint(websocket))
+
+    msg_types = [_decode_sent_envelope(websocket, i)["msg_type"] for i in range(len(websocket.sent_texts))]
+    assert msg_types == ["KERNEL_HELLO", "SUBSCRIBED", "ERROR"]
+    assert _decode_sent_envelope(websocket, 2)["payload"]["code"] == "BASELINE_REQUIRED"
+    assert websocket.close_calls == [(PROTOCOL_VIOLATION_WS_CLOSE_CODE, PROTOCOL_VIOLATION_WS_CLOSE_REASON)]
+
+
+def test_live_ws_post_baseline_messages_fail_honestly_until_s5() -> None:
+    app = create_app()
+    endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
+    core_registry = CaseRunRegistry()
+    case_start_service = CaseStartService(ws_base_url="ws://localhost:7777/live", registry=core_registry)
+    run_registry = RunRegistry()
+    app.state.case_start_service = case_start_service
+    app.state.run_registry = run_registry
+    app.state.session_controller = SessionController(run_registry=run_registry)
+
+    status, body = launch_case_from_transport(
+        CaseStartTransportRequest.from_payload(
+            {
+                "case_id": "MBAM_01",
+                "seed": "A",
+                "difficulty_profile": "D0",
+                "mode": "playtest",
+            }
+        ),
+        case_start_service=case_start_service,
+        run_registry=run_registry,
+    )
+    assert status == 200
+    run_id = str(body["run_id"])
+
+    websocket = FakeWebSocket(
+        app=app,
+        run_id=run_id,
+        incoming_texts=(
+            _envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            _envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            _envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": "00000000-0000-4000-8000-000000000001",
+                    "tick_target": 0,
+                    "cmd": {"type": "INVESTIGATE_OBJECT", "payload": {"object_id": "O1", "action_id": "inspect"}},
+                },
+            ),
+        ),
+    )
+    asyncio.run(endpoint(websocket))
+
+    msg_types = [_decode_sent_envelope(websocket, i)["msg_type"] for i in range(len(websocket.sent_texts))]
+    assert msg_types == ["KERNEL_HELLO", "SUBSCRIBED", "FULL_SNAPSHOT", "ERROR"]
+    assert _decode_sent_envelope(websocket, 3)["payload"]["code"] == "NOT_IMPLEMENTED"
     assert websocket.close_calls == [(WS_TRY_AGAIN_LATER, "NOT_IMPLEMENTED")]
+
+
+def test_live_ws_rejects_run_without_runtime_binding() -> None:
+    app = create_app()
+    endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
+    run_registry = RunRegistry()
+    app.state.run_registry = run_registry
+    app.state.session_controller = SessionController(run_registry=run_registry)
+
+    run_id = "orphan-run"
+    run_registry.register_launched_run(
+        launch_payload={
+            "run_id": run_id,
+            "world_id": "world-orphan",
+            "case_id": "MBAM_01",
+            "seed": "A",
+            "resolved_seed_id": "A",
+            "difficulty_profile": "D0",
+            "mode": "playtest",
+            "engine_name": "enqueteur",
+            "schema_version": "enqueteur_mbam_1",
+            "ws_url": f"ws://localhost:7777/live?run_id={run_id}",
+            "started_at": "2026-03-11T12:00:00Z",
+        },
+        started_run=None,
+    )
+
+    websocket = FakeWebSocket(app=app, run_id=run_id)
+    asyncio.run(endpoint(websocket))
+
+    error = _decode_sent_envelope(websocket, 0)
+    assert error["msg_type"] == "ERROR"
+    assert error["payload"]["code"] == "RUN_NOT_FOUND"
+    assert websocket.close_calls == [(RUN_NOT_FOUND_WS_CLOSE_CODE, RUN_NOT_FOUND_WS_CLOSE_REASON)]
 
 
 def test_case_start_transport_request_omits_mode_when_missing() -> None:

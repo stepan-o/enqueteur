@@ -1,25 +1,48 @@
 from __future__ import annotations
 
-"""Per-websocket session lifecycle shell (transport only)."""
+"""Per-websocket session lifecycle controller for live handshake/baseline flow."""
 
+from datetime import UTC, datetime
+import json
 from threading import RLock
 from typing import Any
+import uuid
+
+from backend.api.live_ws import (
+    EnqueteurLiveSessionHost,
+    PROTOCOL_VIOLATION_WS_CLOSE_CODE,
+    PROTOCOL_VIOLATION_WS_CLOSE_REASON,
+    RunLookupError,
+    handle_enqueteur_live_disconnect,
+    handle_enqueteur_live_incoming_message,
+    open_enqueteur_live_websocket,
+)
+from backend.sim4.integration.live_envelope import make_live_envelope, validate_live_envelope
 
 from .errors import SessionNotFoundError
 from .models import SessionRecord, SessionState, new_id
+from .run_registry import RunRegistry
+
+MISSING_RUN_ID_WS_CLOSE_CODE = 1008
+MISSING_RUN_ID_WS_CLOSE_REASON = "MISSING_RUN_ID"
+POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_CODE = 1013
+POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_REASON = "NOT_IMPLEMENTED"
+BAD_SEQUENCE_ERROR_CODE = "BAD_SEQUENCE"
+BASELINE_REQUIRED_ERROR_CODE = "BASELINE_REQUIRED"
 
 
 class SessionController:
-    """Tracks ws session records; protocol sequencing is deferred to later phases."""
+    """Tracks ws sessions and owns handshake/baseline sequencing for /live."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, run_registry: RunRegistry) -> None:
+        self._run_registry = run_registry
         self._sessions: dict[str, SessionRecord] = {}
         self._lock = RLock()
+        self._live_host = EnqueteurLiveSessionHost(run_registry=_RunRegistryAdapter(run_registry))
 
-    def open_session(self, *, run_id: str | None) -> SessionRecord:
-        # Keep run binding permissive until S4 attaches protocol-level validation.
+    def open_session(self, *, run_id: str | None, connection_id: str | None = None) -> SessionRecord:
         record = SessionRecord(
-            connection_id=new_id(),
+            connection_id=connection_id or new_id(),
             run_id=run_id,
             state=SessionState.CONNECTED,
         )
@@ -41,6 +64,18 @@ class SessionController:
         record = self.require(connection_id)
         return record.transition(SessionState.HANDSHAKING)
 
+    def mark_hello_verified(self, connection_id: str) -> SessionRecord:
+        record = self.require(connection_id)
+        return record.transition(SessionState.HELLO_VERIFIED)
+
+    def mark_subscribed(self, connection_id: str) -> SessionRecord:
+        record = self.require(connection_id)
+        return record.transition(SessionState.SUBSCRIBED)
+
+    def mark_baseline_sent(self, connection_id: str) -> SessionRecord:
+        record = self.require(connection_id)
+        return record.transition(SessionState.BASELINE_SENT)
+
     def mark_active(self, connection_id: str) -> SessionRecord:
         record = self.require(connection_id)
         return record.transition(SessionState.ACTIVE)
@@ -60,18 +95,277 @@ class SessionController:
         with self._lock:
             return tuple(self._sessions.values())
 
-    async def handle_incoming_text(self, *, connection_id: str, message: str) -> dict[str, Any]:
-        """Placeholder ws message handling boundary for S2 protocol wiring."""
-        _ = self.require(connection_id)
-        _ = message
-        return {
-            "status": "not_implemented",
-            "message": "Live protocol handling is not wired in Phase S3.",
-        }
+    async def serve_live_handshake_baseline(
+        self,
+        *,
+        websocket: Any,
+        connection_target: str | None = None,
+    ) -> SessionRecord | None:
+        target = connection_target or _connection_target_from_websocket(websocket)
+        run_id_hint = RunRegistry.extract_run_id(target)
+        if run_id_hint is None:
+            await websocket.accept()
+            await _send_error_envelope(
+                websocket,
+                code=MISSING_RUN_ID_WS_CLOSE_REASON,
+                message="run_id query parameter is required for /live.",
+                fatal=True,
+            )
+            await websocket.close(
+                code=MISSING_RUN_ID_WS_CLOSE_CODE,
+                reason=MISSING_RUN_ID_WS_CLOSE_REASON,
+            )
+            return None
+
+        try:
+            live_session = await open_enqueteur_live_websocket(
+                websocket,
+                connection_target=target,
+                host=self._live_host,
+            )
+        except RunLookupError:
+            return None
+
+        record = self.open_session(
+            run_id=live_session.run.run_id,
+            connection_id=live_session.connection_id,
+        )
+        self.mark_handshaking(record.connection_id)
+
+        try:
+            raw_hello = await websocket.receive_text()
+            hello_msg_type = _extract_msg_type(raw_hello)
+            if hello_msg_type is not None and hello_msg_type != "VIEWER_HELLO":
+                await _close_with_error(
+                    websocket,
+                    code=BAD_SEQUENCE_ERROR_CODE,
+                    message=f"Expected VIEWER_HELLO, got {hello_msg_type}.",
+                    close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
+                    close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
+                )
+                return record
+            await handle_enqueteur_live_incoming_message(
+                websocket,
+                session=live_session,
+                raw_message=raw_hello,
+                host=self._live_host,
+            )
+            active = self._live_host.get_session(live_session.connection_id)
+            if active is None or active.phase == "CLOSED":
+                return record
+            if active.protocol_state != "AWAITING_SUBSCRIBE":
+                await _close_with_error(
+                    websocket,
+                    code=BAD_SEQUENCE_ERROR_CODE,
+                    message=(
+                        "Expected protocol_state=AWAITING_SUBSCRIBE after VIEWER_HELLO, "
+                        f"got {active.protocol_state}."
+                    ),
+                    close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
+                    close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
+                )
+                return record
+            self.mark_hello_verified(record.connection_id)
+
+            raw_subscribe = await websocket.receive_text()
+            subscribe_msg_type = _extract_msg_type(raw_subscribe)
+            if subscribe_msg_type is not None and subscribe_msg_type != "SUBSCRIBE":
+                await _close_with_error(
+                    websocket,
+                    code=BAD_SEQUENCE_ERROR_CODE,
+                    message=f"Expected SUBSCRIBE, got {subscribe_msg_type}.",
+                    close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
+                    close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
+                )
+                return record
+            await handle_enqueteur_live_incoming_message(
+                websocket,
+                session=live_session,
+                raw_message=raw_subscribe,
+                host=self._live_host,
+            )
+            active = self._live_host.get_session(live_session.connection_id)
+            if active is None or active.phase == "CLOSED":
+                return record
+            if active.protocol_state != "SUBSCRIBED":
+                await _close_with_error(
+                    websocket,
+                    code=BAD_SEQUENCE_ERROR_CODE,
+                    message=(
+                        "Expected protocol_state=SUBSCRIBED after SUBSCRIBE, "
+                        f"got {active.protocol_state}."
+                    ),
+                    close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
+                    close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
+                )
+                return record
+            self.mark_subscribed(record.connection_id)
+            if not active.baseline_sent:
+                await _close_with_error(
+                    websocket,
+                    code=BASELINE_REQUIRED_ERROR_CODE,
+                    message="S4 controller requires ON_JOIN baseline delivery before live-ready state.",
+                    close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
+                    close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
+                )
+                return record
+            self.mark_baseline_sent(record.connection_id)
+
+            # S4 boundary: handshake + baseline are implemented; sustained runtime loop is deferred.
+            await websocket.receive_text()
+            await _close_with_error(
+                websocket,
+                code=POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_REASON,
+                message="Post-baseline live command handling is deferred to Phase S5.",
+                close_code=POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_CODE,
+                close_reason=POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_REASON,
+            )
+            return record
+        except Exception as exc:  # noqa: BLE001
+            if _is_websocket_disconnect(exc):
+                return record
+            raise
+        finally:
+            closed = handle_enqueteur_live_disconnect(
+                session=live_session,
+                host=self._live_host,
+            )
+            close_reason = closed.close_reason if closed is not None else None
+            self._close_tracked_session(record.connection_id, reason=close_reason)
 
     def clear(self) -> None:
         with self._lock:
             self._sessions.clear()
+        self._live_host = EnqueteurLiveSessionHost(run_registry=_RunRegistryAdapter(self._run_registry))
+
+    def _close_tracked_session(self, connection_id: str, *, reason: str | None = None) -> None:
+        if self.get(connection_id) is None:
+            return
+        self.mark_closing(connection_id, reason=reason)
+        self.close_session(connection_id, reason=reason)
+
+
+class _RunRegistryAdapter:
+    """Adapter exposing StartedCaseRun lookup from canonical server RunRegistry."""
+
+    def __init__(self, run_registry: RunRegistry) -> None:
+        self._run_registry = run_registry
+
+    def resolve_connection_target(self, connection_target: str) -> Any | None:
+        entry = self._run_registry.get_by_connection_target(connection_target)
+        if entry is None:
+            return None
+        if RunRegistry.extract_run_id(connection_target) != entry.run_id:
+            return None
+        started_run = entry.runtime.started_run
+        if not _is_started_case_run(started_run):
+            return None
+        if _extract_run_id_from_ws_url(getattr(started_run, "ws_url", None)) != entry.run_id:
+            return None
+        if getattr(started_run, "run_id", None) != entry.run_id:
+            return None
+        return started_run
+
+    def get(self, run_id: str) -> Any | None:
+        entry = self._run_registry.get(run_id)
+        if entry is None:
+            return None
+        started_run = entry.runtime.started_run
+        if not _is_started_case_run(started_run):
+            return None
+        if getattr(started_run, "run_id", None) != entry.run_id:
+            return None
+        if _extract_run_id_from_ws_url(getattr(started_run, "ws_url", None)) != entry.run_id:
+            return None
+        return started_run
+
+
+def _is_started_case_run(value: Any) -> bool:
+    return bool(
+        hasattr(value, "run_id")
+        and hasattr(value, "world_id")
+        and hasattr(value, "request")
+        and hasattr(value, "resolved_seed_id")
+        and hasattr(value, "ws_url")
+        and hasattr(value, "started_at")
+        and hasattr(value, "runner")
+    )
+
+
+def _is_websocket_disconnect(exc: Exception) -> bool:
+    return exc.__class__.__name__ == "WebSocketDisconnect"
+
+
+def _connection_target_from_websocket(websocket: Any) -> str:
+    url = getattr(websocket, "url", None)
+    if url is not None:
+        text = str(url).strip()
+        if text:
+            return text
+    query_params = getattr(websocket, "query_params", None)
+    if query_params is not None:
+        run_id = query_params.get("run_id")
+        if isinstance(run_id, str) and run_id.strip():
+            return run_id.strip()
+    return ""
+
+
+def _extract_msg_type(raw_message: str) -> str | None:
+    try:
+        envelope = json.loads(raw_message)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(envelope, dict):
+        return None
+    try:
+        validate_live_envelope(envelope)
+    except ValueError:
+        return None
+    msg_type = envelope.get("msg_type")
+    return msg_type if isinstance(msg_type, str) else None
+
+
+def _extract_run_id_from_ws_url(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return RunRegistry.extract_run_id(value)
+
+
+async def _send_error_envelope(
+    websocket: Any,
+    *,
+    code: str,
+    message: str,
+    fatal: bool,
+) -> None:
+    envelope = make_live_envelope(
+        "ERROR",
+        {
+            "code": code,
+            "message": message,
+            "fatal": bool(fatal),
+        },
+        msg_id=str(uuid.uuid4()),
+        sent_at_ms=int(datetime.now(UTC).timestamp() * 1000),
+    )
+    await websocket.send_text(json.dumps(envelope, separators=(",", ":")))
+
+
+async def _close_with_error(
+    websocket: Any,
+    *,
+    code: str,
+    message: str,
+    close_code: int,
+    close_reason: str,
+) -> None:
+    await _send_error_envelope(
+        websocket,
+        code=code,
+        message=message,
+        fatal=True,
+    )
+    await websocket.close(code=close_code, reason=close_reason)
 
 
 __all__ = ["SessionController"]

@@ -1,15 +1,21 @@
 from __future__ import annotations
 
-"""WebSocket route shell for future live session binding."""
+"""WebSocket route wiring for live session controller."""
 
 from typing import Any
 
 from .models import ErrorBody
+from .session_controller import (
+    MISSING_RUN_ID_WS_CLOSE_CODE,
+    POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_CODE,
+    SessionController,
+)
 
 
 LIVE_WS_PATH = "/live"
-WS_POLICY_VIOLATION = 1008
-WS_TRY_AGAIN_LATER = 1013
+WS_POLICY_VIOLATION = MISSING_RUN_ID_WS_CLOSE_CODE
+WS_TRY_AGAIN_LATER = POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_CODE
+WS_INTERNAL_ERROR = 1011
 LIVE_WS_PHASE_GATE = "S4"
 
 
@@ -23,28 +29,21 @@ def register_ws_routes(app: Any) -> None:
 
     @router.websocket(LIVE_WS_PATH)
     async def ws_live(websocket: WebSocket) -> None:
-        run_id = websocket.query_params.get("run_id")
-        await websocket.accept()
-
-        if not run_id:
+        session_controller = getattr(websocket.app.state, "session_controller", None)
+        if not isinstance(session_controller, SessionController):
+            await websocket.accept()
             payload = ErrorBody(
-                code="MISSING_RUN_ID",
-                message="run_id query parameter is required for /live.",
+                code="HOST_NOT_READY",
+                message="Session controller is not initialized for /live.",
             )
             await websocket.send_json({"error": payload.to_dict()})
-            await websocket.close(code=WS_POLICY_VIOLATION, reason="MISSING_RUN_ID")
+            await websocket.close(code=WS_INTERNAL_ERROR, reason="HOST_NOT_READY")
             return
 
-        payload = ErrorBody(
-            code="NOT_IMPLEMENTED",
-            message=(
-                "Transport route exists, but live session protocol handling is not implemented in Phase S3. "
-                "Phase S4 will attach real websocket lifecycle + protocol sequencing."
-            ),
-            details={"run_id": run_id, "phase_gate": LIVE_WS_PHASE_GATE},
+        await session_controller.serve_live_handshake_baseline(
+            websocket=websocket,
+            connection_target=str(websocket.url),
         )
-        await websocket.send_json({"error": payload.to_dict()})
-        await websocket.close(code=WS_TRY_AGAIN_LATER, reason="NOT_IMPLEMENTED")
 
     app.include_router(router)
 
@@ -55,4 +54,5 @@ __all__ = [
     "LIVE_WS_PHASE_GATE",
     "WS_POLICY_VIOLATION",
     "WS_TRY_AGAIN_LATER",
+    "WS_INTERNAL_ERROR",
 ]
