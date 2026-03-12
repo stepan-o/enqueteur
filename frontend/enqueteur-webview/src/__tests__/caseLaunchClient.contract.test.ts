@@ -22,6 +22,33 @@ const VALID_RESPONSE = {
 };
 
 describe("case launch client contract hardening", () => {
+    it("posts launch requests to canonical /api/cases/start under configured base", async () => {
+        const fetchImpl = vi.fn(async () =>
+            new Response(JSON.stringify(VALID_RESPONSE), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            })
+        );
+        const client = createCaseLaunchClient({
+            apiBaseUrl: "http://127.0.0.1:7777",
+            fetchImpl,
+        });
+
+        await client.startCase({
+            caseId: "MBAM_01",
+            seed: "A",
+            difficultyProfile: "D0",
+            mode: "playtest",
+        });
+
+        expect(fetchImpl).toHaveBeenCalledWith(
+            "http://127.0.0.1:7777/api/cases/start",
+            expect.objectContaining({
+                method: "POST",
+            })
+        );
+    });
+
     it("parses a valid deterministic MBAM launch response", async () => {
         const fetchImpl = vi.fn(async () =>
             new Response(JSON.stringify(VALID_RESPONSE), {

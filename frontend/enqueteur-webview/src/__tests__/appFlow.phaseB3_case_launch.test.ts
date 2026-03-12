@@ -228,6 +228,59 @@ describe("Phase B3 case launch request flow", () => {
         flow.destroy();
     });
 
+    it("keeps backend reachability failures in relaunchable launch-failure flow", async () => {
+        const startCase = vi.fn(async () => {
+            throw new CaseLaunchError(
+                "Could not reach backend launch endpoint at http://127.0.0.1:7777/api/cases/start.",
+                {
+                    status: 503,
+                    code: "BACKEND_UNREACHABLE",
+                }
+            );
+        });
+        const caseLaunchClient: CaseLaunchClient = { startCase };
+        const createLiveClient = vi.fn(() => makeIdleLiveClient());
+        const flow = mountAppFlow({
+            mountEl: makeMountEl(),
+            loadingDurationMs: 10_000,
+            caseLaunchClient,
+            createLiveClient,
+        } satisfies AppFlowOpts);
+
+        flow.transition({ kind: "CASE_SELECT" });
+        clickFirstCaseCard();
+        await flushAsyncWork();
+
+        expect(flow.getState()).toEqual({
+            kind: "ERROR",
+            code: "LAUNCH_FAILURE",
+            message: (
+                "Case launch failed (BACKEND_UNREACHABLE): "
+                + "Could not reach backend launch endpoint at http://127.0.0.1:7777/api/cases/start."
+            ),
+            recoverTo: "CASE_SELECT",
+        });
+        expect(flow.getLaunchFailure()).toEqual({
+            request: {
+                caseId: "MBAM_01",
+                seed: "A",
+                difficultyProfile: "D0",
+                mode: "playtest",
+            },
+            message: (
+                "Case launch failed (BACKEND_UNREACHABLE): "
+                + "Could not reach backend launch endpoint at http://127.0.0.1:7777/api/cases/start."
+            ),
+            code: "BACKEND_UNREACHABLE",
+            field: undefined,
+            status: 503,
+            occurredAt: expect.any(String),
+        });
+        expect(createLiveClient).not.toHaveBeenCalled();
+
+        flow.destroy();
+    });
+
     it("treats non-launch connecting phases without metadata as an unexpected-state error", async () => {
         const startCase = vi.fn(async () => makeLaunchMetadata());
         const caseLaunchClient: CaseLaunchClient = { startCase };
