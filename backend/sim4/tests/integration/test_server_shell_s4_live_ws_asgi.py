@@ -402,6 +402,9 @@ def test_s5_asgi_live_post_baseline_accepts_input_command() -> None:
             assert frame_diff["to_tick"] == frame_diff["from_tick"] + 1
             assert isinstance(frame_diff["ops"], list)
             assert ws_result.close_frames == ()
+            assert app.state.session_controller.list_sessions() == ()
+            run_entry = app.state.run_registry.require(str(launch_payload["run_id"]))
+            assert run_entry.host.last_session_id is not None
 
     asyncio.run(_scenario())
 
@@ -457,5 +460,173 @@ def test_s5_asgi_live_post_baseline_rejects_invalid_input_command() -> None:
             assert isinstance(rejected["message"], str) and rejected["message"]
             assert "FRAME_DIFF" not in [env["msg_type"] for env in envelopes]
             assert ws_result.close_frames == ()
+            assert app.state.session_controller.list_sessions() == ()
+            run_entry = app.state.run_registry.require(str(launch_payload["run_id"]))
+            assert run_entry.host.last_session_id is not None
+
+    asyncio.run(_scenario())
+
+
+def test_s5_asgi_live_reject_then_accepts_later_command_and_emits_diff() -> None:
+    app = create_app()
+
+    async def _scenario() -> None:
+        async with app.router.lifespan_context(app):
+            launch = await _post_json(
+                app,
+                path=CASE_START_PATH,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "A",
+                    "difficulty_profile": "D0",
+                    "mode": "playtest",
+                },
+            )
+            launch_payload = launch.json()
+            assert launch.status_code == 200
+
+            ws_result = await _asgi_ws_session(
+                app,
+                path_or_url=str(launch_payload["ws_url"]),
+                incoming_texts=(
+                    _viewer_hello(),
+                    _subscribe(),
+                    _envelope(
+                        "INPUT_COMMAND",
+                        {
+                            "client_cmd_id": "00000000-0000-4000-8000-000000000010",
+                            "tick_target": 1,
+                            "cmd": {
+                                "type": "INVESTIGATE_OBJECT",
+                                "payload": {"object_id": "UNKNOWN_OBJECT", "action_id": "inspect"},
+                            },
+                        },
+                    ),
+                    _envelope(
+                        "INPUT_COMMAND",
+                        {
+                            "client_cmd_id": "00000000-0000-4000-8000-000000000011",
+                            "tick_target": 1,
+                            "cmd": {
+                                "type": "INVESTIGATE_OBJECT",
+                                "payload": {"object_id": "O4_BENCH", "action_id": "inspect"},
+                            },
+                        },
+                    ),
+                ),
+            )
+            assert ws_result.accepted is True
+            envelopes = ws_result.decoded_envelopes()
+            assert [env["msg_type"] for env in envelopes] == [
+                "KERNEL_HELLO",
+                "SUBSCRIBED",
+                "FULL_SNAPSHOT",
+                "COMMAND_REJECTED",
+                "COMMAND_ACCEPTED",
+                "FRAME_DIFF",
+            ]
+            assert envelopes[3]["payload"]["client_cmd_id"] == "00000000-0000-4000-8000-000000000010"
+            assert envelopes[4]["payload"]["client_cmd_id"] == "00000000-0000-4000-8000-000000000011"
+            frame_diff = envelopes[5]["payload"]
+            assert frame_diff["from_tick"] == envelopes[2]["payload"]["tick"]
+            assert frame_diff["to_tick"] == frame_diff["from_tick"] + 1
+            assert ws_result.close_frames == ()
+            assert app.state.session_controller.list_sessions() == ()
+
+    asyncio.run(_scenario())
+
+
+def test_s5_asgi_live_repeated_interactive_sessions_teardown_cleanly() -> None:
+    app = create_app()
+
+    async def _scenario() -> None:
+        async with app.router.lifespan_context(app):
+            launch_one = await _post_json(
+                app,
+                path=CASE_START_PATH,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "A",
+                    "difficulty_profile": "D0",
+                    "mode": "playtest",
+                },
+            )
+            payload_one = launch_one.json()
+            assert launch_one.status_code == 200
+            session_one = await _asgi_ws_session(
+                app,
+                path_or_url=str(payload_one["ws_url"]),
+                incoming_texts=(
+                    _viewer_hello(),
+                    _subscribe(),
+                    _envelope(
+                        "INPUT_COMMAND",
+                        {
+                            "client_cmd_id": "00000000-0000-4000-8000-000000000020",
+                            "tick_target": 1,
+                            "cmd": {
+                                "type": "INVESTIGATE_OBJECT",
+                                "payload": {"object_id": "O4_BENCH", "action_id": "inspect"},
+                            },
+                        },
+                    ),
+                ),
+            )
+            assert [env["msg_type"] for env in session_one.decoded_envelopes()] == [
+                "KERNEL_HELLO",
+                "SUBSCRIBED",
+                "FULL_SNAPSHOT",
+                "COMMAND_ACCEPTED",
+                "FRAME_DIFF",
+            ]
+            assert session_one.close_frames == ()
+            assert app.state.session_controller.list_sessions() == ()
+            entry_one = app.state.run_registry.require(str(payload_one["run_id"]))
+            session_id_one = entry_one.host.last_session_id
+            assert session_id_one is not None
+
+            launch_two = await _post_json(
+                app,
+                path=CASE_START_PATH,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "B",
+                    "difficulty_profile": "D0",
+                    "mode": "playtest",
+                },
+            )
+            payload_two = launch_two.json()
+            assert launch_two.status_code == 200
+            session_two = await _asgi_ws_session(
+                app,
+                path_or_url=str(payload_two["ws_url"]),
+                incoming_texts=(
+                    _viewer_hello(),
+                    _subscribe(),
+                    _envelope(
+                        "INPUT_COMMAND",
+                        {
+                            "client_cmd_id": "00000000-0000-4000-8000-000000000021",
+                            "tick_target": 1,
+                            "cmd": {
+                                "type": "INVESTIGATE_OBJECT",
+                                "payload": {"object_id": "O4_BENCH", "action_id": "inspect"},
+                            },
+                        },
+                    ),
+                ),
+            )
+            assert [env["msg_type"] for env in session_two.decoded_envelopes()] == [
+                "KERNEL_HELLO",
+                "SUBSCRIBED",
+                "FULL_SNAPSHOT",
+                "COMMAND_ACCEPTED",
+                "FRAME_DIFF",
+            ]
+            assert session_two.close_frames == ()
+            assert app.state.session_controller.list_sessions() == ()
+            entry_two = app.state.run_registry.require(str(payload_two["run_id"]))
+            assert entry_two.host.last_session_id is not None
+            assert entry_two.host.last_session_id != session_id_one
 
     asyncio.run(_scenario())
