@@ -2,6 +2,8 @@ export type MbamSeedId = "A" | "B" | "C";
 
 type MbamSeedEnv = Partial<Record<`VITE_WEBVIEW_RUN_BASE_MBAM_${MbamSeedId}`, string>>;
 
+// Replay-only helper for offline artifact seed bases.
+// Canonical live seed selection is driven by case launch metadata and presets.
 export function resolveMbamSeedRunBases(
     env: MbamSeedEnv,
     fallbackBase: string

@@ -1,4 +1,7 @@
 // src/kvp/offline.ts
+//
+// Secondary QA/debug offline replay loader.
+// Canonical human-play startup is the live appFlow launch/connect path.
 import type {
     FrameDiffPayload,
     FullSnapshotPayload,

@@ -19,6 +19,11 @@ Key guarantees:
 - integrity covers every referenced pointer (inline content_sha256 or in map)
 
 No IO or writer logic here beyond to_dict()/from_dict().
+
+Note:
+- ALLOWED_CHANNELS in this module is the legacy artifact/export vocabulary
+  (WORLD/AGENTS/ITEMS/...). It does not define the canonical Enqueteur /live
+  subscribe channel contract.
 """
 
 from dataclasses import dataclass

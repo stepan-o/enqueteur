@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-"""Per-websocket session lifecycle controller for live handshake, commands, and diffs."""
+"""Per-websocket /live transport lifecycle controller.
+
+Canonical local human play enters through backend.server routes and this
+controller. Keep this layer transport/lifecycle-focused: command semantics and
+state projection stay delegated to backend.api.live_ws + backend.sim4 core.
+"""
 
 import asyncio
 from datetime import UTC, datetime

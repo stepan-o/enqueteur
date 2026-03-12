@@ -7,6 +7,10 @@ FULL_SNAPSHOT / FRAME_DIFF envelopes over a LiveSession.
 
 This is a draft adapter: it assumes a single live subscriber and does not
 attempt backpressure or retransmit logic yet.
+
+This adapter follows integration artifact channel naming from manifest_schema
+(e.g., AGENTS/ITEMS) for compatibility; canonical Enqueteur /live channels are
+defined separately at the server host boundary.
 """
 
 from dataclasses import asdict, is_dataclass
