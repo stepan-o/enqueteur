@@ -141,17 +141,78 @@ Frontend env:
 
 - `VITE_ENQUETEUR_API_BASE_URL` (optional override; local default resolves to `http://127.0.0.1:7777` in dev)
 
-## Troubleshooting
+## Troubleshooting (Local)
 
-- Launch error `BACKEND_UNREACHABLE`:
-  - backend is not running on `127.0.0.1:7777`, or frontend base URL override is wrong.
-- WS error `RUN_NOT_FOUND`:
-  - run was removed/expired; relaunch from menu and reconnect.
-- WS error `HOST_SHUTTING_DOWN`:
-  - backend is stopping; restart backend and reconnect.
-- Stuck in Connecting:
-  - confirm backend `/readyz` is `ready`.
-  - inspect backend logs for protocol rejection category.
+### 1) Symptom: `BACKEND_UNREACHABLE` during case launch
+
+Likely cause:
+
+- backend host is not running on `127.0.0.1:7777`, or frontend API target is overridden incorrectly.
+
+What to check:
+
+1. `make server-dev` is running in another terminal.
+2. `curl http://127.0.0.1:7777/readyz` returns `status: ready`.
+3. `VITE_ENQUETEUR_API_BASE_URL` is unset or points to the correct backend.
+
+### 2) Symptom: case launch fails (`LAUNCH_FAILED` / `INVALID_LAUNCH_RESPONSE` / `HOST_NOT_READY`)
+
+Likely cause:
+
+- backend startup/dependency issue or backend launch path error.
+
+What to check:
+
+1. backend terminal logs for launch error category.
+2. run host-focused integration checks first (see commands below).
+3. restart backend after dependency/config changes.
+
+### 3) Symptom: WS `/live` fails with `RUN_NOT_FOUND`
+
+Likely cause:
+
+- launched run is missing/expired (stale detached-run eviction), or run was removed.
+
+What to check:
+
+1. relaunch from Case Select (do not reuse stale session state).
+2. retry connect immediately after launch.
+3. if repeated, inspect backend logs for run lookup rejection category.
+
+### 4) Symptom: WS `/live` fails with `HOST_SHUTTING_DOWN`
+
+Likely cause:
+
+- backend is in shutdown state and rejecting new sessions.
+
+What to check:
+
+1. restart backend (`make server-dev`).
+2. relaunch from menu and reconnect.
+
+### 5) Symptom: stuck in Connecting or closes before baseline (`BAD_SEQUENCE` / `PROTOCOL_VIOLATION` / schema mismatch)
+
+Likely cause:
+
+- frontend/backend runtime mismatch or interrupted handshake path.
+
+What to check:
+
+1. restart both backend and frontend dev servers.
+2. confirm app reaches `KERNEL_HELLO -> SUBSCRIBED -> FULL_SNAPSHOT`.
+3. re-run S7/S8 host integration tests if issue persists.
+
+### 6) Symptom: test command confusion
+
+Likely cause:
+
+- mixing backend and frontend test commands, or missing Python extras.
+
+What to check:
+
+1. install Python deps once: `uv sync --extra dev --extra server`.
+2. backend tests: `make test`.
+3. frontend tests: `cd frontend/enqueteur-webview && npm test`.
 
 ## Useful Test Commands
 
