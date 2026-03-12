@@ -43,12 +43,13 @@ logger = logging.getLogger(__name__)
 class SessionController:
     """Tracks ws sessions and owns /live lifecycle from handshake through interactive flow."""
 
-    def __init__(self, *, run_registry: RunRegistry) -> None:
+    def __init__(self, *, run_registry: RunRegistry, verbose_protocol_logging: bool = False) -> None:
         self._run_registry = run_registry
         self._sessions: dict[str, SessionRecord] = {}
         self._lock = RLock()
         self._live_host = EnqueteurLiveSessionHost(run_registry=_RunRegistryAdapter(run_registry))
         self._accepting_connections = True
+        self._verbose_protocol_logging = bool(verbose_protocol_logging)
 
     def open_session(self, *, run_id: str | None, connection_id: str | None = None) -> SessionRecord:
         record = SessionRecord(
@@ -120,6 +121,7 @@ class SessionController:
     ) -> SessionRecord | None:
         if not self._accepting_connections:
             await websocket.accept()
+            logger.warning("ws reject category=host_shutting_down connection_target=%s", connection_target or "")
             await _close_with_error(
                 websocket,
                 code=HOST_SHUTTING_DOWN_REASON,
@@ -133,6 +135,7 @@ class SessionController:
         run_id_hint = RunRegistry.extract_run_id(target)
         if run_id_hint is None:
             await websocket.accept()
+            logger.warning("ws reject category=missing_run_id connection_target=%s", target)
             await _send_error_envelope(
                 websocket,
                 code=MISSING_RUN_ID_WS_CLOSE_REASON,
@@ -151,7 +154,12 @@ class SessionController:
                 connection_target=target,
                 host=self._live_host,
             )
-        except RunLookupError:
+        except RunLookupError as exc:
+            logger.warning(
+                "ws reject category=run_not_found run_id_hint=%s connection_target=%s",
+                exc.run_id_hint,
+                exc.connection_target,
+            )
             return None
 
         record = self.open_session(
@@ -170,6 +178,12 @@ class SessionController:
             raw_hello = await websocket.receive_text()
             hello_msg_type = _extract_msg_type(raw_hello)
             if hello_msg_type is not None and hello_msg_type != "VIEWER_HELLO":
+                logger.warning(
+                    "ws protocol_violation category=bad_sequence stage=hello connection_id=%s run_id=%s got=%s",
+                    record.connection_id,
+                    record.run_id,
+                    hello_msg_type,
+                )
                 await _close_with_error(
                     websocket,
                     code=BAD_SEQUENCE_ERROR_CODE,
@@ -190,6 +204,12 @@ class SessionController:
                 termination_reason = _resolve_termination_reason(active, fallback=SESSION_CLOSED_REASON)
                 return record
             if active.protocol_state != "AWAITING_SUBSCRIBE":
+                logger.warning(
+                    "ws protocol_violation category=unexpected_protocol_state stage=hello connection_id=%s run_id=%s state=%s",
+                    record.connection_id,
+                    record.run_id,
+                    active.protocol_state,
+                )
                 await _close_with_error(
                     websocket,
                     code=BAD_SEQUENCE_ERROR_CODE,
@@ -203,10 +223,21 @@ class SessionController:
                 termination_reason = PROTOCOL_VIOLATION_WS_CLOSE_REASON
                 return record
             self.mark_hello_verified(record.connection_id)
+            logger.info(
+                "ws handshake hello_verified connection_id=%s run_id=%s",
+                record.connection_id,
+                record.run_id,
+            )
 
             raw_subscribe = await websocket.receive_text()
             subscribe_msg_type = _extract_msg_type(raw_subscribe)
             if subscribe_msg_type is not None and subscribe_msg_type != "SUBSCRIBE":
+                logger.warning(
+                    "ws protocol_violation category=bad_sequence stage=subscribe connection_id=%s run_id=%s got=%s",
+                    record.connection_id,
+                    record.run_id,
+                    subscribe_msg_type,
+                )
                 await _close_with_error(
                     websocket,
                     code=BAD_SEQUENCE_ERROR_CODE,
@@ -227,6 +258,12 @@ class SessionController:
                 termination_reason = _resolve_termination_reason(active, fallback=SESSION_CLOSED_REASON)
                 return record
             if active.protocol_state != "SUBSCRIBED":
+                logger.warning(
+                    "ws protocol_violation category=unexpected_protocol_state stage=subscribe connection_id=%s run_id=%s state=%s",
+                    record.connection_id,
+                    record.run_id,
+                    active.protocol_state,
+                )
                 await _close_with_error(
                     websocket,
                     code=BAD_SEQUENCE_ERROR_CODE,
@@ -240,7 +277,17 @@ class SessionController:
                 termination_reason = PROTOCOL_VIOLATION_WS_CLOSE_REASON
                 return record
             self.mark_subscribed(record.connection_id)
+            logger.info(
+                "ws handshake subscribed connection_id=%s run_id=%s",
+                record.connection_id,
+                record.run_id,
+            )
             if not active.baseline_sent:
+                logger.warning(
+                    "ws protocol_violation category=baseline_missing connection_id=%s run_id=%s",
+                    record.connection_id,
+                    record.run_id,
+                )
                 await _close_with_error(
                     websocket,
                     code=BASELINE_REQUIRED_ERROR_CODE,
@@ -253,10 +300,21 @@ class SessionController:
             self.mark_baseline_sent(record.connection_id)
             self.mark_live(record.connection_id)
             self._touch_run_activity(record)
+            logger.info(
+                "ws handshake live_ready connection_id=%s run_id=%s",
+                record.connection_id,
+                record.run_id,
+            )
 
             while True:
                 raw_live_message = await websocket.receive_text()
                 live_msg_type = _extract_msg_type(raw_live_message)
+                self._log_verbose(
+                    "ws inbound message connection_id=%s run_id=%s msg_type=%s",
+                    record.connection_id,
+                    record.run_id,
+                    live_msg_type,
+                )
                 command_result = await handle_enqueteur_live_incoming_message(
                     websocket,
                     session=live_session,
@@ -272,6 +330,7 @@ class SessionController:
                     live_session=live_session,
                     msg_type=live_msg_type,
                     command_result=command_result,
+                    record=record,
                 )
                 current = self._live_host.get_session(live_session.connection_id)
                 if current is None or current.phase == "CLOSED":
@@ -349,17 +408,41 @@ class SessionController:
         live_session: Any,
         msg_type: str | None,
         command_result: Any,
+        record: SessionRecord,
     ) -> None:
         if msg_type != "INPUT_COMMAND":
             return
-        if command_result is None or not bool(getattr(command_result, "accepted", False)):
+        if command_result is None:
             return
+        accepted = bool(getattr(command_result, "accepted", False))
+        client_cmd_id = getattr(command_result, "client_cmd_id", "unknown")
+        if not accepted:
+            logger.info(
+                "ws command rejected connection_id=%s run_id=%s client_cmd_id=%s reason_code=%s",
+                record.connection_id,
+                record.run_id,
+                client_cmd_id,
+                getattr(command_result, "reason_code", None),
+            )
+            return
+        logger.info(
+            "ws command accepted connection_id=%s run_id=%s client_cmd_id=%s",
+            record.connection_id,
+            record.run_id,
+            client_cmd_id,
+        )
         await stream_enqueteur_frame_diff_loop(
             websocket,
             session=live_session,
             host=self._live_host,
             max_frames=1,
             tick_interval_seconds=0.0,
+        )
+        self._log_verbose(
+            "ws diff emitted connection_id=%s run_id=%s client_cmd_id=%s",
+            record.connection_id,
+            record.run_id,
+            client_cmd_id,
         )
 
     def _teardown_live_session(
@@ -385,6 +468,11 @@ class SessionController:
             record.run_id,
             close_reason or CLIENT_DISCONNECT_REASON,
         )
+
+    def _log_verbose(self, message: str, *args: Any) -> None:
+        if not self._verbose_protocol_logging:
+            return
+        logger.info(message, *args)
 
 
 class _RunRegistryAdapter:

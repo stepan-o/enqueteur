@@ -1,5 +1,6 @@
 """WebSocket route wiring for live session controller."""
 
+import logging
 from typing import Any
 
 from .models import ErrorBody
@@ -16,6 +17,8 @@ WS_INTERNAL_ERROR = 1011
 LIVE_WS_PHASE_GATE = "S5"
 HOST_SHUTTING_DOWN_CODE = "HOST_SHUTTING_DOWN"
 
+logger = logging.getLogger(__name__)
+
 
 def register_ws_routes(app: Any) -> None:
     """Attach websocket routes to the ASGI app."""
@@ -27,7 +30,9 @@ def register_ws_routes(app: Any) -> None:
 
     @router.websocket(LIVE_WS_PATH)
     async def ws_live(websocket: WebSocket) -> None:
+        logger.debug("ws connect path=%s", LIVE_WS_PATH)
         if bool(getattr(websocket.app.state, "shutting_down", False)):
+            logger.warning("ws reject category=host_shutting_down path=%s", LIVE_WS_PATH)
             await websocket.accept()
             payload = ErrorBody(
                 code=HOST_SHUTTING_DOWN_CODE,
@@ -39,6 +44,7 @@ def register_ws_routes(app: Any) -> None:
 
         session_controller = getattr(websocket.app.state, "session_controller", None)
         if not isinstance(session_controller, SessionController):
+            logger.error("ws reject category=host_not_ready path=%s", LIVE_WS_PATH)
             await websocket.accept()
             payload = ErrorBody(
                 code="HOST_NOT_READY",

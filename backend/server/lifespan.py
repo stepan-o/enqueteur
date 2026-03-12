@@ -22,7 +22,10 @@ async def server_lifespan(app: Any):
 
     config: ServerConfig = app.state.server_config
     run_registry = RunRegistry()
-    session_controller = SessionController(run_registry=run_registry)
+    session_controller = SessionController(
+        run_registry=run_registry,
+        verbose_protocol_logging=config.verbose_protocol_logging,
+    )
     case_start_service = CaseStartService(
         ws_base_url=build_ws_base_url(config),
         registry=CaseRunRegistry(),
@@ -38,10 +41,11 @@ async def server_lifespan(app: Any):
         f"server-shell started host={config.host}:{config.port} log_level={config.log_level}"
     )
     logger.info(
-        "server-shell startup host=%s port=%s log_level=%s",
+        "server-shell startup host=%s port=%s log_level=%s verbose_protocol_logging=%s",
         config.host,
         config.port,
         config.log_level,
+        config.verbose_protocol_logging,
     )
     try:
         yield

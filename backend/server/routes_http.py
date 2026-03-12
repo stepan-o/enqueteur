@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
+import logging
 from typing import Any
 
 from backend.api.cases_start import CaseStartService, handle_post_cases_start
@@ -23,6 +24,7 @@ READINESS_PATH = "/readyz"
 CASE_START_PATH = "/api/cases/start"
 CASE_START_PHASE_GATE = "S2"
 HOST_NOT_READY_CODE = "HOST_NOT_READY"
+logger = logging.getLogger(__name__)
 
 
 def build_ws_base_url(config: ServerConfig) -> str:
@@ -38,14 +40,23 @@ def launch_case_from_transport(
     case_start_service: CaseStartService,
     run_registry: RunRegistry,
 ) -> tuple[int, dict[str, Any]]:
+    logger.info(
+        "launch request case_id=%s mode=%s difficulty_profile=%s",
+        payload.case_id,
+        payload.mode,
+        payload.difficulty_profile,
+    )
     try:
         status, response_payload = handle_post_cases_start(payload.to_core_payload(), service=case_start_service)
     except Exception as exc:  # pragma: no cover - safety boundary for unexpected core errors.
+        logger.exception("launch failed category=execution case_id=%s", payload.case_id)
         raise LaunchExecutionError() from exc
 
     if not isinstance(status, int):
+        logger.error("launch failed category=contract reason=invalid_status type=%s", type(status).__name__)
         raise LaunchContractError("Case launch backend returned an invalid HTTP status value.")
     if not isinstance(response_payload, dict):
+        logger.error("launch failed category=contract reason=invalid_payload type=%s", type(response_payload).__name__)
         raise LaunchContractError("Case launch backend returned a non-object response payload.")
 
     if status == 200:
@@ -59,9 +70,21 @@ def launch_case_from_transport(
                 started_run=started_run,
             )
         except Exception as exc:  # pragma: no cover - defensive mapping boundary.
+            logger.exception("launch failed category=contract reason=registry_registration run_id=%s", run_id_candidate)
             raise LaunchContractError(
                 "Case launch metadata could not be registered for future live attachment."
             ) from exc
+        logger.info("launch success run_id=%s case_id=%s", run_id_candidate, payload.case_id)
+    else:
+        error_block = response_payload.get("error")
+        error_code = error_block.get("code") if isinstance(error_block, dict) else None
+        error_field = error_block.get("field") if isinstance(error_block, dict) else None
+        logger.info(
+            "launch rejected category=validation status=%s code=%s field=%s",
+            status,
+            error_code,
+            error_field,
+        )
 
     return status, response_payload
 
@@ -136,6 +159,7 @@ def register_http_routes(app: Any) -> None:
             raw_payload = await request.json()
         except ValueError:
             error = TransportRequestError("Request body must be valid JSON.")
+            logger.warning("launch request rejected category=malformed_json")
             return JSONResponse(status_code=error.status_code, content=build_transport_error_payload(error))
 
         try:
@@ -147,6 +171,20 @@ def register_http_routes(app: Any) -> None:
                 run_registry=run_registry,
             )
         except TransportRouteError as error:
+            level = logging.ERROR if error.status_code >= 500 else logging.WARNING
+            logger.log(
+                level,
+                "launch route error category=%s status=%s code=%s field=%s phase_gate=%s",
+                error.__class__.__name__,
+                error.status_code,
+                error.code,
+                error.field,
+                error.phase_gate,
+            )
+            return JSONResponse(status_code=error.status_code, content=build_transport_error_payload(error))
+        except Exception:  # pragma: no cover - defensive transport boundary
+            error = LaunchExecutionError()
+            logger.exception("launch route internal_error category=unexpected")
             return JSONResponse(status_code=error.status_code, content=build_transport_error_payload(error))
 
         return JSONResponse(status_code=status, content=payload)
