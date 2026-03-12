@@ -1,4 +1,5 @@
 import type { WorldState } from "../state/worldStore";
+import { t } from "../i18n";
 
 export type MbamOnboardingStep = {
     id: "inspect_starters" | "log_clues" | "dialogue_turn" | "contradiction_readiness";
@@ -46,91 +47,104 @@ export type MbamObjectGuide = {
     contradiction_relevant?: boolean;
 };
 
-const CASE_TITLE = "MBAM / Le Petit Vol du Musee";
-const CASE_SUMMARY = "Recover the missing medallion by piecing together a reliable timeline.";
-const CASE_INCIDENT = "A gallery medallion is missing shortly before closing.";
-const MBAM_OBJECT_GUIDES: MbamObjectGuide[] = [
+type ObjectGuideMeta = {
+    object_id: string;
+    label_key: string;
+    location_hint_key: string;
+    starter_priority: number;
+    contradiction_relevant?: boolean;
+};
+
+const MBAM_OBJECT_GUIDE_META: ObjectGuideMeta[] = [
     {
         object_id: "O1_DISPLAY_CASE",
-        label: "Display Case",
-        location_hint: "Gallery floor",
+        label_key: "mbam.object.O1_DISPLAY_CASE.label",
+        location_hint_key: "mbam.object.O1_DISPLAY_CASE.location",
         starter_priority: 1,
     },
     {
         object_id: "O3_WALL_LABEL",
-        label: "Wall Label",
-        location_hint: "Near the display case",
+        label_key: "mbam.object.O3_WALL_LABEL.label",
+        location_hint_key: "mbam.object.O3_WALL_LABEL.location",
         starter_priority: 2,
     },
     {
         object_id: "O6_BADGE_TERMINAL",
-        label: "Badge Terminal",
-        location_hint: "Security office",
+        label_key: "mbam.object.O6_BADGE_TERMINAL.label",
+        location_hint_key: "mbam.object.O6_BADGE_TERMINAL.location",
         starter_priority: 3,
         contradiction_relevant: true,
     },
     {
         object_id: "O9_RECEIPT_PRINTER",
-        label: "Receipt Printer",
-        location_hint: "Cafe counter",
+        label_key: "mbam.object.O9_RECEIPT_PRINTER.label",
+        location_hint_key: "mbam.object.O9_RECEIPT_PRINTER.location",
         starter_priority: 4,
         contradiction_relevant: true,
     },
     {
         object_id: "O4_BENCH",
-        label: "Bench",
-        location_hint: "Public gallery seating",
+        label_key: "mbam.object.O4_BENCH.label",
+        location_hint_key: "mbam.object.O4_BENCH.location",
         starter_priority: 5,
     },
     {
         object_id: "O10_BULLETIN_BOARD",
-        label: "Bulletin Board",
-        location_hint: "Public staff notice area",
+        label_key: "mbam.object.O10_BULLETIN_BOARD.label",
+        location_hint_key: "mbam.object.O10_BULLETIN_BOARD.location",
         starter_priority: 6,
     },
 ];
-const ACTION_LABELS: Record<string, string> = {
-    inspect: "Inspect",
-    check_lock: "Check lock",
-    examine_surface: "Examine surface",
-    read: "Read",
-    request_access: "Request access",
-    view_logs: "View logs",
-    ask_for_receipt: "Ask for receipt",
-    read_receipt: "Read receipt",
+
+const ACTION_LABEL_KEYS: Record<string, string> = {
+    inspect: "mbam.action.inspect.label",
+    check_lock: "mbam.action.check_lock.label",
+    examine_surface: "mbam.action.examine_surface.label",
+    read: "mbam.action.read.label",
+    request_access: "mbam.action.request_access.label",
+    view_logs: "mbam.action.view_logs.label",
+    ask_for_receipt: "mbam.action.ask_for_receipt.label",
+    read_receipt: "mbam.action.read_receipt.label",
 };
-const ACTION_HINTS: Record<string, string> = {
-    inspect: "Start here to spot what changed at the scene.",
-    check_lock: "Confirm whether the case was tampered with.",
-    examine_surface: "Look for traces that clarify who handled the object.",
-    read: "Capture concrete anchors like names, dates, and labels.",
-    request_access: "Ask politely to unlock restricted records.",
-    view_logs: "Use this to anchor movement times.",
-    ask_for_receipt: "Can reveal a supporting timeline clue.",
-    read_receipt: "Use receipt time/item to support your questioning.",
+
+const ACTION_HINT_KEYS: Record<string, string> = {
+    inspect: "mbam.action.inspect.hint",
+    check_lock: "mbam.action.check_lock.hint",
+    examine_surface: "mbam.action.examine_surface.hint",
+    read: "mbam.action.read.hint",
+    request_access: "mbam.action.request_access.hint",
+    view_logs: "mbam.action.view_logs.hint",
+    ask_for_receipt: "mbam.action.ask_for_receipt.hint",
+    read_receipt: "mbam.action.read_receipt.hint",
 };
-const CONTRADICTION_EDGE_LABELS: Record<string, string> = {
-    E3: "Potential timeline mismatch",
+
+const CONTRADICTION_EDGE_LABEL_KEYS: Record<string, string> = {
+    E3: "mbam.contradiction.E3.label",
 };
 
 export function listMbamObjectGuides(): MbamObjectGuide[] {
-    return [...MBAM_OBJECT_GUIDES];
+    return MBAM_OBJECT_GUIDE_META.map(buildObjectGuide);
 }
 
 export function getMbamObjectGuide(objectId: string): MbamObjectGuide | null {
-    return MBAM_OBJECT_GUIDES.find((row) => row.object_id === objectId) ?? null;
+    const meta = MBAM_OBJECT_GUIDE_META.find((row) => row.object_id === objectId);
+    return meta ? buildObjectGuide(meta) : null;
 }
 
 export function labelMbamAction(actionId: string): string {
-    return ACTION_LABELS[actionId] ?? actionId;
+    const key = ACTION_LABEL_KEYS[actionId];
+    return key ? t(key) : actionId;
 }
 
 export function hintMbamAction(actionId: string): string {
-    return ACTION_HINTS[actionId] ?? "Try this action to move the investigation forward.";
+    const key = ACTION_HINT_KEYS[actionId];
+    if (!key) return t("mbam.action.default_hint");
+    return t(key);
 }
 
 export function labelMbamContradictionEdge(edgeId: string): string {
-    return CONTRADICTION_EDGE_LABELS[edgeId] ?? edgeId;
+    const key = CONTRADICTION_EDGE_LABEL_KEYS[edgeId];
+    return key ? t(key) : edgeId;
 }
 
 export function buildMbamCaseSetupGuide(state: WorldState): MbamCaseSetupGuide {
@@ -147,42 +161,42 @@ export function buildMbamCaseSetupGuide(state: WorldState): MbamCaseSetupGuide {
 
     const firstInspect = (() => {
         if (!displayCaseObserved && !wallLabelObserved) {
-            return "Inspect the Display Case, then read the Wall Label in the gallery.";
+            return t("mbam.setup.firstInspect.inspect_then_label");
         }
         if (!displayCaseObserved) {
-            return "Inspect the Display Case in the gallery.";
+            return t("mbam.setup.firstInspect.inspect_case");
         }
         if (!wallLabelObserved) {
-            return "Read the Wall Label near the display case.";
+            return t("mbam.setup.firstInspect.read_label");
         }
         if (!badgeObserved) {
-            return "Check the Badge Terminal in the security office.";
+            return t("mbam.setup.firstInspect.check_badge_terminal");
         }
         if (!receiptObserved) {
-            return "Check the Receipt Printer at the cafe counter.";
+            return t("mbam.setup.firstInspect.check_receipt_printer");
         }
-        return "Continue with remaining object leads in Case Notes.";
+        return t("mbam.setup.firstInspect.continue_leads");
     })();
 
     const firstTalkTo = (() => {
-        if (!hasDialogueTurn) return "Talk to Elodie first to anchor what happened and when.";
-        if (!badgeObserved) return "Talk to Marc if you need access to security logs.";
+        if (!hasDialogueTurn) return t("mbam.setup.firstTalkTo.elodie_first");
+        if (!badgeObserved) return t("mbam.setup.firstTalkTo.marc_if_needed");
         if (contradictionRequired && !contradictionSatisfied) {
-            return "Question timeline details, then challenge contradictions in surfaced scenes.";
+            return t("mbam.setup.firstTalkTo.challenge_contradictions");
         }
-        return "Keep questioning witnesses to corroborate your timeline.";
+        return t("mbam.setup.firstTalkTo.keep_questioning");
     })();
 
     const progressionPath = [
-        "Inspect the Display Case and Wall Label to anchor the opening timeline.",
-        "Talk to Elodie first in Conversations to validate the opening clue chain.",
-        "Complete at least one Case Notes minigame to strengthen corroboration.",
-        "Use badge/receipt clues to prepare or unlock contradiction readiness.",
-        "Attempt Recovery or Accusation, then review the final recap.",
+        t("mbam.setup.progression.1"),
+        t("mbam.setup.progression.2"),
+        t("mbam.setup.progression.3"),
+        t("mbam.setup.progression.4"),
+        t("mbam.setup.progression.5"),
     ];
 
     return {
-        incident: CASE_INCIDENT,
+        incident: t("mbam.case.incident"),
         firstInspect,
         firstTalkTo,
         progressionPath,
@@ -209,43 +223,43 @@ export function buildMbamPlaytestPathView(state: WorldState): MbamPlaytestPathVi
     const steps: MbamPlaytestPathStep[] = [
         {
             id: "starter_investigation",
-            label: "Inspect starter objects (Display Case + Wall Label).",
+            label: t("mbam.playtest.step.starter_investigation"),
             done: starterInvestigation,
         },
         {
             id: "first_dialogue",
-            label: "Talk to Elodie and submit your first dialogue turn.",
+            label: t("mbam.playtest.step.first_dialogue"),
             done: firstDialogue,
         },
         {
             id: "first_minigame",
-            label: "Complete at least one minigame from Case Notes.",
+            label: t("mbam.playtest.step.first_minigame"),
             done: firstMinigame,
         },
         {
             id: "contradiction_ready",
-            label: "Reach contradiction-ready state for accusation path.",
+            label: t("mbam.playtest.step.contradiction_ready"),
             done: contradictionReady,
         },
         {
             id: "resolution_attempted",
-            label: "Attempt Recovery or Attempt Accusation.",
+            label: t("mbam.playtest.step.resolution_attempted"),
             done: resolutionAttempted,
         },
         {
             id: "recap_available",
-            label: "Review final recap and outcome rationale.",
+            label: t("mbam.playtest.step.recap_available"),
             done: recapAvailable,
         },
     ];
 
     const nextStep = steps.find((row) => !row.done);
     const currentMilestone = nextStep
-        ? `Next: ${nextStep.label}`
-        : "Path complete: recap reviewed and ready for next internal run.";
+        ? t("mbam.playtest.current.next", { label: nextStep.label })
+        : t("mbam.playtest.current.complete");
 
     return {
-        title: "Internal Playtest Path",
+        title: t("mbam.playtest.title"),
         currentMilestone,
         steps,
     };
@@ -277,29 +291,29 @@ export function buildMbamOnboardingView(state: WorldState): MbamOnboardingView {
     const steps: MbamOnboardingStep[] = [
         {
             id: "inspect_starters",
-            label: "Inspect the Display Case and Wall Label in the gallery.",
+            label: t("mbam.onboarding.step.inspect_starters"),
             done: displayCaseObserved && wallLabelObserved,
         },
         {
             id: "log_clues",
-            label: "Record your first clues in Case Notes.",
+            label: t("mbam.onboarding.step.log_clues"),
             done: clueProgress,
         },
         {
             id: "dialogue_turn",
-            label: "Talk to Elodie first in Conversations (in French).",
+            label: t("mbam.onboarding.step.dialogue_turn"),
             done: hasDialogueTurn,
         },
         {
             id: "contradiction_readiness",
-            label: "Cross-check timeline clues and prepare a contradiction.",
+            label: t("mbam.onboarding.step.contradiction_readiness"),
             done: contradictionProgress,
         },
     ];
 
     return {
-        caseTitle: CASE_TITLE,
-        caseSummary: CASE_SUMMARY,
+        caseTitle: t("mbam.case.title"),
+        caseSummary: t("mbam.case.summary"),
         currentLead: resolveCurrentLead({
             hasBaseline: Boolean(investigation && dialogue),
             isTerminal: Boolean(caseOutcome?.terminal),
@@ -326,17 +340,27 @@ function resolveCurrentLead(ctx: {
     contradictionSatisfied: boolean;
     contradictionUnlockable: boolean;
 }): string {
-    if (!ctx.hasBaseline) return "Setting the scene...";
-    if (ctx.isTerminal) return "Case closed. Review the final decision recap.";
-    if (!ctx.displayCaseObserved) return "Begin in the gallery: inspect the Display Case.";
-    if (!ctx.wallLabelObserved) return "Read the Wall Label and note title/date anchors.";
-    if (!ctx.clueProgress) return "Follow object leads to uncover your first clues.";
-    if (!ctx.hasDialogueTurn) return "Open Conversations and talk to Elodie first in French.";
+    if (!ctx.hasBaseline) return t("mbam.currentLead.setting_scene");
+    if (ctx.isTerminal) return t("mbam.currentLead.case_closed");
+    if (!ctx.displayCaseObserved) return t("mbam.currentLead.inspect_display_case");
+    if (!ctx.wallLabelObserved) return t("mbam.currentLead.read_wall_label");
+    if (!ctx.clueProgress) return t("mbam.currentLead.follow_object_leads");
+    if (!ctx.hasDialogueTurn) return t("mbam.currentLead.talk_elodie");
     if (ctx.contradictionRequired && !ctx.contradictionSatisfied) {
-        if (ctx.contradictionUnlockable) return "You have a contradiction lead. Tighten your timeline next.";
-        return "Build a stronger contradiction before making an accusation.";
+        if (ctx.contradictionUnlockable) return t("mbam.currentLead.contradiction_lead");
+        return t("mbam.currentLead.build_contradiction");
     }
-    return "Keep corroborating clues before making your final decision.";
+    return t("mbam.currentLead.keep_corroborating");
+}
+
+function buildObjectGuide(meta: ObjectGuideMeta): MbamObjectGuide {
+    return {
+        object_id: meta.object_id,
+        label: t(meta.label_key),
+        location_hint: t(meta.location_hint_key),
+        starter_priority: meta.starter_priority,
+        contradiction_relevant: meta.contradiction_relevant,
+    };
 }
 
 function isAffordanceObserved(state: WorldState, objectId: string): boolean {

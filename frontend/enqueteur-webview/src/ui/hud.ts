@@ -2,6 +2,7 @@
 import type { WorldStore, WorldState, KvpEvent, KvpRoom } from "../state/worldStore";
 import { buildMbamCaseSetupGuide, buildMbamOnboardingView } from "./mbamOnboarding";
 import type { OverlayStore, OverlayState, UIOverlayEvent } from "../state/overlayStore";
+import { createScopedTranslator, getSharedLocaleStore, type TranslateFn } from "../i18n";
 
 export type HudProfile = "demo" | "playtest" | "dev";
 
@@ -20,6 +21,8 @@ export function mountHud(
     opts: HudOpts = {}
 ): HudHandle {
     let profile: HudProfile = opts.profile ?? "dev";
+    const localeStore = getSharedLocaleStore();
+    const t = createScopedTranslator(() => localeStore.getLocale());
 
     const root = document.createElement("div");
     root.style.position = "absolute";
@@ -56,7 +59,6 @@ export function mountHud(
     header.style.opacity = "0.95";
 
     const title = document.createElement("span");
-    title.textContent = profile === "dev" ? "Enqueteur WebView" : "Case Status";
 
     header.appendChild(dot);
     header.appendChild(title);
@@ -78,7 +80,6 @@ export function mountHud(
     feedPanel.style.lineHeight = "1.35";
 
     const feedTitle = document.createElement("div");
-    feedTitle.textContent = profile === "dev" ? "Live Feed" : profile === "demo" ? "Recent Activity" : "Case Feed";
     feedTitle.style.fontWeight = "600";
     feedTitle.style.marginBottom = "6px";
 
@@ -94,8 +95,19 @@ export function mountHud(
 
     const rerender = (): void => {
         if (!lastWorldState) return;
-        renderHud({ dot, body }, lastWorldState, profile);
-        renderFeed({ feedBody }, lastWorldState, lastOverlayState, profile);
+        renderHud({ dot, body }, lastWorldState, profile, t);
+        renderFeed({ feedBody }, lastWorldState, lastOverlayState, profile, t);
+    };
+
+    const updateHeaderTexts = (): void => {
+        title.textContent = profile === "dev" ? t("hud.title.dev") : t("hud.title.case_status");
+        if (profile === "dev") {
+            feedTitle.textContent = t("hud.feed_title.live_feed");
+            return;
+        }
+        feedTitle.textContent = profile === "demo"
+            ? t("hud.feed_title.recent_activity")
+            : t("hud.feed_title.case_feed");
     };
 
     store.subscribe((state) => {
@@ -113,10 +125,20 @@ export function mountHud(
     const setProfile = (nextProfile: HudProfile): void => {
         if (profile === nextProfile) return;
         profile = nextProfile;
-        title.textContent = profile === "dev" ? "Enqueteur WebView" : "Case Status";
-        feedTitle.textContent = profile === "dev" ? "Live Feed" : profile === "demo" ? "Recent Activity" : "Case Feed";
+        updateHeaderTexts();
         rerender();
     };
+
+    let localeReady = false;
+    localeStore.subscribe(() => {
+        if (!localeReady) {
+            localeReady = true;
+            updateHeaderTexts();
+            return;
+        }
+        updateHeaderTexts();
+        rerender();
+    });
 
     return {
         root,
@@ -127,7 +149,8 @@ export function mountHud(
 function renderHud(
     el: { dot: HTMLSpanElement; body: HTMLDivElement },
     state: WorldState,
-    profile: HudProfile
+    profile: HudProfile,
+    t: TranslateFn
 ): void {
     const connected = state.connected;
     const desynced = state.desynced;
@@ -140,7 +163,7 @@ function renderHud(
     if (profile === "dev") {
         const kernelHello = state.kernelHello;
         lines.push(`mode:      ${state.mode}`);
-        lines.push(`connected: ${connected ? "yes" : "no"}`);
+        lines.push(`connected: ${connected ? t("hud.status.yes") : t("hud.status.no")}`);
         lines.push(`tick:      ${padLeft(String(state.tick), 8)}`);
         lines.push(`stepHash:  ${truncateHash(state.stepHash)}`);
 
@@ -154,36 +177,38 @@ function renderHud(
             lines.push(`tick_hz:   ${kernelHello.tick_rate_hz}`);
         } else {
             lines.push("");
-            lines.push("kernel:    -");
+            lines.push(`kernel:    ${t("hud.value.none")}`);
         }
     } else if (profile === "playtest") {
         const onboarding = buildMbamOnboardingView(state);
         const setupGuide = buildMbamCaseSetupGuide(state);
-        lines.push(`Session:   ${connected ? "Live" : "Connecting..."}`);
-        lines.push(`Case:      ${onboarding.caseTitle}`);
-        lines.push(`Day:       ${state.world?.day_index ?? 1}`);
-        lines.push(`Phase:     ${state.world?.day_phase ?? "-"}`);
-        lines.push(`Time:      ${formatTimeOfDay(state.world?.time_of_day)}`);
-        lines.push(`Clues:     ${state.investigation?.facts.known_fact_ids.length ?? 0} facts`);
+        lines.push(`${t("hud.line.session")}:   ${connected ? t("hud.session.live") : t("hud.session.connecting")}`);
+        lines.push(`${t("hud.line.case")}:      ${onboarding.caseTitle}`);
+        lines.push(`${t("hud.line.day")}:       ${state.world?.day_index ?? 1}`);
+        lines.push(`${t("hud.line.phase")}:     ${state.world?.day_phase ?? t("hud.value.none")}`);
+        lines.push(`${t("hud.line.time")}:      ${formatTimeOfDay(state.world?.time_of_day)}`);
+        lines.push(
+            `${t("hud.line.clues")}:     ${state.investigation?.facts.known_fact_ids.length ?? 0} ${t("hud.value.facts")}`
+        );
         const evidenceCount =
             (state.investigation?.evidence.discovered_ids.length ?? 0)
             + (state.investigation?.evidence.collected_ids.length ?? 0);
-        lines.push(`Evidence:  ${evidenceCount} found`);
-        lines.push(`Scene:     ${state.dialogue?.active_scene_id ?? "-"}`);
-        lines.push(`Lead:      ${truncateText(onboarding.currentLead, 44)}`);
-        lines.push(`Start:     ${truncateText(setupGuide.firstInspect, 44)}`);
+        lines.push(`${t("hud.line.evidence")}:  ${evidenceCount} ${t("hud.value.found")}`);
+        lines.push(`${t("hud.line.scene")}:     ${state.dialogue?.active_scene_id ?? t("hud.value.none")}`);
+        lines.push(`${t("hud.line.lead")}:      ${truncateText(onboarding.currentLead, 44)}`);
+        lines.push(`${t("hud.line.start")}:     ${truncateText(setupGuide.firstInspect, 44)}`);
     } else {
         const onboarding = buildMbamOnboardingView(state);
         const setupGuide = buildMbamCaseSetupGuide(state);
-        lines.push(`Session:   ${connected ? "Live" : "Connecting..."}`);
-        lines.push(`Case:      ${onboarding.caseTitle}`);
-        lines.push(`Objective: Recover the missing medallion.`);
-        lines.push("Route:     Inspect -> Talk -> Minigame -> Contradiction -> Final Decision");
-        lines.push(`Incident:  ${truncateText(setupGuide.incident, 52)}`);
-        lines.push(`Inspect:   ${truncateText(setupGuide.firstInspect, 52)}`);
-        lines.push(`Talk to:   ${truncateText(setupGuide.firstTalkTo, 52)}`);
-        lines.push(`Scene:     ${state.dialogue?.active_scene_id ?? "-"}`);
-        lines.push(`Lead:      ${truncateText(onboarding.currentLead, 52)}`);
+        lines.push(`${t("hud.line.session")}:   ${connected ? t("hud.session.live") : t("hud.session.connecting")}`);
+        lines.push(`${t("hud.line.case")}:      ${onboarding.caseTitle}`);
+        lines.push(`${t("hud.line.objective")}: ${t("hud.objective.recover_medallion")}`);
+        lines.push(`${t("hud.line.route")}:     ${t("hud.route.default")}`);
+        lines.push(`${t("hud.line.incident")}:  ${truncateText(setupGuide.incident, 52)}`);
+        lines.push(`${t("hud.line.inspect")}:   ${truncateText(setupGuide.firstInspect, 52)}`);
+        lines.push(`${t("hud.line.talk_to")}:   ${truncateText(setupGuide.firstTalkTo, 52)}`);
+        lines.push(`${t("hud.line.scene")}:     ${state.dialogue?.active_scene_id ?? t("hud.value.none")}`);
+        lines.push(`${t("hud.line.lead")}:      ${truncateText(onboarding.currentLead, 52)}`);
     }
 
     const world = state.world;
@@ -191,16 +216,16 @@ function renderHud(
         const timeOfDay = formatTimeOfDay(world.time_of_day);
         lines.push("");
         lines.push(`day:       ${world.day_index ?? 1}`);
-        lines.push(`phase:     ${world.day_phase ?? "-"}`);
+        lines.push(`phase:     ${world.day_phase ?? t("hud.value.none")}`);
         lines.push(`time:      ${timeOfDay}`);
     }
 
     lines.push("");
     if (desynced) {
-        lines.push(profile === "dev" ? "DESYNC:    YES" : "Sync:      issue detected");
-        lines.push(`reason:    ${state.desyncReason ?? "-"}`);
+        lines.push(profile === "dev" ? "DESYNC:    YES" : `${t("hud.line.sync")}:      ${t("hud.sync.issue_detected")}`);
+        lines.push(`reason:    ${state.desyncReason ?? t("hud.value.none")}`);
     } else {
-        lines.push(profile === "dev" ? "DESYNC:    no" : "Sync:      stable");
+        lines.push(profile === "dev" ? "DESYNC:    no" : `${t("hud.line.sync")}:      ${t("hud.sync.stable")}`);
     }
 
     el.body.textContent = lines.join("\n");
@@ -210,7 +235,8 @@ function renderFeed(
     el: { feedBody: HTMLDivElement },
     state: WorldState,
     overlay: OverlayState | null,
-    profile: HudProfile
+    profile: HudProfile,
+    t: TranslateFn
 ): void {
     const lines: string[] = [];
     const roomMap = state.rooms;
@@ -219,28 +245,28 @@ function renderFeed(
     if (overlay && overlay.recentEvents.length > 0) {
         const events = overlay.recentEvents.slice(-maxRows);
         for (const ev of events) {
-            lines.push(profile === "dev" ? formatOverlayEvent(ev, roomMap) : formatOverlayEventPlaytest(ev, roomMap));
+            lines.push(profile === "dev" ? formatOverlayEvent(ev, roomMap, t) : formatOverlayEventPlaytest(ev, roomMap, t));
         }
     } else {
         const events = Array.from(state.events.values())
             .sort((a, b) => b.tick - a.tick)
             .slice(0, maxRows);
         for (const ev of events) {
-            lines.push(profile === "dev" ? formatWorldEvent(ev, roomMap) : formatWorldEventPlaytest(ev, roomMap));
+            lines.push(profile === "dev" ? formatWorldEvent(ev, roomMap, t) : formatWorldEventPlaytest(ev, roomMap, t));
         }
     }
 
     if (lines.length === 0) {
         if (profile === "dev") {
-            el.feedBody.textContent = "No events yet";
+            el.feedBody.textContent = t("hud.feed.no_events");
         } else {
             const onboarding = buildMbamOnboardingView(state);
             const setupGuide = buildMbamCaseSetupGuide(state);
             el.feedBody.textContent = (
-                `No activity yet\n`
-                + `Start: ${truncateText(setupGuide.firstInspect, 48)}\n`
-                + `Then: ${truncateText(setupGuide.firstTalkTo, 48)}\n`
-                + `Tip: ${truncateText(onboarding.currentLead, 48)}`
+                `${t("hud.feed.no_activity")}\n`
+                + `${t("hud.feed.start")}: ${truncateText(setupGuide.firstInspect, 48)}\n`
+                + `${t("hud.feed.then")}: ${truncateText(setupGuide.firstTalkTo, 48)}\n`
+                + `${t("hud.feed.tip")}: ${truncateText(onboarding.currentLead, 48)}`
             );
         }
         return;
@@ -277,26 +303,26 @@ function formatTimeOfDay(value: number | undefined): string {
     return `${hh}:${mm}`;
 }
 
-function formatWorldEvent(ev: KvpEvent, rooms: Map<number, KvpRoom>): string {
+function formatWorldEvent(ev: KvpEvent, rooms: Map<number, KvpRoom>, t: TranslateFn): string {
     const payload = (ev.payload ?? {}) as Record<string, unknown>;
-    const kind = String(payload.kind ?? ev.origin ?? "event");
+    const kind = String(payload.kind ?? ev.origin ?? t("hud.event.generic"));
     const roomId = toNumber(payload.room_id ?? payload.previous_room_id);
     const roomLabel = roomId !== null ? rooms.get(roomId)?.label : null;
     const detail = roomLabel ? ` · ${roomLabel}` : "";
     return `${padLeft(String(ev.tick), 6)} · ${kind}${detail}`;
 }
 
-function formatWorldEventPlaytest(ev: KvpEvent, rooms: Map<number, KvpRoom>): string {
+function formatWorldEventPlaytest(ev: KvpEvent, rooms: Map<number, KvpRoom>, t: TranslateFn): string {
     const payload = (ev.payload ?? {}) as Record<string, unknown>;
-    const kind = String(payload.kind ?? ev.origin ?? "event");
-    const userKind = describePlayerFacingEvent(kind);
+    const kind = String(payload.kind ?? ev.origin ?? t("hud.event.generic"));
+    const userKind = describePlayerFacingEvent(kind, t);
     const roomId = toNumber(payload.room_id ?? payload.previous_room_id);
     const roomLabel = roomId !== null ? rooms.get(roomId)?.label : null;
     const detail = roomLabel ? ` · ${roomLabel}` : "";
     return `${userKind}${detail}`;
 }
 
-function formatOverlayEvent(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>): string {
+function formatOverlayEvent(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>, t: TranslateFn): string {
     const data = ev.data ?? {};
     const roomId = toNumber(data.room_id);
     const agentId = toNumber(data.agent_id);
@@ -305,14 +331,14 @@ function formatOverlayEvent(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>): st
         const label = rooms.get(roomId)?.label ?? `Room ${roomId}`;
         detail = ` · ${label}`;
     } else if (agentId !== null) {
-        detail = ` · Agent ${agentId}`;
+        detail = ` · ${t("hud.entity.agent")} ${agentId}`;
     }
     return `${padLeft(String(ev.tick), 6)} · ${ev.kind}${detail}`;
 }
 
-function formatOverlayEventPlaytest(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>): string {
+function formatOverlayEventPlaytest(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>, t: TranslateFn): string {
     const data = ev.data ?? {};
-    const userKind = describePlayerFacingEvent(ev.kind);
+    const userKind = describePlayerFacingEvent(ev.kind, t);
     const roomId = toNumber(data.room_id);
     const agentId = toNumber(data.agent_id);
     let detail = "";
@@ -320,29 +346,29 @@ function formatOverlayEventPlaytest(ev: UIOverlayEvent, rooms: Map<number, KvpRo
         const label = rooms.get(roomId)?.label ?? `Room ${roomId}`;
         detail = ` · ${label}`;
     } else if (agentId !== null) {
-        detail = ` · Agent ${agentId}`;
+        detail = ` · ${t("hud.entity.agent")} ${agentId}`;
     }
     return `${userKind}${detail}`;
 }
 
-function describePlayerFacingEvent(kind: string): string {
+function describePlayerFacingEvent(kind: string, t: TranslateFn): string {
     const lower = kind.toLowerCase();
-    if (lower.includes("dialogue")) return "Conversation updated";
-    if (lower.includes("investigation")) return "Case clue updated";
-    if (lower.includes("object")) return "Object interaction updated";
-    if (lower.includes("minigame")) return "Field exercise updated";
-    if (lower.includes("contradiction")) return "Contradiction progress updated";
-    if (lower.includes("resolution") || lower.includes("outcome")) return "Case outcome updated";
-    if (lower.includes("warning")) return "Case warning";
-    return humanizeEventKind(kind);
+    if (lower.includes("dialogue")) return t("hud.event.dialogue_updated");
+    if (lower.includes("investigation")) return t("hud.event.investigation_updated");
+    if (lower.includes("object")) return t("hud.event.object_updated");
+    if (lower.includes("minigame")) return t("hud.event.minigame_updated");
+    if (lower.includes("contradiction")) return t("hud.event.contradiction_updated");
+    if (lower.includes("resolution") || lower.includes("outcome")) return t("hud.event.outcome_updated");
+    if (lower.includes("warning")) return t("hud.event.warning");
+    return humanizeEventKind(kind, t);
 }
 
-function humanizeEventKind(kind: string): string {
+function humanizeEventKind(kind: string, t: TranslateFn): string {
     const normalized = kind
         .replace(/[._:]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
-    if (!normalized) return "Case update";
+    if (!normalized) return t("hud.event.case_update");
     return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 

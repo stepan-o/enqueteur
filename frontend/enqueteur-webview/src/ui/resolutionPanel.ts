@@ -1,4 +1,5 @@
 import type { WorldState, WorldStore } from "../state/worldStore";
+import { createScopedTranslator, getSharedLocaleStore } from "../i18n";
 
 export type ResolutionPanelHandle = {
     root: HTMLElement;
@@ -34,28 +35,31 @@ export type ResolutionPanelOpts = {
     presentationProfile?: "demo" | "playtest" | "dev";
 };
 
-const FACT_LABELS: Record<string, string> = {
-    N1: "Missing item confirmed",
-    N2: "Corridor badge access timing",
-    N3: "Badge log at 17h58",
-    N4: "Cafe receipt at 17h52",
-    N5: "Witness clothing detail",
-    N6: "Torn note clue",
-    N7: "Display-case latch clue",
-    N8: "Drop-location clue",
+const FACT_LABEL_KEYS: Record<string, string> = {
+    N1: "resolution.fact.N1",
+    N2: "resolution.fact.N2",
+    N3: "resolution.fact.N3",
+    N4: "resolution.fact.N4",
+    N5: "resolution.fact.N5",
+    N6: "resolution.fact.N6",
+    N7: "resolution.fact.N7",
+    N8: "resolution.fact.N8",
 };
 
-const EVIDENCE_LABELS: Record<string, string> = {
-    E1_TORN_NOTE: "Torn note",
-    E2_CAFE_RECEIPT: "Cafe receipt",
-    E3_METHOD_TRACE: "Method trace",
+const EVIDENCE_LABEL_KEYS: Record<string, string> = {
+    E1_TORN_NOTE: "resolution.evidence.E1_TORN_NOTE",
+    E2_CAFE_RECEIPT: "resolution.evidence.E2_CAFE_RECEIPT",
+    E3_METHOD_TRACE: "resolution.evidence.E3_METHOD_TRACE",
 };
 
-const SUSPECT_LABELS: Record<string, string> = {
-    laurent: "Laurent",
-    samira: "Samira",
-    outsider: "Outside Actor",
+const SUSPECT_LABEL_KEYS: Record<string, string> = {
+    laurent: "resolution.suspect.laurent",
+    samira: "resolution.suspect.samira",
+    outsider: "resolution.suspect.outsider",
 };
+
+const localeStore = getSharedLocaleStore();
+const t = createScopedTranslator(() => localeStore.getLocale());
 
 type AttemptReadinessState = "available" | "risky" | "blocked";
 
@@ -105,7 +109,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         const title = document.createElement("div");
         title.className = "resolution-title";
         const isDemoProfile = presentationProfile === "demo";
-        title.textContent = isDemoProfile ? "Case Outcome" : "Final Decision";
+        title.textContent = isDemoProfile ? t("resolution.title.case_outcome") : t("resolution.title.final_decision");
         panel.appendChild(title);
 
         const recap = lastState.caseRecap;
@@ -118,7 +122,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
             hasAccusationDispatcher: Boolean(opts.dispatchAttemptAccusation),
         });
         if (!recap && !outcome) {
-            renderInfo(panel, "Outcome report is not available yet.");
+            renderInfo(panel, t("resolution.info.outcome_unavailable"));
             renderResolutionActions(panel, readiness, detailed);
             return;
         }
@@ -137,28 +141,52 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
             renderInfo(panel, summarizeOutcome(finalOutcome, path, recap?.soft_fail.triggered ?? false, bestAwarded));
         } else {
             renderLines(panel, [
-                ["Case state", `v${truthEpoch}`],
-                ["Outcome", `${demoOutcome.title} (${finalOutcome})`],
-                ["Resolution path", `${humanizeToken(path)} (${path})`],
-                ["Status", available ? "resolved" : "in progress"],
-                ["Contradiction", contradictionUsed ? "used" : (contradictionSatisfied ? "satisfied" : "pending")],
-                ["Best outcome", bestAwarded ? "earned" : "not earned"],
+                [t("resolution.line.case_state"), `v${truthEpoch}`],
+                [t("resolution.line.outcome"), `${demoOutcome.title} (${finalOutcome})`],
+                [t("resolution.line.resolution_path"), `${humanizeToken(path)} (${path})`],
+                [t("resolution.line.status"), available ? t("resolution.value.resolved") : t("resolution.value.in_progress")],
+                [
+                    t("resolution.line.contradiction"),
+                    contradictionUsed
+                        ? t("resolution.value.used")
+                        : (contradictionSatisfied ? t("resolution.value.satisfied") : t("resolution.value.pending")),
+                ],
+                [t("resolution.line.best_outcome"), bestAwarded ? t("resolution.value.earned") : t("resolution.value.not_earned")],
             ]);
             renderInfo(panel, summarizeOutcome(finalOutcome, path, recap?.soft_fail.triggered ?? false, bestAwarded));
         }
-        renderSectionTitle(panel, isDemoProfile ? "Can You Make A Final Call?" : "Decision Readiness");
+        renderSectionTitle(panel, isDemoProfile ? t("resolution.section.final_call") : t("resolution.section.readiness"));
         renderLines(panel, isDemoProfile
             ? [
-                ["Recovery", formatAttemptReadiness(readiness.recovery)],
-                ["Accusation", formatAttemptReadiness(readiness.accusation)],
-                ["Support", `${readiness.supportFactCount} corroborated fact(s), ${readiness.supportEvidenceCount} evidence item(s)`],
-                ["Contradiction", readiness.contradictionRequired ? (readiness.contradictionSatisfied ? "ready" : "still needed") : "not required"],
+                [t("resolution.line.recovery"), formatAttemptReadiness(readiness.recovery)],
+                [t("resolution.line.accusation"), formatAttemptReadiness(readiness.accusation)],
+                [
+                    t("resolution.line.support"),
+                    t("resolution.support.counts", {
+                        factCount: readiness.supportFactCount,
+                        evidenceCount: readiness.supportEvidenceCount,
+                    }),
+                ],
+                [
+                    t("resolution.line.contradiction"),
+                    readiness.contradictionRequired
+                        ? (readiness.contradictionSatisfied ? t("resolution.value.ready") : t("resolution.value.still_needed"))
+                        : t("resolution.value.not_required"),
+                ],
             ]
             : [
-                ["Recovery", `${readiness.recovery.state} - ${readiness.recovery.reason}`],
-                ["Accusation", `${readiness.accusation.state} - ${readiness.accusation.reason}`],
-                ["Support", `${readiness.supportFactCount} facts / ${readiness.supportEvidenceCount} evidence`],
-                ["Contradiction", readiness.contradictionRequired ? (readiness.contradictionSatisfied ? "ready" : "pending") : "not required"],
+                [t("resolution.line.recovery"), `${readiness.recovery.state} - ${readiness.recovery.reason}`],
+                [t("resolution.line.accusation"), `${readiness.accusation.state} - ${readiness.accusation.reason}`],
+                [t("resolution.line.support"), t("resolution.support.short", {
+                    factCount: readiness.supportFactCount,
+                    evidenceCount: readiness.supportEvidenceCount,
+                })],
+                [
+                    t("resolution.line.contradiction"),
+                    readiness.contradictionRequired
+                        ? (readiness.contradictionSatisfied ? t("resolution.value.ready") : t("resolution.value.pending"))
+                        : t("resolution.value.not_required"),
+                ],
             ]);
         renderResolutionActions(panel, readiness, detailed);
 
@@ -166,31 +194,31 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
             return;
         }
         if (!recap.available) {
-            renderInfo(panel, "The full recap appears once the case reaches an ending.");
+            renderInfo(panel, t("resolution.info.recap_pending"));
             return;
         }
 
         if (isDemoProfile) {
-            renderSection(panel, "What Happened", buildOutcomeWhyRows(recap, outcome));
-            renderSection(panel, "What You Proved", [
+            renderSection(panel, t("resolution.section.what_happened"), buildOutcomeWhyRows(recap, outcome));
+            renderSection(panel, t("resolution.section.what_you_proved"), [
                 ...recap.key_fact_ids.map((factId) => formatFactLabel(factId, false)),
                 ...recap.key_evidence_ids.map((evidenceId) => formatEvidenceLabel(evidenceId, false)),
             ]);
-            renderSection(panel, "What Mattered Most", [
+            renderSection(panel, t("resolution.section.what_mattered"), [
                 ...recap.key_action_flags.map((flag) => formatActionFlag(flag, false)),
                 ...recap.contradiction_action_flags.map((flag) => formatActionFlag(flag, false)),
                 ...recap.relationship_result_flags.map((flag) => formatOutcomeFlag(flag, false)),
                 ...recap.continuity_flags.map((flag) => formatOutcomeFlag(flag, false)),
             ]);
         } else {
-            renderSection(panel, "Why This Ending", buildOutcomeWhyRows(recap, outcome));
-            renderSection(panel, "Key Facts", recap.key_fact_ids.map((factId) => formatFactLabel(factId, true)));
-            renderSection(panel, "Key Evidence", recap.key_evidence_ids.map((evidenceId) => formatEvidenceLabel(evidenceId, true)));
-            renderSection(panel, "Path Highlights", [
+            renderSection(panel, t("resolution.section.why_this_ending"), buildOutcomeWhyRows(recap, outcome));
+            renderSection(panel, t("resolution.section.key_facts"), recap.key_fact_ids.map((factId) => formatFactLabel(factId, true)));
+            renderSection(panel, t("resolution.section.key_evidence"), recap.key_evidence_ids.map((evidenceId) => formatEvidenceLabel(evidenceId, true)));
+            renderSection(panel, t("resolution.section.path_highlights"), [
                 ...recap.key_action_flags.map((flag) => formatActionFlag(flag, true)),
                 ...recap.contradiction_action_flags.map((flag) => formatActionFlag(flag, true)),
             ]);
-            renderSection(panel, "Aftermath", [
+            renderSection(panel, t("resolution.section.aftermath"), [
                 ...recap.relationship_result_flags.map((flag) => formatOutcomeFlag(flag, true)),
                 ...recap.continuity_flags.map((flag) => formatOutcomeFlag(flag, true)),
             ]);
@@ -204,14 +232,14 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         if (markers.length > 0) {
             renderSection(
                 panel,
-                isDemoProfile ? "Why It Went Well" : "Best Outcome Markers",
+                isDemoProfile ? t("resolution.section.why_went_well") : t("resolution.section.best_markers"),
                 markers.map((marker) => formatBestOutcomeMarker(marker, detailed))
             );
         }
         if (recap.soft_fail.triggered) {
             renderSection(
                 panel,
-                isDemoProfile ? "What Went Wrong" : "Setback Triggers",
+                isDemoProfile ? t("resolution.section.what_went_wrong") : t("resolution.section.setback_triggers"),
                 recap.soft_fail.trigger_conditions.map((trigger) => formatSoftFailTrigger(trigger, detailed))
             );
         }
@@ -229,13 +257,13 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         readiness: ResolutionReadiness,
         detailed: boolean
     ): void => {
-        renderSectionTitle(panelEl, "Final Actions");
+        renderSectionTitle(panelEl, t("resolution.section.final_actions"));
 
         const info = document.createElement("div");
         info.className = "resolution-info";
         info.textContent = readiness.terminal
-            ? "This case is already closed. Review the recap to see what mattered."
-            : "Use Recovery or Accusation when your support is strong enough.";
+            ? t("resolution.action.case_closed")
+            : t("resolution.action.use_recovery_or_accusation");
         panelEl.appendChild(info);
 
         if (lastActionMessage) {
@@ -251,12 +279,12 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         const recoveryBtn = document.createElement("button");
         recoveryBtn.type = "button";
         recoveryBtn.className = "flow-action-btn";
-        recoveryBtn.textContent = pendingAction ? "Sending..." : "Attempt Recovery";
+        recoveryBtn.textContent = pendingAction ? t("resolution.action.sending") : t("resolution.action.attempt_recovery");
         recoveryBtn.disabled = pendingAction || readiness.recovery.state === "blocked";
         recoveryBtn.addEventListener("click", () => {
             if (!lastState || !opts.dispatchAttemptRecovery) return;
             pendingAction = true;
-            lastActionMessage = "Sending recovery attempt...";
+            lastActionMessage = t("resolution.action.sending_recovery");
             render();
             void Promise.resolve(
                 opts.dispatchAttemptRecovery({
@@ -270,7 +298,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
             }).catch((err: unknown) => {
                 pendingAction = false;
                 const message = err instanceof Error ? err.message : String(err);
-                lastActionMessage = `Could not send recovery attempt: ${message}`;
+                lastActionMessage = t("resolution.action.recovery_send_error", { message });
                 render();
             });
         });
@@ -281,7 +309,7 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         for (const suspectId of ["laurent", "samira", "outsider"]) {
             const option = document.createElement("option");
             option.value = suspectId;
-            option.textContent = SUSPECT_LABELS[suspectId] ?? suspectId;
+            option.textContent = labelForSuspect(suspectId);
             option.selected = suspectId === selectedSuspectId;
             suspect.appendChild(option);
         }
@@ -294,12 +322,12 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
         const accusationBtn = document.createElement("button");
         accusationBtn.type = "button";
         accusationBtn.className = "flow-action-btn";
-        accusationBtn.textContent = pendingAction ? "Sending..." : "Attempt Accusation";
+        accusationBtn.textContent = pendingAction ? t("resolution.action.sending") : t("resolution.action.attempt_accusation");
         accusationBtn.disabled = pendingAction || readiness.accusation.state === "blocked";
         accusationBtn.addEventListener("click", () => {
             if (!lastState || !opts.dispatchAttemptAccusation) return;
             pendingAction = true;
-            lastActionMessage = "Sending accusation attempt...";
+            lastActionMessage = t("resolution.action.sending_accusation");
             render();
             const facts = lastState.investigation?.facts.known_fact_ids ?? [];
             const evidence = Array.from(new Set([
@@ -320,22 +348,37 @@ export function mountResolutionPanel(store: WorldStore, opts: ResolutionPanelOpt
             }).catch((err: unknown) => {
                 pendingAction = false;
                 const message = err instanceof Error ? err.message : String(err);
-                lastActionMessage = `Could not send accusation attempt: ${message}`;
+                lastActionMessage = t("resolution.action.accusation_send_error", { message });
                 render();
             });
         });
         row.appendChild(accusationBtn);
 
         panelEl.appendChild(row);
-        renderInfo(panelEl, `Recovery status: ${formatAttemptReadiness(readiness.recovery)}`);
-        renderInfo(panelEl, `Accusation status: ${formatAttemptReadiness(readiness.accusation)}`);
+        renderInfo(panelEl, t("resolution.action.recovery_status", {
+            status: formatAttemptReadiness(readiness.recovery),
+        }));
+        renderInfo(panelEl, t("resolution.action.accusation_status", {
+            status: formatAttemptReadiness(readiness.accusation),
+        }));
     };
 
     const unsub = store.subscribe((state) => {
         lastState = state;
         render();
     });
-    root.addEventListener("DOMNodeRemoved", () => unsub(), { once: true });
+    let localeReady = false;
+    const unsubLocale = localeStore.subscribe(() => {
+        if (!localeReady) {
+            localeReady = true;
+            return;
+        }
+        render();
+    });
+    root.addEventListener("DOMNodeRemoved", () => {
+        unsub();
+        unsubLocale();
+    }, { once: true });
 
     return {
         root,
@@ -362,42 +405,42 @@ function buildDemoOutcomeView(
 ): DemoOutcomeView {
     if (outcomeType === "best_outcome" || bestAwarded) {
         return {
-            title: "Case Closed: Strong Outcome",
-            subtitle: "You recovered the case with strong corroboration and low fallout.",
+            title: t("resolution.outcome.best.title"),
+            subtitle: t("resolution.outcome.best.subtitle"),
             tone: "good",
         };
     }
     if (outcomeType === "recovery_success") {
         return {
-            title: "Recovery Success",
-            subtitle: "The missing item was recovered before full escalation.",
+            title: t("resolution.outcome.recovery.title"),
+            subtitle: t("resolution.outcome.recovery.subtitle"),
             tone: "good",
         };
     }
     if (outcomeType === "accusation_success") {
         return {
-            title: "Accusation Upheld",
-            subtitle: "The case closed through supported suspect attribution.",
+            title: t("resolution.outcome.accusation.title"),
+            subtitle: t("resolution.outcome.accusation.subtitle"),
             tone: "good",
         };
     }
     if (outcomeType === "soft_fail" || softFailTriggered) {
         return {
-            title: "Case Closed With Setbacks",
-            subtitle: "You reached an ending, but key safeguards were missed.",
+            title: t("resolution.outcome.soft_fail.title"),
+            subtitle: t("resolution.outcome.soft_fail.subtitle"),
             tone: "mixed",
         };
     }
     if (path === "in_progress") {
         return {
-            title: "Case Still Open",
-            subtitle: "Gather more corroborated clues before making a final decision.",
+            title: t("resolution.outcome.in_progress.title"),
+            subtitle: t("resolution.outcome.in_progress.subtitle"),
             tone: "incomplete",
         };
     }
     return {
-        title: "Outcome Updated",
-        subtitle: "Review the recap to see why this ending occurred.",
+        title: t("resolution.outcome.updated.title"),
+        subtitle: t("resolution.outcome.updated.subtitle"),
         tone: "incomplete",
     };
 }
@@ -420,18 +463,18 @@ function renderDemoOutcomeHero(panel: HTMLElement, view: DemoOutcomeView): void 
 }
 
 function formatAttemptReadiness(readiness: AttemptReadiness): string {
-    if (readiness.state === "available") return `Ready: ${readiness.reason}`;
-    if (readiness.state === "risky") return `Risky: ${readiness.reason}`;
-    return `Blocked: ${readiness.reason}`;
+    if (readiness.state === "available") return t("resolution.readiness.available", { reason: readiness.reason });
+    if (readiness.state === "risky") return t("resolution.readiness.risky", { reason: readiness.reason });
+    return t("resolution.readiness.blocked", { reason: readiness.reason });
 }
 
 function formatFactLabel(factId: string, detailed: boolean): string {
-    const label = FACT_LABELS[factId] ?? humanizeToken(factId);
+    const label = FACT_LABEL_KEYS[factId] ? t(FACT_LABEL_KEYS[factId]) : humanizeToken(factId);
     return detailed ? `${label} (${factId})` : label;
 }
 
 function formatEvidenceLabel(evidenceId: string, detailed: boolean): string {
-    const label = EVIDENCE_LABELS[evidenceId] ?? humanizeToken(evidenceId);
+    const label = EVIDENCE_LABEL_KEYS[evidenceId] ? t(EVIDENCE_LABEL_KEYS[evidenceId]) : humanizeToken(evidenceId);
     return detailed ? `${label} (${evidenceId})` : label;
 }
 
@@ -464,30 +507,30 @@ function buildResolutionReadiness(
         ?? false;
 
     const baseBlockedReason = terminal
-        ? "the case is already closed"
+        ? t("resolution.reason.case_closed")
         : !opts.canDispatch
-          ? "the live connection is not ready"
+          ? t("resolution.reason.live_not_ready")
           : "";
 
     const recovery: AttemptReadiness = (() => {
         if (baseBlockedReason.length > 0) return { state: "blocked", reason: baseBlockedReason };
-        if (!opts.hasRecoveryDispatcher) return { state: "blocked", reason: "recovery action is unavailable in this build" };
+        if (!opts.hasRecoveryDispatcher) return { state: "blocked", reason: t("resolution.reason.recovery_unavailable") };
         if (knownFacts.length < 2 || knownEvidence.length < 1) {
-            return { state: "risky", reason: "your support is still thin and may produce a weaker ending" };
+            return { state: "risky", reason: t("resolution.reason.recovery_risky") };
         }
-        return { state: "available", reason: "your corroboration is strong enough to proceed" };
+        return { state: "available", reason: t("resolution.reason.recovery_available") };
     })();
 
     const accusation: AttemptReadiness = (() => {
         if (baseBlockedReason.length > 0) return { state: "blocked", reason: baseBlockedReason };
-        if (!opts.hasAccusationDispatcher) return { state: "blocked", reason: "accusation action is unavailable in this build" };
+        if (!opts.hasAccusationDispatcher) return { state: "blocked", reason: t("resolution.reason.accusation_unavailable") };
         if (contradictionRequired && !contradictionSatisfied) {
-            return { state: "blocked", reason: "you still need contradiction support before accusing" };
+            return { state: "blocked", reason: t("resolution.reason.need_contradiction") };
         }
         if (knownFacts.length < 3 || knownEvidence.length < 1) {
-            return { state: "risky", reason: "your supporting clues are still thin for a confident accusation" };
+            return { state: "risky", reason: t("resolution.reason.accusation_risky") };
         }
-        return { state: "available", reason: "requirements look ready for a supported accusation" };
+        return { state: "available", reason: t("resolution.reason.accusation_available") };
     })();
 
     return {
@@ -508,21 +551,21 @@ function summarizeOutcome(
     bestAwarded: boolean
 ): string {
     if (outcomeType === "best_outcome" || bestAwarded) {
-        return "You secured the strongest ending: high-confidence proof with minimal fallout.";
+        return t("resolution.summary.best");
     }
     if (outcomeType === "recovery_success") {
-        return "The recovery path succeeded: the missing item was recovered without full accusation escalation.";
+        return t("resolution.summary.recovery");
     }
     if (outcomeType === "accusation_success") {
-        return "The accusation path succeeded: the case closed through supported suspect attribution.";
+        return t("resolution.summary.accusation");
     }
     if (outcomeType === "soft_fail" || softFailTriggered) {
-        return "This ending is a setback: parts of the case were resolved, but important safeguards were missed.";
+        return t("resolution.summary.soft_fail");
     }
     if (path === "in_progress") {
-        return "The case is still open. Continue gathering corroborated facts and evidence before making a final call.";
+        return t("resolution.summary.in_progress");
     }
-    return "Outcome updated. Review the recap below to understand why this ending occurred.";
+    return t("resolution.summary.updated");
 }
 
 function buildOutcomeWhyRows(
@@ -530,30 +573,35 @@ function buildOutcomeWhyRows(
     outcome: WorldState["caseOutcome"]
 ): string[] {
     const rows: string[] = [];
-    rows.push(`Final path: ${humanizeToken(recap.resolution_path)}.`);
-    rows.push(`Corroboration used: ${recap.key_fact_ids.length} key fact(s) and ${recap.key_evidence_ids.length} key evidence item(s).`);
+    rows.push(t("resolution.why.final_path", { path: humanizeToken(recap.resolution_path) }));
+    rows.push(
+        t("resolution.why.corroboration_used", {
+            factCount: recap.key_fact_ids.length,
+            evidenceCount: recap.key_evidence_ids.length,
+        })
+    );
     rows.push(
         recap.contradiction_requirement_satisfied
-            ? "Contradiction support was satisfied before resolution."
-            : "Contradiction support was still incomplete at resolution."
+            ? t("resolution.why.contradiction_satisfied")
+            : t("resolution.why.contradiction_incomplete")
     );
     if (recap.contradiction_used) {
-        rows.push("A contradiction was actively used in the final path.");
+        rows.push(t("resolution.why.contradiction_used"));
     }
     if (recap.soft_fail.triggered) {
-        rows.push("Setback pressure influenced the final result.");
+        rows.push(t("resolution.why.setback_pressure"));
     }
     if (outcome?.public_escalation) {
-        rows.push("Public escalation affected the closing phase.");
+        rows.push(t("resolution.why.public_escalation"));
     }
     return rows;
 }
 
 function formatActionFlag(flag: string, detailed: boolean): string {
     const known: Record<string, string> = {
-        "action:recover_medallion": "Recovered the medallion directly",
-        "action:accuse_samira": "Built the accusation around Samira",
-        "action:state_contradiction_N3_N4": "Used the badge-log vs receipt-time contradiction",
+        "action:recover_medallion": t("resolution.action_flag.recover_medallion"),
+        "action:accuse_samira": t("resolution.action_flag.accuse_samira"),
+        "action:state_contradiction_N3_N4": t("resolution.action_flag.contradiction_n3_n4"),
     };
     if (known[flag]) return detailed ? `${known[flag]} (${flag})` : known[flag];
     return detailed ? `${humanizeToken(flag)} (${flag})` : humanizeToken(flag);
@@ -561,10 +609,10 @@ function formatActionFlag(flag: string, detailed: boolean): string {
 
 function formatOutcomeFlag(flag: string, detailed: boolean): string {
     const known: Record<string, string> = {
-        "continuity:quiet_recovery": "Recovery stayed quiet and controlled",
-        "continuity:strong_key_trust": "Key trust remained strong through resolution",
-        rel_elodie_positive: "Elodie relationship ended on a positive note",
-        rel_marc_positive: "Marc relationship ended on a positive note",
+        "continuity:quiet_recovery": t("resolution.outcome_flag.quiet_recovery"),
+        "continuity:strong_key_trust": t("resolution.outcome_flag.strong_key_trust"),
+        rel_elodie_positive: t("resolution.outcome_flag.rel_elodie_positive"),
+        rel_marc_positive: t("resolution.outcome_flag.rel_marc_positive"),
     };
     if (known[flag]) return detailed ? `${known[flag]} (${flag})` : known[flag];
     return detailed ? `${humanizeToken(flag)} (${flag})` : humanizeToken(flag);
@@ -572,8 +620,8 @@ function formatOutcomeFlag(flag: string, detailed: boolean): string {
 
 function formatSoftFailTrigger(trigger: string, detailed: boolean): string {
     const known: Record<string, string> = {
-        item_left_building: "Item left the building before secure recovery",
-        public_escalation: "Public escalation escalated case pressure",
+        item_left_building: t("resolution.soft_fail.item_left_building"),
+        public_escalation: t("resolution.soft_fail.public_escalation"),
     };
     if (known[trigger]) return detailed ? `${known[trigger]} (${trigger})` : known[trigger];
     return detailed ? `${humanizeToken(trigger)} (${trigger})` : humanizeToken(trigger);
@@ -581,10 +629,10 @@ function formatSoftFailTrigger(trigger: string, detailed: boolean): string {
 
 function formatBestOutcomeMarker(marker: string, detailed: boolean): string {
     const known: Record<string, string> = {
-        best_outcome_awarded: "Best-outcome standard achieved",
-        quiet_recovery: "Recovery stayed quiet",
-        no_public_escalation: "No public escalation",
-        strong_key_trust: "Strong key trust maintained",
+        best_outcome_awarded: t("resolution.best_marker.best_outcome_awarded"),
+        quiet_recovery: t("resolution.best_marker.quiet_recovery"),
+        no_public_escalation: t("resolution.best_marker.no_public_escalation"),
+        strong_key_trust: t("resolution.best_marker.strong_key_trust"),
     };
     if (known[marker]) return detailed ? `${known[marker]} (${marker})` : known[marker];
     return detailed ? `${humanizeToken(marker)} (${marker})` : humanizeToken(marker);
@@ -595,49 +643,68 @@ function formatAttemptResult(
     result: ResolutionAttemptResult,
     detailed: boolean
 ): string {
-    const title = kind === "recovery" ? "Recovery" : "Accusation";
+    const title = kind === "recovery" ? t("resolution.line.recovery") : t("resolution.line.accusation");
     if (result.status === "accepted" || result.status === "submitted") {
         return detailed
-            ? `${title} sent. Waiting for case outcome update. [${result.code}]`
-            : `${title} sent. Waiting for outcome update.`;
+            ? t("resolution.result.sent_detailed", { title, code: result.code })
+            : t("resolution.result.sent", { title });
     }
     if (result.status === "blocked") {
         const reason = mapAttemptReasonCode(result.code, result.summary);
         return detailed
-            ? `${title} blocked: ${reason} [${result.code}]`
-            : `${title} blocked: ${reason}.`;
+            ? t("resolution.result.blocked_detailed", { title, reason, code: result.code })
+            : t("resolution.result.blocked", { title, reason });
     }
     if (result.status === "invalid") {
         return detailed
-            ? `${title} invalid: details or prerequisites do not match. [${result.code}]`
-            : `${title} invalid: details or prerequisites do not match.`;
+            ? t("resolution.result.invalid_detailed", { title, code: result.code })
+            : t("resolution.result.invalid", { title });
     }
     if (result.status === "unavailable") {
         return detailed
-            ? `${title} unavailable: connection not ready. [${result.code}]`
-            : `${title} unavailable: connection not ready.`;
+            ? t("resolution.result.unavailable_detailed", { title, code: result.code })
+            : t("resolution.result.unavailable", { title });
     }
     if (result.status === "error") {
         return detailed
-            ? `${title} send error: ${result.summary ?? "unknown error"} [${result.code}]`
-            : `${title} send error: ${result.summary ?? "unknown error"}`;
+            ? t("resolution.result.error_detailed", {
+                title,
+                summary: result.summary ?? t("resolution.result.unknown_error"),
+                code: result.code,
+            })
+            : t("resolution.result.error", {
+                title,
+                summary: result.summary ?? t("resolution.result.unknown_error"),
+            });
     }
     return detailed
-        ? `${title}: ${result.summary ?? "Command processed."} [${result.code}]`
-        : `${title}: ${result.summary ?? "Command processed."}`;
+        ? t("resolution.result.default_detailed", {
+            title,
+            summary: result.summary ?? t("resolution.result.command_processed"),
+            code: result.code,
+        })
+        : t("resolution.result.default", {
+            title,
+            summary: result.summary ?? t("resolution.result.command_processed"),
+        });
 }
 
 function mapAttemptReasonCode(code: string, summary?: string): string {
     if (code === "ACCUSATION_PREREQS_MISSING") {
-        return "you still need contradiction support before accusing";
+        return t("resolution.reason.need_contradiction");
     }
     if (code === "RECOVERY_PREREQS_MISSING") {
-        return "you need one or two more corroborated clues first";
+        return t("resolution.reason.need_more_clues");
     }
-    if (code === "RUNTIME_NOT_READY") return "connection not ready";
-    if (code === "INVALID_COMMAND") return "that action was not valid in the current case state";
+    if (code === "RUNTIME_NOT_READY") return t("resolution.reason.connection_not_ready");
+    if (code === "INVALID_COMMAND") return t("resolution.reason.invalid_command");
     if (summary && summary.trim().length > 0) return summary;
-    return "blocked by current case rules";
+    return t("resolution.reason.blocked_by_rules");
+}
+
+function labelForSuspect(suspectId: string): string {
+    const key = SUSPECT_LABEL_KEYS[suspectId];
+    return key ? t(key) : suspectId;
 }
 
 function humanizeToken(value: string): string {
