@@ -31,7 +31,7 @@ class RunRegistry:
     ) -> RunRegistryEntry:
         self.evict_stale_runs()
         launch = self._coerce_launch_metadata(launch_payload)
-        prior = self.get(launch.run_id)
+        prior = self._get_without_eviction(launch.run_id)
         entry = RunRegistryEntry.from_launch(
             launch=launch,
             started_run=started_run,
@@ -46,7 +46,6 @@ class RunRegistry:
         return entry
 
     def put(self, entry: RunRegistryEntry) -> None:
-        self.evict_stale_runs()
         with self._lock:
             self._runs[entry.run_id] = entry
 
@@ -56,7 +55,6 @@ class RunRegistry:
             return self._runs.get(run_id)
 
     def get_by_connection_target(self, connection_target: str) -> RunRegistryEntry | None:
-        self.evict_stale_runs()
         run_id = self.extract_run_id(connection_target)
         if run_id is None:
             return None
@@ -108,14 +106,12 @@ class RunRegistry:
         return entry.runtime.started_run if entry is not None else None
 
     def touch_activity(self, run_id: str, *, session_id: str | None = None) -> RunRegistryEntry:
-        self.evict_stale_runs()
         entry = self.require(run_id)
         entry.host.touch(session_id=session_id)
         self.put(entry)
         return entry
 
     def attach_session(self, run_id: str, *, session_id: str) -> RunRegistryEntry:
-        self.evict_stale_runs()
         entry = self.require(run_id)
         entry.host.attach(session_id=session_id)
         self.put(entry)
@@ -123,7 +119,7 @@ class RunRegistry:
 
     def detach_session(self, run_id: str, *, session_id: str | None = None) -> RunRegistryEntry | None:
         self.evict_stale_runs()
-        entry = self.get(run_id)
+        entry = self._get_without_eviction(run_id)
         if entry is None:
             return None
         entry.host.detach(session_id=session_id)
@@ -138,7 +134,7 @@ class RunRegistry:
             for run_id, entry in self._runs.items():
                 if entry.host.active_session_id is not None:
                     continue
-                activity_at = _parse_iso_utc(entry.host.last_activity_at)
+                activity_at = _parse_iso_utc(entry.host.detached_at) or _parse_iso_utc(entry.host.last_activity_at)
                 if activity_at is None:
                     continue
                 if activity_at <= cutoff:
@@ -146,10 +142,11 @@ class RunRegistry:
             for run_id in stale_run_ids:
                 self._runs.pop(run_id, None)
         if stale_run_ids:
+            sample = ",".join(stale_run_ids[:3])
             logger.info(
-                "run registry evicted stale detached runs count=%d run_ids=%s ttl_seconds=%d",
+                "run registry evicted stale detached runs count=%d sample_run_ids=%s ttl_seconds=%d",
                 len(stale_run_ids),
-                ",".join(stale_run_ids),
+                sample,
                 self._stale_run_ttl_seconds,
             )
         return tuple(stale_run_ids)
@@ -208,6 +205,11 @@ class RunRegistry:
             ws_url=ws_url if isinstance(ws_url, str) else None,
             started_at=started_at if isinstance(started_at, str) else None,
         )
+
+    def _get_without_eviction(self, run_id: str) -> RunRegistryEntry | None:
+        with self._lock:
+            return self._runs.get(run_id)
+
 
 def _parse_iso_utc(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value.strip():

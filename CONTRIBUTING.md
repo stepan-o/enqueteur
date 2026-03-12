@@ -10,8 +10,22 @@ This repository is Enqueteur-first.
 
 ## Development
 
+Canonical local topology:
+
+- Python ASGI backend host on `127.0.0.1:7777`
+- Frontend Vite dev server on `127.0.0.1:5173`
+
+Start local live playtest:
+
 ```bash
-python -m pytest backend/sim4/tests -q
+make server-dev
+make web-dev-local
+```
+
+Backend test suite:
+
+```bash
+make test
 ```
 
 For frontend:
@@ -19,8 +33,10 @@ For frontend:
 ```bash
 cd frontend/enqueteur-webview
 npm install
-npm run dev
+npm test
 ```
+
+Local playtest runbook: [docs/enqueteur/local_playtest_workflow.md](docs/enqueteur/local_playtest_workflow.md)
 
 ## Guardrails
 

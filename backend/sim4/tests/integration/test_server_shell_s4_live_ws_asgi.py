@@ -318,6 +318,97 @@ def test_s7_asgi_live_rejects_expired_run_after_lazy_registry_eviction() -> None
             assert ws_result.close_frames == ((RUN_NOT_FOUND_WS_CLOSE_CODE, RUN_NOT_FOUND_WS_CLOSE_REASON),)
             assert app.state.run_registry.get(run_id) is None
 
+            recovery_launch = await _post_json(
+                app,
+                path=CASE_START_PATH,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "B",
+                    "difficulty_profile": "D0",
+                    "mode": "playtest",
+                },
+            )
+            recovery_payload = recovery_launch.json()
+            assert recovery_launch.status_code == 200
+            recovery_ws = await _asgi_ws_session(
+                app,
+                path_or_url=str(recovery_payload["ws_url"]),
+                incoming_texts=(
+                    _viewer_hello(),
+                    _subscribe(),
+                ),
+            )
+            assert recovery_ws.accepted is True
+            assert [env["msg_type"] for env in recovery_ws.decoded_envelopes()] == [
+                "KERNEL_HELLO",
+                "SUBSCRIBED",
+                "FULL_SNAPSHOT",
+            ]
+            assert recovery_ws.close_frames == ()
+
+    asyncio.run(_scenario())
+
+
+def test_s7_asgi_live_rejects_removed_run_and_host_stays_usable() -> None:
+    app = create_app()
+
+    async def _scenario() -> None:
+        async with app.router.lifespan_context(app):
+            launch = await _post_json(
+                app,
+                path=CASE_START_PATH,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "A",
+                    "difficulty_profile": "D0",
+                    "mode": "playtest",
+                },
+            )
+            launch_payload = launch.json()
+            assert launch.status_code == 200
+            run_id = str(launch_payload["run_id"])
+            removed = app.state.run_registry.remove(run_id)
+            assert removed is not None
+
+            missing_ws = await _asgi_ws_session(
+                app,
+                path_or_url=str(launch_payload["ws_url"]),
+            )
+            assert missing_ws.accepted is True
+            missing_envs = missing_ws.decoded_envelopes()
+            assert [env["msg_type"] for env in missing_envs] == ["ERROR"]
+            assert missing_envs[0]["payload"]["code"] == "RUN_NOT_FOUND"
+            assert missing_ws.close_frames == ((RUN_NOT_FOUND_WS_CLOSE_CODE, RUN_NOT_FOUND_WS_CLOSE_REASON),)
+
+            followup_launch = await _post_json(
+                app,
+                path=CASE_START_PATH,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "B",
+                    "difficulty_profile": "D0",
+                    "mode": "playtest",
+                },
+            )
+            followup_payload = followup_launch.json()
+            assert followup_launch.status_code == 200
+
+            followup_ws = await _asgi_ws_session(
+                app,
+                path_or_url=str(followup_payload["ws_url"]),
+                incoming_texts=(
+                    _viewer_hello(),
+                    _subscribe(),
+                ),
+            )
+            assert followup_ws.accepted is True
+            assert [env["msg_type"] for env in followup_ws.decoded_envelopes()] == [
+                "KERNEL_HELLO",
+                "SUBSCRIBED",
+                "FULL_SNAPSHOT",
+            ]
+            assert followup_ws.close_frames == ()
+
     asyncio.run(_scenario())
 
 
@@ -336,6 +427,59 @@ def test_s7_asgi_live_rejects_new_connections_while_host_shutting_down() -> None
             payload = json.loads(ws_result.sent_texts[0])
             assert payload["error"]["code"] == HOST_SHUTTING_DOWN_CODE
             assert ws_result.close_frames == ((WS_TRY_AGAIN_LATER, HOST_SHUTTING_DOWN_CODE),)
+            assert app.state.session_controller.list_sessions() == ()
+
+    asyncio.run(_scenario())
+
+
+def test_s7_asgi_live_protocol_failure_does_not_block_reconnect_same_run() -> None:
+    app = create_app()
+
+    async def _scenario() -> None:
+        async with app.router.lifespan_context(app):
+            launch = await _post_json(
+                app,
+                path=CASE_START_PATH,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "A",
+                    "difficulty_profile": "D0",
+                    "mode": "playtest",
+                },
+            )
+            launch_payload = launch.json()
+            assert launch.status_code == 200
+            ws_target = str(launch_payload["ws_url"])
+
+            failed_ws = await _asgi_ws_session(
+                app,
+                path_or_url=ws_target,
+                incoming_texts=(
+                    _subscribe(),
+                ),
+            )
+            assert failed_ws.accepted is True
+            failed_envs = failed_ws.decoded_envelopes()
+            assert [env["msg_type"] for env in failed_envs] == ["ERROR"]
+            assert failed_envs[0]["payload"]["code"] == "BAD_SEQUENCE"
+            assert failed_ws.close_frames == ((PROTOCOL_VIOLATION_WS_CLOSE_CODE, PROTOCOL_VIOLATION_WS_CLOSE_REASON),)
+            assert app.state.session_controller.list_sessions() == ()
+
+            recovery_ws = await _asgi_ws_session(
+                app,
+                path_or_url=ws_target,
+                incoming_texts=(
+                    _viewer_hello(),
+                    _subscribe(),
+                ),
+            )
+            assert recovery_ws.accepted is True
+            assert [env["msg_type"] for env in recovery_ws.decoded_envelopes()] == [
+                "KERNEL_HELLO",
+                "SUBSCRIBED",
+                "FULL_SNAPSHOT",
+            ]
+            assert recovery_ws.close_frames == ()
             assert app.state.session_controller.list_sessions() == ()
 
     asyncio.run(_scenario())

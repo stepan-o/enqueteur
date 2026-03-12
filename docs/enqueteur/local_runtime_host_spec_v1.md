@@ -570,10 +570,10 @@ The system must still be conceptually valid even without the proxy.
 
 ## 14.3 Canonical local URLs
 
-Define one documented default pair, for example:
+Define one documented default pair:
 
-* backend: `http://localhost:8000`
-* frontend: `http://localhost:5173`
+* backend: `http://127.0.0.1:7777`
+* frontend: `http://127.0.0.1:5173`
 
 If a proxy is used, document how the frontend resolves:
 
