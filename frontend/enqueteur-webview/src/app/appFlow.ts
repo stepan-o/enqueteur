@@ -38,6 +38,7 @@ import {
     type SubscribePayload,
 } from "./live/enqueteurLiveClient";
 import type { LiveCommandBridge } from "./live/liveCommandBridge";
+import { createScopedTranslator, getSharedLocaleStore, type LocaleStore } from "../i18n";
 
 export type AppFlowOpts = {
     mountEl: HTMLElement;
@@ -46,6 +47,7 @@ export type AppFlowOpts = {
     caseLaunchClient?: CaseLaunchClient;
     launchSessionStore?: LaunchSessionStore;
     createLiveClient?: (session: LaunchSessionInfo) => EnqueteurLiveClientLike;
+    localeStore?: LocaleStore;
 };
 
 export type AppFlowHandle = {
@@ -113,12 +115,10 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     const backToCasesBtn = document.createElement("button");
     backToCasesBtn.type = "button";
     backToCasesBtn.className = "flow-action-btn flow-live-action-btn";
-    backToCasesBtn.textContent = "Back To Cases";
 
     const mainMenuBtn = document.createElement("button");
     mainMenuBtn.type = "button";
     mainMenuBtn.className = "flow-action-btn flow-live-action-btn";
-    mainMenuBtn.textContent = "Main Menu";
 
     liveActionBar.append(backToCasesBtn, mainMenuBtn);
     liveLayer.appendChild(liveActionBar);
@@ -129,6 +129,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
     const stateStore = new AppStateStore({ kind: "BOOT" });
     const launchSessionStore = opts.launchSessionStore ?? getSharedLaunchSessionStore();
+    const localeStore = opts.localeStore ?? getSharedLocaleStore();
+    const t = createScopedTranslator(() => localeStore.getLocale());
     let viewer: ViewerHandle | null = null;
     let bootModulePromise: Promise<typeof import("./boot")> | null = null;
     let mountRevision = 0;
@@ -346,13 +348,13 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     } | null => {
         if (state.code === "LAUNCH_FAILURE" && launchSessionStore.getLatestFailure()) {
             return {
-                label: "Retry Launch",
+                label: t("flow.error.retry.launch"),
                 run: retryLaunchFromFailure,
             };
         }
         if (state.code === "CONNECTION_FAILURE" && launchSessionStore.getLatestSession()) {
             return {
-                label: "Retry Connection",
+                label: t("flow.error.retry.connection"),
                 run: retryLiveConnectionFromSession,
             };
         }
@@ -360,6 +362,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     };
 
     const render = (state: AppState): void => {
+        backToCasesBtn.textContent = t("flow.liveAction.backToCases");
+        mainMenuBtn.textContent = t("flow.liveAction.mainMenu");
         preGameLayer.innerHTML = "";
 
         if (state.kind === "LIVE_GAME") {
@@ -383,16 +387,20 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
         switch (state.kind) {
             case "BOOT":
-                preGameLayer.appendChild(renderScreen("BOOT", "Preparing Enqueteur shell..."));
+                preGameLayer.appendChild(renderScreen("BOOT", t("flow.boot.body")));
                 break;
             case "LOADING":
                 preGameLayer.appendChild(
-                    renderLoadingScreen({ logoSrc: "/logo/low-res/enqueteur_logo_title.png" })
+                    renderLoadingScreen({
+                        logoSrc: "/logo/low-res/enqueteur_logo_title.png",
+                        t,
+                    })
                 );
                 break;
             case "MAIN_MENU":
                 preGameLayer.appendChild(renderMainMenuScreen({
                     onCases: goToCaseSelect,
+                    t,
                 }));
                 break;
             case "CASE_SELECT":
@@ -401,6 +409,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                         cases: PRE_GAME_CASES,
                         onBack: goToMainMenu,
                         onPickCase: beginCaseLaunch,
+                        t,
                     })
                 );
                 break;
@@ -424,6 +433,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                         warningMessage: liveWarningMessage ?? undefined,
                         onBackToCases: goToCaseSelect,
                         onBackToMenu: goToMainMenu,
+                        t,
                     })
                 );
                 break;
@@ -437,6 +447,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                         onRetry: retry?.run,
                         retryLabel: retry?.label,
                         onRecover: () => recoverFromError(state.recoverTo),
+                        t,
                     })
                 );
                 break;
@@ -448,6 +459,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                         message: `Unhandled app state: ${(state as { kind: string }).kind}`,
                         recoverTo: "MAIN_MENU",
                         onRecover: goToMainMenu,
+                        t,
                     })
                 );
                 break;
@@ -957,7 +969,15 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         }
     };
 
-    const unsubscribe = stateStore.subscribe(render);
+    const unsubscribeState = stateStore.subscribe(render);
+    let localeReady = false;
+    const unsubscribeLocale = localeStore.subscribe(() => {
+        if (!localeReady) {
+            localeReady = true;
+            return;
+        }
+        render(stateStore.getState());
+    });
     beginBootFlow(stateStore, { loadingDurationMs: opts.loadingDurationMs });
 
     return {
@@ -971,7 +991,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             cancelPendingLaunch();
             launchSessionStore.clear();
             mountRevision += 1;
-            unsubscribe();
+            unsubscribeState();
+            unsubscribeLocale();
             viewer?.stop();
             root.remove();
         },

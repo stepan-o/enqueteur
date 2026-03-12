@@ -1,4 +1,5 @@
 import type { AppErrorCode, AppRecoverTarget } from "../appState";
+import type { TranslateFn, TranslationLookupKey } from "../../i18n";
 
 export type ErrorScreenOpts = {
     code: AppErrorCode;
@@ -7,13 +8,14 @@ export type ErrorScreenOpts = {
     onRetry?: () => void;
     retryLabel?: string;
     onRecover: () => void;
+    t: TranslateFn;
 };
 
-const ERROR_TITLES: Record<AppErrorCode, string> = {
-    LAUNCH_FAILURE: "Couldn't start this case",
-    CONNECTION_FAILURE: "Connection failed",
-    STARTUP_INCOMPATIBILITY: "Version mismatch",
-    UNEXPECTED_STATE: "Startup interrupted",
+const ERROR_TITLE_KEYS: Record<AppErrorCode, TranslationLookupKey> = {
+    LAUNCH_FAILURE: "flow.error.body.launchFailure",
+    CONNECTION_FAILURE: "flow.error.body.connectionFailure",
+    STARTUP_INCOMPATIBILITY: "flow.error.body.startupIncompatibility",
+    UNEXPECTED_STATE: "flow.error.body.unexpectedState",
 };
 
 export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
@@ -22,33 +24,35 @@ export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
 
     const titleEl = document.createElement("h1");
     titleEl.className = "flow-screen-title";
-    titleEl.textContent = "Something Went Wrong";
+    titleEl.textContent = opts.t("flow.error.title");
 
     const bodyEl = document.createElement("p");
     bodyEl.className = "flow-screen-body";
-    bodyEl.textContent = ERROR_TITLES[opts.code];
+    bodyEl.textContent = opts.t(ERROR_TITLE_KEYS[opts.code]);
 
     const detail = document.createElement("p");
     detail.className = "flow-screen-note";
-    detail.textContent = humanizeErrorMessage(opts.message);
+    detail.textContent = humanizeErrorMessage(opts.message, opts.t);
 
     const hint = document.createElement("p");
     hint.className = "flow-screen-note";
     hint.textContent =
         opts.recoverTo === "CASE_SELECT"
-            ? "Return to case selection and try again."
-            : "Return to the main menu and restart the case.";
+            ? opts.t("flow.error.hint.caseSelect")
+            : opts.t("flow.error.hint.mainMenu");
 
     const actions = document.createElement("div");
     actions.className = "flow-actions";
     if (opts.onRetry) {
         actions.appendChild(
-            makeActionButton(opts.retryLabel ?? defaultRetryLabel(opts.code), opts.onRetry)
+            makeActionButton(opts.retryLabel ?? defaultRetryLabel(opts.code, opts.t), opts.onRetry)
         );
     }
     actions.appendChild(
         makeActionButton(
-            opts.recoverTo === "CASE_SELECT" ? "Back To Cases" : "Back To Main Menu",
+            opts.recoverTo === "CASE_SELECT"
+                ? opts.t("flow.error.action.backToCases")
+                : opts.t("flow.error.action.backToMainMenu"),
             opts.onRecover
         )
     );
@@ -61,15 +65,15 @@ export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
     return section;
 }
 
-function defaultRetryLabel(code: AppErrorCode): string {
-    if (code === "LAUNCH_FAILURE") return "Try Launch Again";
-    if (code === "CONNECTION_FAILURE") return "Try Reconnecting";
-    return "Retry";
+function defaultRetryLabel(code: AppErrorCode, t: TranslateFn): string {
+    if (code === "LAUNCH_FAILURE") return t("flow.error.retry.launchAgain");
+    if (code === "CONNECTION_FAILURE") return t("flow.error.retry.reconnect");
+    return t("flow.error.retry.default");
 }
 
-function humanizeErrorMessage(message: string): string {
+function humanizeErrorMessage(message: string, t: TranslateFn): string {
     if (message.includes("Launch metadata is missing")) {
-        return "Case setup was interrupted. Please pick the case again.";
+        return t("flow.error.detail.launchMetadataMissing");
     }
     if (
         message.includes("KERNEL_HELLO")
@@ -78,13 +82,13 @@ function humanizeErrorMessage(message: string): string {
         || message.includes("schema mismatch")
         || message.includes("engine mismatch")
     ) {
-        return "This client and server are not in sync for startup. Return to menu and relaunch.";
+        return t("flow.error.detail.startupOutOfSync");
     }
     if (message.includes("WebSocket") || message.includes("socket")) {
-        return "The live connection closed before the case was ready.";
+        return t("flow.error.detail.socketClosed");
     }
     if (message.startsWith("Case launch failed")) {
-        return "The case could not be opened right now.";
+        return t("flow.error.detail.caseNotOpened");
     }
     return message;
 }

@@ -1,5 +1,8 @@
+import type { TranslateFn } from "../../i18n";
+
 export type MainMenuScreenOpts = {
     onCases: () => void;
+    t: TranslateFn;
 };
 
 export function renderMainMenuScreen(opts: MainMenuScreenOpts): HTMLElement {
@@ -8,11 +11,11 @@ export function renderMainMenuScreen(opts: MainMenuScreenOpts): HTMLElement {
 
     const titleEl = document.createElement("h1");
     titleEl.className = "flow-screen-title";
-    titleEl.textContent = "Enqueteur";
+    titleEl.textContent = opts.t("flow.mainMenu.title");
 
     const bodyEl = document.createElement("p");
     bodyEl.className = "flow-screen-body";
-    bodyEl.textContent = "Step into the case.";
+    bodyEl.textContent = opts.t("flow.mainMenu.body");
 
     const actions = document.createElement("div");
     actions.className = "flow-actions flow-menu-actions";
@@ -20,13 +23,13 @@ export function renderMainMenuScreen(opts: MainMenuScreenOpts): HTMLElement {
     const casesBtn = document.createElement("button");
     casesBtn.type = "button";
     casesBtn.className = "flow-action-btn";
-    casesBtn.textContent = "Start Case";
+    casesBtn.textContent = opts.t("flow.mainMenu.startCase");
     casesBtn.addEventListener("click", opts.onCases);
     actions.appendChild(casesBtn);
 
     const placeholder = document.createElement("p");
     placeholder.className = "flow-screen-note flow-menu-placeholder";
-    placeholder.textContent = "Demo build: additional menu options can be added later.";
+    placeholder.textContent = opts.t("flow.mainMenu.placeholder");
 
     section.appendChild(titleEl);
     section.appendChild(bodyEl);

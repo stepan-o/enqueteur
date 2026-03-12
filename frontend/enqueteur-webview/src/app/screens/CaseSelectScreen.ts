@@ -1,10 +1,12 @@
 import type { EnqueteurCaseId } from "../appState";
 import type { PreGameCaseEntry } from "../cases/caseCatalog";
+import type { TranslateFn } from "../../i18n";
 
 export type CaseSelectScreenOpts = {
     cases: readonly PreGameCaseEntry[];
     onBack: () => void;
     onPickCase: (caseId: EnqueteurCaseId) => void;
+    t: TranslateFn;
 };
 
 export function renderCaseSelectScreen(opts: CaseSelectScreenOpts): HTMLElement {
@@ -13,22 +15,22 @@ export function renderCaseSelectScreen(opts: CaseSelectScreenOpts): HTMLElement 
 
     const titleEl = document.createElement("h1");
     titleEl.className = "flow-screen-title";
-    titleEl.textContent = "Choose A Case";
+    titleEl.textContent = opts.t("flow.caseSelect.title");
 
     const bodyEl = document.createElement("p");
     bodyEl.className = "flow-screen-body";
-    bodyEl.textContent = "Pick a case to begin a live investigation.";
+    bodyEl.textContent = opts.t("flow.caseSelect.body");
 
     const caseGrid = document.createElement("div");
     caseGrid.className = "flow-case-grid";
 
     for (const entry of opts.cases) {
-        caseGrid.appendChild(makeCaseCard(entry, opts.onPickCase));
+        caseGrid.appendChild(makeCaseCard(entry, opts.onPickCase, opts.t));
     }
 
     const actions = document.createElement("div");
     actions.className = "flow-actions";
-    actions.appendChild(makeActionButton("Back To Menu", opts.onBack));
+    actions.appendChild(makeActionButton(opts.t("flow.caseSelect.backToMenu"), opts.onBack));
 
     section.appendChild(titleEl);
     section.appendChild(bodyEl);
@@ -39,7 +41,8 @@ export function renderCaseSelectScreen(opts: CaseSelectScreenOpts): HTMLElement 
 
 function makeCaseCard(
     entry: PreGameCaseEntry,
-    onPickCase: (caseId: EnqueteurCaseId) => void
+    onPickCase: (caseId: EnqueteurCaseId) => void,
+    t: TranslateFn
 ): HTMLButtonElement {
     const card = document.createElement("button");
     card.type = "button";
@@ -59,7 +62,7 @@ function makeCaseCard(
 
     const demoRoute = document.createElement("span");
     demoRoute.className = "flow-screen-note";
-    demoRoute.textContent = `Default demo route: ${entry.defaultDemoPath.title}`;
+    demoRoute.textContent = t("flow.caseSelect.defaultDemoRoute", { title: entry.defaultDemoPath.title });
 
     const demoSummary = document.createElement("span");
     demoSummary.className = "flow-screen-note";
