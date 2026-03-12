@@ -18,7 +18,7 @@ from backend.api.live_ws import (
 )
 from backend.server.app import create_app
 from backend.server.routes_http import CASE_START_PATH
-from backend.server.routes_ws import WS_POLICY_VIOLATION, WS_TRY_AGAIN_LATER
+from backend.server.routes_ws import WS_POLICY_VIOLATION
 from backend.sim4.integration.live_envelope import make_live_envelope
 
 
@@ -349,7 +349,7 @@ def test_s4_asgi_live_rejects_schema_mismatch_in_viewer_hello() -> None:
     asyncio.run(_scenario())
 
 
-def test_s4_asgi_live_post_baseline_rejects_unsupported_s5_interaction() -> None:
+def test_s5_asgi_live_post_baseline_accepts_input_command() -> None:
     app = create_app()
 
     async def _scenario() -> None:
@@ -377,10 +377,10 @@ def test_s4_asgi_live_post_baseline_rejects_unsupported_s5_interaction() -> None
                         "INPUT_COMMAND",
                         {
                             "client_cmd_id": "00000000-0000-4000-8000-000000000001",
-                            "tick_target": 0,
+                            "tick_target": 1,
                             "cmd": {
                                 "type": "INVESTIGATE_OBJECT",
-                                "payload": {"object_id": "O1", "action_id": "inspect"},
+                                "payload": {"object_id": "O4_BENCH", "action_id": "inspect"},
                             },
                         },
                     ),
@@ -392,9 +392,63 @@ def test_s4_asgi_live_post_baseline_rejects_unsupported_s5_interaction() -> None
                 "KERNEL_HELLO",
                 "SUBSCRIBED",
                 "FULL_SNAPSHOT",
-                "ERROR",
+                "COMMAND_ACCEPTED",
             ]
-            assert envelopes[3]["payload"]["code"] == "NOT_IMPLEMENTED"
-            assert ws_result.close_frames == ((WS_TRY_AGAIN_LATER, "NOT_IMPLEMENTED"),)
+            assert envelopes[3]["payload"]["client_cmd_id"] == "00000000-0000-4000-8000-000000000001"
+            assert ws_result.close_frames == ()
+
+    asyncio.run(_scenario())
+
+
+def test_s5_asgi_live_post_baseline_rejects_invalid_input_command() -> None:
+    app = create_app()
+
+    async def _scenario() -> None:
+        async with app.router.lifespan_context(app):
+            launch = await _post_json(
+                app,
+                path=CASE_START_PATH,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "A",
+                    "difficulty_profile": "D0",
+                    "mode": "playtest",
+                },
+            )
+            launch_payload = launch.json()
+            assert launch.status_code == 200
+
+            ws_result = await _asgi_ws_session(
+                app,
+                path_or_url=str(launch_payload["ws_url"]),
+                incoming_texts=(
+                    _viewer_hello(),
+                    _subscribe(),
+                    _envelope(
+                        "INPUT_COMMAND",
+                        {
+                            "client_cmd_id": "00000000-0000-4000-8000-000000000002",
+                            "tick_target": 1,
+                            "cmd": {
+                                "type": "INVESTIGATE_OBJECT",
+                                "payload": {"object_id": "UNKNOWN_OBJECT", "action_id": "inspect"},
+                            },
+                        },
+                    ),
+                ),
+            )
+            assert ws_result.accepted is True
+            envelopes = ws_result.decoded_envelopes()
+            assert [env["msg_type"] for env in envelopes] == [
+                "KERNEL_HELLO",
+                "SUBSCRIBED",
+                "FULL_SNAPSHOT",
+                "COMMAND_REJECTED",
+            ]
+            rejected = envelopes[3]["payload"]
+            assert rejected["client_cmd_id"] == "00000000-0000-4000-8000-000000000002"
+            assert isinstance(rejected["reason_code"], str) and rejected["reason_code"]
+            assert isinstance(rejected["message"], str) and rejected["message"]
+            assert ws_result.close_frames == ()
 
     asyncio.run(_scenario())

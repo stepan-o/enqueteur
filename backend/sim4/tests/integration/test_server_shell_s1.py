@@ -39,7 +39,6 @@ from backend.server.session_controller import SessionController
 from backend.server.routes_ws import (
     LIVE_WS_PATH,
     WS_POLICY_VIOLATION,
-    WS_TRY_AGAIN_LATER,
 )
 from backend.sim4.integration.live_envelope import make_live_envelope
 
@@ -692,7 +691,7 @@ def test_live_ws_requires_on_join_baseline_in_s4() -> None:
     assert websocket.close_calls == [(PROTOCOL_VIOLATION_WS_CLOSE_CODE, PROTOCOL_VIOLATION_WS_CLOSE_REASON)]
 
 
-def test_live_ws_post_baseline_messages_fail_honestly_until_s5() -> None:
+def test_live_ws_post_baseline_processes_input_command() -> None:
     app = create_app()
     endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
     core_registry = CaseRunRegistry()
@@ -734,7 +733,7 @@ def test_live_ws_post_baseline_messages_fail_honestly_until_s5() -> None:
                 "SUBSCRIBE",
                 {
                     "stream": "LIVE",
-                    "channels": ["WORLD", "EVENTS"],
+                    "channels": ["WORLD", "INVESTIGATION", "EVENTS"],
                     "diff_policy": "DIFF_ONLY",
                     "snapshot_policy": "ON_JOIN",
                     "compression": "NONE",
@@ -744,8 +743,8 @@ def test_live_ws_post_baseline_messages_fail_honestly_until_s5() -> None:
                 "INPUT_COMMAND",
                 {
                     "client_cmd_id": "00000000-0000-4000-8000-000000000001",
-                    "tick_target": 0,
-                    "cmd": {"type": "INVESTIGATE_OBJECT", "payload": {"object_id": "O1", "action_id": "inspect"}},
+                    "tick_target": 1,
+                    "cmd": {"type": "INVESTIGATE_OBJECT", "payload": {"object_id": "O4_BENCH", "action_id": "inspect"}},
                 },
             ),
         ),
@@ -753,9 +752,9 @@ def test_live_ws_post_baseline_messages_fail_honestly_until_s5() -> None:
     asyncio.run(endpoint(websocket))
 
     msg_types = [_decode_sent_envelope(websocket, i)["msg_type"] for i in range(len(websocket.sent_texts))]
-    assert msg_types == ["KERNEL_HELLO", "SUBSCRIBED", "FULL_SNAPSHOT", "ERROR"]
-    assert _decode_sent_envelope(websocket, 3)["payload"]["code"] == "NOT_IMPLEMENTED"
-    assert websocket.close_calls == [(WS_TRY_AGAIN_LATER, "NOT_IMPLEMENTED")]
+    assert msg_types == ["KERNEL_HELLO", "SUBSCRIBED", "FULL_SNAPSHOT", "COMMAND_ACCEPTED"]
+    assert _decode_sent_envelope(websocket, 3)["payload"]["client_cmd_id"] == "00000000-0000-4000-8000-000000000001"
+    assert websocket.close_calls == []
 
 
 def test_live_ws_rejects_run_without_runtime_binding() -> None:

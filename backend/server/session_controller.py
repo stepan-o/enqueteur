@@ -25,8 +25,6 @@ from .run_registry import RunRegistry
 
 MISSING_RUN_ID_WS_CLOSE_CODE = 1008
 MISSING_RUN_ID_WS_CLOSE_REASON = "MISSING_RUN_ID"
-POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_CODE = 1013
-POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_REASON = "NOT_IMPLEMENTED"
 BAD_SEQUENCE_ERROR_CODE = "BAD_SEQUENCE"
 BASELINE_REQUIRED_ERROR_CODE = "BASELINE_REQUIRED"
 
@@ -75,6 +73,10 @@ class SessionController:
     def mark_baseline_sent(self, connection_id: str) -> SessionRecord:
         record = self.require(connection_id)
         return record.transition(SessionState.BASELINE_SENT)
+
+    def mark_live(self, connection_id: str) -> SessionRecord:
+        record = self.require(connection_id)
+        return record.transition(SessionState.LIVE)
 
     def mark_closing(self, connection_id: str, *, reason: str | None = None) -> SessionRecord:
         record = self.require(connection_id)
@@ -200,22 +202,27 @@ class SessionController:
                 await _close_with_error(
                     websocket,
                     code=BASELINE_REQUIRED_ERROR_CODE,
-                    message="S4 controller requires ON_JOIN baseline delivery before live-ready state.",
+                    message="Live controller requires ON_JOIN baseline delivery before live-ready state.",
                     close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
                     close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
                 )
                 return record
             self.mark_baseline_sent(record.connection_id)
+            self.mark_live(record.connection_id)
+            self._touch_run_activity(record)
 
-            # S4 boundary: handshake + baseline are implemented; sustained runtime loop is deferred.
-            await websocket.receive_text()
-            await _close_with_error(
-                websocket,
-                code=POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_REASON,
-                message="Post-baseline live command handling is deferred to Phase S5.",
-                close_code=POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_CODE,
-                close_reason=POST_BASELINE_NOT_IMPLEMENTED_WS_CLOSE_REASON,
-            )
+            while True:
+                raw_live_message = await websocket.receive_text()
+                await handle_enqueteur_live_incoming_message(
+                    websocket,
+                    session=live_session,
+                    raw_message=raw_live_message,
+                    host=self._live_host,
+                )
+                current = self._live_host.get_session(live_session.connection_id)
+                if current is None or current.phase == "CLOSED":
+                    return record
+                self._touch_run_activity(record)
             return record
         except Exception as exc:  # noqa: BLE001
             if _is_websocket_disconnect(exc):
@@ -239,6 +246,13 @@ class SessionController:
             return
         self.mark_closing(connection_id, reason=reason)
         self.close_session(connection_id, reason=reason)
+
+    def _touch_run_activity(self, record: SessionRecord) -> None:
+        if not record.run_id:
+            return
+        if not self._run_registry.exists(record.run_id):
+            return
+        self._run_registry.touch_activity(record.run_id, session_id=record.connection_id)
 
 
 class _RunRegistryAdapter:
