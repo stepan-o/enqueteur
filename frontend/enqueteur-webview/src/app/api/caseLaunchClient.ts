@@ -57,17 +57,31 @@ export function createCaseLaunchClient(opts: CreateCaseLaunchClientOpts = {}): C
 
     return {
         startCase: async (req, startOpts = {}) => {
-            const response = await fetchImpl(endpoint, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    case_id: req.caseId,
-                    seed: req.seed,
-                    difficulty_profile: req.difficultyProfile,
-                    mode: req.mode,
-                }),
-                signal: startOpts.signal,
-            });
+            let response: Response;
+            try {
+                response = await fetchImpl(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        case_id: req.caseId,
+                        seed: req.seed,
+                        difficulty_profile: req.difficultyProfile,
+                        mode: req.mode,
+                    }),
+                    signal: startOpts.signal,
+                });
+            } catch (err: unknown) {
+                if (isAbortError(err)) {
+                    throw err;
+                }
+                throw new CaseLaunchError(
+                    `Could not reach backend launch endpoint at ${endpoint}.`,
+                    {
+                        status: 503,
+                        code: "BACKEND_UNREACHABLE",
+                    }
+                );
+            }
 
             const payload = await parseJsonPayload(response);
             if (!response.ok) {
@@ -198,6 +212,12 @@ function invalidResponse(message: string): CaseLaunchError {
 
 function isSeed(value: unknown): value is string | number {
     return typeof value === "string" || typeof value === "number";
+}
+
+function isAbortError(err: unknown): boolean {
+    if (err instanceof DOMException && err.name === "AbortError") return true;
+    if (err instanceof Error && err.name === "AbortError") return true;
+    return false;
 }
 
 function asObject(value: unknown): Record<string, unknown> {

@@ -102,4 +102,28 @@ describe("case launch client contract hardening", () => {
             })
         );
     });
+
+    it("surfaces backend reachability failures with a dedicated error code", async () => {
+        const fetchImpl = vi.fn(async () => {
+            throw new TypeError("Failed to fetch");
+        });
+        const client = createCaseLaunchClient({
+            apiBaseUrl: "http://127.0.0.1:7777",
+            fetchImpl,
+        });
+
+        await expect(
+            client.startCase({
+                caseId: "MBAM_01",
+                seed: "A",
+                difficultyProfile: "D0",
+                mode: "playtest",
+            })
+        ).rejects.toEqual(
+            expect.objectContaining<Partial<CaseLaunchError>>({
+                code: "BACKEND_UNREACHABLE",
+                status: 503,
+            })
+        );
+    });
 });
