@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 import json
+import logging
 from threading import RLock
 from typing import Any
 import uuid
@@ -33,6 +34,10 @@ BAD_SEQUENCE_ERROR_CODE = "BAD_SEQUENCE"
 BASELINE_REQUIRED_ERROR_CODE = "BASELINE_REQUIRED"
 CLIENT_DISCONNECT_REASON = "CLIENT_DISCONNECT"
 SESSION_CLOSED_REASON = "SESSION_CLOSED"
+HOST_SHUTTING_DOWN_REASON = "HOST_SHUTTING_DOWN"
+HOST_SHUTTING_DOWN_WS_CLOSE_CODE = 1013
+
+logger = logging.getLogger(__name__)
 
 
 class SessionController:
@@ -43,6 +48,7 @@ class SessionController:
         self._sessions: dict[str, SessionRecord] = {}
         self._lock = RLock()
         self._live_host = EnqueteurLiveSessionHost(run_registry=_RunRegistryAdapter(run_registry))
+        self._accepting_connections = True
 
     def open_session(self, *, run_id: str | None, connection_id: str | None = None) -> SessionRecord:
         record = SessionRecord(
@@ -99,12 +105,30 @@ class SessionController:
         with self._lock:
             return tuple(self._sessions.values())
 
+    @property
+    def accepting_connections(self) -> bool:
+        return self._accepting_connections
+
+    def begin_shutdown(self) -> None:
+        self._accepting_connections = False
+
     async def serve_live_session(
         self,
         *,
         websocket: Any,
         connection_target: str | None = None,
     ) -> SessionRecord | None:
+        if not self._accepting_connections:
+            await websocket.accept()
+            await _close_with_error(
+                websocket,
+                code=HOST_SHUTTING_DOWN_REASON,
+                message="Host is shutting down and cannot accept new live sessions.",
+                close_code=HOST_SHUTTING_DOWN_WS_CLOSE_CODE,
+                close_reason=HOST_SHUTTING_DOWN_REASON,
+            )
+            return None
+
         target = connection_target or _connection_target_from_websocket(websocket)
         run_id_hint = RunRegistry.extract_run_id(target)
         if run_id_hint is None:
@@ -133,6 +157,11 @@ class SessionController:
         record = self.open_session(
             run_id=live_session.run.run_id,
             connection_id=live_session.connection_id,
+        )
+        logger.info(
+            "live session opened connection_id=%s run_id=%s",
+            record.connection_id,
+            record.run_id,
         )
         self.mark_handshaking(record.connection_id)
         termination_reason: str | None = None
@@ -252,12 +281,27 @@ class SessionController:
             return record
         except asyncio.CancelledError:
             termination_reason = "SERVER_CANCELLED"
+            logger.info(
+                "live session cancelled connection_id=%s run_id=%s",
+                record.connection_id,
+                record.run_id,
+            )
             raise
         except Exception as exc:  # noqa: BLE001
             if _is_websocket_disconnect(exc):
                 termination_reason = CLIENT_DISCONNECT_REASON
+                logger.info(
+                    "live session disconnected connection_id=%s run_id=%s",
+                    record.connection_id,
+                    record.run_id,
+                )
                 return record
             termination_reason = INTERNAL_RUNTIME_WS_CLOSE_REASON
+            logger.exception(
+                "live session failed connection_id=%s run_id=%s",
+                record.connection_id,
+                record.run_id,
+            )
             await _attempt_internal_runtime_close(websocket)
             return record
         finally:
@@ -335,6 +379,12 @@ class SessionController:
             close_reason = closed.close_reason
         self._touch_run_activity(record)
         self._close_tracked_session(record.connection_id, reason=close_reason or CLIENT_DISCONNECT_REASON)
+        logger.info(
+            "live session closed connection_id=%s run_id=%s reason=%s",
+            record.connection_id,
+            record.run_id,
+            close_reason or CLIENT_DISCONNECT_REASON,
+        )
 
 
 class _RunRegistryAdapter:

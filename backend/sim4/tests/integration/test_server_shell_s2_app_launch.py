@@ -11,7 +11,7 @@ pytest.importorskip("fastapi")
 
 from backend.api.cases_start import ENQUETEUR_ENGINE_NAME, ENQUETEUR_SCHEMA_VERSION
 from backend.server.app import create_app
-from backend.server.routes_http import CASE_START_PATH
+from backend.server.routes_http import CASE_START_PATH, READINESS_PATH
 
 
 @dataclass(frozen=True)
@@ -216,5 +216,46 @@ def test_s2_launch_route_registry_remove_after_launch_is_consistent() -> None:
             assert run_registry.get(payload["run_id"]) is None
             assert run_registry.get_by_connection_target(payload["ws_url"]) is None
             assert run_registry.count() == 0
+
+    asyncio.run(_scenario())
+
+
+def test_s7_lifespan_sets_host_state_and_readiness_status() -> None:
+    app = create_app()
+
+    async def _scenario() -> None:
+        assert bool(getattr(app.state, "started", False)) is False
+        assert bool(getattr(app.state, "shutting_down", False)) is False
+
+        async with app.router.lifespan_context(app):
+            assert app.state.started is True
+            assert app.state.shutting_down is False
+            assert isinstance(app.state.startup_note, str) and app.state.startup_note
+
+            ready = await _asgi_http_request(
+                app,
+                method="GET",
+                path=READINESS_PATH,
+            )
+            ready_payload = ready.json()
+            assert ready.status_code == 200
+            assert ready_payload["status"] == "ready"
+
+            app.state.shutting_down = True
+            stopping = await _asgi_http_request(
+                app,
+                method="GET",
+                path=READINESS_PATH,
+            )
+            stopping_payload = stopping.json()
+            assert stopping.status_code == 200
+            assert stopping_payload["status"] == "stopping"
+
+            app.state.shutting_down = False
+
+        assert app.state.started is False
+        assert app.state.shutting_down is True
+        assert app.state.shutdown_note == "server-shell shutting down"
+        assert app.state.session_controller.accepting_connections is False
 
     asyncio.run(_scenario())

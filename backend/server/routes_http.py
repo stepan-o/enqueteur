@@ -118,7 +118,11 @@ def register_http_routes(app: Any) -> None:
     @router.get(READINESS_PATH)
     async def readyz(request: Request) -> dict[str, str]:
         started = bool(getattr(request.app.state, "started", False))
-        status = "ready" if started else "starting"
+        shutting_down = bool(getattr(request.app.state, "shutting_down", False))
+        if shutting_down:
+            status = "stopping"
+        else:
+            status = "ready" if started else "starting"
         payload = ServerHealthResponse(
             status=status,
             service="enqueteur-server-shell",

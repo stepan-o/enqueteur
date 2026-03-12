@@ -14,6 +14,7 @@ WS_POLICY_VIOLATION = MISSING_RUN_ID_WS_CLOSE_CODE
 WS_TRY_AGAIN_LATER = 1013
 WS_INTERNAL_ERROR = 1011
 LIVE_WS_PHASE_GATE = "S5"
+HOST_SHUTTING_DOWN_CODE = "HOST_SHUTTING_DOWN"
 
 
 def register_ws_routes(app: Any) -> None:
@@ -26,6 +27,16 @@ def register_ws_routes(app: Any) -> None:
 
     @router.websocket(LIVE_WS_PATH)
     async def ws_live(websocket: WebSocket) -> None:
+        if bool(getattr(websocket.app.state, "shutting_down", False)):
+            await websocket.accept()
+            payload = ErrorBody(
+                code=HOST_SHUTTING_DOWN_CODE,
+                message="Host is shutting down and cannot accept new /live sessions.",
+            )
+            await websocket.send_json({"error": payload.to_dict()})
+            await websocket.close(code=WS_TRY_AGAIN_LATER, reason=HOST_SHUTTING_DOWN_CODE)
+            return
+
         session_controller = getattr(websocket.app.state, "session_controller", None)
         if not isinstance(session_controller, SessionController):
             await websocket.accept()
@@ -52,4 +63,5 @@ __all__ = [
     "WS_POLICY_VIOLATION",
     "WS_TRY_AGAIN_LATER",
     "WS_INTERNAL_ERROR",
+    "HOST_SHUTTING_DOWN_CODE",
 ]

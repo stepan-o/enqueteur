@@ -18,7 +18,7 @@ from backend.api.live_ws import (
 )
 from backend.server.app import create_app
 from backend.server.routes_http import CASE_START_PATH
-from backend.server.routes_ws import WS_POLICY_VIOLATION
+from backend.server.routes_ws import HOST_SHUTTING_DOWN_CODE, WS_POLICY_VIOLATION, WS_TRY_AGAIN_LATER
 from backend.sim4.integration.live_envelope import make_live_envelope
 
 
@@ -277,6 +277,26 @@ def test_s4_asgi_live_rejects_missing_and_unknown_run() -> None:
             assert [env["msg_type"] for env in unknown_env] == ["ERROR"]
             assert unknown_env[0]["payload"]["code"] == "RUN_NOT_FOUND"
             assert unknown_run.close_frames == ((RUN_NOT_FOUND_WS_CLOSE_CODE, RUN_NOT_FOUND_WS_CLOSE_REASON),)
+
+    asyncio.run(_scenario())
+
+
+def test_s7_asgi_live_rejects_new_connections_while_host_shutting_down() -> None:
+    app = create_app()
+
+    async def _scenario() -> None:
+        async with app.router.lifespan_context(app):
+            app.state.shutting_down = True
+            ws_result = await _asgi_ws_session(
+                app,
+                path_or_url="/live?run_id=run-any",
+            )
+            assert ws_result.accepted is True
+            assert len(ws_result.sent_texts) == 1
+            payload = json.loads(ws_result.sent_texts[0])
+            assert payload["error"]["code"] == HOST_SHUTTING_DOWN_CODE
+            assert ws_result.close_frames == ((WS_TRY_AGAIN_LATER, HOST_SHUTTING_DOWN_CODE),)
+            assert app.state.session_controller.list_sessions() == ()
 
     asyncio.run(_scenario())
 
