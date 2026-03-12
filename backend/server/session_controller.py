@@ -76,10 +76,6 @@ class SessionController:
         record = self.require(connection_id)
         return record.transition(SessionState.BASELINE_SENT)
 
-    def mark_active(self, connection_id: str) -> SessionRecord:
-        record = self.require(connection_id)
-        return record.transition(SessionState.ACTIVE)
-
     def mark_closing(self, connection_id: str, *, reason: str | None = None) -> SessionRecord:
         record = self.require(connection_id)
         return record.transition(SessionState.CLOSING, close_reason=reason)

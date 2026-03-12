@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """WebSocket route wiring for live session controller."""
 
 from typing import Any
@@ -23,13 +21,9 @@ def register_ws_routes(app: Any) -> None:
     """Attach websocket routes to the ASGI app."""
 
     # Import inside registration to keep module import-safe without framework deps.
-    from fastapi import APIRouter
-    from starlette.websockets import WebSocket as StarletteWebSocket
+    from fastapi import APIRouter, WebSocket
 
     router = APIRouter()
-    # `from __future__ import annotations` stores annotations as strings.
-    # Ensure FastAPI can resolve `WebSocket` during dependency analysis.
-    globals()["WebSocket"] = StarletteWebSocket
 
     @router.websocket(LIVE_WS_PATH)
     async def ws_live(websocket: WebSocket) -> None:
