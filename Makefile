@@ -1,4 +1,4 @@
-PY ?= python
+PY ?= uv run python
 PIP ?= pip
 WEB_DIR ?= frontend/enqueteur-webview
 
