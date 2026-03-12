@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:local": "VITE_ENQUETEUR_API_BASE_URL=http://127.0.0.1:7777 vite --host 127.0.0.1 --port 5173",
+    "dev:local": "vite --host 127.0.0.1 --port 5173",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",

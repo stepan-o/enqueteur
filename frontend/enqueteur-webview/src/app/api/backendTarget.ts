@@ -5,15 +5,9 @@ type BackendTargetEnv = {
     DEV?: boolean;
 };
 
-type BackendTargetLocation = {
-    protocol?: string;
-    hostname?: string;
-} | null;
-
 type ResolveBackendApiBaseUrlOpts = {
     configuredBaseUrl?: string;
     env?: BackendTargetEnv;
-    location?: BackendTargetLocation;
 };
 
 export function resolveBackendApiBaseUrl(opts: ResolveBackendApiBaseUrlOpts = {}): string {
@@ -32,33 +26,20 @@ export function resolveBackendApiBaseUrl(opts: ResolveBackendApiBaseUrlOpts = {}
         return "";
     }
 
-    return resolveLocalDevBackendOrigin(opts.location ?? readGlobalLocation());
+    return resolveLocalDevBackendOrigin();
 }
 
 function isDevMode(env: BackendTargetEnv | undefined): boolean {
     return Boolean(env?.DEV);
 }
 
-function resolveLocalDevBackendOrigin(location: BackendTargetLocation): string {
+function resolveLocalDevBackendOrigin(): string {
     // S6 local-dev target: canonical backend host remains Python ASGI on 127.0.0.1:7777.
-    // We still touch location to keep behavior deterministic in tests and SSR-like environments.
-    void location;
     return DEFAULT_LOCAL_BACKEND_ORIGIN;
 }
 
 function readImportMetaEnv(): BackendTargetEnv | undefined {
     return (import.meta as { env?: BackendTargetEnv }).env;
-}
-
-function readGlobalLocation(): BackendTargetLocation {
-    const value = (globalThis as { location?: { protocol?: string; hostname?: string } }).location;
-    if (!value) {
-        return null;
-    }
-    return {
-        protocol: value.protocol,
-        hostname: value.hostname,
-    };
 }
 
 function normalize(value: unknown): string {
