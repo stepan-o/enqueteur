@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Per-websocket session lifecycle controller for live handshake and runtime streaming."""
 
+import asyncio
 from datetime import UTC, datetime
 import json
 from threading import RLock
@@ -10,6 +11,8 @@ import uuid
 
 from backend.api.live_ws import (
     EnqueteurLiveSessionHost,
+    INTERNAL_RUNTIME_WS_CLOSE_CODE,
+    INTERNAL_RUNTIME_WS_CLOSE_REASON,
     PROTOCOL_VIOLATION_WS_CLOSE_CODE,
     PROTOCOL_VIOLATION_WS_CLOSE_REASON,
     RunLookupError,
@@ -28,6 +31,8 @@ MISSING_RUN_ID_WS_CLOSE_CODE = 1008
 MISSING_RUN_ID_WS_CLOSE_REASON = "MISSING_RUN_ID"
 BAD_SEQUENCE_ERROR_CODE = "BAD_SEQUENCE"
 BASELINE_REQUIRED_ERROR_CODE = "BASELINE_REQUIRED"
+CLIENT_DISCONNECT_REASON = "CLIENT_DISCONNECT"
+SESSION_CLOSED_REASON = "SESSION_CLOSED"
 
 
 class SessionController:
@@ -130,6 +135,7 @@ class SessionController:
             connection_id=live_session.connection_id,
         )
         self.mark_handshaking(record.connection_id)
+        termination_reason: str | None = None
 
         try:
             raw_hello = await websocket.receive_text()
@@ -142,6 +148,7 @@ class SessionController:
                     close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
                     close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
                 )
+                termination_reason = PROTOCOL_VIOLATION_WS_CLOSE_REASON
                 return record
             await handle_enqueteur_live_incoming_message(
                 websocket,
@@ -151,6 +158,7 @@ class SessionController:
             )
             active = self._live_host.get_session(live_session.connection_id)
             if active is None or active.phase == "CLOSED":
+                termination_reason = _resolve_termination_reason(active, fallback=SESSION_CLOSED_REASON)
                 return record
             if active.protocol_state != "AWAITING_SUBSCRIBE":
                 await _close_with_error(
@@ -163,6 +171,7 @@ class SessionController:
                     close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
                     close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
                 )
+                termination_reason = PROTOCOL_VIOLATION_WS_CLOSE_REASON
                 return record
             self.mark_hello_verified(record.connection_id)
 
@@ -176,6 +185,7 @@ class SessionController:
                     close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
                     close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
                 )
+                termination_reason = PROTOCOL_VIOLATION_WS_CLOSE_REASON
                 return record
             await handle_enqueteur_live_incoming_message(
                 websocket,
@@ -185,6 +195,7 @@ class SessionController:
             )
             active = self._live_host.get_session(live_session.connection_id)
             if active is None or active.phase == "CLOSED":
+                termination_reason = _resolve_termination_reason(active, fallback=SESSION_CLOSED_REASON)
                 return record
             if active.protocol_state != "SUBSCRIBED":
                 await _close_with_error(
@@ -197,6 +208,7 @@ class SessionController:
                     close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
                     close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
                 )
+                termination_reason = PROTOCOL_VIOLATION_WS_CLOSE_REASON
                 return record
             self.mark_subscribed(record.connection_id)
             if not active.baseline_sent:
@@ -207,6 +219,7 @@ class SessionController:
                     close_code=PROTOCOL_VIOLATION_WS_CLOSE_CODE,
                     close_reason=PROTOCOL_VIOLATION_WS_CLOSE_REASON,
                 )
+                termination_reason = PROTOCOL_VIOLATION_WS_CLOSE_REASON
                 return record
             self.mark_baseline_sent(record.connection_id)
             self.mark_live(record.connection_id)
@@ -223,6 +236,7 @@ class SessionController:
                 )
                 current = self._live_host.get_session(live_session.connection_id)
                 if current is None or current.phase == "CLOSED":
+                    termination_reason = _resolve_termination_reason(current, fallback=SESSION_CLOSED_REASON)
                     return record
                 await self._emit_command_diff_if_needed(
                     websocket=websocket,
@@ -232,20 +246,26 @@ class SessionController:
                 )
                 current = self._live_host.get_session(live_session.connection_id)
                 if current is None or current.phase == "CLOSED":
+                    termination_reason = _resolve_termination_reason(current, fallback=SESSION_CLOSED_REASON)
                     return record
                 self._touch_run_activity(record)
             return record
+        except asyncio.CancelledError:
+            termination_reason = "SERVER_CANCELLED"
+            raise
         except Exception as exc:  # noqa: BLE001
             if _is_websocket_disconnect(exc):
+                termination_reason = CLIENT_DISCONNECT_REASON
                 return record
-            raise
+            termination_reason = INTERNAL_RUNTIME_WS_CLOSE_REASON
+            await _attempt_internal_runtime_close(websocket)
+            return record
         finally:
-            closed = handle_enqueteur_live_disconnect(
-                session=live_session,
-                host=self._live_host,
+            self._teardown_live_session(
+                record=record,
+                live_session=live_session,
+                reason=termination_reason,
             )
-            close_reason = closed.close_reason if closed is not None else None
-            self._close_tracked_session(record.connection_id, reason=close_reason)
 
     def clear(self) -> None:
         with self._lock:
@@ -284,6 +304,24 @@ class SessionController:
             max_frames=1,
             tick_interval_seconds=0.0,
         )
+
+    def _teardown_live_session(
+        self,
+        *,
+        record: SessionRecord,
+        live_session: Any,
+        reason: str | None,
+    ) -> None:
+        closed = handle_enqueteur_live_disconnect(
+            session=live_session,
+            close_reason=reason or CLIENT_DISCONNECT_REASON,
+            host=self._live_host,
+        )
+        close_reason = reason
+        if closed is not None and isinstance(closed.close_reason, str) and closed.close_reason:
+            close_reason = closed.close_reason
+        self._touch_run_activity(record)
+        self._close_tracked_session(record.connection_id, reason=close_reason or CLIENT_DISCONNECT_REASON)
 
 
 class _RunRegistryAdapter:
@@ -407,6 +445,27 @@ async def _close_with_error(
         fatal=True,
     )
     await websocket.close(code=close_code, reason=close_reason)
+
+
+async def _attempt_internal_runtime_close(websocket: Any) -> None:
+    try:
+        await _close_with_error(
+            websocket,
+            code=INTERNAL_RUNTIME_WS_CLOSE_REASON,
+            message="Unhandled internal runtime/session error.",
+            close_code=INTERNAL_RUNTIME_WS_CLOSE_CODE,
+            close_reason=INTERNAL_RUNTIME_WS_CLOSE_REASON,
+        )
+    except Exception:  # noqa: BLE001
+        # Best-effort close; transport may already be gone.
+        return
+
+
+def _resolve_termination_reason(session: Any, *, fallback: str) -> str:
+    close_reason = getattr(session, "close_reason", None)
+    if isinstance(close_reason, str) and close_reason:
+        return close_reason
+    return fallback
 
 
 __all__ = ["SessionController"]

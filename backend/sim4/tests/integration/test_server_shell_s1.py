@@ -20,6 +20,8 @@ from fastapi.routing import APIRoute
 from starlette.routing import WebSocketRoute
 
 from backend.api.live_ws import (
+    INTERNAL_RUNTIME_WS_CLOSE_CODE,
+    INTERNAL_RUNTIME_WS_CLOSE_REASON,
     PROTOCOL_VIOLATION_WS_CLOSE_CODE,
     PROTOCOL_VIOLATION_WS_CLOSE_REASON,
     RUN_NOT_FOUND_WS_CLOSE_CODE,
@@ -542,6 +544,9 @@ def test_live_ws_rejects_subscribe_before_viewer_hello() -> None:
     assert error["msg_type"] == "ERROR"
     assert error["payload"]["code"] == "BAD_SEQUENCE"
     assert websocket.close_calls == [(PROTOCOL_VIOLATION_WS_CLOSE_CODE, PROTOCOL_VIOLATION_WS_CLOSE_REASON)]
+    assert app.state.session_controller.list_sessions() == ()
+    entry = run_registry.require(run_id)
+    assert entry.host.last_session_id is not None
 
 
 def test_live_ws_rejects_ping_before_viewer_hello() -> None:
@@ -758,6 +763,85 @@ def test_live_ws_post_baseline_processes_input_command() -> None:
     assert frame_diff["from_tick"] == _decode_sent_envelope(websocket, 2)["payload"]["tick"]
     assert frame_diff["to_tick"] == frame_diff["from_tick"] + 1
     assert websocket.close_calls == []
+
+
+def test_live_ws_internal_runtime_failure_closes_connection_and_cleans_up_session() -> None:
+    app = create_app()
+    endpoint = _find_ws_route_endpoint(app=app, path=LIVE_WS_PATH)
+    core_registry = CaseRunRegistry()
+    case_start_service = CaseStartService(ws_base_url="ws://localhost:7777/live", registry=core_registry)
+    run_registry = RunRegistry()
+    app.state.case_start_service = case_start_service
+    app.state.run_registry = run_registry
+    session_controller = SessionController(run_registry=run_registry)
+    app.state.session_controller = session_controller
+
+    async def _raise_runtime_error(**_: object) -> None:
+        raise RuntimeError("forced diff emission failure")
+
+    session_controller._emit_command_diff_if_needed = _raise_runtime_error  # type: ignore[method-assign]
+
+    status, body = launch_case_from_transport(
+        CaseStartTransportRequest.from_payload(
+            {
+                "case_id": "MBAM_01",
+                "seed": "A",
+                "difficulty_profile": "D0",
+                "mode": "playtest",
+            }
+        ),
+        case_start_service=case_start_service,
+        run_registry=run_registry,
+    )
+    assert status == 200
+    run_id = str(body["run_id"])
+
+    websocket = FakeWebSocket(
+        app=app,
+        run_id=run_id,
+        incoming_texts=(
+            _envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {},
+                },
+            ),
+            _envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD", "INVESTIGATION", "EVENTS"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            _envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": "00000000-0000-4000-8000-000000000099",
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "INVESTIGATE_OBJECT",
+                        "payload": {"object_id": "O4_BENCH", "action_id": "inspect"},
+                    },
+                },
+            ),
+        ),
+    )
+    asyncio.run(endpoint(websocket))
+
+    msg_types = [_decode_sent_envelope(websocket, i)["msg_type"] for i in range(len(websocket.sent_texts))]
+    assert msg_types == ["KERNEL_HELLO", "SUBSCRIBED", "FULL_SNAPSHOT", "COMMAND_ACCEPTED", "ERROR"]
+    error = _decode_sent_envelope(websocket, 4)
+    assert error["payload"]["code"] == INTERNAL_RUNTIME_WS_CLOSE_REASON
+    assert websocket.close_calls == [(INTERNAL_RUNTIME_WS_CLOSE_CODE, INTERNAL_RUNTIME_WS_CLOSE_REASON)]
+    assert app.state.session_controller.list_sessions() == ()
+    entry = run_registry.require(run_id)
+    assert entry.host.last_session_id is not None
 
 
 def test_live_ws_rejects_run_without_runtime_binding() -> None:
