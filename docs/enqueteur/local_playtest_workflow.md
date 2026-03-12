@@ -46,12 +46,51 @@ Open `http://127.0.0.1:5173`.
 4. Connecting
 5. Live Game
 
-Recommended daily playtest profile:
+## Locked Playtest Standard
 
-- `MBAM_01`
-- seed `A`
-- difficulty `D0`
-- mode `playtest`
+Locked defaults for canonical playtesting:
+
+- case: `MBAM_01` (MBAM)
+- seed: `A`
+- difficulty: `D0`
+- launch mode/profile: `playtest`
+
+### Tier 1: Daily Smoke Path
+
+Use the locked defaults above.
+
+Minimum finite checks:
+
+1. Launch MBAM from Case Select and confirm transition to Connecting.
+2. Confirm live handshake/baseline completes and app reaches Live Game.
+3. Perform at least one in-game interaction and confirm the game state updates (no stuck UI/desync/error screen).
+4. Return to menu and relaunch once to confirm repeated local use still works.
+
+### Tier 2: Canonical Full Manual Path
+
+Use the same locked defaults (Seed `A`, `D0`, `playtest`).
+
+This is the shared reference run for meaningful feature work:
+
+1. Launch MBAM and play through the normal investigation loop.
+2. Exercise clue gathering + dialogue progression (not just first interaction).
+3. Drive the run to a real case-end path (recovery or accusation flow).
+
+Run this path when behavior-level changes are made to runtime, protocol/session flow, or core app flow.
+
+### Tier 3: Secondary Coverage Sweep (B/C)
+
+Use the same settings except seed:
+
+- seed `B`
+- seed `C`
+
+Purpose:
+
+- broaden seeded branch coverage,
+- catch seed-specific regressions not visible in Seed A.
+
+Run this sweep for larger gameplay/runtime/protocol changes; it is not the daily default gate.
 
 ## Runtime Verification
 
@@ -75,6 +114,18 @@ The frontend local flow should execute:
 2. connect to `WS /live?run_id=<run_id>`
 3. handshake and baseline
 4. interactive live session with command ACK/REJECT + frame diffs
+
+## Automated Tests vs Manual Live Play
+
+Automated backend/frontend tests are required, but they do not replace live manual play.
+
+- Use automated tests for contract/regression confidence.
+- Use the three-tier playtest standard above to verify real user-flow behavior through the canonical host.
+
+## Terminology
+
+- `playtest` is the canonical daily launch mode/profile.
+- `demo` presentation/profile is secondary and should not replace the canonical playtest standard.
 
 ## Local Config Knobs
 

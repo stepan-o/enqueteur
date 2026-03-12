@@ -54,6 +54,8 @@ Blessed daily local playtest path:
 - Difficulty: `D0`
 - Mode: `playtest`
 
+Shared playtest standard (daily smoke, canonical full manual, and B/C sweep) is defined in [Local Playtest Workflow](docs/enqueteur/local_playtest_workflow.md#locked-playtest-standard).
+
 ## Basic Verification
 
 Backend readiness:
