@@ -100,3 +100,5 @@ npm test
 - `HOST_SHUTTING_DOWN`: backend is stopping; restart backend and reconnect.
 
 See [Local Playtest Workflow](docs/enqueteur/local_playtest_workflow.md) for the full local runbook and config notes.
+
+Architecture decision reference: [ADR-0001 Canonical Local Runtime Host](docs/enqueteur/adr-0001-canonical-local-runtime-host.md).
