@@ -34,7 +34,7 @@ describe("Phase S6 backend target resolution", () => {
         expect(resolved).toBe("http://localhost:7777");
     });
 
-    it("defaults local-dev API base to port 7777 when running in dev", () => {
+    it("defaults local-dev API base to canonical backend origin in dev", () => {
         const resolved = resolveBackendApiBaseUrl({
             env: {
                 DEV: true,
@@ -45,7 +45,31 @@ describe("Phase S6 backend target resolution", () => {
             },
         });
 
-        expect(resolved).toBe("http://localhost:7777");
+        expect(resolved).toBe("http://127.0.0.1:7777");
+    });
+
+    it("keeps canonical local backend origin regardless of frontend location host/protocol", () => {
+        const fromHttpsLocalhost = resolveBackendApiBaseUrl({
+            env: {
+                DEV: true,
+            },
+            location: {
+                protocol: "https:",
+                hostname: "localhost",
+            },
+        });
+        const fromHttpLan = resolveBackendApiBaseUrl({
+            env: {
+                DEV: true,
+            },
+            location: {
+                protocol: "http:",
+                hostname: "192.168.1.42",
+            },
+        });
+
+        expect(fromHttpsLocalhost).toBe("http://127.0.0.1:7777");
+        expect(fromHttpLan).toBe("http://127.0.0.1:7777");
     });
 
     it("falls back to empty base outside dev when no value is configured", () => {

@@ -1,5 +1,4 @@
-const DEFAULT_LOCAL_BACKEND_HOST = "127.0.0.1";
-const DEFAULT_LOCAL_BACKEND_PORT = 7777;
+const DEFAULT_LOCAL_BACKEND_ORIGIN = "http://127.0.0.1:7777";
 
 type BackendTargetEnv = {
     VITE_ENQUETEUR_API_BASE_URL?: string;
@@ -33,17 +32,18 @@ export function resolveBackendApiBaseUrl(opts: ResolveBackendApiBaseUrlOpts = {}
         return "";
     }
 
-    return buildLocalBackendOrigin(opts.location ?? readGlobalLocation());
+    return resolveLocalDevBackendOrigin(opts.location ?? readGlobalLocation());
 }
 
 function isDevMode(env: BackendTargetEnv | undefined): boolean {
     return Boolean(env?.DEV);
 }
 
-function buildLocalBackendOrigin(location: BackendTargetLocation): string {
-    const protocol = location?.protocol === "https:" ? "https:" : "http:";
-    const hostname = normalize(location?.hostname) ?? DEFAULT_LOCAL_BACKEND_HOST;
-    return `${protocol}//${hostname}:${DEFAULT_LOCAL_BACKEND_PORT}`;
+function resolveLocalDevBackendOrigin(location: BackendTargetLocation): string {
+    // S6 local-dev target: canonical backend host remains Python ASGI on 127.0.0.1:7777.
+    // We still touch location to keep behavior deterministic in tests and SSR-like environments.
+    void location;
+    return DEFAULT_LOCAL_BACKEND_ORIGIN;
 }
 
 function readImportMetaEnv(): BackendTargetEnv | undefined {
