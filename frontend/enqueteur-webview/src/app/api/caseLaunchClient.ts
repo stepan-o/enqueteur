@@ -1,4 +1,5 @@
 import type { EnqueteurCaseId } from "../appState";
+import { resolveBackendApiBaseUrl } from "./backendTarget";
 
 export type CaseLaunchDifficultyProfile = "D0" | "D1";
 export type CaseLaunchMode = "playtest" | "dev";
@@ -85,12 +86,9 @@ export function createCaseLaunchClient(opts: CreateCaseLaunchClientOpts = {}): C
 }
 
 function resolveApiBaseUrl(configuredBaseUrl?: string): string {
-    if (configuredBaseUrl && configuredBaseUrl.trim()) {
-        return configuredBaseUrl.trim();
-    }
-    const env = (import.meta as { env?: { VITE_ENQUETEUR_API_BASE_URL?: string } }).env;
-    const envValue = (env?.VITE_ENQUETEUR_API_BASE_URL ?? "").trim();
-    return envValue;
+    return resolveBackendApiBaseUrl({
+        configuredBaseUrl,
+    });
 }
 
 function joinApiPath(baseUrl: string, path: string): string {
