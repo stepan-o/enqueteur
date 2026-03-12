@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import pytest
 
 from backend.server.errors import RunNotFoundError
@@ -53,6 +54,50 @@ def test_run_registry_touch_activity_tracks_session_hint() -> None:
 
     touched = registry.touch_activity("run-123", session_id="session-1")
     assert touched.host.last_session_id == "session-1"
+
+
+def test_run_registry_tracks_attach_and_detach_state() -> None:
+    registry = RunRegistry()
+    payload = _launch_payload()
+    registry.register_launched_run(launch_payload=payload, started_run=object())
+
+    attached = registry.attach_session("run-123", session_id="session-1")
+    assert attached.host.active_session_id == "session-1"
+    assert attached.host.last_session_id == "session-1"
+    assert attached.host.detached_at is None
+
+    detached = registry.detach_session("run-123", session_id="session-1")
+    assert detached is not None
+    assert detached.host.active_session_id is None
+    assert detached.host.last_session_id == "session-1"
+    assert isinstance(detached.host.detached_at, str) and detached.host.detached_at
+
+
+def test_run_registry_lazily_evicts_stale_detached_runs() -> None:
+    registry = RunRegistry(stale_run_ttl_seconds=1)
+    payload = _launch_payload()
+    registry.register_launched_run(launch_payload=payload, started_run=object())
+
+    entry = registry.require("run-123")
+    entry.host.last_activity_at = (datetime.now(UTC) - timedelta(seconds=5)).isoformat()
+    entry.host.active_session_id = None
+    registry.put(entry)
+
+    assert registry.get("run-123") is None
+    assert registry.count() == 0
+
+
+def test_run_registry_does_not_evict_active_sessions_even_if_old() -> None:
+    registry = RunRegistry(stale_run_ttl_seconds=1)
+    payload = _launch_payload()
+    registry.register_launched_run(launch_payload=payload, started_run=object())
+    registry.attach_session("run-123", session_id="session-live")
+
+    entry = registry.require("run-123")
+    entry.host.last_activity_at = (datetime.now(UTC) - timedelta(seconds=5)).isoformat()
+    registry.put(entry)
+
+    assert registry.get("run-123") is not None
 
 
 def test_run_registry_remove_and_require_behavior() -> None:

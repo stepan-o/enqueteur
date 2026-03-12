@@ -166,6 +166,7 @@ class SessionController:
             run_id=live_session.run.run_id,
             connection_id=live_session.connection_id,
         )
+        self._attach_run_session(record)
         logger.info(
             "live session opened connection_id=%s run_id=%s",
             record.connection_id,
@@ -401,6 +402,13 @@ class SessionController:
             return
         self._run_registry.touch_activity(record.run_id, session_id=record.connection_id)
 
+    def _attach_run_session(self, record: SessionRecord) -> None:
+        if not record.run_id:
+            return
+        if not self._run_registry.exists(record.run_id):
+            return
+        self._run_registry.attach_session(record.run_id, session_id=record.connection_id)
+
     async def _emit_command_diff_if_needed(
         self,
         *,
@@ -461,6 +469,8 @@ class SessionController:
         if closed is not None and isinstance(closed.close_reason, str) and closed.close_reason:
             close_reason = closed.close_reason
         self._touch_run_activity(record)
+        if record.run_id:
+            self._run_registry.detach_session(record.run_id, session_id=record.connection_id)
         self._close_tracked_session(record.connection_id, reason=close_reason or CLIENT_DISCONNECT_REASON)
         logger.info(
             "live session closed connection_id=%s run_id=%s reason=%s",

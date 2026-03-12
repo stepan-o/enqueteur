@@ -21,7 +21,7 @@ async def server_lifespan(app: Any):
     """Initialize transport-layer singletons for local runtime hosting."""
 
     config: ServerConfig = app.state.server_config
-    run_registry = RunRegistry()
+    run_registry = RunRegistry(stale_run_ttl_seconds=config.run_ttl_seconds)
     session_controller = SessionController(
         run_registry=run_registry,
         verbose_protocol_logging=config.verbose_protocol_logging,

@@ -126,11 +126,28 @@ class RunHostMetadata:
     registered_at: str = field(default_factory=utc_now_iso)
     last_activity_at: str = field(default_factory=utc_now_iso)
     last_session_id: str | None = None
+    active_session_id: str | None = None
+    detached_at: str | None = None
 
     def touch(self, *, session_id: str | None = None) -> "RunHostMetadata":
         self.last_activity_at = utc_now_iso()
         if session_id is not None:
             self.last_session_id = session_id
+        return self
+
+    def attach(self, *, session_id: str) -> "RunHostMetadata":
+        self.last_activity_at = utc_now_iso()
+        self.last_session_id = session_id
+        self.active_session_id = session_id
+        self.detached_at = None
+        return self
+
+    def detach(self, *, session_id: str | None = None) -> "RunHostMetadata":
+        self.last_activity_at = utc_now_iso()
+        if session_id is not None:
+            self.last_session_id = session_id
+        self.active_session_id = None
+        self.detached_at = self.last_activity_at
         return self
 
 

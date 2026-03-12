@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 import json
 from typing import Any
 from urllib.parse import urlsplit
@@ -277,6 +278,45 @@ def test_s4_asgi_live_rejects_missing_and_unknown_run() -> None:
             assert [env["msg_type"] for env in unknown_env] == ["ERROR"]
             assert unknown_env[0]["payload"]["code"] == "RUN_NOT_FOUND"
             assert unknown_run.close_frames == ((RUN_NOT_FOUND_WS_CLOSE_CODE, RUN_NOT_FOUND_WS_CLOSE_REASON),)
+
+    asyncio.run(_scenario())
+
+
+def test_s7_asgi_live_rejects_expired_run_after_lazy_registry_eviction() -> None:
+    app = create_app()
+
+    async def _scenario() -> None:
+        async with app.router.lifespan_context(app):
+            launch = await _post_json(
+                app,
+                path=CASE_START_PATH,
+                payload={
+                    "case_id": "MBAM_01",
+                    "seed": "A",
+                    "difficulty_profile": "D0",
+                    "mode": "playtest",
+                },
+            )
+            launch_payload = launch.json()
+            assert launch.status_code == 200
+            run_id = str(launch_payload["run_id"])
+
+            entry = app.state.run_registry.require(run_id)
+            entry.host.last_activity_at = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+            entry.host.active_session_id = None
+            app.state.run_registry.put(entry)
+
+            ws_result = await _asgi_ws_session(
+                app,
+                path_or_url=str(launch_payload["ws_url"]),
+            )
+
+            assert ws_result.accepted is True
+            envelopes = ws_result.decoded_envelopes()
+            assert [env["msg_type"] for env in envelopes] == ["ERROR"]
+            assert envelopes[0]["payload"]["code"] == "RUN_NOT_FOUND"
+            assert ws_result.close_frames == ((RUN_NOT_FOUND_WS_CLOSE_CODE, RUN_NOT_FOUND_WS_CLOSE_REASON),)
+            assert app.state.run_registry.get(run_id) is None
 
     asyncio.run(_scenario())
 
