@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Run helper: `python -m backend.server`."""
+"""Run helper for the canonical local runtime host: `python -m backend.server`."""
 
 from .app import run_dev
 
@@ -11,4 +11,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""ASGI lifespan wiring for server-shell app-scoped objects."""
+"""ASGI lifespan wiring for local runtime-host app-scoped objects."""
 
 from contextlib import asynccontextmanager
 import logging

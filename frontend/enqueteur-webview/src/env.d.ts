@@ -1,6 +1,7 @@
 // src/env.d.ts
 interface ImportMetaEnv {
     readonly VITE_ENQUETEUR_API_BASE_URL?: string;
+    // Legacy standalone viewer toggles (replay/debug support), not canonical appFlow startup.
     readonly VITE_KVP_WS_URL?: string;
     readonly VITE_KVP_WS_URL_SIM4?: string;
     readonly VITE_KVP_WS_URL_SIM_SIM?: string;

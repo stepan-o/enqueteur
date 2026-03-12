@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""ASGI app factory for Enqueteur local transport host shell."""
+"""ASGI app factory for the Enqueteur canonical local runtime host."""
 
 from typing import Any
 
@@ -11,7 +11,7 @@ from .routes_ws import register_ws_routes
 
 
 def create_app(config: ServerConfig | None = None) -> Any:
-    """Create and configure the server-shell ASGI app."""
+    """Create and configure the local runtime host ASGI app."""
 
     resolved_config = config if config is not None else load_server_config()
 
@@ -41,7 +41,7 @@ def create_app(config: ServerConfig | None = None) -> Any:
 
 
 def run_dev(config: ServerConfig | None = None) -> None:
-    """Run local uvicorn host for server-shell manual testing."""
+    """Run local uvicorn host for canonical runtime host manual testing."""
 
     resolved_config = config if config is not None else load_server_config()
     import uvicorn

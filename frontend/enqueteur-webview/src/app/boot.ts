@@ -1,4 +1,8 @@
 // src/app/boot.ts
+//
+// Legacy standalone viewer boot path.
+// Canonical human-play startup is `src/main.ts -> mountAppFlow()`, which drives
+// launch + live attach via the backend host (`POST /api/cases/start` then `/live`).
 import { WorldStore } from "../state/worldStore";
 import { OverlayStore } from "../state/overlayStore";
 import { ViewerStore } from "../state/viewerStore";
@@ -56,13 +60,18 @@ export type ViewerHandle = {
     setHudVisible: (visible: boolean) => void;
 };
 
+const LEGACY_STANDALONE_DEFAULT_MODE: BootMode = "offline";
+const LEGACY_STANDALONE_AUTOSTART = true;
+
 export function boot(opts: BootOpts): ViewerHandle {
     const store = new WorldStore();
     const overlayStore = new OverlayStore();
     const viewerStore = new ViewerStore();
     const env = (import.meta as any).env ?? {};
-    const mode = (opts.mode ?? env.VITE_WEBVIEW_MODE ?? "offline") as BootMode;
-    const autoStart = opts.autoStart ?? true;
+    // Keep legacy standalone defaults for compatibility with replay/debug usage.
+    // Canonical app startup sets these explicitly through appFlow.
+    const mode = (opts.mode ?? env.VITE_WEBVIEW_MODE ?? LEGACY_STANDALONE_DEFAULT_MODE) as BootMode;
+    const autoStart = opts.autoStart ?? LEGACY_STANDALONE_AUTOSTART;
     const configuredShellMode = parseShellMode(env.VITE_ENQUETEUR_PRESENTATION_PROFILE);
     const defaultShellMode: BootShellMode = mode === "live" ? (configuredShellMode ?? "playtest") : "dev";
     let offlineHandle: OfflineRunHandle | null = null;
@@ -172,6 +181,8 @@ export function boot(opts: BootOpts): ViewerHandle {
     );
 
     const resolveLiveWsUrl = (): string => {
+        // Legacy compatibility fallback for standalone KvpClient debugging.
+        // Canonical live flow gets ws_url from launch metadata in appFlow.
         return opts.wsUrl ?? env.VITE_KVP_WS_URL_SIM4 ?? env.VITE_KVP_WS_URL ?? "ws://localhost:7777/kvp";
     };
 

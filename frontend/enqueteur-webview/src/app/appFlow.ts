@@ -308,6 +308,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
         beginLiveConnection(latestSession.caseId, attemptRevision, latestSession);
     };
 
+    // Canonical runtime startup path: appFlow owns launch/connect lifecycle and
+    // uses boot only as a render shell with explicit live mode + no auto-start.
     const createLiveViewer = opts.createLiveViewer ?? (async (mountEl: HTMLElement) => {
         const { boot } = await loadBootModule();
         const shellMode = resolveShellModeForSession(launchSessionStore.getLatestSession());

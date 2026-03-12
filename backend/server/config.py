@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Runtime config for the local Enqueteur ASGI server shell."""
+"""Runtime config for the Enqueteur local ASGI runtime host."""
 
 from dataclasses import dataclass
 import os
