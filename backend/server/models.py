@@ -80,7 +80,6 @@ class SessionState(StrEnum):
     SUBSCRIBED = "SUBSCRIBED"
     BASELINE_SENT = "BASELINE_SENT"
     LIVE = "LIVE"
-    ACTIVE = "ACTIVE"
     CLOSING = "CLOSING"
     CLOSED = "CLOSED"
 

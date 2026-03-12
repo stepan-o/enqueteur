@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Per-websocket session lifecycle controller for live handshake and runtime streaming."""
+"""Per-websocket session lifecycle controller for live handshake, commands, and diffs."""
 
 import asyncio
 from datetime import UTC, datetime
@@ -36,7 +36,7 @@ SESSION_CLOSED_REASON = "SESSION_CLOSED"
 
 
 class SessionController:
-    """Tracks ws sessions and owns handshake/baseline sequencing for /live."""
+    """Tracks ws sessions and owns /live lifecycle from handshake through interactive flow."""
 
     def __init__(self, *, run_registry: RunRegistry) -> None:
         self._run_registry = run_registry
@@ -99,7 +99,7 @@ class SessionController:
         with self._lock:
             return tuple(self._sessions.values())
 
-    async def serve_live_handshake_baseline(
+    async def serve_live_session(
         self,
         *,
         websocket: Any,
@@ -266,6 +266,19 @@ class SessionController:
                 live_session=live_session,
                 reason=termination_reason,
             )
+
+    async def serve_live_handshake_baseline(
+        self,
+        *,
+        websocket: Any,
+        connection_target: str | None = None,
+    ) -> SessionRecord | None:
+        """Backward-compatible alias for the canonical live session entrypoint."""
+
+        return await self.serve_live_session(
+            websocket=websocket,
+            connection_target=connection_target,
+        )
 
     def clear(self) -> None:
         with self._lock:

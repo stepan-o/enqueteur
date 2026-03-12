@@ -13,7 +13,7 @@ LIVE_WS_PATH = "/live"
 WS_POLICY_VIOLATION = MISSING_RUN_ID_WS_CLOSE_CODE
 WS_TRY_AGAIN_LATER = 1013
 WS_INTERNAL_ERROR = 1011
-LIVE_WS_PHASE_GATE = "S4"
+LIVE_WS_PHASE_GATE = "S5"
 
 
 def register_ws_routes(app: Any) -> None:
@@ -37,7 +37,7 @@ def register_ws_routes(app: Any) -> None:
             await websocket.close(code=WS_INTERNAL_ERROR, reason="HOST_NOT_READY")
             return
 
-        await session_controller.serve_live_handshake_baseline(
+        await session_controller.serve_live_session(
             websocket=websocket,
             connection_target=str(websocket.url),
         )
