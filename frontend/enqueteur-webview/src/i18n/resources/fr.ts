@@ -49,4 +49,7 @@ export const FR_MESSAGES: Partial<Record<TranslationKey, string>> = {
     "flow.error.detail.startupOutOfSync": "Ce client et le serveur ne sont pas synchronises au demarrage. Retournez au menu et relancez.",
     "flow.error.detail.socketClosed": "La connexion live s'est fermee avant que le dossier soit pret.",
     "flow.error.detail.caseNotOpened": "Le dossier n'a pas pu etre ouvert pour le moment.",
+    "flow.locale.label": "Langue",
+    "flow.locale.option.en": "EN",
+    "flow.locale.option.fr": "FR",
 };

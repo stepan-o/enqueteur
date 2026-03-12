@@ -76,6 +76,60 @@ body {
   border-color: rgba(31, 38, 41, 0.28);
 }
 
+.flow-locale-switch {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(31, 38, 41, 0.25);
+  background: rgba(255, 252, 246, 0.94);
+  box-shadow: 0 8px 20px rgba(30, 35, 40, 0.14);
+}
+
+.flow-locale-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.flow-locale-options {
+  display: inline-flex;
+  border: 1px solid rgba(31, 38, 41, 0.25);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.flow-locale-btn {
+  min-width: 42px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.flow-locale-btn + .flow-locale-btn {
+  border-left: 1px solid rgba(31, 38, 41, 0.2);
+}
+
+.flow-locale-btn[data-active="true"] {
+  background: rgba(30, 127, 136, 0.16);
+  color: #154e53;
+}
+
+.flow-locale-btn:hover {
+  box-shadow: none;
+}
+
 .flow-screen {
   width: min(720px, 92vw);
   display: grid;
@@ -1050,6 +1104,22 @@ button:hover {
 }
 
 @media (max-width: 820px) {
+  .flow-locale-switch {
+    top: 10px;
+    right: 10px;
+    gap: 6px;
+    padding: 7px 8px;
+  }
+
+  .flow-locale-label {
+    font-size: 10px;
+  }
+
+  .flow-locale-btn {
+    min-width: 38px;
+    padding: 5px 8px;
+  }
+
   .app-chrome {
     left: 10px;
     right: 10px;

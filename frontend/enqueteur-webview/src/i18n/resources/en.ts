@@ -47,6 +47,9 @@ export const EN_MESSAGES = {
     "flow.error.detail.startupOutOfSync": "This client and server are not in sync for startup. Return to menu and relaunch.",
     "flow.error.detail.socketClosed": "The live connection closed before the case was ready.",
     "flow.error.detail.caseNotOpened": "The case could not be opened right now.",
+    "flow.locale.label": "Language",
+    "flow.locale.option.en": "EN",
+    "flow.locale.option.fr": "FR",
     "i18n.seed.onlyEnglish": "English-only seed fallback.",
 } as const;
 

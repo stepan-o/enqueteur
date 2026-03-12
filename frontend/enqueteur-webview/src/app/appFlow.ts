@@ -38,7 +38,7 @@ import {
     type SubscribePayload,
 } from "./live/enqueteurLiveClient";
 import type { LiveCommandBridge } from "./live/liveCommandBridge";
-import { createScopedTranslator, getSharedLocaleStore, type LocaleStore } from "../i18n";
+import { createScopedTranslator, getSharedLocaleStore, type AppLocale, type LocaleStore } from "../i18n";
 
 export type AppFlowOpts = {
     mountEl: HTMLElement;
@@ -120,11 +120,27 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     mainMenuBtn.type = "button";
     mainMenuBtn.className = "flow-action-btn flow-live-action-btn";
 
+    const localeSwitch = document.createElement("div");
+    localeSwitch.className = "flow-locale-switch";
+    localeSwitch.setAttribute("role", "group");
+
+    const localeLabel = document.createElement("span");
+    localeLabel.className = "flow-locale-label";
+
+    const localeOptions = document.createElement("div");
+    localeOptions.className = "flow-locale-options";
+
+    const localeEnBtn = createLocaleOptionButton("en");
+    const localeFrBtn = createLocaleOptionButton("fr");
+    localeOptions.append(localeEnBtn, localeFrBtn);
+    localeSwitch.append(localeLabel, localeOptions);
+
     liveActionBar.append(backToCasesBtn, mainMenuBtn);
     liveLayer.appendChild(liveActionBar);
 
     root.appendChild(preGameLayer);
     root.appendChild(liveLayer);
+    root.appendChild(localeSwitch);
     opts.mountEl.appendChild(root);
 
     const stateStore = new AppStateStore({ kind: "BOOT" });
@@ -364,6 +380,11 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     const render = (state: AppState): void => {
         backToCasesBtn.textContent = t("flow.liveAction.backToCases");
         mainMenuBtn.textContent = t("flow.liveAction.mainMenu");
+        localeLabel.textContent = t("flow.locale.label");
+        localeSwitch.setAttribute("aria-label", t("flow.locale.label"));
+        localeEnBtn.textContent = t("flow.locale.option.en");
+        localeFrBtn.textContent = t("flow.locale.option.fr");
+        syncLocaleButtonState(localeStore.getLocale());
         preGameLayer.innerHTML = "";
 
         if (state.kind === "LIVE_GAME") {
@@ -980,6 +1001,21 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
     });
     beginBootFlow(stateStore, { loadingDurationMs: opts.loadingDurationMs });
 
+    function createLocaleOptionButton(locale: AppLocale): HTMLButtonElement {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "flow-locale-btn";
+        button.addEventListener("click", () => {
+            localeStore.setLocale(locale);
+        });
+        return button;
+    }
+
+    function syncLocaleButtonState(activeLocale: AppLocale): void {
+        setLocaleButtonState(localeEnBtn, activeLocale === "en");
+        setLocaleButtonState(localeFrBtn, activeLocale === "fr");
+    }
+
     return {
         getState: () => stateStore.getState(),
         getLaunchSession: () => launchSessionStore.getLatestSession(),
@@ -997,6 +1033,11 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             root.remove();
         },
     };
+}
+
+function setLocaleButtonState(button: HTMLButtonElement, active: boolean): void {
+    button.dataset.active = active ? "true" : "false";
+    button.setAttribute("aria-pressed", active ? "true" : "false");
 }
 
 function renderScreen(title: string, body: string, children: HTMLElement[] = []): HTMLElement {
