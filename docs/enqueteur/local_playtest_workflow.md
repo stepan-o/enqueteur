@@ -2,6 +2,8 @@
 
 This is the canonical local developer workflow for live Enqueteur playtesting.
 
+If this workflow conflicts with older planning notes, follow this document plus `README.md` and ADR-0001.
+
 ## Canonical Topology
 
 - Backend: Python ASGI host (`backend/server`) on `127.0.0.1:7777`

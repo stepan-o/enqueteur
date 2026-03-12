@@ -102,3 +102,13 @@ npm test
 See [Local Playtest Workflow](docs/enqueteur/local_playtest_workflow.md) for the full local runbook and config notes.
 
 Architecture decision reference: [ADR-0001 Canonical Local Runtime Host](docs/enqueteur/adr-0001-canonical-local-runtime-host.md).
+
+## Documentation Precedence
+
+For local runtime operation and human playtesting, treat these as source of truth (in order):
+
+1. `README.md`
+2. `docs/enqueteur/local_playtest_workflow.md`
+3. `docs/enqueteur/adr-0001-canonical-local-runtime-host.md`
+
+Some older planning/spec documents in `docs/enqueteur/` contain historical assumptions from earlier phases; when they conflict with the above, follow the canonical runtime and playtest docs.
