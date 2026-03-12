@@ -1,4 +1,4 @@
-"""HTTP route shell for transport lifecycle endpoints."""
+"""HTTP routes for runtime-host transport lifecycle endpoints."""
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -24,6 +24,7 @@ READINESS_PATH = "/readyz"
 CASE_START_PATH = "/api/cases/start"
 CASE_START_PHASE_GATE = "S2"
 HOST_NOT_READY_CODE = "HOST_NOT_READY"
+RUNTIME_HOST_SERVICE_NAME = "enqueteur-runtime-host"
 logger = logging.getLogger(__name__)
 
 
@@ -133,7 +134,7 @@ def register_http_routes(app: Any) -> None:
     async def healthz() -> dict[str, str]:
         payload = ServerHealthResponse(
             status="ok",
-            service="enqueteur-server-shell",
+            service=RUNTIME_HOST_SERVICE_NAME,
             started_at=started_at,
         )
         return payload.to_dict()
@@ -148,7 +149,7 @@ def register_http_routes(app: Any) -> None:
             status = "ready" if started else "starting"
         payload = ServerHealthResponse(
             status=status,
-            service="enqueteur-server-shell",
+            service=RUNTIME_HOST_SERVICE_NAME,
             started_at=started_at,
         )
         return payload.to_dict()
@@ -199,6 +200,7 @@ __all__ = [
     "CASE_START_PATH",
     "CASE_START_PHASE_GATE",
     "HOST_NOT_READY_CODE",
+    "RUNTIME_HOST_SERVICE_NAME",
     "build_ws_base_url",
     "build_transport_error_payload",
     "launch_case_from_transport",

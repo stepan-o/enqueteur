@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-"""Server shell exceptions."""
+"""Runtime-host transport exceptions."""
 
 
 class ServerShellError(RuntimeError):
-    """Base exception for server-shell orchestration errors."""
+    """Base exception for runtime-host orchestration errors.
+
+    Historical class name is kept to avoid broad churn.
+    """
 
 
 class TransportRouteError(ServerShellError):

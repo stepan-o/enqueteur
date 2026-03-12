@@ -38,10 +38,10 @@ async def server_lifespan(app: Any):
     app.state.shutting_down = False
     app.state.shutdown_note = ""
     app.state.startup_note = (
-        f"server-shell started host={config.host}:{config.port} log_level={config.log_level}"
+        f"runtime-host started host={config.host}:{config.port} log_level={config.log_level}"
     )
     logger.info(
-        "server-shell startup host=%s port=%s log_level=%s verbose_protocol_logging=%s",
+        "runtime-host startup host=%s port=%s log_level=%s verbose_protocol_logging=%s",
         config.host,
         config.port,
         config.log_level,
@@ -52,14 +52,14 @@ async def server_lifespan(app: Any):
     finally:
         app.state.started = False
         app.state.shutting_down = True
-        app.state.shutdown_note = "server-shell shutting down"
+        app.state.shutdown_note = "runtime-host shutting down"
         session_count = len(session_controller.list_sessions())
         run_count = run_registry.count()
         session_controller.begin_shutdown()
         session_controller.clear()
         run_registry.clear()
         logger.info(
-            "server-shell shutdown sessions_cleared=%d runs_cleared=%d",
+            "runtime-host shutdown sessions_cleared=%d runs_cleared=%d",
             session_count,
             run_count,
         )

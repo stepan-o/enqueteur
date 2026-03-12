@@ -257,7 +257,7 @@ def test_s7_lifespan_sets_host_state_and_readiness_status() -> None:
 
         assert app.state.started is False
         assert app.state.shutting_down is True
-        assert app.state.shutdown_note == "server-shell shutting down"
+        assert app.state.shutdown_note == "runtime-host shutting down"
         assert app.state.session_controller.accepting_connections is False
 
     asyncio.run(_scenario())
