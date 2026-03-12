@@ -14,7 +14,6 @@ LIVE_WS_PATH = "/live"
 WS_POLICY_VIOLATION = MISSING_RUN_ID_WS_CLOSE_CODE
 WS_TRY_AGAIN_LATER = 1013
 WS_INTERNAL_ERROR = 1011
-LIVE_WS_PHASE_GATE = "S5"
 HOST_SHUTTING_DOWN_CODE = "HOST_SHUTTING_DOWN"
 
 logger = logging.getLogger(__name__)
@@ -65,7 +64,6 @@ def register_ws_routes(app: Any) -> None:
 __all__ = [
     "register_ws_routes",
     "LIVE_WS_PATH",
-    "LIVE_WS_PHASE_GATE",
     "WS_POLICY_VIOLATION",
     "WS_TRY_AGAIN_LATER",
     "WS_INTERNAL_ERROR",

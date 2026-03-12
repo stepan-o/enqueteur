@@ -1,4 +1,3 @@
-// src/kvp/client.ts
 import type {
     FrameDiffPayload,
     FullSnapshotPayload,
@@ -8,13 +7,13 @@ import type {
 import type { ViewerPlugin, ViewerPluginRegistry } from "../viewers/core/viewerPlugin";
 
 /**
- * KVP-0001 WebSocket client (WEBVIEW-0001).
- * - Protocol-first: ViewerHello → KernelHello → Subscribe → Snapshot/Diff stream
- * - No simulation logic.
- * - Strict: unknown msg types are rejected (desync).
+ * Legacy generic KVP WebSocket client kept for sim4/offline-era debug flows.
  *
- * NOTE: This file includes minimal type definitions to compile immediately.
- * Later, move these into src/kvp/types.ts + schema-generated types.
+ * Canonical Enqueteur live play now goes through appFlow + EnqueteurLiveClient
+ * (`src/app/live/enqueteurLiveClient.ts`) and should be treated as source of
+ * truth for local human-play transport behavior.
+ *
+ * This client remains intentionally narrow and compatibility-oriented.
  */
 
 /* ---------------------------------------

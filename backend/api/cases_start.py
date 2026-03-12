@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""API contract and handler skeleton for deterministic case launch."""
+"""API contract and deterministic MBAM launch handler."""
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -27,6 +27,9 @@ MODE_CHANNELS: dict["StartCaseMode", tuple[str, ...]] = {
     "playtest": ("WORLD", "AGENTS", "ITEMS", "EVENTS"),
     "dev": ("WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"),
 }
+# NOTE:
+# These channels configure SimRunner integration/export slices for the launched run.
+# They are not the canonical Enqueteur LIVE subscribe channel contract used on /live.
 
 StartCaseMode = Literal["playtest", "dev"]
 
@@ -130,7 +133,7 @@ class CaseStartResponse:
 
 @dataclass(frozen=True)
 class StartedCaseRun:
-    """Internal run registration record for future live-session wiring."""
+    """Internal run registration record attached to the in-memory launch registry."""
 
     run_id: str
     world_id: str
@@ -144,7 +147,7 @@ class StartedCaseRun:
 
 
 class CaseRunRegistry:
-    """Small in-memory run registry placeholder for upcoming live host integration."""
+    """In-memory registry of launched runs used by the host attach path."""
 
     def __init__(self) -> None:
         self._runs: dict[str, StartedCaseRun] = {}
@@ -166,7 +169,7 @@ class CaseRunRegistry:
 
 
 class CaseStartService:
-    """Launch service skeleton for deterministic MBAM case runs."""
+    """Launch service for deterministic MBAM case runs."""
 
     def __init__(self, *, ws_base_url: str = DEFAULT_WS_BASE_URL, registry: CaseRunRegistry | None = None) -> None:
         self._ws_base_url = ws_base_url.rstrip("/")
@@ -263,7 +266,7 @@ def create_deterministic_mbam_runner(
     rng_seed: int,
     channels: tuple[str, ...],
 ) -> SimRunner:
-    """Create a deterministic MBAM run instance ready for future live-session attach."""
+    """Create a deterministic MBAM run instance ready for host attach."""
     clock = TickClock(dt=DEFAULT_CLOCK_DT_SECONDS)
     ecs_world = ECSWorld()
     world_ctx = WorldContext()
@@ -311,7 +314,7 @@ def handle_post_cases_start(
     *,
     service: CaseStartService | None = None,
 ) -> tuple[int, dict[str, Any]]:
-    """Route handler skeleton for POST /api/cases/start."""
+    """Route handler for POST /api/cases/start."""
     case_service = service if service is not None else get_default_case_start_service()
     try:
         req = CaseStartRequest.from_payload(payload)

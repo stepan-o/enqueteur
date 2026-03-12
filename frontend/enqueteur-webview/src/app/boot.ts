@@ -71,6 +71,8 @@ export function boot(opts: BootOpts): ViewerHandle {
     let currentMode: BootMode = mode;
     let shellMode: BootShellMode = opts.shellMode ?? defaultShellMode;
     let liveCommandBridge: LiveCommandBridge | null = null;
+    // Legacy transport client kept for standalone sim4-era debug wiring.
+    // Canonical local live play uses appFlow + EnqueteurLiveClient.
     let client: KvpClient | null = null;
     let activeLiveWsUrl: string | null = null;
     const actionBridge = createFrontendActionBridge({
@@ -183,6 +185,7 @@ export function boot(opts: BootOpts): ViewerHandle {
             supportedSchemaVersions: pluginRegistry.supportedSchemaVersions(),
             defaultSubscribe: {
                 stream: "LIVE",
+                // Legacy sim4 channel set for the compatibility KvpClient path.
                 channels: ["WORLD", "AGENTS", "ITEMS", "EVENTS", "DEBUG"],
                 diff_policy: "DIFF_ONLY",
                 snapshot_policy: "ON_JOIN",

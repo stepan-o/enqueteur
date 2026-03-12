@@ -2,12 +2,11 @@ from __future__ import annotations
 
 """Enqueteur LIVE WebSocket entrypoint and run-attachment host.
 
-Phase D2 scope:
-- attach incoming websocket connections to already-created runs
-- enforce KVP-ENQ-0001 handshake + subscribe lifecycle
-- validate protocol envelopes and sequencing via explicit state machine
-
-State streaming and gameplay command execution are intentionally deferred.
+This module owns transport-facing protocol orchestration for:
+- run attachment
+- handshake and baseline sequencing
+- post-baseline INPUT_COMMAND dispatch
+- FRAME_DIFF emission via host state projections
 """
 
 from dataclasses import asdict, dataclass
@@ -417,7 +416,7 @@ class EnqueteurLiveSessionHost:
         connection_id: str,
         command: ParsedInputCommand,
     ) -> CommandDispatchResult:
-        """Route a validated INPUT_COMMAND to the Enqueteur command handler skeleton."""
+        """Route a validated INPUT_COMMAND to the Enqueteur command handlers."""
 
         session = self._require_session(connection_id)
         started_run = self._require_started_run(session)
