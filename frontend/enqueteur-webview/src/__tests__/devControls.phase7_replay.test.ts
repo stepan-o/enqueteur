@@ -8,7 +8,7 @@ afterEach(() => {
     document.body.innerHTML = "";
 });
 
-describe("Phase 7 replay run panel", () => {
+describe("Phase 7 secondary replay QA: replay run panel", () => {
     it("renders seed, outcome, recap, and progression milestones from projected state", () => {
         const store = new WorldStore();
         store.applySnapshot(makeMbamSnapshot(8));

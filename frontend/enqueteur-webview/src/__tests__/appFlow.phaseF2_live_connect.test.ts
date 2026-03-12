@@ -167,8 +167,8 @@ afterEach(() => {
     document.body.innerHTML = "";
 });
 
-describe("Phase F2 live connect app flow", () => {
-    it("smokes demo-mode boot to baseline-gated LIVE_GAME through real pre-game screens", async () => {
+describe("Phase F2 canonical live app flow", () => {
+    it("smokes launch -> connect -> baseline-gated LIVE_GAME through real pre-game screens", async () => {
         vi.useFakeTimers();
         const originalUrl = window.location.href;
         window.history.pushState({}, "", "/?demo=1");

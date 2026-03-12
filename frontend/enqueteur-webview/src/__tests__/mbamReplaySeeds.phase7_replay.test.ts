@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { resolveMbamSeedRunBases } from "../app/mbamReplaySeeds";
 
-describe("Phase 7 replay seed run base resolution", () => {
+describe("Phase 7 secondary replay QA: seed run base resolution", () => {
     it("falls back to shared offline base when per-seed env values are absent", () => {
         const bases = resolveMbamSeedRunBases({}, "/demo/kvp_demo_1min");
         expect(bases).toEqual({

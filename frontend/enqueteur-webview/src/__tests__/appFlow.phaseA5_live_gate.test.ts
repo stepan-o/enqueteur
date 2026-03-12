@@ -54,7 +54,7 @@ afterEach(() => {
     document.body.innerHTML = "";
 });
 
-describe("Phase A5 app flow live shell gate", () => {
+describe("Phase A5 canonical app flow live shell gate", () => {
     it("does not mount gameplay shell during pre-game states", async () => {
         const viewer = makeFakeViewer();
         const createLiveViewer: NonNullable<AppFlowOpts["createLiveViewer"]> = vi.fn(

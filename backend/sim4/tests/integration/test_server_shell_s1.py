@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Canonical local runtime-host integration checks (historical filename kept)."""
+
 import asyncio
 import importlib
 import json
@@ -131,7 +133,7 @@ def test_canonical_asgi_target_imports_app_object() -> None:
     assert isinstance(app, FastAPI)
 
 
-def test_server_shell_registers_s1_route_surface() -> None:
+def test_canonical_runtime_host_registers_s1_route_surface() -> None:
     app = create_app()
     route_paths = {route.path for route in app.routes}
 

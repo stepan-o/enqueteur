@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""Canonical /live host-entrypoint checks for handshake/baseline/live flow.
+
+Historical filename retained for continuity with prior phase tracking.
+"""
+
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta

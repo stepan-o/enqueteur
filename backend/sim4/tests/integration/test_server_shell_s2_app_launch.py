@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Canonical /api/cases/start host-entrypoint checks (historical filename kept)."""
+
 import asyncio
 from dataclasses import dataclass
 import json
