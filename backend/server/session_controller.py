@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Per-websocket session lifecycle controller for live handshake/baseline flow."""
+"""Per-websocket session lifecycle controller for live handshake and runtime streaming."""
 
 from datetime import UTC, datetime
 import json
@@ -16,6 +16,7 @@ from backend.api.live_ws import (
     handle_enqueteur_live_disconnect,
     handle_enqueteur_live_incoming_message,
     open_enqueteur_live_websocket,
+    stream_enqueteur_frame_diff_loop,
 )
 from backend.sim4.integration.live_envelope import make_live_envelope, validate_live_envelope
 
@@ -213,11 +214,21 @@ class SessionController:
 
             while True:
                 raw_live_message = await websocket.receive_text()
-                await handle_enqueteur_live_incoming_message(
+                live_msg_type = _extract_msg_type(raw_live_message)
+                command_result = await handle_enqueteur_live_incoming_message(
                     websocket,
                     session=live_session,
                     raw_message=raw_live_message,
                     host=self._live_host,
+                )
+                current = self._live_host.get_session(live_session.connection_id)
+                if current is None or current.phase == "CLOSED":
+                    return record
+                await self._emit_command_diff_if_needed(
+                    websocket=websocket,
+                    live_session=live_session,
+                    msg_type=live_msg_type,
+                    command_result=command_result,
                 )
                 current = self._live_host.get_session(live_session.connection_id)
                 if current is None or current.phase == "CLOSED":
@@ -253,6 +264,26 @@ class SessionController:
         if not self._run_registry.exists(record.run_id):
             return
         self._run_registry.touch_activity(record.run_id, session_id=record.connection_id)
+
+    async def _emit_command_diff_if_needed(
+        self,
+        *,
+        websocket: Any,
+        live_session: Any,
+        msg_type: str | None,
+        command_result: Any,
+    ) -> None:
+        if msg_type != "INPUT_COMMAND":
+            return
+        if command_result is None or not bool(getattr(command_result, "accepted", False)):
+            return
+        await stream_enqueteur_frame_diff_loop(
+            websocket,
+            session=live_session,
+            host=self._live_host,
+            max_frames=1,
+            tick_interval_seconds=0.0,
+        )
 
 
 class _RunRegistryAdapter:

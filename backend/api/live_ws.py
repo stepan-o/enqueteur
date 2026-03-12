@@ -1387,7 +1387,7 @@ async def handle_enqueteur_live_incoming_message(
     session: EnqueteurLiveSession,
     raw_message: str | bytes,
     host: EnqueteurLiveSessionHost | None = None,
-) -> None:
+) -> CommandDispatchResult | None:
     """Handle one inbound websocket message using strict KVP envelope dispatch."""
 
     session_host = host if host is not None else get_default_enqueteur_live_session_host()
@@ -1413,7 +1413,7 @@ async def handle_enqueteur_live_incoming_message(
         if msg_type == "VIEWER_HELLO":
             kernel_hello = session_host.record_viewer_hello(session.connection_id, payload)
             await _send_envelope(websocket, msg_type="KERNEL_HELLO", payload=kernel_hello)
-            return
+            return None
 
         if msg_type == "SUBSCRIBE":
             subscribed = session_host.record_subscribe(session.connection_id, payload)
@@ -1427,12 +1427,12 @@ async def handle_enqueteur_live_incoming_message(
                     step_hash=str(snapshot["step_hash"]),
                     state=dict(snapshot["state"]),
                 )
-            return
+            return None
 
         if msg_type == "PING":
             nonce = payload.get("nonce")
             await _send_envelope(websocket, msg_type="PONG", payload={"nonce": nonce})
-            return
+            return None
 
         if msg_type == "INPUT_COMMAND":
             if not session_host.can_deliver_state(session.connection_id):
@@ -1450,7 +1450,7 @@ async def handle_enqueteur_live_incoming_message(
                     msg_type="COMMAND_ACCEPTED",
                     payload={"client_cmd_id": result.client_cmd_id},
                 )
-                return
+                return result
 
             await _send_envelope(
                 websocket,
@@ -1461,7 +1461,7 @@ async def handle_enqueteur_live_incoming_message(
                     "message": str(result.message or "Command rejected."),
                 },
             )
-            return
+            return result
 
         if not session_host.can_deliver_state(session.connection_id):
             raise ProtocolViolationError(
@@ -1475,7 +1475,7 @@ async def handle_enqueteur_live_incoming_message(
             code="UNSUPPORTED_MESSAGE",
             message=f"Unsupported msg_type: {msg_type}.",
         )
-        return
+        return None
 
     except InputCommandValidationError as exc:
         await _send_envelope(
@@ -1486,6 +1486,11 @@ async def handle_enqueteur_live_incoming_message(
                 "reason_code": exc.reason_code,
                 "message": exc.message,
             },
+        )
+        return CommandDispatchResult.rejected_result(
+            client_cmd_id=exc.client_cmd_id,
+            reason_code=exc.reason_code,
+            message=exc.message,
         )
     except ProtocolViolationError as exc:
         await _send_error(websocket, code=exc.code, message=exc.message, fatal=exc.fatal)
@@ -1510,6 +1515,7 @@ async def handle_enqueteur_live_incoming_message(
             )
             if session_host.get_session(session.connection_id) is not None:
                 session_host.cleanup_closed_session(session.connection_id)
+        return None
     except Exception as exc:  # noqa: BLE001
         await _send_error(
             websocket,
@@ -1529,6 +1535,7 @@ async def handle_enqueteur_live_incoming_message(
         )
         if session_host.get_session(session.connection_id) is not None:
             session_host.cleanup_closed_session(session.connection_id)
+        return None
 
 
 async def stream_enqueteur_frame_diff_once(

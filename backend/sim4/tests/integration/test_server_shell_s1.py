@@ -752,8 +752,11 @@ def test_live_ws_post_baseline_processes_input_command() -> None:
     asyncio.run(endpoint(websocket))
 
     msg_types = [_decode_sent_envelope(websocket, i)["msg_type"] for i in range(len(websocket.sent_texts))]
-    assert msg_types == ["KERNEL_HELLO", "SUBSCRIBED", "FULL_SNAPSHOT", "COMMAND_ACCEPTED"]
+    assert msg_types == ["KERNEL_HELLO", "SUBSCRIBED", "FULL_SNAPSHOT", "COMMAND_ACCEPTED", "FRAME_DIFF"]
     assert _decode_sent_envelope(websocket, 3)["payload"]["client_cmd_id"] == "00000000-0000-4000-8000-000000000001"
+    frame_diff = _decode_sent_envelope(websocket, 4)["payload"]
+    assert frame_diff["from_tick"] == _decode_sent_envelope(websocket, 2)["payload"]["tick"]
+    assert frame_diff["to_tick"] == frame_diff["from_tick"] + 1
     assert websocket.close_calls == []
 
 

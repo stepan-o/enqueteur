@@ -393,8 +393,14 @@ def test_s5_asgi_live_post_baseline_accepts_input_command() -> None:
                 "SUBSCRIBED",
                 "FULL_SNAPSHOT",
                 "COMMAND_ACCEPTED",
+                "FRAME_DIFF",
             ]
             assert envelopes[3]["payload"]["client_cmd_id"] == "00000000-0000-4000-8000-000000000001"
+            frame_diff = envelopes[4]["payload"]
+            assert frame_diff["schema_version"] == launch_payload["schema_version"]
+            assert frame_diff["from_tick"] == envelopes[2]["payload"]["tick"]
+            assert frame_diff["to_tick"] == frame_diff["from_tick"] + 1
+            assert isinstance(frame_diff["ops"], list)
             assert ws_result.close_frames == ()
 
     asyncio.run(_scenario())
@@ -449,6 +455,7 @@ def test_s5_asgi_live_post_baseline_rejects_invalid_input_command() -> None:
             assert rejected["client_cmd_id"] == "00000000-0000-4000-8000-000000000002"
             assert isinstance(rejected["reason_code"], str) and rejected["reason_code"]
             assert isinstance(rejected["message"], str) and rejected["message"]
+            assert "FRAME_DIFF" not in [env["msg_type"] for env in envelopes]
             assert ws_result.close_frames == ()
 
     asyncio.run(_scenario())
