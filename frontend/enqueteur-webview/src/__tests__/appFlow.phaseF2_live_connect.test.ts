@@ -12,6 +12,13 @@ import type {
     EnqueteurLiveProtocolError,
 } from "../app/live/enqueteurLiveClient";
 import type { ViewerHandle } from "../app/boot";
+import { setLocale, translate, type TranslationLookupKey, type TranslationParams } from "../i18n";
+
+const TEST_LOCALE = "en";
+
+function tr(key: TranslationLookupKey, params?: TranslationParams): string {
+    return translate(TEST_LOCALE, key, params);
+}
 
 function makeMountEl(): HTMLElement {
     const mountEl = document.createElement("div");
@@ -155,6 +162,7 @@ class ScriptedLiveClient implements EnqueteurLiveClientLike {
 }
 
 beforeEach(() => {
+    setLocale(TEST_LOCALE);
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => {
         cb(performance.now());
         return 1;
@@ -162,6 +170,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    setLocale(TEST_LOCALE);
     vi.useRealTimers();
     vi.restoreAllMocks();
     document.body.innerHTML = "";
@@ -191,16 +200,16 @@ describe("Phase F2 canonical live app flow", () => {
         } satisfies AppFlowOpts);
 
         expect(flow.getState()).toEqual({ kind: "LOADING" });
-        expect(document.body.textContent).toContain("Preparing Case");
+        expect(document.body.textContent).toContain(tr("flow.loading.title"));
 
         await vi.advanceTimersByTimeAsync(130);
         await flushAsyncWork();
         expect(flow.getState()).toEqual({ kind: "MAIN_MENU" });
-        expect(document.body.textContent).toContain("Start Case");
+        expect(document.body.textContent).toContain(tr("flow.mainMenu.startCase"));
 
-        clickButtonByText("Start Case");
+        clickButtonByText(tr("flow.mainMenu.startCase"));
         expect(flow.getState()).toEqual({ kind: "CASE_SELECT" });
-        expect(document.body.textContent).toContain("Default demo route:");
+        expect(document.body.textContent).toContain(tr("flow.caseSelect.defaultDemoRoute", { title: "" }).trim());
 
         clickFirstCaseCard();
         await flushAsyncWork();
@@ -209,8 +218,10 @@ describe("Phase F2 canonical live app flow", () => {
             caseId: "MBAM_01",
             phase: "SESSION_STARTUP",
         });
-        expect(document.body.textContent).toContain("Preparing The Little Museum Theft.");
-        expect(document.body.textContent).toContain("Demo route:");
+        expect(document.body.textContent).toContain(
+            tr("flow.connecting.preparingCase", { caseLabel: tr("flow.case.MBAM_01.label") })
+        );
+        expect(document.body.textContent).toContain(tr("flow.connecting.demoRoute", { label: "" }).trim());
 
         scriptedLiveClient.emitOpen();
         expect(flow.getState()).toEqual({
@@ -432,7 +443,7 @@ describe("Phase F2 canonical live app flow", () => {
         });
 
         const backToCasesBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".flow-live-action-btn"))
-            .find((btn) => btn.textContent === "Back To Cases");
+            .find((btn) => btn.textContent === tr("flow.liveAction.backToCases"));
         expect(backToCasesBtn).toBeTruthy();
         backToCasesBtn?.click();
 
@@ -877,7 +888,7 @@ describe("Phase F2 canonical live app flow", () => {
         });
 
         const retryButton = Array.from(document.querySelectorAll<HTMLButtonElement>(".flow-action-btn"))
-            .find((btn) => btn.textContent === "Retry Connection");
+            .find((btn) => btn.textContent === tr("flow.error.retry.connection"));
         expect(retryButton).toBeTruthy();
         retryButton?.click();
 
@@ -921,7 +932,10 @@ describe("Phase F2 canonical live app flow", () => {
             message_params: { code: "DEGRADED_MODE" },
         });
         expect(document.body.textContent).toContain(
-            "Connection note: Connection is degraded; some updates may be delayed. (DEGRADED_MODE)."
+            tr("flow.connecting.connectionNote", {
+                message: tr("live.warn.degraded_mode"),
+                code: "DEGRADED_MODE",
+            })
         );
 
         scriptedLiveClient.emitOpen();
@@ -965,7 +979,7 @@ describe("Phase F2 canonical live app flow", () => {
             caseId: "MBAM_01",
         });
         expect(warnSpy).toHaveBeenCalledWith(
-            "Live warning (INTERNAL_RUNTIME_ERROR): Live runtime encountered an internal error."
+            `Live warning (INTERNAL_RUNTIME_ERROR): ${tr("live.error.internal_runtime_error")}`
         );
 
         flow.destroy();
@@ -1031,7 +1045,7 @@ describe("Phase F2 canonical live app flow", () => {
         expect(flow.getState()).toEqual({
             kind: "ERROR",
             code: "CONNECTION_FAILURE",
-            message: "Live kernel error (INTERNAL_RUNTIME_ERROR): Live runtime encountered an internal error.",
+            message: `Live kernel error (INTERNAL_RUNTIME_ERROR): ${tr("live.error.internal_runtime_error")}`,
             recoverTo: "CASE_SELECT",
         });
 

@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { setLocale, translate, type TranslationLookupKey, type TranslationParams } from "../i18n";
 import { mountDialoguePanel } from "../ui/dialoguePanel";
 import { mountInspectPanel } from "../ui/inspectPanel";
 import { mountNotebookPanel } from "../ui/notebookPanel";
@@ -7,11 +8,22 @@ import { mountResolutionPanel } from "../ui/resolutionPanel";
 import { WorldStore } from "../state/worldStore";
 import { makeMbamSnapshot } from "./mbamFixtures";
 
+const TEST_LOCALE = "en";
+
+function tr(key: TranslationLookupKey, params?: TranslationParams): string {
+    return translate(TEST_LOCALE, key, params);
+}
+
 function flushUi(): Promise<void> {
     return new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
+beforeEach(() => {
+    setLocale(TEST_LOCALE);
+});
+
 afterEach(() => {
+    setLocale(TEST_LOCALE);
     document.body.innerHTML = "";
 });
 
@@ -34,18 +46,18 @@ describe("Phase 5 shell panel rendering", () => {
         inspect.setSelection({ kind: "object", id: 3002 });
 
         const panel = inspect.root.querySelector(".inspect-panel");
-        expect(panel?.textContent).toContain("Investigation Actions");
-        expect(panel?.textContent).toContain("Field Prompt");
+        expect(panel?.textContent).toContain(tr("inspect.section.investigation_actions"));
+        expect(panel?.textContent).toContain(tr("inspect.section.field_prompt"));
         expect(panel?.textContent).toContain("O1_DISPLAY_CASE");
-        expect(panel?.textContent).toContain("Location hint");
-        expect(panel?.textContent).toContain("New lead:");
+        expect(panel?.textContent).toContain(tr("inspect.line.location_hint"));
+        expect(panel?.textContent).toContain(tr("inspect.info.new_lead", { hint: "" }).trim());
 
         const buttons = inspect.root.querySelectorAll<HTMLButtonElement>(".inspect-action-btn");
         expect(buttons.length).toBeGreaterThanOrEqual(3);
         buttons[0]?.click();
         await flushUi();
 
-        expect(panel?.textContent).toContain("Latest Result");
+        expect(panel?.textContent).toContain(tr("inspect.section.latest_result"));
         expect(panel?.textContent).toContain("projection_affordance_observed");
         expect(panel?.textContent).toContain("accepted");
     });
@@ -90,22 +102,22 @@ describe("Phase 5 shell panel rendering", () => {
         dialogue.setInspectSelection({ kind: "room", id: 1 });
 
         const panel = dialogue.root.querySelector(".dialogue-panel");
-        expect(panel?.textContent).toContain("Character Read");
-        expect(panel?.textContent).toContain("Conversation Support");
-        expect(panel?.textContent).toContain("Summary Guidance");
-        expect(panel?.textContent).toContain("Contradiction Clues");
-        expect(panel?.textContent).toContain("Hint track");
-        expect(panel?.textContent).toContain("Soft Hint - current");
-        expect(panel?.textContent).toContain("Sentence Stem - locked");
-        expect(panel?.textContent).toContain("Prompt:");
-        expect(panel?.textContent).toContain("Summary missing enough corroborated facts.");
-        expect(panel?.textContent).toContain("Hint level");
-        expect(panel?.textContent).toContain("Emotion");
-        expect(panel?.textContent).toContain("Stance");
-        expect(panel?.textContent).toContain("Trust trend");
-        expect(panel?.textContent).toContain("Recent Conversation Turns");
-        expect(panel?.textContent).toContain("Facts you can cite:");
-        expect(panel?.textContent).toContain("Evidence you can cite:");
+        expect(panel?.textContent).toContain(tr("dialogue.section.character_read"));
+        expect(panel?.textContent).toContain(tr("dialogue.section.conversation_support"));
+        expect(panel?.textContent).toContain(tr("dialogue.section.summary_guidance"));
+        expect(panel?.textContent).toContain(tr("dialogue.section.contradiction_clues"));
+        expect(panel?.textContent).toContain(tr("dialogue.hint_track.title", { level: "", profile: "" }).split("(")[0]?.trim() ?? "");
+        expect(panel?.textContent).toContain(`${tr("dialogue.hint_level.soft_hint")} - ${tr("dialogue.hint_state.current")}`);
+        expect(panel?.textContent).toContain(`${tr("dialogue.hint_level.sentence_stem")} - ${tr("dialogue.hint_state.locked")}`);
+        expect(panel?.textContent).toContain(tr("dialogue.summary.prompt_line", { prompt: "" }).trim());
+        expect(panel?.textContent).toContain(tr("dialogue.summary_code.summary_insufficient_facts"));
+        expect(panel?.textContent).toContain(tr("dialogue.line.hint_level"));
+        expect(panel?.textContent).toContain(tr("dialogue.npc_line.emotion"));
+        expect(panel?.textContent).toContain(tr("dialogue.npc_line.stance"));
+        expect(panel?.textContent).toContain(tr("dialogue.npc_line.trust_trend"));
+        expect(panel?.textContent).toContain(tr("dialogue.section.recent_turns"));
+        expect(panel?.textContent).toContain(tr("dialogue.info.facts_you_can_cite", { facts: "" }).trim());
+        expect(panel?.textContent).toContain(tr("dialogue.info.evidence_you_can_cite", { evidence: "" }).trim());
         expect(panel?.textContent).toContain("NPC: Très bien. Restons précis.");
         expect(panel?.textContent).toContain("rephrase:Essaie avec une phrase guide simple.");
         expect(panel?.textContent).toContain("summary_prompt:Fais un court résumé en français avant de continuer.");
@@ -118,7 +130,7 @@ describe("Phase 5 shell panel rendering", () => {
         submit?.click();
         await flushUi();
 
-        expect(panel?.textContent).toContain("Latest Attempt");
+        expect(panel?.textContent).toContain(tr("dialogue.section.latest_attempt"));
         expect(panel?.textContent).toContain("summary_ok");
     });
 
@@ -130,29 +142,29 @@ describe("Phase 5 shell panel rendering", () => {
         document.body.appendChild(notebook.root);
         const panel = notebook.root.querySelector(".notebook-panel");
 
-        expect(panel?.textContent).toContain("Evidence Tray");
-        expect(panel?.textContent).toContain("Case Brief");
-        expect(panel?.textContent).toContain("Case Setup");
-        expect(panel?.textContent).toContain("What happened: A gallery medallion is missing shortly before closing.");
-        expect(panel?.textContent).toContain("Start Here");
-        expect(panel?.textContent).toContain("Inspect the Display Case and Wall Label in the gallery.");
-        expect(panel?.textContent).toContain("Current lead:");
-        expect(panel?.textContent).toContain("Internal Playtest Path");
-        expect(panel?.textContent).toContain("Inspect starter objects (Display Case + Wall Label).");
-        expect(panel?.textContent).toContain("Next:");
-        expect(panel?.textContent).toContain("Key Object Leads");
+        expect(panel?.textContent).toContain(tr("notebook.section.evidence_tray"));
+        expect(panel?.textContent).toContain(tr("notebook.section.case_brief"));
+        expect(panel?.textContent).toContain(tr("notebook.section.case_setup"));
+        expect(panel?.textContent).toContain(tr("notebook.setup.what_happened", { incident: tr("mbam.case.incident") }));
+        expect(panel?.textContent).toContain(tr("notebook.section.start_here"));
+        expect(panel?.textContent).toContain(tr("mbam.onboarding.step.inspect_starters"));
+        expect(panel?.textContent).toContain(tr("notebook.current_lead", { lead: "" }).split(":")[0] ?? "");
+        expect(panel?.textContent).toContain(tr("mbam.playtest.title"));
+        expect(panel?.textContent).toContain(tr("mbam.playtest.step.starter_investigation"));
+        expect(panel?.textContent).toContain(tr("mbam.playtest.current.next", { label: "" }).split(":")[0] ?? "");
+        expect(panel?.textContent).toContain(tr("notebook.section.key_object_leads"));
         expect(panel?.textContent).toContain("E2 Cafe Receipt");
-        expect(panel?.textContent).toContain("Known Facts");
+        expect(panel?.textContent).toContain(tr("notebook.section.known_facts"));
         expect(panel?.textContent).toContain("N1");
-        expect(panel?.textContent).toContain("Contradictions");
-        expect(panel?.textContent).toContain("Unlockable edges");
-        expect(panel?.textContent).toContain("Where to use");
-        expect(panel?.textContent).toContain("Timeline Clues");
-        expect(panel?.textContent).toContain("Field Exercises");
-        expect(panel?.textContent).toContain("Wall Label Check (MG1)");
-        expect(panel?.textContent).toContain("Badge Log Check (MG2)");
-        expect(panel?.textContent).toContain("Receipt Check (MG3)");
-        expect(panel?.textContent).toContain("Torn Note Rebuild (MG4)");
+        expect(panel?.textContent).toContain(tr("notebook.section.contradictions"));
+        expect(panel?.textContent).toContain(tr("notebook.contradictions.unlockable_edges"));
+        expect(panel?.textContent).toContain(tr("notebook.contradictions.where_to_use"));
+        expect(panel?.textContent).toContain(tr("notebook.section.timeline_clues"));
+        expect(panel?.textContent).toContain(tr("notebook.section.field_exercises"));
+        expect(panel?.textContent).toContain(tr("notebook.mg1.title"));
+        expect(panel?.textContent).toContain(tr("notebook.mg2.title"));
+        expect(panel?.textContent).toContain(tr("notebook.mg3.title"));
+        expect(panel?.textContent).toContain(tr("notebook.mg4.title"));
     });
 
     it("demotes internal-only notebook guidance in demo presentation profile", () => {
@@ -165,10 +177,10 @@ describe("Phase 5 shell panel rendering", () => {
         document.body.appendChild(notebook.root);
         const panel = notebook.root.querySelector(".notebook-panel");
 
-        expect(panel?.textContent).toContain("Case Brief");
-        expect(panel?.textContent).toContain("Key Object Leads");
-        expect(panel?.textContent).not.toContain("Internal Playtest Path");
-        expect(panel?.textContent).not.toContain("Truth epoch");
+        expect(panel?.textContent).toContain(tr("notebook.section.case_brief"));
+        expect(panel?.textContent).toContain(tr("notebook.section.key_object_leads"));
+        expect(panel?.textContent).not.toContain(tr("mbam.playtest.title"));
+        expect(panel?.textContent).not.toContain(tr("notebook.line.truth_epoch"));
     });
 
     it("keeps demo shell guidance readable while preserving key action reachability", async () => {
@@ -236,39 +248,39 @@ describe("Phase 5 shell panel rendering", () => {
         document.body.appendChild(resolution.root);
 
         const inspectPanel = inspect.root.querySelector(".inspect-panel");
-        expect(inspectPanel?.textContent).toContain("Field Prompt");
+        expect(inspectPanel?.textContent).toContain(tr("inspect.section.field_prompt"));
         const inspectButtons = inspect.root.querySelectorAll<HTMLButtonElement>(".inspect-action-btn");
         expect(inspectButtons.length).toBeGreaterThan(0);
         expect(inspectButtons[0]?.disabled).toBe(false);
         inspectButtons[0]?.click();
         await flushUi();
-        expect(inspectPanel?.textContent).toContain("Latest Result");
+        expect(inspectPanel?.textContent).toContain(tr("inspect.section.latest_result"));
         expect(inspectPanel?.textContent).not.toContain("Code");
 
         const dialoguePanel = dialogue.root.querySelector(".dialogue-panel");
-        expect(dialoguePanel?.textContent).toContain("Case Setup Hint");
-        expect(dialoguePanel?.textContent).toContain("Choose Your Line");
-        expect(dialoguePanel?.textContent).not.toContain("Summary Guidance");
-        expect(dialoguePanel?.textContent).toContain("Opening interview");
-        expect(dialoguePanel?.textContent).toContain("Who to question");
-        expect(dialoguePanel?.textContent).toContain("Elodie");
+        expect(dialoguePanel?.textContent).toContain(tr("dialogue.section.case_setup_hint"));
+        expect(dialoguePanel?.textContent).toContain(tr("dialogue.section.choose_line"));
+        expect(dialoguePanel?.textContent).not.toContain(tr("dialogue.section.summary_guidance"));
+        expect(dialoguePanel?.textContent).toContain(tr("notebook.scene.S1"));
+        expect(dialoguePanel?.textContent).toContain(tr("dialogue.line.who_to_question"));
+        expect(dialoguePanel?.textContent).toContain(tr("dialogue.npc.elodie"));
         expect(dialoguePanel?.textContent).not.toContain("S1");
         const submitBtn = dialogue.root.querySelector<HTMLButtonElement>(".dialogue-submit");
         expect(submitBtn?.disabled).toBe(false);
 
         const notebookPanel = notebook.root.querySelector(".notebook-panel");
-        expect(notebookPanel?.textContent).toContain("Case Setup");
-        expect(notebookPanel?.textContent).toContain("Default demo route:");
-        expect(notebookPanel?.textContent).not.toContain("Internal Playtest Path");
-        expect(notebookPanel?.textContent).not.toContain("Truth epoch");
+        expect(notebookPanel?.textContent).toContain(tr("notebook.section.case_setup"));
+        expect(notebookPanel?.textContent).toContain(tr("notebook.setup.default_demo_route"));
+        expect(notebookPanel?.textContent).not.toContain(tr("mbam.playtest.title"));
+        expect(notebookPanel?.textContent).not.toContain(tr("notebook.line.truth_epoch"));
         expect(notebookPanel?.textContent).not.toContain("N1  ");
         expect(notebookPanel?.textContent).not.toContain("E2 ");
 
         const resolutionPanel = resolution.root.querySelector(".resolution-panel");
-        expect(resolutionPanel?.textContent).toContain("Case Outcome");
-        expect(resolutionPanel?.textContent).toContain("What You Proved");
-        expect(resolutionPanel?.textContent).toContain("What Mattered Most");
-        expect(resolutionPanel?.textContent).not.toContain("Resolution path");
+        expect(resolutionPanel?.textContent).toContain(tr("resolution.title.case_outcome"));
+        expect(resolutionPanel?.textContent).toContain(tr("resolution.section.what_you_proved"));
+        expect(resolutionPanel?.textContent).toContain(tr("resolution.section.what_mattered"));
+        expect(resolutionPanel?.textContent).not.toContain(tr("resolution.line.resolution_path"));
     });
 
     it("evaluates MG1-MG4 notebook widgets deterministically", async () => {
@@ -280,10 +292,10 @@ describe("Phase 5 shell panel rendering", () => {
         const panel = notebook.root.querySelector(".notebook-panel");
         const cards = Array.from(notebook.root.querySelectorAll<HTMLElement>(".notebook-minigame"));
 
-        const mg1 = cards.find((card) => card.textContent?.includes("Wall Label Check (MG1)"));
-        const mg2 = cards.find((card) => card.textContent?.includes("Badge Log Check (MG2)"));
-        const mg3 = cards.find((card) => card.textContent?.includes("Receipt Check (MG3)"));
-        const mg4 = cards.find((card) => card.textContent?.includes("Torn Note Rebuild (MG4)"));
+        const mg1 = cards.find((card) => card.textContent?.includes(tr("notebook.mg1.title")));
+        const mg2 = cards.find((card) => card.textContent?.includes(tr("notebook.mg2.title")));
+        const mg3 = cards.find((card) => card.textContent?.includes(tr("notebook.mg3.title")));
+        const mg4 = cards.find((card) => card.textContent?.includes(tr("notebook.mg4.title")));
         expect(mg1).toBeTruthy();
         expect(mg2).toBeTruthy();
         expect(mg3).toBeTruthy();
@@ -325,8 +337,8 @@ describe("Phase 5 shell panel rendering", () => {
         mg4!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!.click();
         await flushUi();
 
-        expect(panel?.textContent).toContain("Correct (2/2).");
-        expect(panel?.textContent).toContain("Correct (3/3).");
+        expect(panel?.textContent).toContain(tr("notebook.feedback.correct_score", { score: 2, max: 2 }));
+        expect(panel?.textContent).toContain(tr("notebook.feedback.correct_score", { score: 3, max: 3 }));
     });
 
     it("updates internal playtest path milestones as live state progresses", () => {
@@ -356,8 +368,10 @@ describe("Phase 5 shell panel rendering", () => {
         const notebook = mountNotebookPanel(store);
         document.body.appendChild(notebook.root);
         const panel = notebook.root.querySelector(".notebook-panel");
-        expect(panel?.textContent).toContain("Internal Playtest Path");
-        expect(panel?.textContent).toContain("Next: Inspect starter objects");
+        expect(panel?.textContent).toContain(tr("mbam.playtest.title"));
+        expect(panel?.textContent).toContain(
+            tr("mbam.playtest.current.next", { label: tr("mbam.playtest.step.starter_investigation") })
+        );
 
         const progressed = makeMbamSnapshot(41);
         if (!progressed.state.investigation || !progressed.state.dialogue || !progressed.state.case_outcome || !progressed.state.case_recap) {
@@ -403,7 +417,7 @@ describe("Phase 5 shell panel rendering", () => {
         progressed.state.case_recap.resolution_path = "recovery";
 
         store.applySnapshot(progressed);
-        expect(panel?.textContent).toContain("Path complete: recap reviewed and ready for next internal run.");
+        expect(panel?.textContent).toContain(tr("mbam.playtest.current.complete"));
     });
 
     it("renders deterministic D1 hint-ladder constraints without English bypass", () => {
@@ -442,14 +456,14 @@ describe("Phase 5 shell panel rendering", () => {
         dialogue.setInspectSelection({ kind: "room", id: 1 });
 
         const panel = dialogue.root.querySelector(".dialogue-panel");
-        expect(panel?.textContent).toContain("Difficulty");
+        expect(panel?.textContent).toContain(tr("dialogue.line.difficulty"));
         expect(panel?.textContent).toContain("D1");
-        expect(panel?.textContent).toContain("French required");
-        expect(panel?.textContent).toContain("yes");
-        expect(panel?.textContent).toContain("English help");
-        expect(panel?.textContent).toContain("off");
-        expect(panel?.textContent).toContain("English Meta-Help - locked");
-        expect(panel?.textContent).toContain("Choose one:");
+        expect(panel?.textContent).toContain(tr("dialogue.line.french_required"));
+        expect(panel?.textContent).toContain(tr("dialogue.value.yes"));
+        expect(panel?.textContent).toContain(tr("dialogue.line.english_help"));
+        expect(panel?.textContent).toContain(tr("dialogue.value.off"));
+        expect(panel?.textContent).toContain(`${tr("dialogue.hint_level.english_meta_help")} - ${tr("dialogue.hint_state.locked")}`);
+        expect(panel?.textContent).toContain(tr("dialogue.hint.choose_one", { options: "" }).trim());
     });
 
     it("uses compact minigame feedback and respects projected gate blocking", async () => {
@@ -473,8 +487,8 @@ describe("Phase 5 shell panel rendering", () => {
         document.body.appendChild(notebook.root);
         const panel = notebook.root.querySelector(".notebook-panel");
         const cards = Array.from(notebook.root.querySelectorAll<HTMLElement>(".notebook-minigame"));
-        const mg1Card = cards.find((card) => card.textContent?.includes("Wall Label Check (MG1)"));
-        const mg2Card = cards.find((card) => card.textContent?.includes("Badge Log Check (MG2)"));
+        const mg1Card = cards.find((card) => card.textContent?.includes(tr("notebook.mg1.title")));
+        const mg2Card = cards.find((card) => card.textContent?.includes(tr("notebook.mg2.title")));
         expect(mg1Card).toBeTruthy();
         expect(mg2Card).toBeTruthy();
 
@@ -488,7 +502,7 @@ describe("Phase 5 shell panel rendering", () => {
 
         const mg2Submit = mg2Card!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!;
         expect(mg2Submit.disabled).toBe(true);
-        expect(panel?.textContent).toContain("Incorrect. Retry.");
+        expect(panel?.textContent).toContain(tr("notebook.feedback.incorrect_retry"));
     });
 
     it("disables local minigame scoring when live dispatch fallback is disabled", async () => {
@@ -506,7 +520,7 @@ describe("Phase 5 shell panel rendering", () => {
         document.body.appendChild(notebook.root);
         const panel = notebook.root.querySelector(".notebook-panel");
         const cards = Array.from(notebook.root.querySelectorAll<HTMLElement>(".notebook-minigame"));
-        const mg1Card = cards.find((card) => card.textContent?.includes("Wall Label Check (MG1)"));
+        const mg1Card = cards.find((card) => card.textContent?.includes(tr("notebook.mg1.title")));
         expect(mg1Card).toBeTruthy();
 
         const mg1Inputs = Array.from(mg1Card!.querySelectorAll<HTMLInputElement>("input.notebook-minigame-input"));
@@ -517,8 +531,8 @@ describe("Phase 5 shell panel rendering", () => {
         mg1Card!.querySelectorAll<HTMLButtonElement>(".notebook-minigame-btn")[0]!.click();
         await flushUi();
 
-        expect(panel?.textContent).toContain("Can't submit right now. Connection is not ready.");
-        expect(panel?.textContent).not.toContain("Correct (2/2).");
+        expect(panel?.textContent).toContain(tr("notebook.minigame.connection_not_ready"));
+        expect(panel?.textContent).not.toContain(tr("notebook.feedback.correct_score", { score: 2, max: 2 }));
     });
 
     it("renders terminal recap details for resolved MBAM outcomes", () => {
@@ -571,13 +585,13 @@ describe("Phase 5 shell panel rendering", () => {
         document.body.appendChild(resolution.root);
         const panel = resolution.root.querySelector(".resolution-panel");
 
-        expect(panel?.textContent).toContain("Final Decision");
+        expect(panel?.textContent).toContain(tr("resolution.title.final_decision"));
         expect(panel?.textContent).toContain("best_outcome");
         expect(panel?.textContent).toContain("recovery");
-        expect(panel?.textContent).toContain("resolved");
-        expect(panel?.textContent).toContain("Badge log at 17h58 (N3)");
-        expect(panel?.textContent).toContain("Cafe receipt (E2_CAFE_RECEIPT)");
-        expect(panel?.textContent).toContain("Best Outcome Markers");
+        expect(panel?.textContent).toContain(tr("resolution.value.resolved"));
+        expect(panel?.textContent).toContain(`${tr("resolution.fact.N3")} (N3)`);
+        expect(panel?.textContent).toContain(`${tr("resolution.evidence.E2_CAFE_RECEIPT")} (E2_CAFE_RECEIPT)`);
+        expect(panel?.textContent).toContain(tr("resolution.section.best_markers"));
         expect(panel?.textContent).toContain("quiet_recovery");
     });
 });

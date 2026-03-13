@@ -1,8 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { setLocale, translate, type TranslationLookupKey, type TranslationParams } from "../i18n";
 import { makeMbamSnapshot } from "./mbamFixtures";
 import { buildMbamPlaytestPathView } from "../ui/mbamOnboarding";
 import type { WorldState } from "../state/worldStore";
+
+const TEST_LOCALE = "en";
+
+function tr(key: TranslationLookupKey, params?: TranslationParams): string {
+    return translate(TEST_LOCALE, key, params);
+}
+
+beforeEach(() => {
+    setLocale(TEST_LOCALE);
+});
+
+afterEach(() => {
+    setLocale(TEST_LOCALE);
+});
 
 function toWorldStateFromSnapshot(snapshot: ReturnType<typeof makeMbamSnapshot>): WorldState {
     const investigation = snapshot.state.investigation;
@@ -63,8 +78,8 @@ describe("Phase G5 internal playtest path tracker", () => {
 
         const view = buildMbamPlaytestPathView(toWorldStateFromSnapshot(snapshot));
 
-        expect(view.title).toBe("Internal Playtest Path");
-        expect(view.currentMilestone).toContain("Inspect starter objects");
+        expect(view.title).toBe(tr("mbam.playtest.title"));
+        expect(view.currentMilestone).toContain(tr("mbam.playtest.step.starter_investigation"));
         const doneCount = view.steps.filter((row) => row.done).length;
         expect(doneCount).toBe(0);
     });
@@ -116,7 +131,7 @@ describe("Phase G5 internal playtest path tracker", () => {
 
         const view = buildMbamPlaytestPathView(toWorldStateFromSnapshot(snapshot));
 
-        expect(view.currentMilestone).toContain("Path complete");
+        expect(view.currentMilestone).toContain(tr("mbam.playtest.current.complete"));
         expect(view.steps.every((row) => row.done)).toBe(true);
     });
 });

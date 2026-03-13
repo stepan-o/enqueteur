@@ -1,10 +1,22 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { setLocale, translate, type TranslationLookupKey, type TranslationParams } from "../i18n";
 import { mountResolutionPanel } from "../ui/resolutionPanel";
 import { WorldStore } from "../state/worldStore";
 import { makeMbamSnapshot } from "./mbamFixtures";
 
+const TEST_LOCALE = "en";
+
+function tr(key: TranslationLookupKey, params?: TranslationParams): string {
+    return translate(TEST_LOCALE, key, params);
+}
+
+beforeEach(() => {
+    setLocale(TEST_LOCALE);
+});
+
 afterEach(() => {
+    setLocale(TEST_LOCALE);
     document.body.innerHTML = "";
 });
 
@@ -44,9 +56,9 @@ describe("Phase 7 terminal path resolution panel smoke", () => {
             const panelHandle = mountResolutionPanel(store);
             document.body.appendChild(panelHandle.root);
             const text = panelHandle.root.textContent ?? "";
-            expect(text).toContain("Final Decision");
-            expect(text).toContain("Decision Readiness");
-            expect(text).toContain("Why This Ending");
+            expect(text).toContain(tr("resolution.title.final_decision"));
+            expect(text).toContain(tr("resolution.section.readiness"));
+            expect(text).toContain(tr("resolution.section.why_this_ending"));
             expect(text).toContain(scenario.outcome);
             expect(text).toContain(scenario.path);
             panelHandle.root.remove();
@@ -73,9 +85,11 @@ describe("Phase 7 terminal path resolution panel smoke", () => {
         });
         document.body.appendChild(panelHandle.root);
         const text = panelHandle.root.textContent ?? "";
-        expect(text).toContain("Decision Readiness");
-        expect(text).toContain("Recoveryavailable - your corroboration is strong enough to proceed");
-        expect(text).toContain("Accusationblocked - you still need contradiction support before accusing");
+        expect(text).toContain(tr("resolution.section.readiness"));
+        expect(text).toContain(tr("resolution.line.recovery"));
+        expect(text).toContain(tr("resolution.reason.recovery_available"));
+        expect(text).toContain(tr("resolution.line.accusation"));
+        expect(text).toContain(tr("resolution.reason.need_contradiction"));
         panelHandle.root.remove();
     });
 
@@ -110,11 +124,11 @@ describe("Phase 7 terminal path resolution panel smoke", () => {
         });
         document.body.appendChild(panelHandle.root);
         const text = panelHandle.root.textContent ?? "";
-        expect(text).toContain("Case Outcome");
-        expect(text).toContain("Recovery Success");
-        expect(text).toContain("What You Proved");
-        expect(text).toContain("What Mattered Most");
-        expect(text).not.toContain("Resolution path");
+        expect(text).toContain(tr("resolution.title.case_outcome"));
+        expect(text).toContain(tr("resolution.outcome.recovery.title"));
+        expect(text).toContain(tr("resolution.section.what_you_proved"));
+        expect(text).toContain(tr("resolution.section.what_mattered"));
+        expect(text).not.toContain(tr("resolution.line.resolution_path"));
         panelHandle.root.remove();
     });
 });
