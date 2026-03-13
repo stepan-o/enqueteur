@@ -1,5 +1,6 @@
 // src/ui/dialoguePanel.ts
 import type { KvpDialogueTurnLog, KvpNpcSemanticState, WorldState, WorldStore } from "../state/worldStore";
+import { createScopedTranslator, getSharedLocaleStore } from "../i18n";
 import { buildMbamCaseSetupGuide, buildMbamOnboardingView, labelMbamContradictionEdge } from "./mbamOnboarding";
 
 export type DialogueTurnSlotValue = {
@@ -130,37 +131,37 @@ const INTENT_REQUIRED_SLOTS: Record<string, string[]> = {
     present_evidence: ["item"],
     accuse: ["person", "reason"],
 };
-const INTENT_LABELS: Record<string, string> = {
-    ask_what_happened: "Ask what happened",
-    ask_when: "Ask when",
-    ask_where: "Ask where",
-    ask_who: "Ask who",
-    ask_what_seen: "Ask what was seen",
-    request_permission: "Request permission",
-    request_access: "Request access",
-    present_evidence: "Present evidence",
-    challenge_contradiction: "Challenge contradiction",
-    summarize_understanding: "Summarize understanding",
-    reassure: "Reassure",
-    accuse: "Accuse",
-    goodbye: "Close conversation",
+const INTENT_LABEL_KEYS: Record<string, string> = {
+    ask_what_happened: "dialogue.intent.ask_what_happened",
+    ask_when: "dialogue.intent.ask_when",
+    ask_where: "dialogue.intent.ask_where",
+    ask_who: "dialogue.intent.ask_who",
+    ask_what_seen: "dialogue.intent.ask_what_seen",
+    request_permission: "dialogue.intent.request_permission",
+    request_access: "dialogue.intent.request_access",
+    present_evidence: "dialogue.intent.present_evidence",
+    challenge_contradiction: "dialogue.intent.challenge_contradiction",
+    summarize_understanding: "dialogue.intent.summarize_understanding",
+    reassure: "dialogue.intent.reassure",
+    accuse: "dialogue.intent.accuse",
+    goodbye: "dialogue.intent.goodbye",
 };
 
-const NPC_DISPLAY_LABELS: Record<string, string> = {
-    elodie: "Elodie",
-    marc: "Marc",
-    samira: "Samira",
-    jo: "Jo",
-    laurent: "Laurent",
-    outsider: "Outside Actor",
+const NPC_LABEL_KEYS: Record<string, string> = {
+    elodie: "dialogue.npc.elodie",
+    marc: "dialogue.npc.marc",
+    samira: "dialogue.npc.samira",
+    jo: "dialogue.npc.jo",
+    laurent: "dialogue.npc.laurent",
+    outsider: "dialogue.npc.outsider",
 };
 
-const SCENE_DISPLAY_LABELS: Record<string, string> = {
-    S1: "Opening interview",
-    S2: "Security follow-up",
-    S3: "Timeline challenge",
-    S4: "Witness check",
-    S5: "Final confrontation",
+const SCENE_LABEL_KEYS: Record<string, string> = {
+    S1: "notebook.scene.S1",
+    S2: "notebook.scene.S2",
+    S3: "notebook.scene.S3",
+    S4: "notebook.scene.S4",
+    S5: "notebook.scene.S5",
 };
 
 const WORLD_ROOM_ID_TO_TOKEN: Record<number, string> = {
@@ -177,72 +178,75 @@ type HintLevel = "soft_hint" | "sentence_stem" | "rephrase_choice" | "english_me
 
 const HINT_LEVEL_ORDER: HintLevel[] = ["soft_hint", "sentence_stem", "rephrase_choice", "english_meta_help"];
 
-const HINT_LEVEL_LABELS: Record<HintLevel, string> = {
-    soft_hint: "Soft Hint",
-    sentence_stem: "Sentence Stem",
-    rephrase_choice: "Rephrase Choices",
-    english_meta_help: "English Meta-Help",
+const HINT_LEVEL_LABEL_KEYS: Record<HintLevel, string> = {
+    soft_hint: "dialogue.hint_level.soft_hint",
+    sentence_stem: "dialogue.hint_level.sentence_stem",
+    rephrase_choice: "dialogue.hint_level.rephrase_choice",
+    english_meta_help: "dialogue.hint_level.english_meta_help",
 };
 
-const SOFT_HINT_COPY: Record<string, string> = {
-    "hint:s1_incident_scope": "Focus first on what is missing, where it was, and when the absence was noticed.",
-    "hint:s2_security_protocol": "With Marc, a respectful reason unlocks process details better than pressure.",
-    "hint:s3_timeline_anchor": "Use one concrete time anchor before asking where people moved.",
-    "hint:s4_cafe_witness_window": "Jo remembers clothing and vibe first. Ask for time, then appearance.",
-    "hint:s5_corroboration_requirements": "In confrontation, connect method + time + place with corroborated facts.",
+const SOFT_HINT_KEYS: Record<string, string> = {
+    "hint:s1_incident_scope": "dialogue.soft_hint.s1_incident_scope",
+    "hint:s2_security_protocol": "dialogue.soft_hint.s2_security_protocol",
+    "hint:s3_timeline_anchor": "dialogue.soft_hint.s3_timeline_anchor",
+    "hint:s4_cafe_witness_window": "dialogue.soft_hint.s4_cafe_witness_window",
+    "hint:s5_corroboration_requirements": "dialogue.soft_hint.s5_corroboration_requirements",
 };
 
-const SENTENCE_STEM_COPY: Record<string, string> = {
-    "stem:s1_polite_incident": "Je résume: l'objet manquant est ___, observé absent vers ___.",
-    "stem:s2_access_request": "Je demande l'accès au journal des badges pour vérifier ___.",
-    "stem:s3_time_sequence": "À ___, la personne ___ était dans ___.",
-    "stem:s4_witness_prompt": "Vers ___, vous avez vu ___ près du café.",
-    "stem:s5_confrontation_structure": "Je conclus: ___ a utilisé ___, puis dépôt à ___.",
+const SENTENCE_STEM_KEYS: Record<string, string> = {
+    "stem:s1_polite_incident": "dialogue.sentence_stem.s1_polite_incident",
+    "stem:s2_access_request": "dialogue.sentence_stem.s2_access_request",
+    "stem:s3_time_sequence": "dialogue.sentence_stem.s3_time_sequence",
+    "stem:s4_witness_prompt": "dialogue.sentence_stem.s4_witness_prompt",
+    "stem:s5_confrontation_structure": "dialogue.sentence_stem.s5_confrontation_structure",
 };
 
-const REPHRASE_CHOICES_COPY: Record<string, string[]> = {
+const REPHRASE_CHOICE_KEYS: Record<string, string[]> = {
     "rephrase:s1_incident_core": [
-        "Que s'est-il passé exactement dans la galerie?",
-        "À quelle heure avez-vous constaté la disparition?",
-        "Pouvez-vous confirmer l'objet manquant?",
+        "dialogue.rephrase.s1_incident_core.1",
+        "dialogue.rephrase.s1_incident_core.2",
+        "dialogue.rephrase.s1_incident_core.3",
     ],
     "rephrase:s2_access_reason": [
-        "J'ai besoin du journal pour vérifier la chronologie.",
-        "Je respecte la procédure, puis-je consulter l'entrée clé?",
-        "Pouvez-vous autoriser un accès limité au terminal?",
+        "dialogue.rephrase.s2_access_reason.1",
+        "dialogue.rephrase.s2_access_reason.2",
+        "dialogue.rephrase.s2_access_reason.3",
     ],
     "rephrase:s3_timeline_checks": [
-        "À quelle heure Samira a quitté la salle?",
-        "Qui était près du couloir vers dix-huit heures?",
-        "Pouvez-vous préciser l'ordre des déplacements?",
+        "dialogue.rephrase.s3_timeline_checks.1",
+        "dialogue.rephrase.s3_timeline_checks.2",
+        "dialogue.rephrase.s3_timeline_checks.3",
     ],
     "rephrase:s4_clothing_timestamp": [
-        "Vers quelle heure avez-vous vu cette personne?",
-        "Quels vêtements avez-vous remarqués d'abord?",
-        "La personne est restée combien de minutes?",
+        "dialogue.rephrase.s4_clothing_timestamp.1",
+        "dialogue.rephrase.s4_clothing_timestamp.2",
+        "dialogue.rephrase.s4_clothing_timestamp.3",
     ],
     "rephrase:s5_accusation_logic": [
-        "Je relie l'indice de temps et l'indice d'accès.",
-        "Je présente d'abord la contradiction, puis la conclusion.",
-        "Je propose une récupération discrète avec preuves.",
+        "dialogue.rephrase.s5_accusation_logic.1",
+        "dialogue.rephrase.s5_accusation_logic.2",
+        "dialogue.rephrase.s5_accusation_logic.3",
     ],
 };
 
-const EN_META_HELP_COPY: Record<string, string> = {
-    "meta:s1_english_prompting": "Use a short French summary sentence. Keep one time marker and one object noun.",
-    "meta:s2_english_polite_security": "Ask politely for process access in French; avoid imperative tone.",
-    "meta:s3_english_timeline_frame": "Build summary as: time -> person -> place in French.",
-    "meta:s4_english_witness_focus": "Lead with time, then clothing descriptor, then location in French.",
-    "meta:s5_english_reasoning_frame": "State contradiction evidence first, then accusation/recovery intent in French.",
+const EN_META_HELP_KEYS: Record<string, string> = {
+    "meta:s1_english_prompting": "dialogue.en_meta.s1_english_prompting",
+    "meta:s2_english_polite_security": "dialogue.en_meta.s2_english_polite_security",
+    "meta:s3_english_timeline_frame": "dialogue.en_meta.s3_english_timeline_frame",
+    "meta:s4_english_witness_focus": "dialogue.en_meta.s4_english_witness_focus",
+    "meta:s5_english_reasoning_frame": "dialogue.en_meta.s5_english_reasoning_frame",
 };
 
-const SUMMARY_CODE_COPY: Record<string, string> = {
-    summary_passed: "Summary accepted. Scene progression can continue.",
-    summary_required: "A French summary is required before this action.",
-    summary_needed: "Provide a French summary to complete this scene step.",
-    summary_insufficient_facts: "Summary missing enough corroborated facts.",
-    summary_missing_key_fact: "Summary missing a required key scene fact for this difficulty.",
+const SUMMARY_CODE_KEYS: Record<string, string> = {
+    summary_passed: "dialogue.summary_code.summary_passed",
+    summary_required: "dialogue.summary_code.summary_required",
+    summary_needed: "dialogue.summary_code.summary_needed",
+    summary_insufficient_facts: "dialogue.summary_code.summary_insufficient_facts",
+    summary_missing_key_fact: "dialogue.summary_code.summary_missing_key_fact",
 };
+
+const localeStore = getSharedLocaleStore();
+const t = createScopedTranslator(() => localeStore.getLocale());
 
 type SubmitFeedback = {
     tick: number;
@@ -284,7 +288,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
 
         const title = document.createElement("div");
         title.className = "dialogue-title";
-        title.textContent = "Conversations";
+        title.textContent = t("dialogue.title");
         panel.appendChild(title);
 
         const focusSceneId = pickFocusSceneId(dialogue);
@@ -302,35 +306,38 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             slotValues = syncSlotValues(slotValues, requiredSlots);
         }
 
-        renderSectionTitle(panel, "Character Read");
+        renderSectionTitle(panel, t("dialogue.section.character_read"));
         renderNpcStateCard(panel, npcCardState, detailed);
         const completedSetupSteps = onboarding.steps.filter((step) => step.done).length;
         const needsStarterGuidance = completedSetupSteps < 2 || dialogue.recent_turns.length === 0;
         if (needsStarterGuidance) {
-            renderSectionTitle(panel, "Case Setup Hint");
-            renderInfo(panel, `What happened: ${setupGuide.incident}`);
-            renderInfo(panel, `Inspect first: ${setupGuide.firstInspect}`);
-            renderInfo(panel, `Talk first: ${setupGuide.firstTalkTo}`);
+            renderSectionTitle(panel, t("dialogue.section.case_setup_hint"));
+            renderInfo(panel, t("dialogue.setup.what_happened", { incident: setupGuide.incident }));
+            renderInfo(panel, t("dialogue.setup.inspect_first", { inspect: setupGuide.firstInspect }));
+            renderInfo(panel, t("dialogue.setup.talk_first", { talk: setupGuide.firstTalkTo }));
         }
 
         renderDataLines(panel, detailed
             ? [
-                ["Active scene", dialogue.active_scene_id ?? "none"],
-                ["Focus scene", focusSceneId ?? "none"],
-                ["Current NPC", npcCardState?.npc_id ?? focusNpcId ?? "unknown"],
-                ["Known dialogue facts", String(dialogue.revealed_fact_ids.length)],
-                ["Contradiction path", dialogue.contradiction_requirement_satisfied ? "satisfied" : "pending"],
+                [t("dialogue.line.active_scene"), dialogue.active_scene_id ?? t("dialogue.value.none")],
+                [t("dialogue.line.focus_scene"), focusSceneId ?? t("dialogue.value.none")],
+                [t("dialogue.line.current_npc"), npcCardState?.npc_id ?? focusNpcId ?? t("dialogue.value.unknown")],
+                [t("dialogue.line.known_dialogue_facts"), String(dialogue.revealed_fact_ids.length)],
+                [
+                    t("dialogue.line.contradiction_path"),
+                    dialogue.contradiction_requirement_satisfied ? t("dialogue.value.satisfied") : t("dialogue.value.pending"),
+                ],
             ]
             : [
-                ["Current scene", labelScene(dialogue.active_scene_id)],
-                ["Who to question", labelNpc(npcCardState?.npc_id ?? focusNpcId)],
-                ["Dialogue facts", String(dialogue.revealed_fact_ids.length)],
+                [t("dialogue.line.current_scene"), labelScene(dialogue.active_scene_id)],
+                [t("dialogue.line.who_to_question"), labelNpc(npcCardState?.npc_id ?? focusNpcId)],
+                [t("dialogue.line.dialogue_facts"), String(dialogue.revealed_fact_ids.length)],
             ]);
         if (detailed) {
             renderLearningSlice(panel, dialogue);
         }
 
-        renderSectionTitle(panel, "Scene Progress");
+        renderSectionTitle(panel, t("dialogue.section.scene_progress"));
         renderSceneProgress(
             panel,
             dialogue.scene_completion,
@@ -340,7 +347,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
         );
 
         if (detailed) {
-            renderSectionTitle(panel, "Summary Guidance");
+            renderSectionTitle(panel, t("dialogue.section.summary_guidance"));
             renderSummaryHintSection(panel, {
                 dialogue,
                 focusSceneId,
@@ -348,17 +355,17 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
                 requiredSlots,
             });
         }
-        renderSectionTitle(panel, "Contradiction Clues");
+        renderSectionTitle(panel, t("dialogue.section.contradiction_clues"));
         renderContradictionRoute(panel, lastState, focusSceneId, selectedIntent, detailed);
 
-        renderSectionTitle(panel, "Choose Your Line");
+        renderSectionTitle(panel, t("dialogue.section.choose_line"));
         if (!focusSceneId || !sceneConfig || !focusNpcId) {
-            renderInfo(panel, "No active conversation scene is ready yet. Inspect early case objects first.");
+            renderInfo(panel, t("dialogue.info.no_active_scene"));
         } else {
             if (dialogue.recent_turns.length === 0) {
                 renderInfo(
                     panel,
-                    `Start simple with ${labelNpc(focusNpcId)}: ask what/when/where, then summarize in French to move the scene forward.`
+                    t("dialogue.info.start_simple", { npc: labelNpc(focusNpcId) })
                 );
             }
             const allowedIntents = sceneConfig.allowedIntents;
@@ -400,7 +407,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
                 });
                 renderReferenceInputsHint(panel, lastState);
             } else {
-                renderInfo(panel, "Pick an intent, fill required details, then submit. Cross-check Case Notes before contradiction moves.");
+                renderInfo(panel, t("dialogue.info.pick_intent"));
             }
 
             const minFacts = dialogue.summary_rules.current_scene_min_fact_count;
@@ -408,7 +415,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             if (summaryRequired) {
                 renderInfo(
                     panel,
-                    `A French summary is required here. Include at least ${minFacts ?? 1} confirmed fact(s).`
+                    t("dialogue.info.summary_required_here", { count: minFacts ?? 1 })
                 );
             }
             if (detailed && (selectedIntent === "present_evidence" || selectedIntent === "challenge_contradiction")) {
@@ -423,7 +430,7 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             submitBtn.type = "button";
             submitBtn.className = "dialogue-submit";
             submitBtn.disabled = !canSubmit;
-            submitBtn.textContent = pending ? "Sending..." : "Submit Line";
+            submitBtn.textContent = pending ? t("dialogue.action.sending") : t("dialogue.action.submit_line");
             submitBtn.addEventListener("click", () => {
                 if (!selectedIntent) return;
                 const currentTick = lastState?.tick ?? 0;
@@ -473,27 +480,39 @@ export function mountDialoguePanel(store: WorldStore, opts: DialoguePanelOpts = 
             panel.appendChild(submitBtn);
 
             if (!dispatchAvailable) {
-                renderInfo(panel, "Conversation sending is unavailable in this mode.");
+                renderInfo(panel, t("dialogue.info.sending_unavailable_mode"));
             }
         }
 
         if (submitFeedback) {
-            renderSectionTitle(panel, "Latest Attempt");
+            renderSectionTitle(panel, t("dialogue.section.latest_attempt"));
             renderDataLines(panel, [
-                ["Tick", String(submitFeedback.tick)],
-                ["Scene", detailed ? submitFeedback.sceneId : labelScene(submitFeedback.sceneId)],
-                ["Intent", presentationProfile === "demo" ? labelIntent(submitFeedback.intentId) : submitFeedback.intentId],
-                ["Status", detailed ? `${submitFeedback.result.status}/${submitFeedback.result.code}` : submitFeedback.result.status],
-                ["Summary", submitFeedback.result.summary ?? "none"],
+                [t("dialogue.line.tick"), String(submitFeedback.tick)],
+                [t("dialogue.line.scene"), detailed ? submitFeedback.sceneId : labelScene(submitFeedback.sceneId)],
+                [t("dialogue.line.intent"), presentationProfile === "demo" ? labelIntent(submitFeedback.intentId) : submitFeedback.intentId],
+                [
+                    t("dialogue.line.status"),
+                    detailed ? `${submitFeedback.result.status}/${submitFeedback.result.code}` : submitFeedback.result.status,
+                ],
+                [t("dialogue.line.summary"), submitFeedback.result.summary ?? t("dialogue.value.none")],
             ]);
         }
 
-        renderSectionTitle(panel, "Recent Conversation Turns");
+        renderSectionTitle(panel, t("dialogue.section.recent_turns"));
         renderTranscript(panel, dialogue.recent_turns, detailed);
     };
 
     store.subscribe((state) => {
         lastState = state;
+        render();
+    });
+
+    let localeReady = false;
+    localeStore.subscribe(() => {
+        if (!localeReady) {
+            localeReady = true;
+            return;
+        }
         render();
     });
 
@@ -518,7 +537,7 @@ async function submitTurn(
         return {
             status: "unavailable",
             code: "dispatch_unavailable",
-            summary: "Conversation sending is not configured.",
+            summary: t("dialogue.info.sending_not_configured"),
         };
     }
     return dispatch(request);
@@ -600,7 +619,7 @@ function roomTokenFromSelection(state: WorldState, selection: Exclude<DialogueIn
 
 function renderNpcStateCard(panel: HTMLElement, npc: KvpNpcSemanticState | null, detailed: boolean): void {
     if (!npc) {
-        renderInfo(panel, "No character is in focus yet.");
+        renderInfo(panel, t("dialogue.info.no_character_focus"));
         return;
     }
     const card = document.createElement("div");
@@ -614,17 +633,17 @@ function renderNpcStateCard(panel: HTMLElement, npc: KvpNpcSemanticState | null,
 
     const meta = document.createElement("div");
     meta.className = "dialogue-npc-meta";
-    appendNpcLine(meta, "Emotion", npc.emotion);
-    appendNpcLine(meta, "Stance", npc.stance);
+    appendNpcLine(meta, t("dialogue.npc_line.emotion"), npc.emotion);
+    appendNpcLine(meta, t("dialogue.npc_line.stance"), npc.stance);
     if (detailed) {
-        appendNpcLine(meta, "Alignment", npc.soft_alignment_hint);
-        appendNpcLine(meta, "Trust trend", npc.card_state.trust_trend);
-        appendNpcLine(meta, "Tell cue", npc.card_state.tell_cue ?? "none");
-        appendNpcLine(meta, "Suggested mode", npc.card_state.suggested_interaction_mode);
-        appendNpcLine(meta, "Availability", npc.availability);
+        appendNpcLine(meta, t("dialogue.npc_line.alignment"), npc.soft_alignment_hint);
+        appendNpcLine(meta, t("dialogue.npc_line.trust_trend"), npc.card_state.trust_trend);
+        appendNpcLine(meta, t("dialogue.npc_line.tell_cue"), npc.card_state.tell_cue ?? t("dialogue.value.none"));
+        appendNpcLine(meta, t("dialogue.npc_line.suggested_mode"), npc.card_state.suggested_interaction_mode);
+        appendNpcLine(meta, t("dialogue.npc_line.availability"), npc.availability);
     } else {
-        appendNpcLine(meta, "Trust trend", npc.card_state.trust_trend);
-        appendNpcLine(meta, "Availability", npc.availability);
+        appendNpcLine(meta, t("dialogue.npc_line.trust_trend"), npc.card_state.trust_trend);
+        appendNpcLine(meta, t("dialogue.npc_line.availability"), npc.availability);
     }
 
     card.append(portraitSlot, meta);
@@ -634,23 +653,27 @@ function renderNpcStateCard(panel: HTMLElement, npc: KvpNpcSemanticState | null,
 function renderLearningSlice(panel: HTMLElement, dialogue: NonNullable<WorldState["dialogue"]>): void {
     const learning = dialogue.learning;
     if (!learning) return;
-    renderSectionTitle(panel, "Conversation Support");
+    renderSectionTitle(panel, t("dialogue.section.conversation_support"));
     renderDataLines(panel, [
-        ["Difficulty", learning.difficulty_profile],
-        ["Hint level", learning.current_hint_level],
-        ["Suggested style", learning.scaffolding_policy.recommended_mode],
-        ["French required", learning.scaffolding_policy.french_action_required ? "yes" : "no"],
-        ["English help", learning.scaffolding_policy.english_meta_allowed ? "allowed" : "off"],
-        ["Prompt level", learning.scaffolding_policy.prompt_generosity],
-        ["Feedback style", learning.scaffolding_policy.confirmation_strength],
-        ["Summary strictness", learning.scaffolding_policy.summary_strictness],
-        ["Language support", learning.scaffolding_policy.language_support_level],
-        ["Support profile", learning.scaffolding_policy.reason_code],
+        [t("dialogue.line.difficulty"), learning.difficulty_profile],
+        [t("dialogue.line.hint_level"), learning.current_hint_level],
+        [t("dialogue.line.suggested_style"), learning.scaffolding_policy.recommended_mode],
+        [t("dialogue.line.french_required"), learning.scaffolding_policy.french_action_required ? t("dialogue.value.yes") : t("dialogue.value.no")],
+        [t("dialogue.line.english_help"), learning.scaffolding_policy.english_meta_allowed ? t("dialogue.value.allowed") : t("dialogue.value.off")],
+        [t("dialogue.line.prompt_level"), learning.scaffolding_policy.prompt_generosity],
+        [t("dialogue.line.feedback_style"), learning.scaffolding_policy.confirmation_strength],
+        [t("dialogue.line.summary_strictness"), learning.scaffolding_policy.summary_strictness],
+        [t("dialogue.line.language_support"), learning.scaffolding_policy.language_support_level],
+        [t("dialogue.line.support_profile"), learning.scaffolding_policy.reason_code],
     ]);
     const completedMgs = learning.minigames.filter((row) => row.completed).length;
     renderInfo(
         panel,
-        `Minigames: ${completedMgs}/${learning.minigames.length} completed; target: ${learning.scaffolding_policy.target_minigame_id ?? "none"}`
+        t("dialogue.info.minigames_progress", {
+            completed: completedMgs,
+            total: learning.minigames.length,
+            target: learning.scaffolding_policy.target_minigame_id ?? t("dialogue.value.none"),
+        })
     );
 }
 
@@ -665,17 +688,17 @@ function renderSummaryHintSection(
 ): void {
     const learning = opts.dialogue.learning;
     if (!learning) {
-        renderInfo(panel, "Summary guidance is unavailable in this view.");
+        renderInfo(panel, t("dialogue.info.summary_guidance_unavailable"));
         return;
     }
     if (!opts.focusSceneId) {
-        renderInfo(panel, "No scene selected for summary guidance.");
+        renderInfo(panel, t("dialogue.info.no_scene_for_summary"));
         return;
     }
 
     const summaryState = learning.summary_by_scene.find((row) => row.scene_id === opts.focusSceneId) ?? null;
     if (!summaryState) {
-        renderInfo(panel, "No summary guidance is available for this scene yet.");
+        renderInfo(panel, t("dialogue.info.no_summary_for_scene"));
         return;
     }
 
@@ -696,27 +719,27 @@ function renderSummaryPrompt(
     panel.appendChild(block);
 
     const requiredLabel = summaryState.required
-        ? `yes (${summaryState.effective_min_fact_count} accepted fact(s) minimum)`
-        : "no";
+        ? t("dialogue.summary.required_yes", { count: summaryState.effective_min_fact_count })
+        : t("dialogue.value.no");
     renderDataLines(block, [
-        ["Scene", sceneId],
-        ["Summary state", summaryState.status],
-        ["Summary required", requiredLabel],
-        ["Strictness", summaryState.strictness_mode],
-        ["Attempts", String(summaryState.attempt_count)],
+        [t("dialogue.line.scene"), sceneId],
+        [t("dialogue.line.summary_state"), summaryState.status],
+        [t("dialogue.line.summary_required"), requiredLabel],
+        [t("dialogue.line.strictness"), summaryState.strictness_mode],
+        [t("dialogue.line.attempts"), String(summaryState.attempt_count)],
     ]);
 
     const prompt = buildSummaryPrompt(sceneId, summaryState, selectedIntent, requiredSlots);
     const promptLine = document.createElement("div");
     promptLine.className = "dialogue-summary-prompt";
-    promptLine.textContent = `Prompt: ${prompt}`;
+    promptLine.textContent = t("dialogue.summary.prompt_line", { prompt });
     block.appendChild(promptLine);
 
     const feedback = resolveSummaryFeedback(summaryState, dialogue.recent_turns, sceneId);
     if (feedback) {
         const feedbackLine = document.createElement("div");
         feedbackLine.className = "dialogue-summary-feedback";
-        feedbackLine.textContent = `Feedback: ${feedback}`;
+        feedbackLine.textContent = t("dialogue.summary.feedback_line", { feedback });
         block.appendChild(feedbackLine);
     }
 }
@@ -733,12 +756,15 @@ function renderHintLadder(
 
     const title = document.createElement("div");
     title.className = "dialogue-hint-ladder-title";
-    title.textContent = `Hint track (${learning.current_hint_level}, ${learning.difficulty_profile})`;
+    title.textContent = t("dialogue.hint_track.title", {
+        level: learning.current_hint_level,
+        profile: learning.difficulty_profile,
+    });
     ladder.appendChild(title);
 
     const policy = learning.scaffolding_policy;
     if (policy.scene_id && policy.scene_id !== sceneId) {
-        renderInfo(ladder, `Hints are tuned for scene ${policy.scene_id}; showing current guidance.`);
+        renderInfo(ladder, t("dialogue.hint_track.scene_tuned", { scene: policy.scene_id }));
     }
 
     const allowed = new Set(policy.allowed_hint_levels);
@@ -751,7 +777,9 @@ function renderHintLadder(
 
         const head = document.createElement("div");
         head.className = "dialogue-hint-head";
-        head.textContent = `${HINT_LEVEL_LABELS[level]} - ${isCurrent ? "current" : isAllowed ? "available" : "locked"}`;
+        head.textContent = `${t(HINT_LEVEL_LABEL_KEYS[level])} - ${
+            isCurrent ? t("dialogue.hint_state.current") : isAllowed ? t("dialogue.hint_state.available") : t("dialogue.hint_state.locked")
+        }`;
         row.appendChild(head);
 
         const body = document.createElement("div");
@@ -773,7 +801,7 @@ function renderContradictionRoute(
     const investigation = state.investigation;
     const dialogue = state.dialogue;
     if (!investigation || !dialogue) {
-        renderInfo(panel, "Contradiction clues are not available yet.");
+        renderInfo(panel, t("dialogue.info.contradiction_clues_unavailable"));
         return;
     }
 
@@ -784,64 +812,59 @@ function renderContradictionRoute(
         .filter((sceneId) => surfaced.has(sceneId) && sceneSupportsContradictionIntent(sceneId));
     const useScenesLabel = usableScenes.length > 0
         ? usableScenes.map((sceneId) => (detailed ? sceneId : labelScene(sceneId))).join(", ")
-        : (detailed ? "none surfaced yet" : "none available yet");
+        : (detailed ? t("dialogue.value.none_surfaced_yet") : t("dialogue.value.none_available_yet"));
     const contradictionStatus = contradictions.requirement_satisfied
-        ? "ready"
+        ? t("dialogue.value.ready")
         : contradictions.unlockable_edge_ids.length > 0
-          ? "lead found"
-          : "building";
+          ? t("dialogue.value.lead_found")
+          : t("dialogue.value.building");
 
     renderDataLines(panel, detailed
         ? [
-            ["Status", contradictionStatus],
-            ["Required for accusation", contradictions.required_for_accusation ? "yes" : "no"],
-            ["Use in scenes", useScenesLabel],
-            ["Potential links", String(contradictions.unlockable_edge_ids.length)],
-            ["Known links", String(contradictions.known_edge_ids.length)],
+            [t("dialogue.line.status"), contradictionStatus],
+            [t("dialogue.line.required_for_accusation"), contradictions.required_for_accusation ? t("dialogue.value.yes") : t("dialogue.value.no")],
+            [t("dialogue.line.use_in_scenes"), useScenesLabel],
+            [t("dialogue.line.potential_links"), String(contradictions.unlockable_edge_ids.length)],
+            [t("dialogue.line.known_links"), String(contradictions.known_edge_ids.length)],
         ]
         : [
-            ["Status", contradictionStatus],
-            ["Where to use", useScenesLabel],
+            [t("dialogue.line.status"), contradictionStatus],
+            [t("dialogue.line.where_to_use"), useScenesLabel],
         ]);
     if (detailed && contradictions.unlockable_edge_ids.length > 0) {
         renderInfo(
             panel,
-            `Potential: ${contradictions.unlockable_edge_ids.map(labelMbamContradictionEdge).join(", ")}`
+            t("dialogue.info.potential_edges", {
+                edges: contradictions.unlockable_edge_ids.map(labelMbamContradictionEdge).join(", "),
+            })
         );
     }
     if (detailed && contradictions.known_edge_ids.length > 0) {
         renderInfo(
             panel,
-            `Known: ${contradictions.known_edge_ids.map(labelMbamContradictionEdge).join(", ")}`
+            t("dialogue.info.known_edges", {
+                edges: contradictions.known_edge_ids.map(labelMbamContradictionEdge).join(", "),
+            })
         );
     }
 
     if (contradictions.requirement_satisfied) {
-        renderInfo(
-            panel,
-            "Contradiction path is ready. Use Present Evidence or Challenge Contradiction where available."
-        );
+        renderInfo(panel, t("dialogue.info.contradiction_path_ready"));
     } else if (contradictions.unlockable_edge_ids.length > 0) {
-        renderInfo(
-            panel,
-            "You have contradiction leads. Corroborate timeline clues, then challenge the contradiction."
-        );
+        renderInfo(panel, t("dialogue.info.contradiction_leads_found"));
     } else {
-        renderInfo(
-            panel,
-            "No contradiction lead yet. Build timeline support through object checks and conversations."
-        );
+        renderInfo(panel, t("dialogue.info.no_contradiction_lead"));
     }
     if (focusSceneId && !sceneSupportsContradictionIntent(focusSceneId)) {
         renderInfo(
             panel,
             detailed
-                ? `Scene ${focusSceneId} does not currently allow contradiction actions.`
-                : "This conversation does not allow contradiction actions yet."
+                ? t("dialogue.info.scene_no_contradiction_detailed", { scene: focusSceneId })
+                : t("dialogue.info.scene_no_contradiction")
         );
     }
     if (selectedIntent === "challenge_contradiction" && !contradictions.requirement_satisfied) {
-        renderInfo(panel, "This action may stay blocked until contradiction readiness improves.");
+        renderInfo(panel, t("dialogue.info.challenge_may_block"));
     }
 }
 
@@ -857,13 +880,17 @@ function buildSummaryPrompt(
     selectedIntent: string | null,
     requiredSlots: string[]
 ): string {
-    const slotsLabel = requiredSlots.length > 0 ? `Include slots: ${requiredSlots.join(", ")}.` : "No mandatory slots.";
+    const slotsLabel = requiredSlots.length > 0
+        ? t("dialogue.summary.include_slots", { slots: requiredSlots.join(", ") })
+        : t("dialogue.summary.no_mandatory_slots");
     const keyFactHint =
         summaryState.required_key_fact_count > 0
-            ? "Include at least one key scene fact that you have already confirmed."
-            : "Use only facts you have already unlocked.";
-    const intentLabel = selectedIntent ? `Intent context: ${selectedIntent}.` : "Intent context: none.";
-    return `FR summary for ${sceneId}. ${slotsLabel} ${intentLabel} ${keyFactHint}`;
+            ? t("dialogue.summary.include_key_fact")
+            : t("dialogue.summary.use_unlocked_facts");
+    const intentLabel = selectedIntent
+        ? t("dialogue.summary.intent_context", { intent: selectedIntent })
+        : t("dialogue.summary.intent_context_none");
+    return t("dialogue.summary.prompt", { scene: sceneId, slots: slotsLabel, intent: intentLabel, facts: keyFactHint });
 }
 
 function resolveSummaryFeedback(
@@ -879,8 +906,8 @@ function resolveSummaryFeedback(
         return null;
     })();
     const code = lastTurnCode ?? summaryState.last_summary_code;
-    if (!code) return summaryState.status === "passed" ? SUMMARY_CODE_COPY.summary_passed : null;
-    return SUMMARY_CODE_COPY[code] ?? `Summary status: ${code}`;
+    if (!code) return summaryState.status === "passed" ? t("dialogue.summary_code.summary_passed") : null;
+    return SUMMARY_CODE_KEYS[code] ? t(SUMMARY_CODE_KEYS[code]) : t("dialogue.summary_code.unknown", { code });
 }
 
 function resolveHintBody(
@@ -892,28 +919,31 @@ function resolveHintBody(
 ): string {
     if (!isAllowed) {
         if (level === "english_meta_help" && !policy.english_meta_allowed) {
-            return "Not available at this difficulty right now.";
+            return t("dialogue.hint.not_available_difficulty");
         }
-        return "Locked until more repair pressure or easier support settings.";
+        return t("dialogue.hint.locked");
     }
 
     if (level === "soft_hint") {
-        return SOFT_HINT_COPY[policy.soft_hint_key ?? ""] ?? `Use scene ${sceneId} anchors before escalating.`;
+        const key = SOFT_HINT_KEYS[policy.soft_hint_key ?? ""];
+        return key ? t(key) : t("dialogue.hint.soft_hint_fallback", { scene: sceneId });
     }
     if (level === "sentence_stem") {
-        const base = SENTENCE_STEM_COPY[policy.sentence_stem_key ?? ""] ?? "Je résume: ___, ___, ___.";
+        const key = SENTENCE_STEM_KEYS[policy.sentence_stem_key ?? ""];
+        const base = key ? t(key) : t("dialogue.sentence_stem.fallback");
         if (requiredSlots.length === 0) return base;
-        return `${base} (Slots: ${requiredSlots.join(", ")})`;
+        return t("dialogue.hint.sentence_stem_with_slots", { base, slots: requiredSlots.join(", ") });
     }
     if (level === "rephrase_choice") {
-        const options = REPHRASE_CHOICES_COPY[policy.rephrase_set_id ?? ""];
-        if (!options || options.length === 0) return "Rephrase your previous turn in shorter, more specific French.";
-        return `Choose one: ${options.join(" / ")}`;
+        const optionKeys = REPHRASE_CHOICE_KEYS[policy.rephrase_set_id ?? ""];
+        if (!optionKeys || optionKeys.length === 0) return t("dialogue.hint.rephrase_fallback");
+        return t("dialogue.hint.choose_one", { options: optionKeys.map((key) => t(key)).join(" / ") });
     }
     if (!policy.english_meta_allowed) {
-        return "English framing help is unavailable at this difficulty.";
+        return t("dialogue.hint.english_unavailable");
     }
-    return EN_META_HELP_COPY[policy.english_meta_key ?? ""] ?? "English framing is okay, but the final action must stay in French.";
+    const key = EN_META_HELP_KEYS[policy.english_meta_key ?? ""];
+    return key ? t(key) : t("dialogue.hint.english_fallback");
 }
 
 function appendNpcLine(parent: HTMLElement, labelText: string, valueText: string): void {
@@ -967,7 +997,11 @@ function renderSceneProgress(
         item.className = "dialogue-scene-row";
         if (row.scene_id === focusSceneId) item.classList.add("is-focus");
         const sceneLabel = friendlyLabels ? labelScene(row.scene_id) : row.scene_id;
-        item.textContent = `${sceneLabel}  ${row.completion_state}${surfaced.has(row.scene_id) ? "  surfaced" : ""}`;
+        item.textContent = t("dialogue.scene_progress.row", {
+            scene: sceneLabel,
+            state: row.completion_state,
+            surfaced: surfaced.has(row.scene_id) ? t("dialogue.scene_progress.surfaced") : "",
+        }).trim();
         wrap.appendChild(item);
     }
 }
@@ -1005,7 +1039,7 @@ function renderSlotInputs(
     }
 ): void {
     if (opts.requiredSlots.length === 0) {
-        renderInfo(panel, "No required details for this intent in the current scene.");
+        renderInfo(panel, t("dialogue.info.no_required_details"));
         return;
     }
     for (const slotName of opts.requiredSlots) {
@@ -1013,12 +1047,14 @@ function renderSlotInputs(
         row.className = "dialogue-input-row";
         const label = document.createElement("span");
         label.className = "dialogue-input-label";
-        label.textContent = opts.friendlyLabels ? `Required: ${humanizeToken(slotName)}` : `slot:${slotName}`;
+        label.textContent = opts.friendlyLabels
+            ? t("dialogue.slot.required", { slot: humanizeToken(slotName) })
+            : t("dialogue.slot.raw", { slot: slotName });
         const input = document.createElement("input");
         input.className = "dialogue-input";
         input.type = "text";
         input.value = opts.values[slotName] ?? "";
-        input.placeholder = `Enter ${humanizeToken(slotName).toLowerCase()}`;
+        input.placeholder = t("dialogue.slot.placeholder", { slot: humanizeToken(slotName).toLowerCase() });
         input.addEventListener("input", () => {
             opts.onChange(slotName, input.value);
         });
@@ -1038,17 +1074,22 @@ function renderAuxInputs(
         onUtteranceChange: (value: string) => void;
     }
 ): void {
-    const facts = renderAuxInput("Facts to reference (csv)", opts.factInput, "N1,N3", opts.onFactChange);
+    const facts = renderAuxInput(
+        t("dialogue.aux.facts_label"),
+        opts.factInput,
+        t("dialogue.aux.facts_placeholder"),
+        opts.onFactChange
+    );
     const evidence = renderAuxInput(
-        "Evidence to reference (comma-separated)",
+        t("dialogue.aux.evidence_label"),
         opts.evidenceInput,
-        "E2_CAFE_RECEIPT",
+        t("dialogue.aux.evidence_placeholder"),
         opts.onEvidenceChange
     );
     const utterance = renderAuxInput(
-        "Optional FR line",
+        t("dialogue.aux.utterance_label"),
         opts.utteranceInput,
-        "Je confirme le fait et l'heure...",
+        t("dialogue.aux.utterance_placeholder"),
         opts.onUtteranceChange
     );
     panel.append(facts, evidence, utterance);
@@ -1057,10 +1098,10 @@ function renderAuxInputs(
 function renderReferenceInputsHint(panel: HTMLElement, state: WorldState): void {
     const knownFacts = state.investigation?.facts.known_fact_ids ?? [];
     const knownEvidence = state.investigation?.evidence.discovered_ids ?? [];
-    const factsLabel = knownFacts.length > 0 ? knownFacts.join(", ") : "none yet";
-    const evidenceLabel = knownEvidence.length > 0 ? knownEvidence.join(", ") : "none yet";
-    renderInfo(panel, `Facts you can cite: ${factsLabel}`);
-    renderInfo(panel, `Evidence you can cite: ${evidenceLabel}`);
+    const factsLabel = knownFacts.length > 0 ? knownFacts.join(", ") : t("dialogue.value.none_yet");
+    const evidenceLabel = knownEvidence.length > 0 ? knownEvidence.join(", ") : t("dialogue.value.none_yet");
+    renderInfo(panel, t("dialogue.info.facts_you_can_cite", { facts: factsLabel }));
+    renderInfo(panel, t("dialogue.info.evidence_you_can_cite", { evidence: evidenceLabel }));
 }
 
 function renderContradictionIntentHint(
@@ -1071,23 +1112,14 @@ function renderContradictionIntentHint(
     const contradictions = state.investigation?.contradictions;
     if (!contradictions) return;
     if (selectedIntent === "present_evidence") {
-        renderInfo(
-            panel,
-            "Present Evidence works best with one timeline fact plus one evidence item from Case Notes."
-        );
+        renderInfo(panel, t("dialogue.info.present_evidence_hint"));
         return;
     }
     if (contradictions.requirement_satisfied) {
-        renderInfo(
-            panel,
-            "Challenge Contradiction is ready. Use your strongest corroborated timeline references."
-        );
+        renderInfo(panel, t("dialogue.info.challenge_ready_hint"));
         return;
     }
-    renderInfo(
-        panel,
-        "Challenge Contradiction may be rejected until readiness is satisfied."
-    );
+    renderInfo(panel, t("dialogue.info.challenge_rejected_hint"));
 }
 
 function renderAuxInput(
@@ -1113,7 +1145,7 @@ function renderAuxInput(
 
 function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[], detailed: boolean): void {
     if (turns.length === 0) {
-        renderInfo(panel, "No conversation turns recorded yet.");
+        renderInfo(panel, t("dialogue.info.no_turns"));
         return;
     }
     const list = document.createElement("div");
@@ -1138,7 +1170,7 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[], detai
         if (turn.npc_utterance_text) {
             const speech = document.createElement("div");
             speech.className = "dialogue-turn-detail";
-            speech.textContent = `NPC: ${turn.npc_utterance_text}`;
+            speech.textContent = t("dialogue.turn.npc_line", { line: turn.npc_utterance_text });
             row.appendChild(speech);
         }
 
@@ -1164,7 +1196,7 @@ function renderTranscript(panel: HTMLElement, turns: KvpDialogueTurnLog[], detai
             const source = document.createElement("div");
             source.className = "dialogue-turn-detail";
             source.textContent =
-                `presentation:${turn.presentation_source ?? "n/a"}` +
+                `presentation:${turn.presentation_source ?? t("dialogue.value.na")}` +
                 (turn.presentation_reason_code ? ` reason:${turn.presentation_reason_code}` : "");
             row.appendChild(source);
         }
@@ -1208,17 +1240,20 @@ function renderInfo(panel: HTMLElement, text: string): void {
 }
 
 function labelNpc(npcId: string | null | undefined): string {
-    if (!npcId) return "Unknown";
-    return NPC_DISPLAY_LABELS[npcId] ?? humanizeToken(npcId);
+    if (!npcId) return t("dialogue.value.unknown");
+    const key = NPC_LABEL_KEYS[npcId];
+    return key ? t(key) : humanizeToken(npcId);
 }
 
 function labelScene(sceneId: string | null | undefined): string {
-    if (!sceneId) return "Not selected";
-    return SCENE_DISPLAY_LABELS[sceneId] ?? sceneId;
+    if (!sceneId) return t("dialogue.value.not_selected");
+    const key = SCENE_LABEL_KEYS[sceneId];
+    return key ? t(key) : sceneId;
 }
 
 function labelIntent(intentId: string): string {
-    return INTENT_LABELS[intentId] ?? intentId;
+    const key = INTENT_LABEL_KEYS[intentId];
+    return key ? t(key) : intentId;
 }
 
 function humanizeToken(value: string): string {

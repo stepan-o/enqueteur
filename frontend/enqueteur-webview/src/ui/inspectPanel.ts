@@ -8,6 +8,7 @@ import type {
     KvpObject,
     KvpRoom,
 } from "../state/worldStore";
+import { createScopedTranslator, getSharedLocaleStore } from "../i18n";
 import {
     buildMbamCaseSetupGuide,
     buildMbamOnboardingView,
@@ -79,6 +80,9 @@ const WORLD_CLASS_TO_CASE_OBJECT: Record<string, string> = {
     BULLETIN_BOARD: "O10_BULLETIN_BOARD",
 };
 
+const localeStore = getSharedLocaleStore();
+const t = createScopedTranslator(() => localeStore.getLocale());
+
 export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}): InspectHandle {
     const root = document.createElement("div");
     root.className = "inspect-root";
@@ -104,21 +108,21 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
 
         if (selection.kind === "room") {
             const room = lastState.rooms.get(selection.id);
-            if (!room) return renderMissing("Room", selection.id);
+            if (!room) return renderMissing(t("inspect.missing.room"), selection.id);
             renderRoom(panel, room, presentationProfile !== "demo");
             return;
         }
 
         if (selection.kind === "agent") {
             const agent = lastState.agents.get(selection.id);
-            if (!agent) return renderMissing("Agent", selection.id);
+            if (!agent) return renderMissing(t("inspect.missing.agent"), selection.id);
             renderAgent(panel, agent, lastState, presentationProfile !== "demo");
             return;
         }
 
         if (selection.kind === "object") {
             const obj = lastState.objects.get(selection.id);
-            if (!obj) return renderMissing("Object", selection.id);
+            if (!obj) return renderMissing(t("inspect.missing.object"), selection.id);
             renderObjectActionPanel(panel, obj, lastState, {
                 dispatchInvestigationAction: opts.dispatchInvestigationAction,
                 canDispatchInvestigationAction: opts.canDispatchInvestigationAction,
@@ -141,7 +145,7 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
                                 result: {
                                     status: "unavailable",
                                     code: "dispatch_unavailable",
-                                    summary: "This action cannot be sent right now.",
+                                    summary: t("inspect.action.dispatch_unavailable"),
                                 },
                             };
                         } else {
@@ -184,12 +188,21 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
         panel.appendChild(title);
         const line = document.createElement("div");
         line.className = "inspect-line";
-        line.textContent = "Nothing to inspect here yet.";
+        line.textContent = t("inspect.missing.body");
         panel.appendChild(line);
     };
 
     store.subscribe((s) => {
         lastState = s;
+        render();
+    });
+
+    let localeReady = false;
+    localeStore.subscribe(() => {
+        if (!localeReady) {
+            localeReady = true;
+            return;
+        }
         render();
     });
 
@@ -225,22 +238,22 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
 function renderRoom(panel: HTMLElement, room: KvpRoom, detailed: boolean): void {
     const title = document.createElement("div");
     title.className = "inspect-title";
-    title.textContent = room.label ?? `Room ${room.room_id}`;
+    title.textContent = room.label ?? t("inspect.title.room_with_id", { id: room.room_id });
     panel.appendChild(title);
 
     const lines: Array<[string, string]> = detailed
         ? [
-            ["Room", String(room.room_id)],
-            ["Zone", room.zone ?? "unknown"],
-            ["Level", room.level?.toString() ?? "0"],
-            ["Kind", String(room.kind_code)],
-            ["Tension", room.tension_tier ?? "none"],
-            ["Occupants", String(room.occupants?.length ?? 0)],
+            [t("inspect.line.room"), String(room.room_id)],
+            [t("inspect.line.zone"), room.zone ?? t("inspect.value.unknown")],
+            [t("inspect.line.level"), room.level?.toString() ?? "0"],
+            [t("inspect.line.kind"), String(room.kind_code)],
+            [t("inspect.line.tension"), room.tension_tier ?? t("inspect.value.none")],
+            [t("inspect.line.occupants"), String(room.occupants?.length ?? 0)],
         ]
         : [
-            ["Area", humanizeClassCode(room.zone ?? "gallery")],
-            ["Tension", room.tension_tier ?? "steady"],
-            ["People nearby", String(room.occupants?.length ?? 0)],
+            [t("inspect.line.area"), humanizeClassCode(room.zone ?? "gallery")],
+            [t("inspect.line.tension"), room.tension_tier ?? t("inspect.value.steady")],
+            [t("inspect.line.people_nearby"), String(room.occupants?.length ?? 0)],
         ];
 
     renderLines(panel, lines);
@@ -254,32 +267,34 @@ function renderAgent(
 ): void {
     const title = document.createElement("div");
     title.className = "inspect-title";
-    title.textContent = detailed ? `Character ${agent.agent_id}` : "Character";
+    title.textContent = detailed
+        ? t("inspect.title.character_with_id", { id: agent.agent_id })
+        : t("inspect.title.character");
     panel.appendChild(title);
 
-    const roomLabel = state.rooms.get(agent.room_id)?.label ?? `Room ${agent.room_id}`;
+    const roomLabel = state.rooms.get(agent.room_id)?.label ?? t("inspect.title.room_with_id", { id: agent.room_id });
     const activeObject = findObjectByOccupant(state, agent.agent_id);
     const context = describeInteractionContext(activeObject, detailed);
 
     const lines: Array<[string, string]> = detailed
         ? [
-            ["Room", roomLabel],
-            ["Role", String(agent.role_code)],
-            ["Action", String(agent.action_state_code)],
-            ["Generation", String(agent.generation)],
-            ["Interacting", context],
+            [t("inspect.line.room"), roomLabel],
+            [t("inspect.line.role"), String(agent.role_code)],
+            [t("inspect.line.action"), String(agent.action_state_code)],
+            [t("inspect.line.generation"), String(agent.generation)],
+            [t("inspect.line.interacting"), context],
         ]
         : [
-            ["Room", roomLabel],
-            ["Interacting", context],
+            [t("inspect.line.room"), roomLabel],
+            [t("inspect.line.interacting"), context],
         ];
     renderLines(panel, lines);
 
     if (state.npcSemantic.length > 0) {
-        renderSectionTitle(panel, "Character Notes");
+        renderSectionTitle(panel, t("inspect.section.character_notes"));
         renderLines(panel, [
-            ["Profiles in view", String(state.npcSemantic.length)],
-            ["Tip", "Select an object to see what you can do next."],
+            [t("inspect.line.profiles_in_view"), String(state.npcSemantic.length)],
+            [t("inspect.line.tip"), t("inspect.tip.select_object")],
         ]);
     }
 }
@@ -309,65 +324,68 @@ function renderObjectActionPanel(
         : (objectGuide?.label ?? humanizeClassCode(obj.class_code));
     panel.appendChild(title);
 
-    const roomLabel = state.rooms.get(obj.room_id)?.label ?? `Room ${obj.room_id}`;
+    const roomLabel = state.rooms.get(obj.room_id)?.label ?? t("inspect.title.room_with_id", { id: obj.room_id });
     const occupant = obj.occupant_agent_id ? state.agents.get(obj.occupant_agent_id) : null;
     const occupantLabel = opts.detailed
-        ? (occupant ? `Agent ${occupant.agent_id}` : "none")
-        : (occupant ? "Someone nearby" : "No one nearby");
+        ? (occupant ? t("inspect.value.agent_with_id", { id: occupant.agent_id }) : t("inspect.value.none"))
+        : (occupant ? t("inspect.value.someone_nearby") : t("inspect.value.no_one_nearby"));
     if (opts.detailed) {
         renderLines(panel, [
-            ["Object", String(obj.object_id)],
-            ["Room", roomLabel],
-            ["Status", String(obj.status_code)],
-            ["Occupant", occupantLabel],
+            [t("inspect.line.object"), String(obj.object_id)],
+            [t("inspect.line.room"), roomLabel],
+            [t("inspect.line.status"), String(obj.status_code)],
+            [t("inspect.line.occupant"), occupantLabel],
         ]);
     } else {
         renderLines(panel, [
-            ["Room", roomLabel],
-            ["Occupant", occupantLabel],
+            [t("inspect.line.room"), roomLabel],
+            [t("inspect.line.occupant"), occupantLabel],
         ]);
     }
 
-    renderSectionTitle(panel, "Investigation Actions");
+    renderSectionTitle(panel, t("inspect.section.investigation_actions"));
     if (!caseObjectId) {
         renderInfo(panel, opts.detailed
-            ? "Object link not available. This object is not interactable in this case."
-            : "No direct case action is available on this object right now.");
+            ? t("inspect.info.object_link_unavailable")
+            : t("inspect.info.no_direct_action"));
         return;
     }
 
     const investigationObject = state.investigation?.objects.find((row) => row.object_id === caseObjectId) ?? null;
     renderLines(panel, [[
-        opts.detailed ? "Case Object" : "Object",
+        opts.detailed ? t("inspect.line.case_object") : t("inspect.line.object"),
         opts.detailed
             ? `${caseObjectId}${objectGuide ? ` (${objectGuide.label})` : ""}`
             : (objectGuide?.label ?? caseObjectId),
     ]]);
     if (objectGuide) {
-        renderLines(panel, [[opts.detailed ? "Location hint" : "Where to look", objectGuide.location_hint]]);
+        renderLines(panel, [[
+            opts.detailed ? t("inspect.line.location_hint") : t("inspect.line.where_to_look"),
+            objectGuide.location_hint,
+        ]]);
     }
 
     if (!investigationObject || !state.investigation) {
-        renderLines(panel, [["Investigation Notes", "loading"]]);
+        renderLines(panel, [[t("inspect.line.investigation_notes"), t("inspect.value.loading")]]);
         return;
     }
 
     renderLines(panel, opts.detailed
         ? [
-            ["Available actions", String(investigationObject.affordances.length)],
-            ["Actions reviewed", String(investigationObject.observed_affordances.length)],
-            ["Evidence found", String(state.investigation.evidence.discovered_ids.length)],
-            ["Evidence collected", String(state.investigation.evidence.collected_ids.length)],
-            ["Facts learned", String(state.investigation.facts.known_fact_ids.length)],
-            ["Contradiction leads", String(state.investigation.contradictions.unlockable_edge_ids.length)],
+            [t("inspect.line.available_actions"), String(investigationObject.affordances.length)],
+            [t("inspect.line.actions_reviewed"), String(investigationObject.observed_affordances.length)],
+            [t("inspect.line.evidence_found"), String(state.investigation.evidence.discovered_ids.length)],
+            [t("inspect.line.evidence_collected"), String(state.investigation.evidence.collected_ids.length)],
+            [t("inspect.line.facts_learned"), String(state.investigation.facts.known_fact_ids.length)],
+            [t("inspect.line.contradiction_leads"), String(state.investigation.contradictions.unlockable_edge_ids.length)],
         ]
         : [
-            ["Leads available", String(investigationObject.affordances.length)],
-            ["Leads checked", String(investigationObject.observed_affordances.length)],
-            ["Clues found", String(state.investigation.evidence.discovered_ids.length)],
-            ["Clues secured", String(state.investigation.evidence.collected_ids.length)],
-            ["Facts confirmed", String(state.investigation.facts.known_fact_ids.length)],
-            ["Timeline tensions", String(state.investigation.contradictions.unlockable_edge_ids.length)],
+            [t("inspect.line.leads_available"), String(investigationObject.affordances.length)],
+            [t("inspect.line.leads_checked"), String(investigationObject.observed_affordances.length)],
+            [t("inspect.line.clues_found"), String(state.investigation.evidence.discovered_ids.length)],
+            [t("inspect.line.clues_secured"), String(state.investigation.evidence.collected_ids.length)],
+            [t("inspect.line.facts_confirmed"), String(state.investigation.facts.known_fact_ids.length)],
+            [t("inspect.line.timeline_tensions"), String(state.investigation.contradictions.unlockable_edge_ids.length)],
         ]);
     renderObjectPrompt(panel, caseObjectId, state);
 
@@ -383,15 +401,18 @@ function renderKnownState(
     detailed: boolean
 ): void {
     if (!detailed) {
-        renderSectionTitle(panel, "Known Object State");
+        renderSectionTitle(panel, t("inspect.section.known_object_state"));
         const keyCount = Object.keys(objectState.known_state ?? {}).length;
-        renderLines(panel, [["Visible clues", keyCount > 0 ? String(keyCount) : "none yet"]]);
+        renderLines(panel, [[
+            t("inspect.line.visible_clues"),
+            keyCount > 0 ? String(keyCount) : t("inspect.value.none_yet"),
+        ]]);
         return;
     }
     const entries = Object.entries(objectState.known_state ?? {}).sort(([a], [b]) => a.localeCompare(b));
-    renderSectionTitle(panel, "Known Object State");
+    renderSectionTitle(panel, t("inspect.section.known_object_state"));
     if (entries.length === 0) {
-        renderLines(panel, [["State", "No observed details yet"]]);
+        renderLines(panel, [[t("inspect.line.state"), t("inspect.value.no_observed_details")]]);
         return;
     }
     renderLines(
@@ -408,7 +429,7 @@ function renderActionButtons(
     state: WorldState,
     opts: RenderActionPanelOpts
 ): void {
-    renderSectionTitle(panel, "Actions");
+    renderSectionTitle(panel, t("inspect.section.actions"));
     const actionsWrap = document.createElement("div");
     actionsWrap.className = "inspect-actions";
     panel.appendChild(actionsWrap);
@@ -431,12 +452,14 @@ function renderActionButtons(
             ? opts.canDispatchInvestigationAction()
             : Boolean(opts.dispatchInvestigationAction);
         const blockedReason = !isDispatchAvailable
-            ? "Action sending is unavailable until the live connection is ready."
+            ? t("inspect.action.sending_unavailable")
             : null;
 
         btn.disabled = isPending || !isDispatchAvailable;
         const actionLabel = labelMbamAction(affordanceId);
-        btn.textContent = isPending ? `${actionLabel}...` : actionLabel;
+        btn.textContent = isPending
+            ? t("inspect.action.pending_label", { action: actionLabel })
+            : actionLabel;
         btn.addEventListener("click", () => {
             void opts.onAction({
                 worldObjectId,
@@ -451,10 +474,10 @@ function renderActionButtons(
         const info = document.createElement("div");
         info.className = "inspect-note";
         info.textContent = observed
-            ? `Already checked in this run.`
+            ? t("inspect.info.already_checked")
             : blockedReason
               ? blockedReason
-              : `New lead: ${hintMbamAction(affordanceId)}`;
+              : t("inspect.info.new_lead", { hint: hintMbamAction(affordanceId) });
         actionsWrap.appendChild(info);
     }
 }
@@ -470,22 +493,22 @@ function renderLastActionFeedback(
     const expectedSelectionKey = selectionKeyForObject(worldObjectId, caseObjectId);
     if (feedback.selectionKey !== expectedSelectionKey) return;
 
-    renderSectionTitle(panel, "Latest Result");
+    renderSectionTitle(panel, t("inspect.section.latest_result"));
     renderLines(panel, detailed
         ? [
-            ["Affordance", `${labelMbamAction(feedback.affordanceId)} (${feedback.affordanceId})`],
-            ["Status", feedback.result.status],
-            ["Code", feedback.result.code],
-            ["Tick", String(feedback.tick)],
-            ["Summary", feedback.result.summary ?? "none"],
-            ["Next step", describeInvestigationFeedback(feedback.result)],
-            ["Facts", String(feedback.result.revealed_fact_ids?.length ?? 0)],
-            ["Evidence", String(feedback.result.revealed_evidence_ids?.length ?? 0)],
+            [t("inspect.line.affordance"), `${labelMbamAction(feedback.affordanceId)} (${feedback.affordanceId})`],
+            [t("inspect.line.status"), feedback.result.status],
+            [t("inspect.line.code"), feedback.result.code],
+            [t("inspect.line.tick"), String(feedback.tick)],
+            [t("inspect.line.summary"), feedback.result.summary ?? t("inspect.value.none")],
+            [t("inspect.line.next_step"), describeInvestigationFeedback(feedback.result)],
+            [t("inspect.line.facts"), String(feedback.result.revealed_fact_ids?.length ?? 0)],
+            [t("inspect.line.evidence"), String(feedback.result.revealed_evidence_ids?.length ?? 0)],
         ]
         : [
-            ["Action", labelMbamAction(feedback.affordanceId)],
-            ["Result", feedback.result.status],
-            ["Summary", feedback.result.summary ?? describeInvestigationFeedback(feedback.result)],
+            [t("inspect.line.action"), labelMbamAction(feedback.affordanceId)],
+            [t("inspect.line.result"), feedback.result.status],
+            [t("inspect.line.summary"), feedback.result.summary ?? describeInvestigationFeedback(feedback.result)],
         ]);
 }
 
@@ -493,16 +516,16 @@ function renderRecentDialogueHint(panel: HTMLElement, state: WorldState, detaile
     const dialogue = state.dialogue;
     if (!dialogue || dialogue.recent_turns.length === 0) return;
     const recent = dialogue.recent_turns[dialogue.recent_turns.length - 1] as KvpDialogueTurnLog;
-    renderSectionTitle(panel, "Recent Conversation");
+    renderSectionTitle(panel, t("inspect.section.recent_conversation"));
     renderLines(panel, detailed
         ? [
-            ["Scene", recent.scene_id],
-            ["Intent", recent.intent_id],
-            ["Result", `${recent.status}/${recent.code}`],
+            [t("inspect.line.scene"), recent.scene_id],
+            [t("inspect.line.intent"), recent.intent_id],
+            [t("inspect.line.result"), `${recent.status}/${recent.code}`],
         ]
         : [
-            ["Scene", labelSceneFromId(recent.scene_id)],
-            ["Result", formatConversationResult(recent.status)],
+            [t("inspect.line.scene"), labelSceneFromId(recent.scene_id)],
+            [t("inspect.line.result"), formatConversationResult(recent.status)],
         ]);
 }
 
@@ -510,12 +533,12 @@ function renderObjectPrompt(panel: HTMLElement, caseObjectId: string, state: Wor
     const onboarding = buildMbamOnboardingView(state);
     const setupGuide = buildMbamCaseSetupGuide(state);
     const promptByObject: Record<string, string> = {
-        O1_DISPLAY_CASE: "Starter lead: inspect + check lock to confirm what changed in the gallery.",
-        O3_WALL_LABEL: "Read and note title/date. It helps anchor timeline dialogue.",
-        O6_BADGE_TERMINAL: "Badge logs provide movement timing for contradiction checks.",
-        O9_RECEIPT_PRINTER: "Receipt time helps corroborate witness statements.",
+        O1_DISPLAY_CASE: t("inspect.prompt.O1_DISPLAY_CASE"),
+        O3_WALL_LABEL: t("inspect.prompt.O3_WALL_LABEL"),
+        O6_BADGE_TERMINAL: t("inspect.prompt.O6_BADGE_TERMINAL"),
+        O9_RECEIPT_PRINTER: t("inspect.prompt.O9_RECEIPT_PRINTER"),
     };
-    renderSectionTitle(panel, "Field Prompt");
+    renderSectionTitle(panel, t("inspect.section.field_prompt"));
     const note = document.createElement("div");
     note.className = "inspect-note";
     note.textContent = promptByObject[caseObjectId] ?? onboarding.currentLead;
@@ -527,13 +550,13 @@ function renderObjectPrompt(panel: HTMLElement, caseObjectId: string, state: Wor
         const starterNote = document.createElement("div");
         starterNote.className = "inspect-note";
         starterNote.textContent = starterIds.includes(caseObjectId)
-            ? "Priority start object: this is one of your first checks."
-            : "For your first pass, inspect the Display Case and Wall Label first.";
+            ? t("inspect.info.priority_start_object")
+            : t("inspect.info.first_pass_starters");
         panel.appendChild(starterNote);
     } else if ((state.dialogue?.recent_turns.length ?? 0) === 0) {
         const talkNote = document.createElement("div");
         talkNote.className = "inspect-note";
-        talkNote.textContent = `Next step: ${setupGuide.firstTalkTo}`;
+        talkNote.textContent = t("inspect.info.next_step", { step: setupGuide.firstTalkTo });
         panel.appendChild(talkNote);
     }
 
@@ -541,7 +564,7 @@ function renderObjectPrompt(panel: HTMLElement, caseObjectId: string, state: Wor
         const contradictionNote = document.createElement("div");
         contradictionNote.className = "inspect-note";
         contradictionNote.textContent =
-            "Contradictions matter for accusation. Prioritize timeline-focused object checks.";
+            t("inspect.info.contradiction_priority");
         panel.appendChild(contradictionNote);
     }
 }
@@ -549,32 +572,32 @@ function renderObjectPrompt(panel: HTMLElement, caseObjectId: string, state: Wor
 function describeInvestigationFeedback(result: InvestigationActionResult): string {
     if (result.status === "accepted") {
         if (result.code === "projection_affordance_observed") {
-            return "Action confirmed. Review new clues and keep following leads.";
+            return t("inspect.feedback.action_confirmed");
         }
         if (result.code === "projection_state_changed") {
-            return "Something changed. Cross-check Case Notes and timeline clues.";
+            return t("inspect.feedback.state_changed");
         }
-        return "Action accepted. Wait for the case view to update.";
+        return t("inspect.feedback.accepted");
     }
     if (result.status === "submitted") {
-        return "Action sent. Waiting for update.";
+        return t("inspect.feedback.submitted");
     }
     if (result.status === "unavailable") {
-        return "Connection is not ready. Reconnect and try again.";
+        return t("inspect.feedback.connection_not_ready");
     }
     if (result.status === "invalid") {
-        return "That action is not valid here. Use one of the listed actions.";
+        return t("inspect.feedback.invalid");
     }
     if (result.code === "SCENE_GATE_BLOCKED") {
-        return "Blocked for now. Advance the case with more dialogue or clues first.";
+        return t("inspect.feedback.scene_gate_blocked");
     }
     if (result.code === "OBJECT_ACTION_UNAVAILABLE") {
-        return "This action is currently blocked. Try another lead.";
+        return t("inspect.feedback.object_action_unavailable");
     }
     if (result.code === "RUNTIME_NOT_READY") {
-        return "Connection is still settling. Wait a moment and retry.";
+        return t("inspect.feedback.runtime_not_ready");
     }
-    return result.summary ?? "Action blocked right now.";
+    return result.summary ?? t("inspect.feedback.blocked_default");
 }
 
 function resolveCaseObjectId(obj: KvpObject, state: WorldState): string | null {
@@ -599,7 +622,7 @@ function stringifyValue(value: unknown): string {
 }
 
 function describeInteractionContext(activeObject: KvpObject | null, detailed: boolean): string {
-    if (!activeObject) return "none";
+    if (!activeObject) return t("inspect.value.none");
     if (detailed) return `${activeObject.class_code} #${activeObject.object_id}`;
     return humanizeClassCode(activeObject.class_code);
 }
@@ -612,17 +635,18 @@ function humanizeClassCode(value: string): string {
 
 function labelSceneFromId(sceneId: string): string {
     const labels: Record<string, string> = {
-        S1: "Opening interview",
-        S2: "Security follow-up",
-        S3: "Timeline challenge",
-        S4: "Witness check",
-        S5: "Final confrontation",
+        S1: "notebook.scene.S1",
+        S2: "notebook.scene.S2",
+        S3: "notebook.scene.S3",
+        S4: "notebook.scene.S4",
+        S5: "notebook.scene.S5",
     };
-    return labels[sceneId] ?? sceneId;
+    const key = labels[sceneId];
+    return key ? t(key) : sceneId;
 }
 
 function formatConversationResult(status: string): string {
-    if (status.length === 0) return "pending";
+    if (status.length === 0) return t("inspect.value.pending");
     return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
