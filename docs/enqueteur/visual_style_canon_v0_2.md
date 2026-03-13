@@ -56,7 +56,7 @@ The brand center of gravity is now:
 The following assets form the current visual triangulation set.
 
 ### A. Primary brand mark
-- `enqueteur_logo_title.png`
+- `frontend/enqueteur-webview/public/logo/low-res/enqueteur_logo_title.png`
 
 This is the strongest current brand anchor.
 
@@ -70,7 +70,7 @@ It establishes:
 - painterly atmospheric edge treatment
 
 ### B. Character rendering reference
-- `character_sheet.png`
+- `frontend/enqueteur-webview/public/assets/character_sheet/low-res/character_sheet.png`
 
 This establishes:
 - cast rendering mood
@@ -81,7 +81,7 @@ This establishes:
 - human drama as a core part of the game’s feel
 
 ### C. Environment / graphic language reference
-- `mbam_map.png`
+- `frontend/enqueteur-webview/public/assets/locations/low-res/mbam_map.png`
 
 This establishes:
 - museum/cultural institution atmosphere

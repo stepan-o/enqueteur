@@ -7,7 +7,7 @@ Each one governs a different layer of the Enquêteur visual system.
 
 ---
 
-## 1. `enqueteur_logo_title.png`
+## 1. `frontend/enqueteur-webview/public/logo/low-res/enqueteur_logo_title.png`
 
 ### Role
 Primary brand mark / title identity anchor
@@ -54,7 +54,7 @@ When there is tension between older collage-style mystery language and this logo
 
 ---
 
-## 2. `character_sheet.png`
+## 2. `frontend/enqueteur-webview/public/assets/character_sheet/low-res/character_sheet.png`
 
 ### Role
 Cast rendering and portrait mood reference
@@ -93,7 +93,7 @@ It should shape how people feel in the game, not the entire shell identity by it
 
 ---
 
-## 3. `mbam_map.png`
+## 3. `frontend/enqueteur-webview/public/assets/locations/low-res/mbam_map.png`
 
 ### Role
 Environment graphic language and wayfinding reference
