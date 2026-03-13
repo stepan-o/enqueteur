@@ -181,3 +181,17 @@ def test_visible_projection_exposes_mg_sources_after_required_observations() -> 
         "mbam.clue.torn_note.a.option.livraison",
         "mbam.clue.torn_note.a.option.time_1758",
     ]
+
+    projection_en = build_visible_investigation_projection(
+        case_state=case_state,
+        object_state=bench_inspect.object_state_after,
+        progress=progress,
+        locale="en",
+    )
+    wall_en = next(row for row in projection_en["objects"] if row["object_id"] == "O3_WALL_LABEL")
+    receipt_en = next(row for row in projection_en["objects"] if row["object_id"] == "O9_RECEIPT_PRINTER")
+    bench_en = next(row for row in projection_en["objects"] if row["object_id"] == "O4_BENCH")
+    assert wall_en["known_state"]["title"] == "The Traveler's Medallion"
+    assert receipt_en["known_state"]["item"] == "filter coffee"
+    assert bench_en["known_state"]["torn_note_prompt"] == "___ of ___ around ___"
+    assert bench_en["known_state"]["torn_note_options"][:3] == ["cart", "delivery", "17:58"]

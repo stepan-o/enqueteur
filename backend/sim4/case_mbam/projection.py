@@ -30,6 +30,10 @@ from .object_state import (
     get_object_state_by_id,
     list_mbam_object_ids,
 )
+from .presentation_localization import (
+    localize_presentation_key,
+    normalize_presentation_locale,
+)
 
 
 def _require_positive_epoch(truth_epoch: int) -> int:
@@ -98,9 +102,18 @@ def _sanitize_visible_behavior_flags(flags: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(flag for flag in flags if not flag.startswith(hidden_prefixes))
 
 
-def _label_title_for_seed(seed: str) -> str:
+def _label_title_for_seed(seed: str, *, locale: str = "fr") -> str:
     _ = seed
-    return "Le Medaillon des Voyageurs"
+    key = _label_title_key_for_seed(seed)
+    normalized_locale = normalize_presentation_locale(locale, default="fr")
+    return (
+        localize_presentation_key(
+            key,
+            locale=normalized_locale,
+            fallback="Le Medaillon des Voyageurs",
+        )
+        or "Le Medaillon des Voyageurs"
+    )
 
 
 def _label_title_key_for_seed(seed: str) -> str:
@@ -113,12 +126,16 @@ def _label_date_for_seed(seed: str) -> str:
     return "1898"
 
 
-def _receipt_item_for_seed(seed: str) -> str:
+def _receipt_item_for_seed(seed: str, *, locale: str = "fr") -> str:
+    key = _receipt_item_key_for_seed(seed)
+    normalized_locale = normalize_presentation_locale(locale, default="fr")
     if seed == "A":
-        return "cafe filtre"
-    if seed == "B":
-        return "croissant"
-    return "espresso"
+        fallback = "cafe filtre"
+    elif seed == "B":
+        fallback = "croissant"
+    else:
+        fallback = "espresso"
+    return localize_presentation_key(key, locale=normalized_locale, fallback=fallback) or fallback
 
 
 def _receipt_item_key_for_seed(seed: str) -> str:
@@ -128,47 +145,82 @@ def _receipt_item_key_for_seed(seed: str) -> str:
     return f"mbam.clue.receipt.item.{token}"
 
 
-def _torn_note_puzzle_for_seed(seed: str) -> dict[str, Any]:
+def _torn_note_puzzle_for_seed(seed: str, *, locale: str = "fr") -> dict[str, Any]:
+    normalized_locale = normalize_presentation_locale(locale, default="fr")
+
     if seed == "A":
+        fallback_prompt = "___ de ___ vers ___"
+        fallback_options = ["chariot", "livraison", "17h58", "badge", "vitrine"]
+        option_keys = [
+            "mbam.clue.torn_note.a.option.chariot",
+            "mbam.clue.torn_note.a.option.livraison",
+            "mbam.clue.torn_note.a.option.time_1758",
+            "mbam.clue.torn_note.a.option.badge",
+            "mbam.clue.torn_note.a.option.vitrine",
+        ]
+        prompt_key = "mbam.clue.torn_note.a.prompt"
         return {
             "variant_id": "torn_note_a",
-            "prompt": "___ de ___ vers ___",
-            "options": ["chariot", "livraison", "17h58", "badge", "vitrine"],
-            "prompt_key": "mbam.clue.torn_note.a.prompt",
-            "option_keys": [
-                "mbam.clue.torn_note.a.option.chariot",
-                "mbam.clue.torn_note.a.option.livraison",
-                "mbam.clue.torn_note.a.option.time_1758",
-                "mbam.clue.torn_note.a.option.badge",
-                "mbam.clue.torn_note.a.option.vitrine",
+            "prompt": localize_presentation_key(
+                prompt_key,
+                locale=normalized_locale,
+                fallback=fallback_prompt,
+            ) or fallback_prompt,
+            "options": [
+                localize_presentation_key(key, locale=normalized_locale, fallback=fallback) or fallback
+                for key, fallback in zip(option_keys, fallback_options, strict=True)
             ],
+            "prompt_key": prompt_key,
+            "option_keys": option_keys,
         }
     if seed == "B":
+        fallback_prompt = "___ de ___ avant ___ heures"
+        fallback_options = ["pret", "badge", "dix-huit", "chariot", "vitrine"]
+        option_keys = [
+            "mbam.clue.torn_note.b.option.pret",
+            "mbam.clue.torn_note.b.option.badge",
+            "mbam.clue.torn_note.b.option.dix_huit",
+            "mbam.clue.torn_note.b.option.chariot",
+            "mbam.clue.torn_note.b.option.vitrine",
+        ]
+        prompt_key = "mbam.clue.torn_note.b.prompt"
         return {
             "variant_id": "torn_note_b",
-            "prompt": "___ de ___ avant ___ heures",
-            "options": ["pret", "badge", "dix-huit", "chariot", "vitrine"],
-            "prompt_key": "mbam.clue.torn_note.b.prompt",
-            "option_keys": [
-                "mbam.clue.torn_note.b.option.pret",
-                "mbam.clue.torn_note.b.option.badge",
-                "mbam.clue.torn_note.b.option.dix_huit",
-                "mbam.clue.torn_note.b.option.chariot",
-                "mbam.clue.torn_note.b.option.vitrine",
+            "prompt": localize_presentation_key(
+                prompt_key,
+                locale=normalized_locale,
+                fallback=fallback_prompt,
+            ) or fallback_prompt,
+            "options": [
+                localize_presentation_key(key, locale=normalized_locale, fallback=fallback) or fallback
+                for key, fallback in zip(option_keys, fallback_options, strict=True)
             ],
+            "prompt_key": prompt_key,
+            "option_keys": option_keys,
         }
+    fallback_prompt = "___ laissee ___ pres de ___"
+    fallback_options = ["vitrine", "entre-ouverte", "17h58", "badge", "livraison"]
+    option_keys = [
+        "mbam.clue.torn_note.c.option.vitrine",
+        "mbam.clue.torn_note.c.option.entre_ouverte",
+        "mbam.clue.torn_note.c.option.time_1758",
+        "mbam.clue.torn_note.c.option.badge",
+        "mbam.clue.torn_note.c.option.livraison",
+    ]
+    prompt_key = "mbam.clue.torn_note.c.prompt"
     return {
         "variant_id": "torn_note_c",
-        "prompt": "___ laissee ___ pres de ___",
-        "options": ["vitrine", "entre-ouverte", "17h58", "badge", "livraison"],
-        "prompt_key": "mbam.clue.torn_note.c.prompt",
-        "option_keys": [
-            "mbam.clue.torn_note.c.option.vitrine",
-            "mbam.clue.torn_note.c.option.entre_ouverte",
-            "mbam.clue.torn_note.c.option.time_1758",
-            "mbam.clue.torn_note.c.option.badge",
-            "mbam.clue.torn_note.c.option.livraison",
+        "prompt": localize_presentation_key(
+            prompt_key,
+            locale=normalized_locale,
+            fallback=fallback_prompt,
+        ) or fallback_prompt,
+        "options": [
+            localize_presentation_key(key, locale=normalized_locale, fallback=fallback) or fallback
+            for key, fallback in zip(option_keys, fallback_options, strict=True)
         ],
+        "prompt_key": prompt_key,
+        "option_keys": option_keys,
     }
 
 
@@ -262,6 +314,7 @@ def _visible_known_state_for_object(
     object_state: MbamObjectStateBundle,
     progress: InvestigationProgressState,
     observed_affordances: set[str],
+    locale: str = "fr",
 ) -> dict[str, Any]:
     state = get_object_state_by_id(object_state, object_id)
     out: dict[str, Any] = {}
@@ -287,7 +340,7 @@ def _visible_known_state_for_object(
         s = state  # type: ignore[assignment]
         if "read" in observed_affordances:
             out["text_variant_id"] = s.text_variant_id
-            out["title"] = _label_title_for_seed(case_state.seed)
+            out["title"] = _label_title_for_seed(case_state.seed, locale=locale)
             out["title_key"] = _label_title_key_for_seed(case_state.seed)
             out["date"] = _label_date_for_seed(case_state.seed)
     elif object_id == "O4_BENCH":
@@ -296,7 +349,7 @@ def _visible_known_state_for_object(
             out["under_bench_item"] = s.under_bench_item
             known_evidence = set(progress.discovered_evidence_ids).union(progress.collected_evidence_ids)
             if "E1_TORN_NOTE" in known_evidence:
-                puzzle = _torn_note_puzzle_for_seed(case_state.seed)
+                puzzle = _torn_note_puzzle_for_seed(case_state.seed, locale=locale)
                 out["torn_note_variant_id"] = puzzle["variant_id"]
                 out["torn_note_prompt"] = puzzle["prompt"]
                 out["torn_note_options"] = puzzle["options"]
@@ -340,7 +393,7 @@ def _visible_known_state_for_object(
             out["latest_receipt_id"] = s.recent_receipts[0].receipt_id
         if "read_receipt" in observed_affordances:
             out["time"] = "17:52"
-            out["item"] = _receipt_item_for_seed(case_state.seed)
+            out["item"] = _receipt_item_for_seed(case_state.seed, locale=locale)
             out["item_key"] = _receipt_item_key_for_seed(case_state.seed)
             out.setdefault(
                 "latest_receipt_id",
@@ -359,6 +412,7 @@ def build_visible_investigation_projection(
     object_state: MbamObjectStateBundle,
     progress: InvestigationProgressState,
     truth_epoch: int = 1,
+    locale: str = "fr",
 ) -> dict[str, Any]:
     """Build safe investigation-state projection for replay/player-visible paths."""
     epoch = _require_positive_epoch(truth_epoch)
@@ -374,6 +428,7 @@ def build_visible_investigation_projection(
             object_state=object_state,
             progress=progress,
             observed_affordances=set(observed_affordances),
+            locale=locale,
         )
         objects.append(
             {

@@ -2581,6 +2581,54 @@ def test_live_session_host_tracks_connection_lifecycle() -> None:
     assert sessions_for_run[0].phase == "CLOSED"
 
 
+def test_viewer_hello_locale_localizes_backend_room_labels_in_live_snapshot() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "VIEWER_HELLO",
+                {
+                    "viewer_name": "enqueteur-webview",
+                    "viewer_version": "0.1.0",
+                    "supported_schema_versions": ["enqueteur_mbam_1"],
+                    "supports": {"locale": "fr"},
+                },
+            ),
+            host=host,
+        )
+    )
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "SUBSCRIBE",
+                {
+                    "stream": "LIVE",
+                    "channels": ["WORLD"],
+                    "diff_policy": "DIFF_ONLY",
+                    "snapshot_policy": "ON_JOIN",
+                    "compression": "NONE",
+                },
+            ),
+            host=host,
+        )
+    )
+
+    full_snapshot = _decode_sent_envelope(ws, 2)
+    assert full_snapshot["msg_type"] == "FULL_SNAPSHOT"
+    rooms = full_snapshot["payload"]["state"]["world"]["rooms"]
+    lobby = next(room for room in rooms if room.get("label_key") == "mbam.room.MBAM_LOBBY.label")
+    assert lobby["label"] == "Hall MBAM"
+
+
 def test_handle_disconnect_marks_closed_and_cleans_up_session() -> None:
     registry = CaseRunRegistry()
     _service, payload = _start_mbam_case(registry=registry)

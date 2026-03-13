@@ -64,6 +64,7 @@ describe("Phase F1 Enqueteur live client", () => {
         const client = new EnqueteurLiveClient({
             url: "ws://localhost/live?run_id=run-123",
             websocketFactory: wsFactory,
+            supports: { locale: "fr" },
         });
 
         client.connect();
@@ -74,11 +75,12 @@ describe("Phase F1 Enqueteur live client", () => {
         const sent = JSON.parse(ws.sentFrames[0]) as {
             kvp_version: string;
             msg_type: string;
-            payload: { supported_schema_versions: string[] };
+            payload: { supported_schema_versions: string[]; supports: { locale?: string } };
         };
         expect(sent.kvp_version).toBe("0.1");
         expect(sent.msg_type).toBe("VIEWER_HELLO");
         expect(sent.payload.supported_schema_versions).toEqual(["enqueteur_mbam_1"]);
+        expect(sent.payload.supports.locale).toBe("fr");
     });
 
     it("dispatches inbound messages by msg_type", () => {

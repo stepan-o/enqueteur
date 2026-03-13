@@ -32,6 +32,10 @@ from backend.sim4.case_mbam import (
     list_affordances,
     make_investigation_command,
 )
+from backend.sim4.case_mbam.presentation_localization import (
+    localize_presentation_key,
+    normalize_presentation_locale,
+)
 from backend.sim4.host.kvp_defaults import DEFAULT_ENGINE_VERSION, default_render_spec
 from backend.sim4.integration.canonicalize import canonicalize_state_obj
 from backend.sim4.integration.live_envelope import make_live_envelope, validate_live_envelope
@@ -236,6 +240,7 @@ class EnqueteurLiveSession:
     closed_at: str | None = None
     close_code: int | None = None
     close_reason: str | None = None
+    presentation_locale: str = "en"
 
 
 class EnqueteurLiveSessionHost:
@@ -323,6 +328,10 @@ class EnqueteurLiveSessionHost:
             viewer_version=viewer_version,
             supported_schema_versions=tuple(supported_schema_versions),
             supports=dict(supports),
+        )
+        session.presentation_locale = normalize_presentation_locale(
+            supports.get("locale"),
+            default=normalize_presentation_locale(session.presentation_locale),
         )
         session.protocol_state = "AWAITING_SUBSCRIBE"
 
@@ -463,7 +472,11 @@ class EnqueteurLiveSessionHost:
         runner = started_run.runner
         channels = set(session.subscribed_config.effective_channels)
         tick = int(runner.get_tick_index())
-        state = self._build_channel_scoped_state(runner=runner, channels=channels)
+        state = self._build_channel_scoped_state(
+            runner=runner,
+            channels=channels,
+            presentation_locale=session.presentation_locale,
+        )
         canonical_state = canonicalize_state_obj(state)
         step_hash = compute_step_hash(canonical_state)
         return {
@@ -520,7 +533,13 @@ class EnqueteurLiveSessionHost:
                 fatal=True,
             )
 
-        next_state = canonicalize_state_obj(self._build_channel_scoped_state(runner=runner, channels=channels))
+        next_state = canonicalize_state_obj(
+            self._build_channel_scoped_state(
+                runner=runner,
+                channels=channels,
+                presentation_locale=session.presentation_locale,
+            )
+        )
         step_hash = compute_step_hash(next_state)
         ops = _compute_enqueteur_frame_diff_ops(
             state_from=session.last_state,
@@ -618,7 +637,14 @@ class EnqueteurLiveSessionHost:
                 fatal=True,
             )
 
-    def _build_channel_scoped_state(self, *, runner: Any, channels: set[str]) -> dict[str, Any]:
+    def _build_channel_scoped_state(
+        self,
+        *,
+        runner: Any,
+        channels: set[str],
+        presentation_locale: str,
+    ) -> dict[str, Any]:
+        locale = normalize_presentation_locale(presentation_locale)
         case_state = runner.get_case_state()
         progress = runner.get_investigation_progress()
         object_state = runner.get_investigation_object_state()
@@ -630,8 +656,17 @@ class EnqueteurLiveSessionHost:
 
         if "WORLD" in channels:
             world_snapshot = runner.get_world_snapshot()
+            room_rows = [asdict(room) for room in world_snapshot.rooms]
+            for room in room_rows:
+                localized = localize_presentation_key(
+                    room.get("label_key"),
+                    locale=locale,
+                    fallback=room.get("label") if isinstance(room.get("label"), str) else None,
+                )
+                if localized:
+                    room["label"] = localized
             state["world"] = {
-                "rooms": [asdict(room) for room in world_snapshot.rooms],
+                "rooms": room_rows,
                 "doors": [asdict(door) for door in world_snapshot.doors],
                 "objects": [asdict(obj) for obj in world_snapshot.objects],
                 "clock": {
@@ -652,6 +687,7 @@ class EnqueteurLiveSessionHost:
                 case_state=case_state,
                 object_state=object_state,
                 progress=progress,
+                locale=locale,
             )
 
         if "DIALOGUE" in channels and case_state is not None and dialogue_state is not None and progress is not None:

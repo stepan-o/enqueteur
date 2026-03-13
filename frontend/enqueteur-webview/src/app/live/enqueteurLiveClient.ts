@@ -32,6 +32,7 @@ export type ViewerHelloPayload = {
         diff_stream: boolean;
         full_snapshot: boolean;
         replay_seek: boolean;
+        locale?: "en" | "fr";
     };
 };
 

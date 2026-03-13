@@ -178,6 +178,7 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             expectedEngineName: session.engineName,
             expectedSchemaVersion: session.schemaVersion,
             supportedSchemaVersions: [session.schemaVersion],
+            supports: { locale: localeStore.getLocale() },
         })
     ));
 
