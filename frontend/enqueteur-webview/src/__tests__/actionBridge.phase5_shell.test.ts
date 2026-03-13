@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createFrontendActionBridge } from "../app/actionBridge";
 import type { LiveCommandBridge } from "../app/live/liveCommandBridge";
-import { setLocale } from "../i18n";
+import { setLocale, translate } from "../i18n";
 import { WorldStore } from "../state/worldStore";
 import { cloneDialogue, cloneInvestigation, makeMbamSnapshot, makeStateDiff } from "./mbamFixtures";
 
@@ -415,6 +415,41 @@ describe("Phase 5 action bridge", () => {
 
             expect(result.status).toBe("invalid");
             expect(result.summary).toBe("Le format de cette action est invalide. Rouvrez le panneau puis reessayez.");
+        } finally {
+            setLocale("en");
+        }
+    });
+
+    it("localizes frontend-authored projection summaries with active locale", async () => {
+        setLocale("fr");
+        try {
+            const store = new WorldStore();
+            store.applySnapshot(makeMbamSnapshot(8));
+
+            const liveCommandBridge: LiveCommandBridge = {
+                canSendInputCommand: () => true,
+                sendInputCommand: async () => ({
+                    accepted: true,
+                    clientCmdId: "00000000-0000-4000-8000-000000000005",
+                }),
+            };
+
+            const bridge = createFrontendActionBridge({
+                store,
+                getMode: () => "live",
+                getLiveCommandBridge: () => liveCommandBridge,
+                projectionTimeoutMs: 1,
+            });
+
+            const result = await bridge.submitAttemptRecovery({
+                targetId: "O2_MEDALLION",
+                tick: 8,
+            });
+
+            expect(result.status).toBe("submitted");
+            expect(result.summary).toBe(
+                translate("fr", "live.action_bridge.summary.awaiting_projection_recovery")
+            );
         } finally {
             setLocale("en");
         }

@@ -20,6 +20,7 @@ import type {
 } from "../ui/resolutionPanel";
 import type { LiveCommandBridge, LiveCommandSubmission } from "./live/liveCommandBridge";
 import { resolveRuntimeMessage } from "./runtimeMessage";
+import { createScopedTranslator, getSharedLocaleStore } from "../i18n";
 
 type BridgeMode = "live" | "offline";
 
@@ -62,6 +63,9 @@ type InvestigationProjectionOutcome = {
     newEvidenceIds: string[];
 };
 
+const localeStore = getSharedLocaleStore();
+const t = createScopedTranslator(() => localeStore.getLocale());
+
 export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): FrontendActionBridge {
     const projectionTimeoutMs = Math.max(80, Math.floor(opts.projectionTimeoutMs ?? 900));
 
@@ -69,14 +73,14 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
         if (opts.getMode() !== "live") {
             return {
                 ready: false,
-                reason: "Action dispatch is disabled in offline/replay mode.",
+                reason: t("live.action_bridge.unavailable.offline_mode"),
             };
         }
         const bridge = opts.getLiveCommandBridge();
         if (!bridge || !bridge.canSendInputCommand()) {
             return {
                 ready: false,
-                reason: "Live runtime connection is not available.",
+                reason: t("live.action_bridge.unavailable.runtime_connection"),
             };
         }
         return { ready: true, reason: null };
@@ -104,7 +108,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "unavailable",
                 code: "live_dispatch_unavailable",
-                summary: availability.reason ?? "Action dispatch unavailable.",
+                summary: availability.reason ?? t("live.action_bridge.unavailable.runtime_connection"),
             };
         }
 
@@ -120,7 +124,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "unavailable",
                 code: "command_send_unavailable",
-                summary: "Live runtime connection is not available.",
+                summary: t("live.action_bridge.unavailable.runtime_connection"),
             };
         }
         if (!commandResult.accepted) {
@@ -141,14 +145,14 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "submitted",
                 code: "awaiting_projection_update",
-                summary: "Command accepted; waiting for projected investigation update.",
+                summary: t("live.action_bridge.summary.awaiting_projection_investigation"),
             };
         }
         if (projected.kind === "affordance_observed") {
             return {
                 status: "accepted",
                 code: "projection_affordance_observed",
-                summary: "Projected state confirms this affordance was observed.",
+                summary: t("live.action_bridge.summary.projection_affordance_observed"),
                 revealed_fact_ids: projected.newFactIds,
                 revealed_evidence_ids: projected.newEvidenceIds,
             };
@@ -156,7 +160,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
         return {
             status: "accepted",
             code: "projection_state_changed",
-            summary: "Projected investigation state changed after submission.",
+            summary: t("live.action_bridge.summary.projection_state_changed"),
             revealed_fact_ids: projected.newFactIds,
             revealed_evidence_ids: projected.newEvidenceIds,
         };
@@ -170,7 +174,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "unavailable",
                 code: "live_dispatch_unavailable",
-                summary: availability.reason ?? "Dialogue dispatch unavailable.",
+                summary: availability.reason ?? t("live.action_bridge.unavailable.runtime_connection"),
             };
         }
 
@@ -193,7 +197,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "unavailable",
                 code: "command_send_unavailable",
-                summary: "Live runtime connection is not available.",
+                summary: t("live.action_bridge.unavailable.runtime_connection"),
             };
         }
         if (!commandResult.accepted) {
@@ -214,7 +218,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "submitted",
                 code: "awaiting_projection_update",
-                summary: "Turn accepted; waiting for projected dialogue update.",
+                summary: t("live.action_bridge.summary.awaiting_projection_dialogue"),
             };
         }
         return {
@@ -233,7 +237,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "unavailable",
                 code: "live_dispatch_unavailable",
-                summary: availability.reason ?? "Minigame dispatch unavailable.",
+                summary: availability.reason ?? t("live.action_bridge.unavailable.runtime_connection"),
             };
         }
 
@@ -249,7 +253,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "unavailable",
                 code: "command_send_unavailable",
-                summary: "Live runtime connection is not available.",
+                summary: t("live.action_bridge.unavailable.runtime_connection"),
             };
         }
         if (!commandResult.accepted) {
@@ -262,7 +266,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
         return {
             status: "submitted",
             code: "command_accepted_waiting_projection",
-            summary: "Minigame submission accepted; waiting for authoritative diff update.",
+            summary: t("live.action_bridge.summary.awaiting_projection_minigame"),
         };
     };
 
@@ -274,7 +278,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "unavailable",
                 code: "live_dispatch_unavailable",
-                summary: availability.reason ?? "Recovery dispatch unavailable.",
+                summary: availability.reason ?? t("live.action_bridge.unavailable.runtime_connection"),
             };
         }
 
@@ -288,7 +292,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "unavailable",
                 code: "command_send_unavailable",
-                summary: "Live runtime connection is not available.",
+                summary: t("live.action_bridge.unavailable.runtime_connection"),
             };
         }
         if (!commandResult.accepted) {
@@ -301,7 +305,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
         return {
             status: "submitted",
             code: "command_accepted_waiting_projection",
-            summary: "Recovery attempt accepted; waiting for authoritative diff update.",
+            summary: t("live.action_bridge.summary.awaiting_projection_recovery"),
         };
     };
 
@@ -313,7 +317,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "unavailable",
                 code: "live_dispatch_unavailable",
-                summary: availability.reason ?? "Accusation dispatch unavailable.",
+                summary: availability.reason ?? t("live.action_bridge.unavailable.runtime_connection"),
             };
         }
 
@@ -329,7 +333,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
             return {
                 status: "unavailable",
                 code: "command_send_unavailable",
-                summary: "Live runtime connection is not available.",
+                summary: t("live.action_bridge.unavailable.runtime_connection"),
             };
         }
         if (!commandResult.accepted) {
@@ -342,7 +346,7 @@ export function createFrontendActionBridge(opts: FrontendActionBridgeOpts): Fron
         return {
             status: "submitted",
             code: "command_accepted_waiting_projection",
-            summary: "Accusation attempt accepted; waiting for authoritative diff update.",
+            summary: t("live.action_bridge.summary.awaiting_projection_accusation"),
         };
     };
 
@@ -392,7 +396,7 @@ function formatCommandRejectionSummary(result: LiveCommandSubmission): string {
         messageParams: result.messageParams,
     });
     if (resolved.trim().length > 0) return resolved;
-    return "That action is blocked by the current case state.";
+    return t("live.action_bridge.summary.blocked_case_state");
 }
 
 function captureInvestigationBaseline(
