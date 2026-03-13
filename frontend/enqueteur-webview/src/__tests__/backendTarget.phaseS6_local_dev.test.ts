@@ -37,20 +37,6 @@ describe("Phase S6 backend target resolution", () => {
         expect(resolved).toBe("http://127.0.0.1:7777");
     });
 
-    it("defaults local-dev API base to canonical backend origin in dev", () => {
-        const resolved = resolveBackendApiBaseUrl({
-            env: {
-                DEV: true,
-            },
-            location: {
-                protocol: "http:",
-                hostname: "localhost",
-            },
-        });
-
-        expect(resolved).toBe("http://127.0.0.1:7777");
-    });
-
     it("uses canonical local backend origin in dev when no explicit base is set", () => {
         const resolved = resolveBackendApiBaseUrl({
             env: {

@@ -35,6 +35,20 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
     const section = document.createElement("section");
     section.className = "flow-screen flow-screen-connecting";
 
+    const shell = document.createElement("div");
+    shell.className = "flow-screen-shell";
+
+    const header = document.createElement("div");
+    header.className = "flow-screen-header";
+
+    const meta = document.createElement("div");
+    meta.className = "flow-screen-meta";
+
+    const caseChip = document.createElement("span");
+    caseChip.className = "flow-pill flow-pill-case";
+    caseChip.textContent = opts.caseLabel ?? opts.caseId;
+    meta.appendChild(caseChip);
+
     const titleEl = document.createElement("h1");
     titleEl.className = "flow-screen-title";
     titleEl.textContent = opts.t("flow.connecting.title");
@@ -43,8 +57,12 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
     bodyEl.className = "flow-screen-body";
     bodyEl.textContent = opts.t("flow.connecting.preparingCase", { caseLabel: opts.caseLabel ?? opts.caseId });
 
+    const copy = document.createElement("div");
+    copy.className = "flow-screen-copy";
+    copy.append(titleEl, bodyEl);
+
     const steps = document.createElement("ol");
-    steps.className = "flow-connection-steps";
+    steps.className = "flow-connection-steps flow-screen-surface";
 
     const activeStepIdx = CONNECTING_STEPS.findIndex((step) => step.phase === opts.phase);
     for (let idx = 0; idx < CONNECTING_STEPS.length; idx += 1) {
@@ -63,14 +81,14 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
     }
 
     const note = document.createElement("p");
-    note.className = "flow-screen-note";
+    note.className = "flow-screen-note flow-screen-surface flow-screen-surface-muted";
     note.textContent = opts.t(PHASE_NOTE_KEYS[opts.phase]);
 
     const demoPath = opts.demoPathLabel
         ? document.createElement("p")
         : null;
     if (demoPath) {
-        demoPath.className = "flow-screen-note";
+        demoPath.className = "flow-screen-note flow-screen-surface flow-screen-surface-muted";
         demoPath.textContent = opts.t("flow.connecting.demoRoute", { label: opts.demoPathLabel });
     }
 
@@ -78,7 +96,7 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
         ? document.createElement("p")
         : null;
     if (blockedHint) {
-        blockedHint.className = "flow-screen-note";
+        blockedHint.className = "flow-screen-note flow-screen-surface flow-screen-surface-accent";
         blockedHint.textContent = opts.blockedStateHint ?? "";
     }
 
@@ -86,29 +104,35 @@ export function renderConnectingScreen(opts: ConnectingScreenOpts): HTMLElement 
         ? document.createElement("p")
         : null;
     if (warning) {
-        warning.className = "flow-screen-note";
+        warning.className = "flow-screen-note flow-screen-surface flow-screen-surface-warning";
         warning.textContent = formatWarning(opts.warningMessage ?? "", opts.t);
     }
 
     const actions = document.createElement("div");
     actions.className = "flow-actions";
-    actions.appendChild(makeActionButton(opts.t("flow.connecting.action.backToCases"), opts.onBackToCases));
-    actions.appendChild(makeActionButton(opts.t("flow.connecting.action.mainMenu"), opts.onBackToMenu));
+    actions.appendChild(makeActionButton(opts.t("flow.connecting.action.backToCases"), opts.onBackToCases, "flow-action-btn-secondary"));
+    actions.appendChild(makeActionButton(opts.t("flow.connecting.action.mainMenu"), opts.onBackToMenu, "flow-action-btn-secondary"));
 
-    section.appendChild(titleEl);
-    section.appendChild(bodyEl);
-    section.appendChild(steps);
-    section.appendChild(note);
+    const supportStack = document.createElement("div");
+    supportStack.className = "flow-screen-support-stack";
+    supportStack.appendChild(note);
     if (demoPath) {
-        section.appendChild(demoPath);
+        supportStack.appendChild(demoPath);
     }
     if (blockedHint) {
-        section.appendChild(blockedHint);
+        supportStack.appendChild(blockedHint);
     }
     if (warning) {
-        section.appendChild(warning);
+        supportStack.appendChild(warning);
     }
-    section.appendChild(actions);
+
+    header.append(meta, copy);
+    shell.append(header, steps);
+    if (supportStack.childElementCount > 0) {
+        shell.appendChild(supportStack);
+    }
+    shell.appendChild(actions);
+    section.appendChild(shell);
     return section;
 }
 
@@ -129,10 +153,10 @@ function stepLabelKey(phase: ConnectingPhase): TranslationLookupKey {
     return "flow.connecting.step.waitingBaseline";
 }
 
-function makeActionButton(label: string, onClick: () => void): HTMLButtonElement {
+function makeActionButton(label: string, onClick: () => void, variantClass = ""): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "flow-action-btn";
+    btn.className = variantClass ? `flow-action-btn ${variantClass}` : "flow-action-btn";
     btn.textContent = label;
     btn.addEventListener("click", onClick);
     return btn;

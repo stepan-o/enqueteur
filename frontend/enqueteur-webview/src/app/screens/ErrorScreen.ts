@@ -22,6 +22,12 @@ export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
     const section = document.createElement("section");
     section.className = "flow-screen flow-screen-error";
 
+    const shell = document.createElement("div");
+    shell.className = "flow-screen-shell";
+
+    const header = document.createElement("div");
+    header.className = "flow-screen-header";
+
     const titleEl = document.createElement("h1");
     titleEl.className = "flow-screen-title";
     titleEl.textContent = opts.t("flow.error.title");
@@ -30,12 +36,16 @@ export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
     bodyEl.className = "flow-screen-body";
     bodyEl.textContent = opts.t(ERROR_TITLE_KEYS[opts.code]);
 
+    const copy = document.createElement("div");
+    copy.className = "flow-screen-copy";
+    copy.append(titleEl, bodyEl);
+
     const detail = document.createElement("p");
-    detail.className = "flow-screen-note";
+    detail.className = "flow-screen-note flow-screen-surface flow-screen-surface-danger";
     detail.textContent = humanizeErrorMessage(opts.message, opts.t);
 
     const hint = document.createElement("p");
-    hint.className = "flow-screen-note";
+    hint.className = "flow-screen-note flow-screen-surface flow-screen-surface-muted";
     hint.textContent =
         opts.recoverTo === "CASE_SELECT"
             ? opts.t("flow.error.hint.caseSelect")
@@ -45,7 +55,7 @@ export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
     actions.className = "flow-actions";
     if (opts.onRetry) {
         actions.appendChild(
-            makeActionButton(opts.retryLabel ?? defaultRetryLabel(opts.code, opts.t), opts.onRetry)
+            makeActionButton(opts.retryLabel ?? defaultRetryLabel(opts.code, opts.t), opts.onRetry, "flow-action-btn-primary")
         );
     }
     actions.appendChild(
@@ -53,15 +63,14 @@ export function renderErrorScreen(opts: ErrorScreenOpts): HTMLElement {
             opts.recoverTo === "CASE_SELECT"
                 ? opts.t("flow.error.action.backToCases")
                 : opts.t("flow.error.action.backToMainMenu"),
-            opts.onRecover
+            opts.onRecover,
+            "flow-action-btn-secondary"
         )
     );
 
-    section.appendChild(titleEl);
-    section.appendChild(bodyEl);
-    section.appendChild(detail);
-    section.appendChild(hint);
-    section.appendChild(actions);
+    header.append(copy);
+    shell.append(header, detail, hint, actions);
+    section.appendChild(shell);
     return section;
 }
 
@@ -93,10 +102,10 @@ function humanizeErrorMessage(message: string, t: TranslateFn): string {
     return message;
 }
 
-function makeActionButton(label: string, onClick: () => void): HTMLButtonElement {
+function makeActionButton(label: string, onClick: () => void, variantClass = ""): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "flow-action-btn";
+    btn.className = variantClass ? `flow-action-btn ${variantClass}` : "flow-action-btn";
     btn.textContent = label;
     btn.addEventListener("click", onClick);
     return btn;
