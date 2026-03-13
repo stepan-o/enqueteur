@@ -490,7 +490,7 @@ export class PixiScene {
             const rb = s.rooms.get(bId);
             const floorA = this.roomFloors.get(aId) ?? 0;
             const floorB = this.roomFloors.get(bId) ?? 0;
-            if (floorA !== floorB && !isElevatorRoom(ra) && !isElevatorRoom(rb)) {
+            if (floorA !== floorB && !isConnectorRoom(ra) && !isConnectorRoom(rb)) {
                 continue;
             }
             const ba = this.roomBounds.get(aId) ?? null;
@@ -510,7 +510,7 @@ export class PixiScene {
     private ensureRoomLayout(s: WorldState, spec?: RenderSpec): Map<number, RoomCenter> {
         const bounds = getWorldBounds(spec);
         const roomSig = Array.from(s.rooms.values())
-            .map((r) => `${r.room_id}:${r.label ?? ""}:${r.zone ?? ""}:${r.level ?? ""}:${r.bounds ? "b" : "n"}`)
+            .map((r) => `${r.room_id}:${r.kind_code}:${r.zone ?? ""}:${r.level ?? ""}:${r.bounds ? "b" : "n"}`)
             .sort()
             .join("|");
         const key = `${roomSig}|${bounds.min_x}:${bounds.min_y}:${bounds.max_x}:${bounds.max_y}`;
@@ -1775,7 +1775,7 @@ function buildTileLayout(rooms: KvpRoom[], world: RoomBounds): TileLayout {
     };
 
     const lobby = pickLobbyRoom(indoors);
-    const elevator = pickElevatorRoom(indoors, lobby);
+    const connector = pickConnectorRoom(indoors, lobby);
 
     if (lobby) {
         const lobbyX = Math.floor(grid0W / 2);
@@ -1783,15 +1783,16 @@ function buildTileLayout(rooms: KvpRoom[], world: RoomBounds): TileLayout {
         placeAt(lobby, 0, lobbyX, lobbyY, 1, 2, 0, 0);
     }
 
-    if (elevator) {
+    if (connector) {
         const lobbyX = Math.floor(grid0W / 2);
         const lobbyY = grid0H - 2;
-        placeAt(elevator, 0, lobbyX, Math.max(0, lobbyY - 1), 1, 1, 0, 0);
+        const [connectorW, connectorH] = roomTileSize(connector);
+        placeAt(connector, 0, lobbyX, Math.max(0, lobbyY - connectorH), connectorW, connectorH, 0, 0);
     }
 
-    const floor1Rooms = indoors.filter((r) => isUpperFloorRoom(r) && r !== lobby && r !== elevator);
+    const floor1Rooms = indoors.filter((r) => isUpperFloorRoom(r) && r !== lobby && r !== connector);
     if (floor1Rooms.length === 0 && indoors.length > 3) {
-        const fallback = indoors.filter((r) => r !== lobby && r !== elevator);
+        const fallback = indoors.filter((r) => r !== lobby && r !== connector);
         if (fallback.length > 0) floor1Rooms.push(fallback[fallback.length - 1]);
     }
 
@@ -1836,46 +1837,138 @@ function buildTileLayout(rooms: KvpRoom[], world: RoomBounds): TileLayout {
 }
 
 function roomTileSize(r: KvpRoom): [number, number] {
-    const label = (r.label ?? "").toLowerCase();
-    if (label.includes("lobby") || label.includes("entry") || label.includes("reception")) return [1, 2];
-    if (label.includes("elevator") || label.includes("lift")) return [1, 1];
-    if (label.includes("gallery") || label.includes("security")) return [2, 2];
-    if (label.includes("assembly") || label.includes("habitation") || label.includes("yard")) return [2, 2];
-    if (label.includes("cooling") || label.includes("resonance")) return [2, 1];
-    if (label.includes("maintenance") || label.includes("commons") || label.includes("supervisor")) return [1, 2];
-    if (label.includes("outdoor") || label.includes("courtyard")) return [2, 2];
+    if (isOutdoorRoom(r)) return [2, 2];
+    if (isConnectorRoom(r)) return roomAspect(r) >= 1.35 ? [2, 1] : [1, 1];
+    if (isLobbyCandidate(r)) return [1, 2];
+    if (isShowcaseRoom(r)) return [2, 2];
+    if (isUpperFloorRoom(r)) {
+        return roomAspect(r) <= 0.75 ? [1, 2] : roomAspect(r) >= 1.5 ? [2, 1] : [1, 2];
+    }
+
+    const area = roomArea(r);
+    const aspect = roomAspect(r);
+    if (area >= 70) return [2, 2];
+    if (aspect >= 1.6) return [2, 1];
+    if (aspect <= 0.72) return [1, 2];
     return (r.room_id % 3) === 0 ? [2, 1] : (r.room_id % 4) === 0 ? [1, 2] : [1, 1];
 }
 
 function pickLobbyRoom(rooms: KvpRoom[]): KvpRoom | undefined {
-    const labeled = rooms.find((r) => /lobby|entry|reception/.test((r.label ?? "").toLowerCase()));
-    if (labeled) return labeled;
-    return rooms.slice().sort((a, b) => a.room_id - b.room_id)[0];
+    return rooms
+        .filter((r) => !isOutdoorRoom(r))
+        .slice()
+        .sort((a, b) => lobbyScore(b) - lobbyScore(a) || a.room_id - b.room_id)[0];
 }
 
-function pickElevatorRoom(rooms: KvpRoom[], lobby?: KvpRoom): KvpRoom | undefined {
-    const labeled = rooms.find((r) => /elevator|lift/.test((r.label ?? "").toLowerCase()));
-    if (labeled) return labeled;
-    const remaining = rooms.filter((r) => r !== lobby).sort((a, b) => a.room_id - b.room_id);
-    return remaining[0];
+function pickConnectorRoom(rooms: KvpRoom[], lobby?: KvpRoom): KvpRoom | undefined {
+    const remaining = rooms.filter((r) => r !== lobby && !isOutdoorRoom(r));
+    const metadataMatch = remaining
+        .filter((r) => isConnectorRoom(r))
+        .sort((a, b) => connectorScore(b) - connectorScore(a) || a.room_id - b.room_id)[0];
+    if (metadataMatch) return metadataMatch;
+    return remaining
+        .slice()
+        .sort((a, b) => connectorScore(b) - connectorScore(a) || a.room_id - b.room_id)[0];
 }
 
 function isUpperFloorRoom(r: KvpRoom): boolean {
-    const label = (r.label ?? "").toLowerCase();
-    return /deck|supervisor|control|loft|office|upper|lab/.test(label);
+    return (r.level ?? 0) > 0;
 }
 
 function isOutdoorRoom(r: KvpRoom): boolean {
-    const label = (r.label ?? "").toLowerCase();
-    if (label.includes("yard") || label.includes("outdoor") || label.includes("courtyard")) return true;
-    const zone = (r.zone ?? "").toLowerCase();
-    return zone === "perimeter";
+    const zone = normalizeRoomZone(r);
+    return zone === "perimeter"
+        || zone === "street"
+        || zone === "outdoor"
+        || zone === "exterior"
+        || zone === "courtyard"
+        || r.kind_code === 5;
 }
 
-function isElevatorRoom(r: KvpRoom | undefined): boolean {
-    if (!r) return false;
-    const label = (r.label ?? "").toLowerCase();
-    return label.includes("elevator") || label.includes("lift");
+function isConnectorRoom(r: KvpRoom | undefined): boolean {
+    if (!r || isOutdoorRoom(r) || isUpperFloorRoom(r)) return false;
+    const zone = normalizeRoomZone(r);
+    const area = roomArea(r);
+    const aspect = roomAspect(r);
+    const neighbors = roomNeighborCount(r);
+    if (zone === "transit" || zone === "connector") return true;
+    if (r.kind_code === 4 && area > 0 && area <= 56) return true;
+    return (zone === "service" || zone === "restricted" || zone === "support")
+        && neighbors >= 1
+        && area > 0
+        && area <= 56
+        && aspect >= 1.2;
+}
+
+function normalizeRoomZone(r: KvpRoom): string {
+    return (r.zone ?? "").trim().toLowerCase();
+}
+
+function roomArea(r: KvpRoom): number {
+    const bounds = r.bounds;
+    if (!bounds) return 0;
+    return Math.max(0, bounds.max_x - bounds.min_x) * Math.max(0, bounds.max_y - bounds.min_y);
+}
+
+function roomAspect(r: KvpRoom): number {
+    const bounds = r.bounds;
+    if (!bounds) return 1;
+    const width = Math.max(1, bounds.max_x - bounds.min_x);
+    const height = Math.max(1, bounds.max_y - bounds.min_y);
+    return width / height;
+}
+
+function roomNeighborCount(r: KvpRoom): number {
+    return Array.isArray(r.neighbors) ? r.neighbors.length : 0;
+}
+
+function isLobbyCandidate(r: KvpRoom): boolean {
+    if (isOutdoorRoom(r) || isUpperFloorRoom(r) || isConnectorRoom(r)) return false;
+    const zone = normalizeRoomZone(r);
+    return zone === "public" || zone === "core" || roomNeighborCount(r) >= 3;
+}
+
+function isShowcaseRoom(r: KvpRoom): boolean {
+    if (isOutdoorRoom(r) || isConnectorRoom(r)) return false;
+    const zone = normalizeRoomZone(r);
+    return Boolean(r.highlight)
+        || zone === "exhibit"
+        || zone === "public"
+        || zone === "control"
+        || r.kind_code === 2
+        || r.kind_code === 3;
+}
+
+function lobbyScore(r: KvpRoom): number {
+    const zone = normalizeRoomZone(r);
+    const area = roomArea(r);
+    let score = 0;
+    if ((r.level ?? 0) === 0) score += 18;
+    if (zone === "public" || zone === "core") score += 50;
+    else if (zone === "exhibit") score += 30;
+    else if (zone === "restricted" || zone === "service") score -= 18;
+    if (r.kind_code === 1) score += 26;
+    else if (r.kind_code === 2) score += 16;
+    if (Boolean(r.highlight)) score += 14;
+    score += roomNeighborCount(r) * 8;
+    if (area >= 45 && area <= 130) score += 10;
+    if (isConnectorRoom(r)) score -= 40;
+    return score;
+}
+
+function connectorScore(r: KvpRoom): number {
+    const zone = normalizeRoomZone(r);
+    const area = roomArea(r);
+    let score = 0;
+    if ((r.level ?? 0) === 0) score += 12;
+    if (zone === "transit" || zone === "connector") score += 40;
+    else if (zone === "service" || zone === "restricted" || zone === "support") score += 18;
+    if (r.kind_code === 4) score += 24;
+    if (!Boolean(r.highlight)) score += 6;
+    score += Math.min(roomNeighborCount(r), 3) * 6;
+    if (area > 0 && area <= 56) score += 12;
+    if (roomAspect(r) >= 1.2) score += 6;
+    return score;
 }
 
 function displayRoomLabel(room: KvpRoom): string {
@@ -1908,6 +2001,15 @@ function overlayBubbleText(ev: UIOverlayEvent): string {
     const kind = ev.kind ?? "event";
     return kind.replace(/_/g, " ");
 }
+
+export const __testOnly = {
+    roomTileSize,
+    pickLobbyRoom,
+    pickConnectorRoom,
+    isUpperFloorRoom,
+    isOutdoorRoom,
+    isConnectorRoom,
+};
 
 function makeOverlayBubble(text: string, type: OverlayBubbleType): PIXI.Container {
     const container = new PIXI.Container();

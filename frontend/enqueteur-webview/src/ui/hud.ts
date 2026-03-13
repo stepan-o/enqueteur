@@ -26,66 +26,38 @@ export function mountHud(
     const t = createScopedTranslator(() => localeStore.getLocale());
 
     const root = document.createElement("div");
-    root.style.position = "absolute";
-    root.style.top = "10px";
-    root.style.right = "10px";
-    root.style.zIndex = "10";
-    root.style.pointerEvents = "none";
-    root.style.fontFamily = "Chivo Mono, JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
-    root.style.fontSize = "12px";
-    root.style.color = "rgba(31, 36, 43, 0.95)";
+    root.className = "hud-root";
 
     const panel = document.createElement("div");
-    panel.style.padding = "10px 12px";
-    panel.style.borderRadius = "12px";
-    panel.style.background = "rgba(247, 242, 233, 0.85)";
-    panel.style.backdropFilter = "blur(8px)";
-    panel.style.border = "2px solid rgba(31, 36, 43, 0.65)";
-    panel.style.minWidth = "280px";
-    panel.style.whiteSpace = "pre";
-    panel.style.lineHeight = "1.35";
+    panel.className = "hud-panel hud-panel-main";
     root.appendChild(panel);
 
     const dot = document.createElement("span");
-    dot.style.display = "inline-block";
-    dot.style.width = "8px";
-    dot.style.height = "8px";
-    dot.style.borderRadius = "999px";
-    dot.style.marginRight = "8px";
-    dot.style.verticalAlign = "middle";
+    dot.className = "hud-status-dot";
 
     const header = document.createElement("div");
-    header.style.marginBottom = "8px";
-    header.style.fontWeight = "600";
-    header.style.opacity = "0.95";
+    header.className = "hud-panel-header";
 
     const title = document.createElement("span");
+    title.className = "hud-panel-title";
 
     header.appendChild(dot);
     header.appendChild(title);
 
     const body = document.createElement("div");
+    body.className = "hud-panel-body";
 
     panel.appendChild(header);
     panel.appendChild(body);
 
     const feedPanel = document.createElement("div");
-    feedPanel.style.marginTop = "10px";
-    feedPanel.style.padding = "10px 12px";
-    feedPanel.style.borderRadius = "12px";
-    feedPanel.style.background = "rgba(247, 242, 233, 0.78)";
-    feedPanel.style.border = "2px solid rgba(31, 36, 43, 0.35)";
-    feedPanel.style.minWidth = "280px";
-    feedPanel.style.maxWidth = "320px";
-    feedPanel.style.whiteSpace = "pre";
-    feedPanel.style.lineHeight = "1.35";
+    feedPanel.className = "hud-panel hud-panel-feed";
 
     const feedTitle = document.createElement("div");
-    feedTitle.style.fontWeight = "600";
-    feedTitle.style.marginBottom = "6px";
+    feedTitle.className = "hud-feed-title";
 
     const feedBody = document.createElement("div");
-    feedBody.style.opacity = "0.9";
+    feedBody.className = "hud-feed-body";
 
     feedPanel.appendChild(feedTitle);
     feedPanel.appendChild(feedBody);
@@ -156,9 +128,7 @@ function renderHud(
     const connected = state.connected;
     const desynced = state.desynced;
 
-    if (!connected) el.dot.style.background = "rgba(59, 75, 90, 0.35)";
-    else if (desynced) el.dot.style.background = "rgba(242, 160, 129, 0.9)";
-    else el.dot.style.background = "rgba(90, 169, 178, 0.95)";
+    el.dot.dataset.status = !connected ? "offline" : desynced ? "desync" : "live";
 
     const lines: string[] = [];
     if (profile === "dev") {
