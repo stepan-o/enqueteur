@@ -31,6 +31,8 @@ from .object_state import (
     list_mbam_object_ids,
 )
 from .presentation_localization import (
+    localize_dialogue_support_text,
+    localize_dialogue_utterance_text,
     localize_presentation_key,
     normalize_presentation_locale,
 )
@@ -492,7 +494,9 @@ def _visible_turn_log_row(
     entry: DialogueTurnLogEntry,
     *,
     visible_fact_ids: set[str],
+    locale: str = "fr",
 ) -> dict[str, Any]:
+    normalized_locale = normalize_presentation_locale(locale, default="fr")
     return {
         "turn_index": entry.turn_index,
         "scene_id": entry.scene_id,
@@ -510,10 +514,22 @@ def _visible_turn_log_row(
         "presentation_source": entry.presentation_source,
         "presentation_reason_code": entry.presentation_reason_code,
         "presentation_metadata": list(entry.presentation_metadata),
-        "npc_utterance_text": entry.npc_utterance_text,
-        "short_rephrase_line": entry.short_rephrase_line,
-        "hint_line": entry.hint_line,
-        "summary_prompt_line": entry.summary_prompt_line,
+        "npc_utterance_text": localize_dialogue_utterance_text(
+            entry.npc_utterance_text,
+            locale=normalized_locale,
+        ),
+        "short_rephrase_line": localize_dialogue_support_text(
+            entry.short_rephrase_line,
+            locale=normalized_locale,
+        ),
+        "hint_line": localize_dialogue_support_text(
+            entry.hint_line,
+            locale=normalized_locale,
+        ),
+        "summary_prompt_line": localize_dialogue_support_text(
+            entry.summary_prompt_line,
+            locale=normalized_locale,
+        ),
     }
 
 
@@ -529,6 +545,7 @@ def build_visible_dialogue_projection(
     recent_turns: tuple[DialogueTurnLogEntry, ...] = (),
     truth_epoch: int = 1,
     max_recent_turns: int = 8,
+    locale: str = "fr",
 ) -> dict[str, Any]:
     """Build safe dialogue-state projection for replay/player-visible paths."""
     epoch = _require_positive_epoch(truth_epoch)
@@ -551,7 +568,11 @@ def build_visible_dialogue_projection(
             fact_id for fact_id in runtime_state.revealed_fact_ids if fact_id in known_fact_ids
         ],
         "recent_turns": [
-            _visible_turn_log_row(entry, visible_fact_ids=known_fact_ids)
+            _visible_turn_log_row(
+                entry,
+                visible_fact_ids=known_fact_ids,
+                locale=locale,
+            )
             for entry in tail
         ],
         "summary_rules": {

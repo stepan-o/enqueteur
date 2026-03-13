@@ -240,7 +240,7 @@ class EnqueteurLiveSession:
     closed_at: str | None = None
     close_code: int | None = None
     close_reason: str | None = None
-    presentation_locale: str = "en"
+    presentation_locale: str = "fr"
 
 
 class EnqueteurLiveSessionHost:
@@ -696,6 +696,7 @@ class EnqueteurLiveSessionHost:
                 runtime_state=dialogue_state,
                 progress=progress,
                 recent_turns=recent_turns,
+                locale=locale,
             )
             if "LEARNING" not in channels and isinstance(dialogue_projection, dict):
                 dialogue_projection.pop("learning", None)

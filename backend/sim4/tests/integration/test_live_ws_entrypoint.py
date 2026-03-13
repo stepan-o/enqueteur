@@ -84,6 +84,7 @@ def _handshake_and_subscribe(
     ws: FakeWebSocket,
     session: object,
     channels: list[str],
+    viewer_supports: dict[str, object] | None = None,
 ) -> None:
     asyncio.run(
         handle_enqueteur_live_incoming_message(
@@ -95,7 +96,7 @@ def _handshake_and_subscribe(
                     "viewer_name": "enqueteur-webview",
                     "viewer_version": "0.1.0",
                     "supported_schema_versions": ["enqueteur_mbam_1"],
-                    "supports": {},
+                    "supports": dict(viewer_supports or {}),
                 },
             ),
             host=host,
@@ -2627,6 +2628,59 @@ def test_viewer_hello_locale_localizes_backend_room_labels_in_live_snapshot() ->
     rooms = full_snapshot["payload"]["state"]["world"]["rooms"]
     lobby = next(room for room in rooms if room.get("label_key") == "mbam.room.MBAM_LOBBY.label")
     assert lobby["label"] == "Hall MBAM"
+
+
+def test_viewer_hello_locale_localizes_backend_dialogue_support_lines() -> None:
+    registry = CaseRunRegistry()
+    _service, payload = _start_mbam_case(registry=registry)
+    host = EnqueteurLiveSessionHost(run_registry=registry)
+    ws = FakeWebSocket()
+    session = _open_attached_session(host, ws, str(payload["ws_url"]))
+
+    _handshake_and_subscribe(
+        host=host,
+        ws=ws,
+        session=session,
+        channels=["DIALOGUE", "LEARNING"],
+        viewer_supports={"locale": "en"},
+    )
+    client_cmd_id = "00000000-0000-4000-8000-000000000028"
+
+    asyncio.run(
+        handle_enqueteur_live_incoming_message(
+            ws,
+            session=session,
+            raw_message=_envelope(
+                "INPUT_COMMAND",
+                {
+                    "client_cmd_id": client_cmd_id,
+                    "tick_target": 1,
+                    "cmd": {
+                        "type": "DIALOGUE_TURN",
+                        "payload": {
+                            "scene_id": "S1",
+                            "npc_id": "elodie",
+                            "intent_id": "ask_what_happened",
+                            "slots": {},
+                        },
+                    },
+                },
+            ),
+            host=host,
+        )
+    )
+    accepted = _decode_sent_envelope(ws, 0)
+    assert accepted["msg_type"] == "COMMAND_ACCEPTED"
+    assert accepted["payload"]["client_cmd_id"] == client_cmd_id
+
+    asyncio.run(stream_enqueteur_frame_diff_once(ws, session=session, host=host))
+    diff_payload = _decode_sent_envelope(ws, 1)["payload"]
+    turn_ops = [op for op in diff_payload["ops"] if op["op"] == "APPEND_DIALOGUE_TURN"]
+    assert turn_ops
+    turn = turn_ops[-1]["turn"]
+    assert isinstance(turn["npc_utterance_text"], str)
+    assert turn["npc_utterance_text"].startswith("Alright. Let's stay precise.")
+    assert "Hint:" in str(turn["hint_line"])
 
 
 def test_handle_disconnect_marks_closed_and_cleans_up_session() -> None:

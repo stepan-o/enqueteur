@@ -312,6 +312,55 @@ def test_phase4f_dialogue_projection_sanity_and_hidden_truth_boundaries() -> Non
     assert "N8" in debug["runtime_state"]["revealed_fact_ids"]
 
 
+def test_phase4f_visible_dialogue_projection_localizes_presentation_lines_by_locale() -> None:
+    case_state, _npc_states, progress, context, runtime = _setup("A")
+
+    turn = execute_dialogue_turn(
+        case_state,
+        runtime,
+        DialogueTurnRequest(
+            scene_id="S1",
+            npc_id="elodie",
+            intent_id="ask_what_happened",
+        ),
+        context=context,
+    )
+    progress_after = apply_dialogue_turn_to_progress(progress, turn)
+    entry = make_dialogue_turn_log_entry(
+        turn,
+        npc_utterance_text="Très bien. Restons précis.",
+        short_rephrase_line="Essaie avec une phrase guide simple.",
+        hint_line="Indice: garde la structure qui, où, quand.",
+        summary_prompt_line="Fais un court résumé en français avant de continuer.",
+    )
+
+    fr = build_visible_dialogue_projection(
+        case_state=case_state,
+        runtime_state=turn.runtime_after,
+        progress=progress_after,
+        recent_turns=(entry,),
+        locale="fr",
+    )
+    fr_turn = fr["recent_turns"][-1]
+    assert fr_turn["npc_utterance_text"] == "Très bien. Restons précis."
+    assert fr_turn["short_rephrase_line"] == "Essaie avec une phrase guide simple."
+    assert fr_turn["hint_line"] == "Indice: garde la structure qui, où, quand."
+    assert fr_turn["summary_prompt_line"] == "Fais un court résumé en français avant de continuer."
+
+    en = build_visible_dialogue_projection(
+        case_state=case_state,
+        runtime_state=turn.runtime_after,
+        progress=progress_after,
+        recent_turns=(entry,),
+        locale="en",
+    )
+    en_turn = en["recent_turns"][-1]
+    assert en_turn["npc_utterance_text"] == "Alright. Let's stay precise."
+    assert en_turn["short_rephrase_line"] == "Try a simple guided sentence."
+    assert en_turn["hint_line"] == "Hint: keep the who, where, when structure."
+    assert en_turn["summary_prompt_line"] == "Give a short French summary before continuing."
+
+
 def test_phase4f_same_seed_and_turn_sequence_is_deterministic() -> None:
     def run_sequence():
         case_state, _npc_states, progress, context, runtime = _setup("A")
