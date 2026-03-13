@@ -209,7 +209,7 @@ describe("Phase F2 canonical live app flow", () => {
             caseId: "MBAM_01",
             phase: "SESSION_STARTUP",
         });
-        expect(document.body.textContent).toContain("Preparing Le Petit Vol du Musée.");
+        expect(document.body.textContent).toContain("Preparing The Little Museum Theft.");
         expect(document.body.textContent).toContain("Demo route:");
 
         scriptedLiveClient.emitOpen();
@@ -787,7 +787,7 @@ describe("Phase F2 canonical live app flow", () => {
             message: "Object action unavailable.",
         });
 
-        await expect(rejectedPromise).resolves.toEqual({
+        await expect(rejectedPromise).resolves.toMatchObject({
             accepted: false,
             clientCmdId: firstCommandPayload.client_cmd_id,
             reasonCode: "OBJECT_ACTION_UNAVAILABLE",
@@ -809,7 +809,7 @@ describe("Phase F2 canonical live app flow", () => {
             client_cmd_id: secondCommandPayload.client_cmd_id,
         });
 
-        await expect(acceptedPromise).resolves.toEqual({
+        await expect(acceptedPromise).resolves.toMatchObject({
             accepted: true,
             clientCmdId: secondCommandPayload.client_cmd_id,
             reasonCode: undefined,
@@ -917,8 +917,12 @@ describe("Phase F2 canonical live app flow", () => {
         scriptedLiveClient.emitMessage("WARN", {
             code: "DEGRADED_MODE",
             message: "backend warming caches",
+            message_key: "live.warn.degraded_mode",
+            message_params: { code: "DEGRADED_MODE" },
         });
-        expect(document.body.textContent).toContain("Connection note: backend warming caches (DEGRADED_MODE).");
+        expect(document.body.textContent).toContain(
+            "Connection note: Connection is degraded; some updates may be delayed. (DEGRADED_MODE)."
+        );
 
         scriptedLiveClient.emitOpen();
         scriptedLiveClient.emitMessage("KERNEL_HELLO", {
@@ -952,13 +956,17 @@ describe("Phase F2 canonical live app flow", () => {
             code: "INTERNAL_RUNTIME_ERROR",
             message: "temporary degradation",
             fatal: false,
+            message_key: "live.error.internal_runtime_error",
+            message_params: { code: "INTERNAL_RUNTIME_ERROR", fatal: false },
         });
 
         expect(flow.getState()).toEqual({
             kind: "LIVE_GAME",
             caseId: "MBAM_01",
         });
-        expect(warnSpy).toHaveBeenCalledWith("Live warning (INTERNAL_RUNTIME_ERROR): temporary degradation");
+        expect(warnSpy).toHaveBeenCalledWith(
+            "Live warning (INTERNAL_RUNTIME_ERROR): Live runtime encountered an internal error."
+        );
 
         flow.destroy();
     });
@@ -1016,12 +1024,14 @@ describe("Phase F2 canonical live app flow", () => {
             code: "INTERNAL_RUNTIME_ERROR",
             message: "fatal runtime failure",
             fatal: true,
+            message_key: "live.error.internal_runtime_error",
+            message_params: { code: "INTERNAL_RUNTIME_ERROR", fatal: true },
         });
 
         expect(flow.getState()).toEqual({
             kind: "ERROR",
             code: "CONNECTION_FAILURE",
-            message: "Live kernel error (INTERNAL_RUNTIME_ERROR): fatal runtime failure",
+            message: "Live kernel error (INTERNAL_RUNTIME_ERROR): Live runtime encountered an internal error.",
             recoverTo: "CASE_SELECT",
         });
 

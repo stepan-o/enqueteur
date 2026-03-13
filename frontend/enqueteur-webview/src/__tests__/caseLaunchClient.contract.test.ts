@@ -6,6 +6,7 @@ import {
     ENQUETEUR_SCHEMA_VERSION,
     createCaseLaunchClient,
 } from "../app/api/caseLaunchClient";
+import { setLocale } from "../i18n";
 
 const VALID_RESPONSE = {
     run_id: "run-123",
@@ -152,5 +153,51 @@ describe("case launch client contract hardening", () => {
                 status: 503,
             })
         );
+    });
+
+    it("prefers localized backend message_key for launch failures when available", async () => {
+        setLocale("fr");
+        try {
+            const fetchImpl = vi.fn(async () =>
+                new Response(
+                    JSON.stringify({
+                        error: {
+                            code: "UNSUPPORTED_CASE",
+                            field: "case_id",
+                            message: "Unsupported case_id 'OTHER_CASE'.",
+                            message_key: "launch.error.unsupported_case",
+                            message_params: {
+                                code: "UNSUPPORTED_CASE",
+                                field: "case_id",
+                                status_code: 400,
+                            },
+                        },
+                    }),
+                    {
+                        status: 400,
+                        headers: { "Content-Type": "application/json" },
+                    }
+                )
+            );
+            const client = createCaseLaunchClient({ fetchImpl });
+
+            await expect(
+                client.startCase({
+                    caseId: "MBAM_01",
+                    seed: "A",
+                    difficultyProfile: "D0",
+                    mode: "playtest",
+                })
+            ).rejects.toEqual(
+                expect.objectContaining<Partial<CaseLaunchError>>({
+                    code: "UNSUPPORTED_CASE",
+                    status: 400,
+                    message: "Ce dossier n'est pas disponible dans cette version.",
+                    messageKey: "launch.error.unsupported_case",
+                })
+            );
+        } finally {
+            setLocale("en");
+        }
     });
 });

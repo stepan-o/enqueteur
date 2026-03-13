@@ -38,6 +38,7 @@ import {
     type SubscribePayload,
 } from "./live/enqueteurLiveClient";
 import type { LiveCommandBridge } from "./live/liveCommandBridge";
+import { resolveRuntimeMessage } from "./runtimeMessage";
 import { createScopedTranslator, getSharedLocaleStore, type AppLocale, type LocaleStore } from "../i18n";
 
 export type AppFlowOpts = {
@@ -79,7 +80,13 @@ type LiveConnectionFailure = {
 
 type PendingCommandAck = {
     timeoutId: number;
-    resolve: (value: { accepted: boolean; reasonCode?: string; message?: string }) => void;
+    resolve: (value: {
+        accepted: boolean;
+        reasonCode?: string;
+        message?: string;
+        messageKey?: string;
+        messageParams?: Record<string, unknown>;
+    }) => void;
 };
 
 const LIVE_SUBSCRIBE_REQUEST: SubscribePayload = {
@@ -181,14 +188,25 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
     const clearPendingCommandAcks = (
         reasonCode: string,
-        message: string
+        message: string,
+        messageKey?: string,
+        messageParams?: Record<string, unknown>
     ): void => {
         for (const [clientCmdId, pending] of pendingCommandAcks.entries()) {
             window.clearTimeout(pending.timeoutId);
             pending.resolve({
                 accepted: false,
                 reasonCode,
-                message: `${message} (client_cmd_id=${clientCmdId})`,
+                message: resolveRuntimeMessage({
+                    message: `${message} (client_cmd_id=${clientCmdId})`,
+                    messageKey,
+                    messageParams: {
+                        ...(messageParams ?? {}),
+                        client_cmd_id: clientCmdId,
+                    },
+                }),
+                messageKey,
+                messageParams,
             });
         }
         pendingCommandAcks.clear();
@@ -196,7 +214,13 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
 
     const resolvePendingCommandAck = (
         clientCmdId: string,
-        result: { accepted: boolean; reasonCode?: string; message?: string }
+        result: {
+            accepted: boolean;
+            reasonCode?: string;
+            message?: string;
+            messageKey?: string;
+            messageParams?: Record<string, unknown>;
+        }
     ): void => {
         const pending = pendingCommandAcks.get(clientCmdId);
         if (!pending) return;
@@ -591,6 +615,10 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                         clientCmdId: makeClientCmdId(),
                         reasonCode: "RUNTIME_NOT_READY",
                         message: "Live runtime connection is not ready for INPUT_COMMAND dispatch.",
+                        messageKey: "live.command_rejected.runtime_not_ready",
+                        messageParams: {
+                            reason_code: "RUNTIME_NOT_READY",
+                        },
                     };
                 }
 
@@ -613,6 +641,11 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                             clientCmdId,
                             reasonCode: "COMMAND_ACK_TIMEOUT",
                             message: "Timed out waiting for COMMAND_ACCEPTED/COMMAND_REJECTED.",
+                            messageKey: "live.command_rejected.command_ack_timeout",
+                            messageParams: {
+                                reason_code: "COMMAND_ACK_TIMEOUT",
+                                client_cmd_id: clientCmdId,
+                            },
                         });
                     }, LIVE_COMMAND_ACK_TIMEOUT_MS);
 
@@ -624,6 +657,8 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                                 clientCmdId,
                                 reasonCode: result.reasonCode,
                                 message: result.message,
+                                messageKey: result.messageKey,
+                                messageParams: result.messageParams,
                             });
                         },
                     });
@@ -639,6 +674,11 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                         accepted: false,
                         reasonCode: "RUNTIME_NOT_READY",
                         message: "WebSocket is not open for INPUT_COMMAND dispatch.",
+                        messageKey: "live.command_rejected.runtime_not_ready",
+                        messageParams: {
+                            reason_code: "RUNTIME_NOT_READY",
+                            client_cmd_id: clientCmdId,
+                        },
                     });
                 });
             },
@@ -921,26 +961,44 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
             resolvePendingCommandAck(envelope.payload.client_cmd_id, {
                 accepted: false,
                 reasonCode: envelope.payload.reason_code,
-                message: envelope.payload.message,
+                message: resolveRuntimeMessage({
+                    message: envelope.payload.message,
+                    messageKey: envelope.payload.message_key,
+                    messageParams: envelope.payload.message_params,
+                }),
+                messageKey: envelope.payload.message_key,
+                messageParams: envelope.payload.message_params,
             });
         });
         subscribeToMessage("WARN", (envelope) => {
-            handleKernelWarning(envelope.payload.code, envelope.payload.message);
+            const warningMessage = resolveRuntimeMessage({
+                message: envelope.payload.message,
+                messageKey: envelope.payload.message_key,
+                messageParams: envelope.payload.message_params,
+            });
+            handleKernelWarning(envelope.payload.code, warningMessage);
         });
         subscribeToMessage("ERROR", (envelope) => {
+            const runtimeErrorMessage = resolveRuntimeMessage({
+                message: envelope.payload.message,
+                messageKey: envelope.payload.message_key,
+                messageParams: envelope.payload.message_params,
+            });
             if (liveBaselineSnapshot && !envelope.payload.fatal) {
-                handleKernelWarning(envelope.payload.code, envelope.payload.message);
+                handleKernelWarning(envelope.payload.code, runtimeErrorMessage);
                 return;
             }
             if (liveBaselineSnapshot) {
                 clearPendingCommandAcks(
                     envelope.payload.code,
-                    envelope.payload.message
+                    runtimeErrorMessage,
+                    envelope.payload.message_key,
+                    envelope.payload.message_params
                 );
             }
             failLiveConnection({
                 reason: envelope.payload.code,
-                message: `Live kernel error (${envelope.payload.code}): ${envelope.payload.message}`,
+                message: `Live kernel error (${envelope.payload.code}): ${runtimeErrorMessage}`,
                 stage: currentConnectionStage(),
             });
         });
@@ -1122,9 +1180,7 @@ function describeCaseLaunchError(err: unknown): {
 } {
     if (err instanceof CaseLaunchError) {
         return {
-            message: err.field
-            ? `Case launch failed (${err.code}, field ${err.field}): ${err.message}`
-            : `Case launch failed (${err.code}): ${err.message}`,
+            message: err.message,
             code: err.code,
             field: err.field,
             status: err.status,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createFrontendActionBridge } from "../app/actionBridge";
 import type { LiveCommandBridge } from "../app/live/liveCommandBridge";
+import { setLocale } from "../i18n";
 import { WorldStore } from "../state/worldStore";
 import { cloneDialogue, cloneInvestigation, makeMbamSnapshot, makeStateDiff } from "./mbamFixtures";
 
@@ -375,10 +376,47 @@ describe("Phase 5 action bridge", () => {
 
         expect(minigame.status).toBe("blocked");
         expect(minigame.code).toBe("MINIGAME_INVALID_STATE");
-        expect(minigame.summary).toBe("This exercise is not open yet. Follow the current clues first.");
+        expect(minigame.summary).toBe("Minigame is not open.");
 
         expect(accusation.status).toBe("invalid");
         expect(accusation.code).toBe("INVALID_COMMAND");
-        expect(accusation.summary).toBe("That action payload was not valid. Reopen the panel and try again.");
+        expect(accusation.summary).toBe("Payload shape invalid.");
+    });
+
+    it("prefers localized message_key rendering for command rejection summaries", async () => {
+        setLocale("fr");
+        try {
+            const store = new WorldStore();
+            store.applySnapshot(makeMbamSnapshot(7));
+
+            const liveCommandBridge: LiveCommandBridge = {
+                canSendInputCommand: () => true,
+                sendInputCommand: async () => ({
+                    accepted: false,
+                    clientCmdId: "00000000-0000-4000-8000-000000000004",
+                    reasonCode: "INVALID_COMMAND",
+                    message: "Payload shape invalid.",
+                    messageKey: "live.command_rejected.invalid_command",
+                    messageParams: { reason_code: "INVALID_COMMAND" },
+                }),
+            };
+
+            const bridge = createFrontendActionBridge({
+                store,
+                getMode: () => "live",
+                getLiveCommandBridge: () => liveCommandBridge,
+                projectionTimeoutMs: 30,
+            });
+
+            const result = await bridge.submitAttemptRecovery({
+                targetId: "O2_MEDALLION",
+                tick: 7,
+            });
+
+            expect(result.status).toBe("invalid");
+            expect(result.summary).toBe("Le format de cette action est invalide. Rouvrez le panneau puis reessayez.");
+        } finally {
+            setLocale("en");
+        }
     });
 });

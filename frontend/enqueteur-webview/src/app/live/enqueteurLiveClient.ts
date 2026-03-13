@@ -111,17 +111,23 @@ export type CommandRejectedPayload = {
     client_cmd_id: string;
     reason_code: string;
     message: string;
+    message_key?: string;
+    message_params?: Record<string, unknown>;
 };
 
 export type WarnPayload = {
     code: string;
     message: string;
+    message_key?: string;
+    message_params?: Record<string, unknown>;
 };
 
 export type ErrorPayload = {
     code: string;
     message: string;
     fatal: boolean;
+    message_key?: string;
+    message_params?: Record<string, unknown>;
 };
 
 export type PongPayload = {
@@ -650,6 +656,8 @@ function parseInboundPayloadByType(args: {
                         "COMMAND_REJECTED.reason_code"
                     ),
                     message: requireString(payloadRecord.message, "COMMAND_REJECTED.message"),
+                    message_key: parseOptionalString(payloadRecord.message_key),
+                    message_params: parseOptionalRecord(payloadRecord.message_params),
                 },
             };
         case "WARN":
@@ -661,6 +669,8 @@ function parseInboundPayloadByType(args: {
                 payload: {
                     code: requireString(payloadRecord.code, "WARN.code"),
                     message: requireString(payloadRecord.message, "WARN.message"),
+                    message_key: parseOptionalString(payloadRecord.message_key),
+                    message_params: parseOptionalRecord(payloadRecord.message_params),
                 },
             };
         case "ERROR":
@@ -673,6 +683,8 @@ function parseInboundPayloadByType(args: {
                     code: requireString(payloadRecord.code, "ERROR.code"),
                     message: requireString(payloadRecord.message, "ERROR.message"),
                     fatal: requireBoolean(payloadRecord.fatal, "ERROR.fatal"),
+                    message_key: parseOptionalString(payloadRecord.message_key),
+                    message_params: parseOptionalRecord(payloadRecord.message_params),
                 },
             };
         case "PONG":
@@ -952,6 +964,15 @@ function requireObjectArray(value: unknown, field: string): Record<string, unkno
         );
     }
     return value.map((item) => asRecord(item, field));
+}
+
+function parseOptionalString(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function parseOptionalRecord(value: unknown): Record<string, unknown> | undefined {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    return value as Record<string, unknown>;
 }
 
 function asRecord(value: unknown, field: string): Record<string, unknown> {

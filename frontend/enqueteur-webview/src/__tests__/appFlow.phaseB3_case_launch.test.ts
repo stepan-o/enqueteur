@@ -206,7 +206,7 @@ describe("Phase B3 case launch request flow", () => {
         expect(flow.getState()).toEqual({
             kind: "ERROR",
             code: "STARTUP_INCOMPATIBILITY",
-            message: "Case launch failed (INVALID_RESPONSE): Expected 'schema_version' to be 'enqueteur_mbam_1'.",
+            message: "Expected 'schema_version' to be 'enqueteur_mbam_1'.",
             recoverTo: "MAIN_MENU",
         });
         expect(flow.getLaunchMetadata()).toBeNull();
@@ -217,7 +217,7 @@ describe("Phase B3 case launch request flow", () => {
                 difficultyProfile: "D0",
                 mode: "playtest",
             },
-            message: "Case launch failed (INVALID_RESPONSE): Expected 'schema_version' to be 'enqueteur_mbam_1'.",
+            message: "Expected 'schema_version' to be 'enqueteur_mbam_1'.",
             code: "INVALID_RESPONSE",
             field: undefined,
             status: 502,
@@ -254,10 +254,7 @@ describe("Phase B3 case launch request flow", () => {
         expect(flow.getState()).toEqual({
             kind: "ERROR",
             code: "LAUNCH_FAILURE",
-            message: (
-                "Case launch failed (BACKEND_UNREACHABLE): "
-                + "Could not reach backend launch endpoint at http://127.0.0.1:7777/api/cases/start."
-            ),
+            message: "Could not reach backend launch endpoint at http://127.0.0.1:7777/api/cases/start.",
             recoverTo: "CASE_SELECT",
         });
         expect(flow.getLaunchFailure()).toEqual({
@@ -268,8 +265,7 @@ describe("Phase B3 case launch request flow", () => {
                 mode: "playtest",
             },
             message: (
-                "Case launch failed (BACKEND_UNREACHABLE): "
-                + "Could not reach backend launch endpoint at http://127.0.0.1:7777/api/cases/start."
+                "Could not reach backend launch endpoint at http://127.0.0.1:7777/api/cases/start."
             ),
             code: "BACKEND_UNREACHABLE",
             field: undefined,

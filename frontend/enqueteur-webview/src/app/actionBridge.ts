@@ -19,6 +19,7 @@ import type {
     ResolutionAttemptResult,
 } from "../ui/resolutionPanel";
 import type { LiveCommandBridge, LiveCommandSubmission } from "./live/liveCommandBridge";
+import { resolveRuntimeMessage } from "./runtimeMessage";
 
 type BridgeMode = "live" | "offline";
 
@@ -385,42 +386,13 @@ function mapCommandRejectionToGenericStatus(reasonCode?: string): "blocked" | "i
 }
 
 function formatCommandRejectionSummary(result: LiveCommandSubmission): string {
-    const code = result.reasonCode ?? "COMMAND_REJECTED";
-    const known = playerFacingRejectionMessage(code);
-    if (known) return known;
-    if (result.message && result.message.trim().length > 0) return result.message;
+    const resolved = resolveRuntimeMessage({
+        message: result.message,
+        messageKey: result.messageKey,
+        messageParams: result.messageParams,
+    });
+    if (resolved.trim().length > 0) return resolved;
     return "That action is blocked by the current case state.";
-}
-
-function playerFacingRejectionMessage(code: string): string | null {
-    switch (code) {
-        case "OBJECT_ACTION_UNAVAILABLE":
-            return "That action is not available yet. Try another object lead.";
-        case "SCENE_GATE_BLOCKED":
-            return "That conversation path is locked for now. Gather one more clue first.";
-        case "MISSING_REQUIRED_SLOTS":
-            return "That response needs more details before it can be sent.";
-        case "INSUFFICIENT_TRUST":
-            return "That approach is blocked right now. Build trust with safer questions first.";
-        case "INVALID_NPC":
-            return "That question should be asked to a different person.";
-        case "INVALID_OBJECT":
-            return "That object is not currently available in this case state.";
-        case "MINIGAME_INVALID_STATE":
-            return "This exercise is not open yet. Follow the current clues first.";
-        case "MINIGAME_INVALID_SUBMISSION":
-            return "That answer is incomplete or invalid. Check the required fields and retry.";
-        case "RECOVERY_PREREQS_MISSING":
-            return "Recovery is blocked until you gather a little more corroboration.";
-        case "ACCUSATION_PREREQS_MISSING":
-            return "Accusation is blocked until contradiction support is strong enough.";
-        case "RUNTIME_NOT_READY":
-            return "Connection is still settling. Wait a moment and try again.";
-        case "INVALID_COMMAND":
-            return "That action payload was not valid. Reopen the panel and try again.";
-        default:
-            return null;
-    }
 }
 
 function captureInvestigationBaseline(

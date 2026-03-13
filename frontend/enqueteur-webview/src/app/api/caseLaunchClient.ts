@@ -1,4 +1,5 @@
 import type { EnqueteurCaseId } from "../appState";
+import { resolveRuntimeMessage } from "../runtimeMessage";
 import { resolveBackendApiBaseUrl } from "./backendTarget";
 
 export type CaseLaunchDifficultyProfile = "D0" | "D1";
@@ -35,13 +36,26 @@ export class CaseLaunchError extends Error {
     readonly status: number;
     readonly code: string;
     readonly field?: string;
+    readonly messageKey?: string;
+    readonly messageParams?: Record<string, unknown>;
 
-    constructor(message: string, opts: { status: number; code?: string; field?: string }) {
+    constructor(
+        message: string,
+        opts: {
+            status: number;
+            code?: string;
+            field?: string;
+            messageKey?: string;
+            messageParams?: Record<string, unknown>;
+        }
+    ) {
         super(message);
         this.name = "CaseLaunchError";
         this.status = opts.status;
         this.code = opts.code ?? "CASE_LAUNCH_FAILED";
         this.field = opts.field;
+        this.messageKey = opts.messageKey;
+        this.messageParams = opts.messageParams;
     }
 }
 
@@ -86,11 +100,22 @@ export function createCaseLaunchClient(opts: CreateCaseLaunchClientOpts = {}): C
             const payload = await parseJsonPayload(response);
             if (!response.ok) {
                 const error = asObject(payload.error);
-                const message = asString(error.message) ?? `Case launch failed with status ${response.status}.`;
+                const code = asString(error.code) ?? "CASE_LAUNCH_FAILED";
+                const field = asString(error.field) ?? undefined;
+                const messageKey = asString(error.message_key) ?? undefined;
+                const messageParams = asObjectOrNull(error.message_params) ?? undefined;
+                const message = resolveRuntimeMessage({
+                    message: asString(error.message) ?? `Case launch failed with status ${response.status}.`,
+                    messageKey,
+                    messageParams,
+                    fallbackMessage: `Case launch failed with status ${response.status}.`,
+                });
                 throw new CaseLaunchError(message, {
                     status: response.status,
-                    code: asString(error.code) ?? "CASE_LAUNCH_FAILED",
-                    field: asString(error.field) ?? undefined,
+                    code,
+                    field,
+                    messageKey,
+                    messageParams,
                 });
             }
 
@@ -223,6 +248,13 @@ function isAbortError(err: unknown): boolean {
 function asObject(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
         return {};
+    }
+    return value as Record<string, unknown>;
+}
+
+function asObjectOrNull(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return null;
     }
     return value as Record<string, unknown>;
 }

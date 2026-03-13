@@ -5,6 +5,8 @@ export type LiveCommandSubmission = {
     clientCmdId: string;
     reasonCode?: string;
     message?: string;
+    messageKey?: string;
+    messageParams?: Record<string, unknown>;
 };
 
 export type LiveCommandBridge = {
