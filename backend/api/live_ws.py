@@ -57,6 +57,11 @@ from .live_commands import (
     ParsedInputCommand,
     parse_enqueteur_input_command,
 )
+from backend.runtime_messages import (
+    command_rejected_message_contract,
+    live_error_message_contract,
+    live_warn_message_contract,
+)
 
 ENQUETEUR_LIVE_WS_PATH = "/live"
 RUN_NOT_FOUND_WS_CLOSE_CODE = 4404
@@ -1454,11 +1459,7 @@ async def handle_enqueteur_live_incoming_message(
             await _send_envelope(
                 websocket,
                 msg_type="COMMAND_REJECTED",
-                payload={
-                    "client_cmd_id": result.client_cmd_id,
-                    "reason_code": str(result.reason_code or "INVALID_COMMAND"),
-                    "message": str(result.message or "Command rejected."),
-                },
+                payload=_build_command_rejected_payload(result),
             )
             return result
 
@@ -1480,16 +1481,14 @@ async def handle_enqueteur_live_incoming_message(
         await _send_envelope(
             websocket,
             msg_type="COMMAND_REJECTED",
-            payload={
-                "client_cmd_id": exc.client_cmd_id,
-                "reason_code": exc.reason_code,
-                "message": exc.message,
-            },
+            payload=_build_command_rejected_payload(exc),
         )
         return CommandDispatchResult.rejected_result(
             client_cmd_id=exc.client_cmd_id,
             reason_code=exc.reason_code,
             message=exc.message,
+            message_key=exc.message_key,
+            message_params=exc.message_params,
         )
     except ProtocolViolationError as exc:
         await _send_error(websocket, code=exc.code, message=exc.message, fatal=exc.fatal)
@@ -1645,7 +1644,15 @@ async def _send_error(
     code: str,
     message: str,
     fatal: bool,
+    message_key: str | None = None,
+    message_params: dict[str, Any] | None = None,
 ) -> None:
+    if message_key is None or message_params is None:
+        default_key, default_params = live_error_message_contract(code=code, fatal=fatal)
+        if message_key is None:
+            message_key = default_key
+        if message_params is None:
+            message_params = default_params
     await _send_envelope(
         websocket,
         msg_type="ERROR",
@@ -1653,6 +1660,8 @@ async def _send_error(
             "code": code,
             "message": message,
             "fatal": bool(fatal),
+            "message_key": message_key,
+            "message_params": message_params,
         },
     )
 
@@ -1662,15 +1671,58 @@ async def _send_warn(
     *,
     code: str,
     message: str,
+    message_key: str | None = None,
+    message_params: dict[str, Any] | None = None,
 ) -> None:
+    if message_key is None or message_params is None:
+        default_key, default_params = live_warn_message_contract(code=code)
+        if message_key is None:
+            message_key = default_key
+        if message_params is None:
+            message_params = default_params
     await _send_envelope(
         websocket,
         msg_type="WARN",
         payload={
             "code": code,
             "message": message,
+            "message_key": message_key,
+            "message_params": message_params,
         },
     )
+
+
+def _build_command_rejected_payload(
+    result: CommandDispatchResult | InputCommandValidationError,
+) -> dict[str, Any]:
+    client_cmd_id = str(getattr(result, "client_cmd_id", ""))
+    reason_code = str(getattr(result, "reason_code", "") or "INVALID_COMMAND")
+    message = str(getattr(result, "message", "") or "Command rejected.")
+    message_key = getattr(result, "message_key", None)
+    message_params = getattr(result, "message_params", None)
+
+    if not isinstance(message_key, str) or not message_key:
+        default_key, default_params = command_rejected_message_contract(
+            reason_code=reason_code,
+            client_cmd_id=client_cmd_id,
+        )
+        message_key = default_key
+        if not isinstance(message_params, dict):
+            message_params = default_params
+    elif not isinstance(message_params, dict):
+        _, default_params = command_rejected_message_contract(
+            reason_code=reason_code,
+            client_cmd_id=client_cmd_id,
+        )
+        message_params = default_params
+
+    return {
+        "client_cmd_id": client_cmd_id,
+        "reason_code": reason_code,
+        "message": message,
+        "message_key": message_key,
+        "message_params": message_params,
+    }
 
 
 def _decode_incoming_envelope(raw_message: str | bytes) -> dict[str, Any]:

@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from backend.api.cases_start import CaseStartService, handle_post_cases_start
+from backend.runtime_messages import launch_error_message_contract
 
 from .config import ServerConfig
 from .errors import (
@@ -107,10 +108,18 @@ def resolve_launch_dependencies(app: Any) -> tuple[CaseStartService, RunRegistry
 
 
 def build_transport_error_payload(error: TransportRouteError) -> dict[str, Any]:
+    message_key, message_params = launch_error_message_contract(
+        code=error.code,
+        field=error.field,
+        phase_gate=error.phase_gate,
+        status_code=error.status_code,
+    )
     content: dict[str, Any] = {
         "error": {
             "code": error.code,
             "message": str(error),
+            "message_key": message_key,
+            "message_params": message_params,
         }
     }
     if error.field is not None:

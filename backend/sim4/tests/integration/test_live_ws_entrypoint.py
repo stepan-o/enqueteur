@@ -762,6 +762,8 @@ def test_stream_loop_warns_when_baseline_cursor_is_missing() -> None:
     warn_env = _decode_sent_envelope(ws, 0)
     assert warn_env["msg_type"] == "WARN"
     assert warn_env["payload"]["code"] == "BASELINE_REQUIRED"
+    assert warn_env["payload"]["message_key"] == "live.warn.baseline_required"
+    assert warn_env["payload"]["message_params"] == {"code": "BASELINE_REQUIRED"}
     assert ws.close_calls == []
 
 
@@ -819,6 +821,8 @@ def test_unsupported_allowed_message_emits_warn_nonfatal() -> None:
     warn_env = _decode_sent_envelope(ws, 0)
     assert warn_env["msg_type"] == "WARN"
     assert warn_env["payload"]["code"] == "UNSUPPORTED_MESSAGE"
+    assert warn_env["payload"]["message_key"] == "live.warn.unsupported_message"
+    assert warn_env["payload"]["message_params"] == {"code": "UNSUPPORTED_MESSAGE"}
     assert ws.close_calls == []
 
 
@@ -852,6 +856,8 @@ def test_viewer_hello_requires_enqueteur_schema_support() -> None:
     error_payload = error_env["payload"]
     assert error_payload["code"] == "SCHEMA_MISMATCH"
     assert error_payload["fatal"] is True
+    assert error_payload["message_key"] == "live.error.schema_mismatch"
+    assert error_payload["message_params"] == {"code": "SCHEMA_MISMATCH", "fatal": True}
     assert ws.close_calls == [(PROTOCOL_VIOLATION_WS_CLOSE_CODE, PROTOCOL_VIOLATION_WS_CLOSE_REASON)]
 
 
@@ -1131,6 +1137,9 @@ def test_investigate_object_rejects_unknown_object_id() -> None:
     assert rejected["msg_type"] == "COMMAND_REJECTED"
     assert rejected["payload"]["client_cmd_id"] == client_cmd_id
     assert rejected["payload"]["reason_code"] == "INVALID_OBJECT"
+    assert rejected["payload"]["message_key"] == "live.command_rejected.invalid_object"
+    assert rejected["payload"]["message_params"]["reason_code"] == "INVALID_OBJECT"
+    assert rejected["payload"]["message_params"]["client_cmd_id"] == client_cmd_id
     assert ws.close_calls == []
 
 

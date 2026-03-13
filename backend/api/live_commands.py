@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Literal
 import uuid
 
+from backend.runtime_messages import command_rejected_message_contract
+
 
 EnqueteurCommandType = Literal[
     "INVESTIGATE_OBJECT",
@@ -82,6 +84,8 @@ class CommandDispatchResult:
     client_cmd_id: str
     reason_code: str | None = None
     message: str | None = None
+    message_key: str | None = None
+    message_params: dict[str, Any] | None = None
 
     @classmethod
     def accepted_result(cls, *, client_cmd_id: str) -> "CommandDispatchResult":
@@ -94,12 +98,25 @@ class CommandDispatchResult:
         client_cmd_id: str,
         reason_code: str,
         message: str,
+        message_key: str | None = None,
+        message_params: dict[str, Any] | None = None,
     ) -> "CommandDispatchResult":
+        if message_key is None or message_params is None:
+            default_key, default_params = command_rejected_message_contract(
+                reason_code=reason_code,
+                client_cmd_id=client_cmd_id,
+            )
+            if message_key is None:
+                message_key = default_key
+            if message_params is None:
+                message_params = default_params
         return cls(
             accepted=False,
             client_cmd_id=client_cmd_id,
             reason_code=reason_code,
             message=message,
+            message_key=message_key,
+            message_params=message_params,
         )
 
 
@@ -112,11 +129,24 @@ class InputCommandValidationError(ValueError):
         reason_code: str,
         message: str,
         client_cmd_id: str,
+        message_key: str | None = None,
+        message_params: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
+        if message_key is None or message_params is None:
+            default_key, default_params = command_rejected_message_contract(
+                reason_code=reason_code,
+                client_cmd_id=client_cmd_id,
+            )
+            if message_key is None:
+                message_key = default_key
+            if message_params is None:
+                message_params = default_params
         self.reason_code = reason_code
         self.message = message
         self.client_cmd_id = client_cmd_id
+        self.message_key = message_key
+        self.message_params = message_params
 
 
 def parse_enqueteur_input_command(payload: Any) -> ParsedInputCommand:

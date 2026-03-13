@@ -27,6 +27,7 @@ from backend.api.live_ws import (
     open_enqueteur_live_websocket,
     stream_enqueteur_frame_diff_loop,
 )
+from backend.runtime_messages import live_error_message_contract
 from backend.sim4.integration.live_envelope import make_live_envelope, validate_live_envelope
 
 from .errors import SessionNotFoundError
@@ -583,12 +584,15 @@ async def _send_error_envelope(
     message: str,
     fatal: bool,
 ) -> None:
+    message_key, message_params = live_error_message_contract(code=code, fatal=fatal)
     envelope = make_live_envelope(
         "ERROR",
         {
             "code": code,
             "message": message,
             "fatal": bool(fatal),
+            "message_key": message_key,
+            "message_params": message_params,
         },
         msg_id=str(uuid.uuid4()),
         sent_at_ms=int(datetime.now(UTC).timestamp() * 1000),

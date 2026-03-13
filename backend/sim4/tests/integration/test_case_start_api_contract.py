@@ -127,6 +127,10 @@ def test_case_start_route_rejects_unsupported_case_id() -> None:
     assert status == 400
     assert payload["error"]["code"] == "UNSUPPORTED_CASE"
     assert payload["error"]["field"] == "case_id"
+    assert payload["error"]["message_key"] == "launch.error.unsupported_case"
+    assert payload["error"]["message_params"]["code"] == "UNSUPPORTED_CASE"
+    assert payload["error"]["message_params"]["field"] == "case_id"
+    assert payload["error"]["message_params"]["status_code"] == 400
 
 
 def test_case_start_route_rejects_boolean_seed_values() -> None:
@@ -141,6 +145,10 @@ def test_case_start_route_rejects_boolean_seed_values() -> None:
     assert status == 400
     assert payload["error"]["code"] == "INVALID_REQUEST"
     assert payload["error"]["field"] == "seed"
+    assert payload["error"]["message_key"] == "launch.error.invalid_request"
+    assert payload["error"]["message_params"]["code"] == "INVALID_REQUEST"
+    assert payload["error"]["message_params"]["field"] == "seed"
+    assert payload["error"]["message_params"]["status_code"] == 400
 
 
 def test_default_router_dispatches_post_cases_start() -> None:

@@ -9,6 +9,7 @@ import hashlib
 import uuid
 from urllib.parse import parse_qs, urlparse
 
+from backend.runtime_messages import launch_error_message_contract
 from backend.sim4.case_mbam import DifficultyProfile, resolve_seed_id
 from backend.sim4.ecs.world import ECSWorld
 from backend.sim4.host.kvp_defaults import default_render_spec, default_run_anchors, tick_rate_hz_from_clock
@@ -319,6 +320,11 @@ def handle_post_cases_start(
     try:
         req = CaseStartRequest.from_payload(payload)
     except CaseStartValidationError as exc:
+        message_key, message_params = launch_error_message_contract(
+            code=exc.code,
+            field=exc.field,
+            status_code=400,
+        )
         return (
             400,
             {
@@ -326,6 +332,8 @@ def handle_post_cases_start(
                     "code": exc.code,
                     "field": exc.field,
                     "message": str(exc),
+                    "message_key": message_key,
+                    "message_params": message_params,
                 }
             },
         )

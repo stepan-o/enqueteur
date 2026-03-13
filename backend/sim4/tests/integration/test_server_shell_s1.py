@@ -223,6 +223,8 @@ def test_post_cases_start_route_maps_invalid_json_payload() -> None:
     assert response.status_code == 400
     assert body["error"]["code"] == "INVALID_REQUEST"
     assert body["error"]["field"] == "payload"
+    assert body["error"]["message_key"] == "launch.error.invalid_request"
+    assert body["error"]["message_params"]["status_code"] == 400
 
 
 def test_post_cases_start_route_maps_non_object_payload() -> None:
@@ -235,6 +237,8 @@ def test_post_cases_start_route_maps_non_object_payload() -> None:
     assert response.status_code == 400
     assert body["error"]["code"] == "INVALID_REQUEST"
     assert body["error"]["field"] == "payload"
+    assert body["error"]["message_key"] == "launch.error.invalid_request"
+    assert body["error"]["message_params"]["status_code"] == 400
 
 
 def test_post_cases_start_route_maps_host_not_ready() -> None:
@@ -259,6 +263,9 @@ def test_post_cases_start_route_maps_host_not_ready() -> None:
 
     assert response.status_code == 503
     assert body["error"]["code"] == HOST_NOT_READY_CODE
+    assert body["error"]["message_key"] == "launch.error.host_not_ready"
+    assert body["error"]["message_params"]["status_code"] == 503
+    assert body["error"]["message_params"]["phase_gate"] == CASE_START_PHASE_GATE
     assert body["phase_gate"] == CASE_START_PHASE_GATE
 
 
@@ -317,6 +324,8 @@ def test_post_cases_start_route_maps_core_launch_exception_without_leaking_detai
 
     assert response.status_code == 502
     assert body["error"]["code"] == "LAUNCH_FAILED"
+    assert body["error"]["message_key"] == "launch.error.launch_failed"
+    assert body["error"]["message_params"]["status_code"] == 502
     assert "internal stack trace detail" not in body["error"]["message"]
 
 
