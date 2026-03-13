@@ -447,10 +447,19 @@ export function mountAppFlow(opts: AppFlowOpts): AppFlowHandle {
                 preGameLayer.appendChild(
                     renderConnectingScreen({
                         caseId: state.caseId,
-                        caseLabel: getPreGameCaseEntry(state.caseId)?.label,
+                        caseLabel: (() => {
+                            const entry = getPreGameCaseEntry(state.caseId);
+                            return entry ? t(entry.labelKey) : undefined;
+                        })(),
                         phase: state.phase,
-                        demoPathLabel: getPreGameCaseEntry(state.caseId)?.defaultDemoPath.title,
-                        blockedStateHint: getPreGameCaseEntry(state.caseId)?.defaultDemoPath.blockedStateHint,
+                        demoPathLabel: (() => {
+                            const entry = getPreGameCaseEntry(state.caseId);
+                            return entry ? t(entry.defaultDemoPath.titleKey) : undefined;
+                        })(),
+                        blockedStateHint: (() => {
+                            const entry = getPreGameCaseEntry(state.caseId);
+                            return entry ? t(entry.defaultDemoPath.blockedStateHintKey) : undefined;
+                        })(),
                         warningMessage: liveWarningMessage ?? undefined,
                         onBackToCases: goToCaseSelect,
                         onBackToMenu: goToMainMenu,

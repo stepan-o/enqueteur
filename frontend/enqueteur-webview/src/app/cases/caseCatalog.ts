@@ -1,5 +1,6 @@
 import type { EnqueteurCaseId } from "../appState";
 import type { CaseLaunchDifficultyProfile, CaseLaunchMode } from "../api/caseLaunchClient";
+import type { TranslationLookupKey } from "../../i18n";
 
 export type CaseLaunchPreset = {
     seed: string | number;
@@ -10,17 +11,17 @@ export type CaseLaunchPreset = {
 export type ExternalDemoPath = {
     id: string;
     seed: string | number;
-    title: string;
-    summary: string;
+    titleKey: TranslationLookupKey;
+    summaryKey: TranslationLookupKey;
     beats: readonly string[];
-    blockedStateHint: string;
+    blockedStateHintKey: TranslationLookupKey;
 };
 
 export type PreGameCaseEntry = {
     caseId: EnqueteurCaseId;
     code: string;
-    label: string;
-    subtitle: string;
+    labelKey: TranslationLookupKey;
+    subtitleKey: TranslationLookupKey;
     launchPreset: CaseLaunchPreset;
     defaultDemoPath: ExternalDemoPath;
 };
@@ -28,8 +29,8 @@ export type PreGameCaseEntry = {
 export const MBAM_DEFAULT_EXTERNAL_DEMO_PATH: ExternalDemoPath = {
     id: "MBAM_DEMO_PATH_A",
     seed: "A",
-    title: "Seed A / Gallery timeline route",
-    summary: "Most readable external demo flow from first clue through final recap.",
+    titleKey: "flow.demoPath.MBAM_DEMO_PATH_A.title",
+    summaryKey: "flow.demoPath.MBAM_DEMO_PATH_A.summary",
     beats: [
         "Inspect Display Case and Wall Label.",
         "Talk to Elodie first in Conversations.",
@@ -37,15 +38,15 @@ export const MBAM_DEFAULT_EXTERNAL_DEMO_PATH: ExternalDemoPath = {
         "Use badge + receipt clues to unlock contradiction progress.",
         "Attempt Recovery or Accusation, then review recap.",
     ],
-    blockedStateHint: "If blocked, follow the next lead shown in Case Notes and continue gathering corroboration.",
+    blockedStateHintKey: "flow.demoPath.MBAM_DEMO_PATH_A.blockedHint",
 };
 
 export const PRE_GAME_CASES: readonly PreGameCaseEntry[] = [
     {
         caseId: "MBAM_01",
         code: "MBAM",
-        label: "Le Petit Vol du Musée",
-        subtitle: "Musée des Beaux-Arts de Montréal",
+        labelKey: "flow.case.MBAM_01.label",
+        subtitleKey: "flow.case.MBAM_01.subtitle",
         launchPreset: {
             seed: MBAM_DEFAULT_EXTERNAL_DEMO_PATH.seed,
             difficultyProfile: "D0",

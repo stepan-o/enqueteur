@@ -54,19 +54,19 @@ function makeCaseCard(
 
     const label = document.createElement("span");
     label.className = "flow-case-sub";
-    label.textContent = entry.label;
+    label.textContent = t(entry.labelKey);
 
     const subtitle = document.createElement("span");
     subtitle.className = "flow-screen-note";
-    subtitle.textContent = entry.subtitle;
+    subtitle.textContent = t(entry.subtitleKey);
 
     const demoRoute = document.createElement("span");
     demoRoute.className = "flow-screen-note";
-    demoRoute.textContent = t("flow.caseSelect.defaultDemoRoute", { title: entry.defaultDemoPath.title });
+    demoRoute.textContent = t("flow.caseSelect.defaultDemoRoute", { title: t(entry.defaultDemoPath.titleKey) });
 
     const demoSummary = document.createElement("span");
     demoSummary.className = "flow-screen-note";
-    demoSummary.textContent = entry.defaultDemoPath.summary;
+    demoSummary.textContent = t(entry.defaultDemoPath.summaryKey);
 
     card.appendChild(code);
     card.appendChild(label);
