@@ -1,29 +1,21 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { setLocale, translate, type TranslationLookupKey, type TranslationParams } from "../i18n";
 import { mountDialoguePanel } from "../ui/dialoguePanel";
 import { mountInspectPanel } from "../ui/inspectPanel";
 import { mountNotebookPanel } from "../ui/notebookPanel";
 import { mountResolutionPanel } from "../ui/resolutionPanel";
 import { WorldStore } from "../state/worldStore";
 import { makeMbamSnapshot } from "./mbamFixtures";
+import { trFor, useLocaleFixture } from "./testUtils/localeTestUtils";
 
-const TEST_LOCALE = "en";
-
-function tr(key: TranslationLookupKey, params?: TranslationParams): string {
-    return translate(TEST_LOCALE, key, params);
-}
+const tr = trFor("en");
+useLocaleFixture("en");
 
 function flushUi(): Promise<void> {
     return new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
-beforeEach(() => {
-    setLocale(TEST_LOCALE);
-});
-
 afterEach(() => {
-    setLocale(TEST_LOCALE);
     document.body.innerHTML = "";
 });
 

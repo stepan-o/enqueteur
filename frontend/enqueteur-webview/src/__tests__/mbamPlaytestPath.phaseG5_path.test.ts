@@ -1,23 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { setLocale, translate, type TranslationLookupKey, type TranslationParams } from "../i18n";
 import { makeMbamSnapshot } from "./mbamFixtures";
 import { buildMbamPlaytestPathView } from "../ui/mbamOnboarding";
 import type { WorldState } from "../state/worldStore";
+import { trFor, useLocaleFixture } from "./testUtils/localeTestUtils";
 
-const TEST_LOCALE = "en";
-
-function tr(key: TranslationLookupKey, params?: TranslationParams): string {
-    return translate(TEST_LOCALE, key, params);
-}
-
-beforeEach(() => {
-    setLocale(TEST_LOCALE);
-});
-
-afterEach(() => {
-    setLocale(TEST_LOCALE);
-});
+const tr = trFor("en");
+useLocaleFixture("en");
 
 function toWorldStateFromSnapshot(snapshot: ReturnType<typeof makeMbamSnapshot>): WorldState {
     const investigation = snapshot.state.investigation;

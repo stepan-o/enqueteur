@@ -1,15 +1,19 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { resolveRuntimeMessage } from "../app/runtimeMessage";
 import { setLocale } from "../i18n";
+import { BILINGUAL_LOCALES, trFor, useLocaleFixture } from "./testUtils/localeTestUtils";
 
-afterEach(() => {
-    setLocale("en");
-});
+const tr = {
+    en: trFor("en"),
+    fr: trFor("fr"),
+};
+
+useLocaleFixture("en");
 
 describe("Phase L3 runtime message localization contract", () => {
-    it("localizes by message_key when key is known", () => {
-        setLocale("fr");
+    it.each(BILINGUAL_LOCALES)("localizes by message_key when key is known (%s)", (locale) => {
+        setLocale(locale);
 
         const resolved = resolveRuntimeMessage({
             messageKey: "launch.error.unsupported_case",
@@ -17,11 +21,11 @@ describe("Phase L3 runtime message localization contract", () => {
             messageParams: { code: "UNSUPPORTED_CASE" },
         });
 
-        expect(resolved).toBe("Ce dossier n'est pas disponible dans cette version.");
+        expect(resolved).toBe(tr[locale]("launch.error.unsupported_case"));
     });
 
-    it("falls back to legacy message when key is unknown", () => {
-        setLocale("fr");
+    it.each(BILINGUAL_LOCALES)("falls back to legacy message when key is unknown (%s)", (locale) => {
+        setLocale(locale);
 
         const resolved = resolveRuntimeMessage({
             messageKey: "live.warn.not_migrated_yet",
@@ -32,8 +36,8 @@ describe("Phase L3 runtime message localization contract", () => {
         expect(resolved).toBe("Raw backend warning for migration gap.");
     });
 
-    it("uses fallback key when primary key is absent", () => {
-        setLocale("fr");
+    it.each(BILINGUAL_LOCALES)("uses fallback key when primary key is absent (%s)", (locale) => {
+        setLocale(locale);
 
         const resolved = resolveRuntimeMessage({
             message: "Launch failed.",
@@ -41,7 +45,7 @@ describe("Phase L3 runtime message localization contract", () => {
             fallbackParams: { code: "LAUNCH_FAILED" },
         });
 
-        expect(resolved).toBe("Le lancement du dossier a echoue dans le service backend.");
+        expect(resolved).toBe(tr[locale]("launch.error.launch_failed"));
     });
 
     it("returns a safe default when key and message are both unavailable", () => {

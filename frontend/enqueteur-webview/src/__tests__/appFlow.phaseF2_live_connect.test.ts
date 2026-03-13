@@ -12,13 +12,10 @@ import type {
     EnqueteurLiveProtocolError,
 } from "../app/live/enqueteurLiveClient";
 import type { ViewerHandle } from "../app/boot";
-import { setLocale, translate, type TranslationLookupKey, type TranslationParams } from "../i18n";
+import { trFor, useLocaleFixture } from "./testUtils/localeTestUtils";
 
-const TEST_LOCALE = "en";
-
-function tr(key: TranslationLookupKey, params?: TranslationParams): string {
-    return translate(TEST_LOCALE, key, params);
-}
+const tr = trFor("en");
+useLocaleFixture("en");
 
 function makeMountEl(): HTMLElement {
     const mountEl = document.createElement("div");
@@ -162,7 +159,6 @@ class ScriptedLiveClient implements EnqueteurLiveClientLike {
 }
 
 beforeEach(() => {
-    setLocale(TEST_LOCALE);
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => {
         cb(performance.now());
         return 1;
@@ -170,7 +166,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-    setLocale(TEST_LOCALE);
     vi.useRealTimers();
     vi.restoreAllMocks();
     document.body.innerHTML = "";

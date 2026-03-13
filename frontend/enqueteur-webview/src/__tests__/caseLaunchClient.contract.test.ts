@@ -7,6 +7,7 @@ import {
     createCaseLaunchClient,
 } from "../app/api/caseLaunchClient";
 import { setLocale } from "../i18n";
+import { BILINGUAL_LOCALES, trFor, useLocaleFixture } from "./testUtils/localeTestUtils";
 
 const VALID_RESPONSE = {
     run_id: "run-123",
@@ -21,6 +22,13 @@ const VALID_RESPONSE = {
     ws_url: "ws://localhost:7777/live?run_id=run-123",
     started_at: "2026-03-09T10:00:00Z",
 };
+
+const tr = {
+    en: trFor("en"),
+    fr: trFor("fr"),
+};
+
+useLocaleFixture("en");
 
 describe("case launch client contract hardening", () => {
     it("posts launch requests to canonical /api/cases/start under configured base", async () => {
@@ -155,9 +163,10 @@ describe("case launch client contract hardening", () => {
         );
     });
 
-    it("prefers localized backend message_key for launch failures when available", async () => {
-        setLocale("fr");
-        try {
+    it.each(BILINGUAL_LOCALES)(
+        "prefers localized backend message_key for launch failures when available (%s)",
+        async (locale) => {
+            setLocale(locale);
             const fetchImpl = vi.fn(async () =>
                 new Response(
                     JSON.stringify({
@@ -192,12 +201,10 @@ describe("case launch client contract hardening", () => {
                 expect.objectContaining<Partial<CaseLaunchError>>({
                     code: "UNSUPPORTED_CASE",
                     status: 400,
-                    message: "Ce dossier n'est pas disponible dans cette version.",
+                    message: tr[locale]("launch.error.unsupported_case"),
                     messageKey: "launch.error.unsupported_case",
                 })
             );
-        } finally {
-            setLocale("en");
         }
-    });
+    );
 });

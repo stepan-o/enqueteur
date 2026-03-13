@@ -1,22 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { setLocale, translate, type TranslationLookupKey, type TranslationParams } from "../i18n";
 import { mountResolutionPanel } from "../ui/resolutionPanel";
 import { WorldStore } from "../state/worldStore";
 import { makeMbamSnapshot } from "./mbamFixtures";
+import { trFor, useLocaleFixture } from "./testUtils/localeTestUtils";
 
-const TEST_LOCALE = "en";
-
-function tr(key: TranslationLookupKey, params?: TranslationParams): string {
-    return translate(TEST_LOCALE, key, params);
-}
-
-beforeEach(() => {
-    setLocale(TEST_LOCALE);
-});
+const tr = trFor("en");
+useLocaleFixture("en");
 
 afterEach(() => {
-    setLocale(TEST_LOCALE);
     document.body.innerHTML = "";
 });
 
