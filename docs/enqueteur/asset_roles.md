@@ -1,93 +1,199 @@
-# Enquêteur Asset Roles v0.1
+# Enquêteur Asset Roles v0.2
 
-Purpose: define what the current reference assets mean so they are used consistently during post-H work.
+Purpose: define the meaning and correct usage of the current reference assets so post-H work stays coherent and disciplined.
+
+These assets are not interchangeable style blobs.  
+Each one governs a different layer of the Enquêteur visual system.
 
 ---
 
-## 1. `frontend/enqueteur-webview/public/logo/low-res/enqueteur_logo_title.png`
+## 1. `enqueteur_logo_title.png`
 
 ### Role
-Brand / title key art
+Primary brand mark / title identity anchor
+
+### Status
+Locked as the provisional primary brand mark for active post-H implementation
 
 ### Primary uses
-- main menu title area
-- loading / boot framing
-- showcase splash or intro framing
-- top-level branding reference
-- palette and symbolic language reference
+- loading screen hero
+- main menu title presentation
+- shell identity anchor
+- showcase splash/header framing
+- marketing title treatment reference
+- core palette and brand mood reference
 
 ### What it contributes
-- title treatment direction
-- symbol density and clue/icon language
-- amber/coral/ivory against indigo
-- playful mystery energy within a cultured frame
+- gold-over-indigo/plum brand structure
+- literary wordmark authority
+- Montréal skyline-at-night identity
+- ember/amber light logic
+- subtle celestial glint language
+- fleur-de-lis civic-cultural symbolism
+- painterly atmospheric silhouette
+- premium, modern-cultural tone
+
+### What it should influence
+- theme token tuning
+- shell hero composition
+- title hierarchy
+- motion language for subtle glints and warm glow
+- future icon and plaque language
+- brand-facing shell atmosphere
 
 ### Do not use it for
 - tiny HUD iconography without adaptation
-- evidence card art
-- over-textured full-screen wallpaper
-- dense repeated UI ornament
+- dense repeated ornament across all panels
+- literal background wallpaper everywhere
+- replacing all investigative symbolism with skyline repetition
+- forcing gold treatment onto every UI element
+
+### Usage rule
+Treat this asset as the strongest brand voice.
+When there is tension between older collage-style mystery language and this logo’s cleaner literary civic nocturne language, prefer the logo.
 
 ---
 
-## 2. `frontend/enqueteur-webview/public/assets/character_sheet/low-res/character_sheet.png`
+## 2. `character_sheet.png`
 
 ### Role
 Cast rendering and portrait mood reference
 
 ### Primary uses
-- portrait pipeline direction
-- state-card mood reference
-- cast lighting and facial rendering reference
-- promotional cast composition inspiration
+- portrait asset pipeline direction
+- state-card art direction
+- NPC visual identity reference
+- emotional readability target
+- cast marketing or promo reference
 
 ### What it contributes
 - painterly human drama
-- realistic-but-expressive character rendering
-- warm/cool contrast model for faces
-- emotional specificity and readability
+- expressive but believable faces
+- warm/cool facial lighting logic
+- emotional specificity
+- realistic-proportion character treatment
+- restrained atmosphere around characters
+
+### What it should influence
+- portrait finish level
+- state variation rules
+- crop and lighting logic
+- card readability decisions
+- emotional tone in dialogue-facing visuals
 
 ### Do not use it for
-- direct UI chrome extraction
-- literal panel background art
-- replacing portrait-state logic with pure mood painting
-- defining typography or signage language
+- global UI chrome design
+- determining brand typography
+- replacing state logic with pure painterly ambiguity
+- heavy background texture extraction for every surface
+
+### Usage rule
+The character sheet governs the **human layer** of Enquêteur.
+It should shape how people feel in the game, not the entire shell identity by itself.
 
 ---
 
-## 3. `frontend/enqueteur-webview/public/assets/locations/low-res/mbam_map.png`
+## 3. `mbam_map.png`
 
 ### Role
-Environmental graphic language and wayfinding reference
+Environment graphic language and wayfinding reference
 
 ### Primary uses
-- map overlays
-- route and signage inspiration
-- location-card graphic language
-- environment/shell texture inspiration
-- civic/institutional atmosphere reference
+- map and navigation-inspired graphic motifs
+- location-card direction
+- route/highlight visual logic
+- environment signage inspiration
+- cultural institution mood reference
+- shell/world connective graphic language
 
 ### What it contributes
 - museum/cultural-space identity
-- route and direction emphasis
-- abstracted spatial clarity
-- indigo/plum field + amber/orange focal logic
-- signage intelligence
+- indigo/plum + warm highlight field behavior
+- route-emphasis logic
+- abstracted but readable spatial framing
+- wayfinding intelligence
+- institutional graphic confidence
+
+### What it should influence
+- directional cues
+- signage motifs
+- map overlays
+- transition cards
+- location framing
+- environment UI accents
+- future object/environment presentation language
 
 ### Do not use it for
-- full-screen UI wallpaper everywhere
-- literal environment layout source for gameplay truth
-- heavy texture applied indiscriminately to all panels
-- replacing readable navigation with decorative map motifs
+- literal truth-layout replacement
+- decorative texture dumped across the whole interface
+- environment art without gameplay readability
+- every panel background becoming a map surface
+
+### Usage rule
+The MBAM map governs the **place/wayfinding/institution** layer of Enquêteur.
+It should bring spatial intelligence and cultural atmosphere, not decorative overload.
 
 ---
 
-## 4. Usage rule
+## 4. Triangulation rule
 
-These three assets should be treated as a **triangulation set**, not as interchangeable style blobs.
+The Enquêteur style comes from the controlled combination of these three assets:
 
-- logo = brand/title/symbol layer
-- character sheet = human/emotional layer
-- MBAM map = place/wayfinding/institution layer
+- logo = **brand / title / light / civic nocturne**
+- character sheet = **human / emotion / painterly portraiture**
+- MBAM map = **place / route / institution / wayfinding**
 
-The Enquêteur style emerges from their combination.
+Do not flatten them into one generic mood board.
+
+Use them deliberately:
+- start from the logo for shell identity
+- use the character sheet for portrait and NPC presentation
+- use the MBAM map for spatial and signage language
+
+---
+
+## 5. Priority rule
+
+When choosing what should dominate a decision:
+
+### Shell identity and title moments
+Prefer:
+1. logo
+2. MBAM map
+3. character sheet
+
+### Portraits and state-card readability
+Prefer:
+1. character sheet
+2. logo
+3. MBAM map
+
+### Environmental framing and route logic
+Prefer:
+1. MBAM map
+2. logo
+3. character sheet
+
+### Brand-facing marketing or splash treatment
+Prefer:
+1. logo
+2. character sheet
+3. MBAM map
+
+---
+
+## 6. General guardrail
+
+These assets should reinforce:
+- literary civic nocturne
+- Montréal specificity
+- warm light over cool structure
+- painterly but readable presentation
+- cultural sophistication
+
+They should not accidentally push the project toward:
+- detective cliché clutter
+- fantasy ornament
+- horror branding
+- corporate cultural blandness
+- flat casual mystery-game styling
