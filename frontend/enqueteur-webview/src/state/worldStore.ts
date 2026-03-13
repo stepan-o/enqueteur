@@ -3,6 +3,7 @@
 export type KvpRoom = {
     room_id: number;
     label: string;
+    label_key?: string | null;
     kind_code: number;
     occupants: number[];
     items: number[];

@@ -3,6 +3,7 @@ import type { WorldStore, WorldState, KvpEvent, KvpRoom } from "../state/worldSt
 import { buildMbamCaseSetupGuide, buildMbamOnboardingView } from "./mbamOnboarding";
 import type { OverlayStore, OverlayState, UIOverlayEvent } from "../state/overlayStore";
 import { createScopedTranslator, getSharedLocaleStore, type TranslateFn } from "../i18n";
+import { resolvePresentationText } from "../app/presentationText";
 
 export type HudProfile = "demo" | "playtest" | "dev";
 
@@ -307,7 +308,9 @@ function formatWorldEvent(ev: KvpEvent, rooms: Map<number, KvpRoom>, t: Translat
     const payload = (ev.payload ?? {}) as Record<string, unknown>;
     const kind = String(payload.kind ?? ev.origin ?? t("hud.event.generic"));
     const roomId = toNumber(payload.room_id ?? payload.previous_room_id);
-    const roomLabel = roomId !== null ? rooms.get(roomId)?.label : null;
+    const roomLabel = roomId !== null
+        ? resolveRoomLabel(rooms.get(roomId), t)
+        : null;
     const detail = roomLabel ? ` · ${roomLabel}` : "";
     return `${padLeft(String(ev.tick), 6)} · ${kind}${detail}`;
 }
@@ -317,7 +320,9 @@ function formatWorldEventPlaytest(ev: KvpEvent, rooms: Map<number, KvpRoom>, t: 
     const kind = String(payload.kind ?? ev.origin ?? t("hud.event.generic"));
     const userKind = describePlayerFacingEvent(kind, t);
     const roomId = toNumber(payload.room_id ?? payload.previous_room_id);
-    const roomLabel = roomId !== null ? rooms.get(roomId)?.label : null;
+    const roomLabel = roomId !== null
+        ? resolveRoomLabel(rooms.get(roomId), t)
+        : null;
     const detail = roomLabel ? ` · ${roomLabel}` : "";
     return `${userKind}${detail}`;
 }
@@ -328,7 +333,7 @@ function formatOverlayEvent(ev: UIOverlayEvent, rooms: Map<number, KvpRoom>, t: 
     const agentId = toNumber(data.agent_id);
     let detail = "";
     if (roomId !== null) {
-        const label = rooms.get(roomId)?.label ?? `Room ${roomId}`;
+        const label = resolveRoomLabel(rooms.get(roomId), t) ?? `Room ${roomId}`;
         detail = ` · ${label}`;
     } else if (agentId !== null) {
         detail = ` · ${t("hud.entity.agent")} ${agentId}`;
@@ -343,7 +348,7 @@ function formatOverlayEventPlaytest(ev: UIOverlayEvent, rooms: Map<number, KvpRo
     const agentId = toNumber(data.agent_id);
     let detail = "";
     if (roomId !== null) {
-        const label = rooms.get(roomId)?.label ?? `Room ${roomId}`;
+        const label = resolveRoomLabel(rooms.get(roomId), t) ?? `Room ${roomId}`;
         detail = ` · ${label}`;
     } else if (agentId !== null) {
         detail = ` · ${t("hud.entity.agent")} ${agentId}`;
@@ -376,4 +381,13 @@ function toNumber(val: unknown): number | null {
     if (typeof val === "number" && Number.isFinite(val)) return val;
     if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) return Number(val);
     return null;
+}
+
+function resolveRoomLabel(room: KvpRoom | undefined, t: TranslateFn): string | null {
+    if (!room) return null;
+    return resolvePresentationText({
+        text: room.label,
+        textKey: room.label_key,
+        fallbackText: t("inspect.title.room_with_id", { id: room.room_id }),
+    });
 }

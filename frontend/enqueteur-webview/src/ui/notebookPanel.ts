@@ -1,6 +1,7 @@
 // src/ui/notebookPanel.ts
 import type { KvpInvestigationState, WorldState, WorldStore } from "../state/worldStore";
 import { createScopedTranslator, getSharedLocaleStore } from "../i18n";
+import { resolvePresentationField, resolvePresentationFieldList } from "../app/presentationText";
 import {
     buildMbamCaseSetupGuide,
     buildMbamOnboardingView,
@@ -554,10 +555,7 @@ function renderMinigames(panel: HTMLElement, opts: MinigameRenderOpts): void {
 
     renderMg1Widget(panel, {
         isDemoProfile: opts.isDemoProfile,
-        source:
-            typeof labelKnownState.title === "string" && typeof labelKnownState.date === "string"
-                ? { title: labelKnownState.title, date: labelKnownState.date }
-                : null,
+        source: resolveMg1Source(labelKnownState),
         state: opts.mg1State,
         projected: mgRows.get("MG1_LABEL_READING"),
         learning,
@@ -618,15 +616,21 @@ function parseMg2Source(knownState: Record<string, unknown>): Mg2Source | null {
 }
 
 function parseMg4Source(knownState: Record<string, unknown>): Mg4Source | null {
-    const prompt = knownState.torn_note_prompt;
+    const prompt = resolvePresentationField(knownState, "torn_note_prompt");
     const variantId = knownState.torn_note_variant_id;
-    const rawOptions = knownState.torn_note_options;
-    if (typeof prompt !== "string" || typeof variantId !== "string" || !Array.isArray(rawOptions)) {
+    const options = resolvePresentationFieldList(knownState, "torn_note_options", "torn_note_option_keys");
+    if (typeof prompt !== "string" || typeof variantId !== "string" || !options) {
         return null;
     }
-    const options = rawOptions.filter((row): row is string => typeof row === "string" && row.length > 0);
     if (options.length < 3) return null;
     return { variantId, prompt, options };
+}
+
+function resolveMg1Source(knownState: Record<string, unknown>): { title: string; date: string } | null {
+    const title = resolvePresentationField(knownState, "title");
+    const date = knownState.date;
+    if (typeof date !== "string" || !title) return null;
+    return { title, date };
 }
 
 function resolveMg3Source(knownState: Record<string, unknown>): {
@@ -635,7 +639,7 @@ function resolveMg3Source(knownState: Record<string, unknown>): {
     receiptId?: string;
 } | null {
     const time = knownState.time;
-    const item = knownState.item;
+    const item = resolvePresentationField(knownState, "item");
     if (typeof time !== "string" || typeof item !== "string") {
         return null;
     }

@@ -55,6 +55,7 @@ class DoorSpec:
 class RoomSpec:
     room_id: int
     label: str
+    label_key: str
     kind_code: int
     bounds: RoomBounds
     zone: str
@@ -88,6 +89,7 @@ def _room_specs() -> List[RoomSpec]:
         RoomSpec(
             room_id=int(MbamRoomId.MBAM_LOBBY),
             label="MBAM Lobby",
+            label_key="mbam.room.MBAM_LOBBY.label",
             kind_code=int(RoomKind.PUBLIC),
             bounds=RoomBounds(min_x=1.0, min_y=6.0, max_x=10.0, max_y=14.0),
             zone="public",
@@ -104,6 +106,7 @@ def _room_specs() -> List[RoomSpec]:
         RoomSpec(
             room_id=int(MbamRoomId.GALLERY_AFFICHES),
             label="Gallery 1 - Salle des Affiches",
+            label_key="mbam.room.GALLERY_AFFICHES.label",
             kind_code=int(RoomKind.EXHIBIT),
             bounds=RoomBounds(min_x=10.0, min_y=4.0, max_x=20.0, max_y=13.0),
             zone="exhibit",
@@ -116,6 +119,7 @@ def _room_specs() -> List[RoomSpec]:
         RoomSpec(
             room_id=int(MbamRoomId.SECURITY_OFFICE),
             label="Security Office",
+            label_key="mbam.room.SECURITY_OFFICE.label",
             kind_code=int(RoomKind.SECURITY),
             bounds=RoomBounds(min_x=4.0, min_y=14.0, max_x=12.0, max_y=19.0),
             zone="restricted",
@@ -128,6 +132,7 @@ def _room_specs() -> List[RoomSpec]:
         RoomSpec(
             room_id=int(MbamRoomId.SERVICE_CORRIDOR),
             label="Service Corridor",
+            label_key="mbam.room.SERVICE_CORRIDOR.label",
             kind_code=int(RoomKind.SERVICE),
             bounds=RoomBounds(min_x=20.0, min_y=6.0, max_x=27.0, max_y=11.0),
             zone="restricted",
@@ -140,6 +145,7 @@ def _room_specs() -> List[RoomSpec]:
         RoomSpec(
             room_id=int(MbamRoomId.CAFE_DE_LA_RUE),
             label="Cafe de la Rue",
+            label_key="mbam.room.CAFE_DE_LA_RUE.label",
             kind_code=int(RoomKind.STREET),
             bounds=RoomBounds(min_x=1.0, min_y=1.0, max_x=12.0, max_y=6.0),
             zone="street",
@@ -474,6 +480,7 @@ def apply_mbam_layout(world_ctx: WorldContext) -> None:
             RoomRecord(
                 id=s.room_id,
                 label=s.label,
+                label_key=s.label_key,
                 kind_code=s.kind_code,
                 bounds=s.bounds,
                 zone=s.zone,

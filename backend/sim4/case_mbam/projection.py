@@ -103,6 +103,11 @@ def _label_title_for_seed(seed: str) -> str:
     return "Le Medaillon des Voyageurs"
 
 
+def _label_title_key_for_seed(seed: str) -> str:
+    _ = seed
+    return "mbam.clue.wall_label.title"
+
+
 def _label_date_for_seed(seed: str) -> str:
     _ = seed
     return "1898"
@@ -116,23 +121,54 @@ def _receipt_item_for_seed(seed: str) -> str:
     return "espresso"
 
 
+def _receipt_item_key_for_seed(seed: str) -> str:
+    token = seed.strip().lower()
+    if token not in {"a", "b", "c"}:
+        token = "c"
+    return f"mbam.clue.receipt.item.{token}"
+
+
 def _torn_note_puzzle_for_seed(seed: str) -> dict[str, Any]:
     if seed == "A":
         return {
             "variant_id": "torn_note_a",
             "prompt": "___ de ___ vers ___",
             "options": ["chariot", "livraison", "17h58", "badge", "vitrine"],
+            "prompt_key": "mbam.clue.torn_note.a.prompt",
+            "option_keys": [
+                "mbam.clue.torn_note.a.option.chariot",
+                "mbam.clue.torn_note.a.option.livraison",
+                "mbam.clue.torn_note.a.option.time_1758",
+                "mbam.clue.torn_note.a.option.badge",
+                "mbam.clue.torn_note.a.option.vitrine",
+            ],
         }
     if seed == "B":
         return {
             "variant_id": "torn_note_b",
             "prompt": "___ de ___ avant ___ heures",
             "options": ["pret", "badge", "dix-huit", "chariot", "vitrine"],
+            "prompt_key": "mbam.clue.torn_note.b.prompt",
+            "option_keys": [
+                "mbam.clue.torn_note.b.option.pret",
+                "mbam.clue.torn_note.b.option.badge",
+                "mbam.clue.torn_note.b.option.dix_huit",
+                "mbam.clue.torn_note.b.option.chariot",
+                "mbam.clue.torn_note.b.option.vitrine",
+            ],
         }
     return {
         "variant_id": "torn_note_c",
         "prompt": "___ laissee ___ pres de ___",
         "options": ["vitrine", "entre-ouverte", "17h58", "badge", "livraison"],
+        "prompt_key": "mbam.clue.torn_note.c.prompt",
+        "option_keys": [
+            "mbam.clue.torn_note.c.option.vitrine",
+            "mbam.clue.torn_note.c.option.entre_ouverte",
+            "mbam.clue.torn_note.c.option.time_1758",
+            "mbam.clue.torn_note.c.option.badge",
+            "mbam.clue.torn_note.c.option.livraison",
+        ],
     }
 
 
@@ -252,6 +288,7 @@ def _visible_known_state_for_object(
         if "read" in observed_affordances:
             out["text_variant_id"] = s.text_variant_id
             out["title"] = _label_title_for_seed(case_state.seed)
+            out["title_key"] = _label_title_key_for_seed(case_state.seed)
             out["date"] = _label_date_for_seed(case_state.seed)
     elif object_id == "O4_BENCH":
         s = state  # type: ignore[assignment]
@@ -263,6 +300,8 @@ def _visible_known_state_for_object(
                 out["torn_note_variant_id"] = puzzle["variant_id"]
                 out["torn_note_prompt"] = puzzle["prompt"]
                 out["torn_note_options"] = puzzle["options"]
+                out["torn_note_prompt_key"] = puzzle["prompt_key"]
+                out["torn_note_option_keys"] = puzzle["option_keys"]
     elif object_id == "O5_VISITOR_LOGBOOK":
         s = state  # type: ignore[assignment]
         if "read" in observed_affordances:
@@ -302,6 +341,7 @@ def _visible_known_state_for_object(
         if "read_receipt" in observed_affordances:
             out["time"] = "17:52"
             out["item"] = _receipt_item_for_seed(case_state.seed)
+            out["item_key"] = _receipt_item_key_for_seed(case_state.seed)
             out.setdefault(
                 "latest_receipt_id",
                 case_state.evidence_placement.cafe.receipt_id or f"R-{case_state.seed}-1752",

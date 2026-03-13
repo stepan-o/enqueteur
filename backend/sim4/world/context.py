@@ -57,6 +57,7 @@ class RoomRecord:
 
     id: RoomID
     label: Optional[str] = None
+    label_key: Optional[str] = None
     kind_code: int = 0
     bounds: RoomBounds | None = None
     zone: Optional[str] = None

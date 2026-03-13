@@ -164,12 +164,20 @@ def test_visible_projection_exposes_mg_sources_after_required_observations() -> 
     bench = next(row for row in projection["objects"] if row["object_id"] == "O4_BENCH")
 
     assert wall["known_state"]["title"] == "Le Medaillon des Voyageurs"
+    assert wall["known_state"]["title_key"] == "mbam.clue.wall_label.title"
     assert wall["known_state"]["date"] == "1898"
     assert badge["known_state"]["log_entry_count"] == 2
     assert badge["known_state"]["log_entries"][0]["badge_id"] == "MBAM-STF-04"
     assert badge["known_state"]["log_entries"][0]["time"] == "17:58"
     assert receipt["known_state"]["time"] == "17:52"
     assert receipt["known_state"]["item"] == "cafe filtre"
+    assert receipt["known_state"]["item_key"] == "mbam.clue.receipt.item.a"
     assert bench["known_state"]["torn_note_variant_id"] == "torn_note_a"
     assert bench["known_state"]["torn_note_prompt"] == "___ de ___ vers ___"
+    assert bench["known_state"]["torn_note_prompt_key"] == "mbam.clue.torn_note.a.prompt"
     assert bench["known_state"]["torn_note_options"][:3] == ["chariot", "livraison", "17h58"]
+    assert bench["known_state"]["torn_note_option_keys"][:3] == [
+        "mbam.clue.torn_note.a.option.chariot",
+        "mbam.clue.torn_note.a.option.livraison",
+        "mbam.clue.torn_note.a.option.time_1758",
+    ]

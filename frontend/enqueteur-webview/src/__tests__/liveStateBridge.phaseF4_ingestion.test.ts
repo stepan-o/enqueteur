@@ -16,7 +16,15 @@ describe("Phase F4 live state bridge", () => {
             step_hash: "hash-12",
             state: {
                 world: {
-                    rooms: [{ room_id: 1, label: "Lobby", kind_code: 1, occupants: [], items: [], neighbors: [] }],
+                    rooms: [{
+                        room_id: 1,
+                        label: "Lobby",
+                        label_key: "mbam.room.MBAM_LOBBY.label",
+                        kind_code: 1,
+                        occupants: [],
+                        items: [],
+                        neighbors: [],
+                    }],
                     objects: [
                         {
                             object_id: 3002,
@@ -124,6 +132,7 @@ describe("Phase F4 live state bridge", () => {
         expect(snapshot.tick).toBe(12);
         expect(snapshot.schema_version).toBe("enqueteur_mbam_1");
         expect(snapshot.state.rooms).toHaveLength(1);
+        expect(snapshot.state.rooms[0]?.label_key).toBe("mbam.room.MBAM_LOBBY.label");
         expect(snapshot.state.objects).toHaveLength(1);
         expect(snapshot.state.npc_semantic).toHaveLength(1);
         expect(snapshot.state.dialogue?.active_scene_id).toBe("S2");

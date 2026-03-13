@@ -13,7 +13,7 @@ from backend.sim4.ecs.components.agent_stats import AgentStats
 def test_world_snapshot_single_agent_single_room():
     # Build minimal world context
     wc = WorldContext()
-    wc.register_room(RoomRecord(id=1, label="Room A"))
+    wc.register_room(RoomRecord(id=1, label="Room A", label_key="room.test.A"))
     # Item optional; ensure empty items list is handled
 
     # ECS world with one agent entity having Transform + RoomPresence
@@ -55,6 +55,7 @@ def test_world_snapshot_single_agent_single_room():
 
     assert room0.room_id == 1
     assert room0.label == "Room A"
+    assert room0.label_key == "room.test.A"
     assert room0.occupants == [] or room0.occupants == [eid]
     assert room0.items == []
     assert room0.neighbors == []

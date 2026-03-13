@@ -2,6 +2,7 @@
 import * as PIXI from "pixi.js";
 import type { KvpAgent, KvpItem, KvpObject, KvpRoom, RenderSpec, WorldState } from "../state/worldStore";
 import type { UIOverlayEvent } from "../state/overlayStore";
+import { resolvePresentationText } from "../app/presentationText";
 import { isoProject, setIsoTileSize } from "./iso";
 import { getObjectVisual, type ObjectPartSpec } from "./objectRegistry";
 
@@ -804,9 +805,10 @@ export class PixiScene {
         }
 
         let label = g.getChildByName("label") as PIXI.Text | null;
+        const roomLabel = displayRoomLabel(r);
         if (!label) {
             label = new PIXI.Text({
-                text: r.label ?? `Room ${r.room_id}`,
+                text: roomLabel,
                 style: {
                     fontFamily: "Bricolage Grotesque, Space Grotesk, sans-serif",
                     fontSize: 12,
@@ -817,7 +819,7 @@ export class PixiScene {
             label.name = "label";
             g.addChild(label);
         }
-        label.text = r.label ?? `Room ${r.room_id}`;
+        label.text = roomLabel;
         const topCenter = centerOfPoints(top);
         label.x = topCenter.x - label.width * 0.5;
         label.y = open > 0.5 ? topCenter.y + 6 : topCenter.y - 14;
@@ -1874,6 +1876,14 @@ function isElevatorRoom(r: KvpRoom | undefined): boolean {
     if (!r) return false;
     const label = (r.label ?? "").toLowerCase();
     return label.includes("elevator") || label.includes("lift");
+}
+
+function displayRoomLabel(room: KvpRoom): string {
+    return resolvePresentationText({
+        text: room.label,
+        textKey: room.label_key,
+        fallbackText: `Room ${room.room_id}`,
+    }) ?? `Room ${room.room_id}`;
 }
 
 function extractRoomIdFromEvent(ev: { payload?: Record<string, unknown> }): number | null {

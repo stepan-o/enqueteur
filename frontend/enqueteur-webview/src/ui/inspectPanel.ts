@@ -9,6 +9,7 @@ import type {
     KvpRoom,
 } from "../state/worldStore";
 import { createScopedTranslator, getSharedLocaleStore } from "../i18n";
+import { resolvePresentationText } from "../app/presentationText";
 import {
     buildMbamCaseSetupGuide,
     buildMbamOnboardingView,
@@ -238,7 +239,8 @@ export function mountInspectPanel(store: WorldStore, opts: InspectPanelOpts = {}
 function renderRoom(panel: HTMLElement, room: KvpRoom, detailed: boolean): void {
     const title = document.createElement("div");
     title.className = "inspect-title";
-    title.textContent = room.label ?? t("inspect.title.room_with_id", { id: room.room_id });
+    const roomLabel = resolveRoomLabel(room);
+    title.textContent = roomLabel ?? t("inspect.title.room_with_id", { id: room.room_id });
     panel.appendChild(title);
 
     const lines: Array<[string, string]> = detailed
@@ -272,7 +274,8 @@ function renderAgent(
         : t("inspect.title.character");
     panel.appendChild(title);
 
-    const roomLabel = state.rooms.get(agent.room_id)?.label ?? t("inspect.title.room_with_id", { id: agent.room_id });
+    const roomLabel = resolveRoomLabel(state.rooms.get(agent.room_id))
+        ?? t("inspect.title.room_with_id", { id: agent.room_id });
     const activeObject = findObjectByOccupant(state, agent.agent_id);
     const context = describeInteractionContext(activeObject, detailed);
 
@@ -324,7 +327,8 @@ function renderObjectActionPanel(
         : (objectGuide?.label ?? humanizeClassCode(obj.class_code));
     panel.appendChild(title);
 
-    const roomLabel = state.rooms.get(obj.room_id)?.label ?? t("inspect.title.room_with_id", { id: obj.room_id });
+    const roomLabel = resolveRoomLabel(state.rooms.get(obj.room_id))
+        ?? t("inspect.title.room_with_id", { id: obj.room_id });
     const occupant = obj.occupant_agent_id ? state.agents.get(obj.occupant_agent_id) : null;
     const occupantLabel = opts.detailed
         ? (occupant ? t("inspect.value.agent_with_id", { id: occupant.agent_id }) : t("inspect.value.none"))
@@ -393,6 +397,15 @@ function renderObjectActionPanel(
     renderActionButtons(panel, obj.object_id, caseObjectId, investigationObject, state, opts);
     renderLastActionFeedback(panel, obj.object_id, caseObjectId, opts.lastActionFeedback, opts.detailed);
     renderRecentDialogueHint(panel, state, opts.detailed);
+}
+
+function resolveRoomLabel(room: KvpRoom | undefined): string | null {
+    if (!room) return null;
+    return resolvePresentationText({
+        text: room.label,
+        textKey: room.label_key,
+        fallbackText: t("inspect.title.room_with_id", { id: room.room_id }),
+    });
 }
 
 function renderKnownState(

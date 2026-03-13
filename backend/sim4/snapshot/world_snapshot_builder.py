@@ -68,6 +68,7 @@ def _build_rooms(world_ctx: WorldContext) -> List[RoomSnapshot]:
             RoomSnapshot(
                 room_id=rid,
                 label=rec.label or "",
+                label_key=rec.label_key,
                 kind_code=int(rec.kind_code),
                 occupants=occupants,
                 items=items,
